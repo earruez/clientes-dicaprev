@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variables de color opcionales (puedes ajustar a tu marca) */
+:root {
+  --background: 255 255 255;
+  --foreground: 17 24 39;
+}
+
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  color: rgb(var(--foreground));
+  background: rgb(var(--background));
+}
+
+/* Utilidades suaves para tablas / tarjetas */
+.table-row {
+  @apply border-b last:border-b-0;
+}
+.badge {
+  @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs;
+}

@@ -1,0 +1,1 @@
+"use client"; import * as React from "react"; export const Badge=(p:any)=> <span {...p}/>;

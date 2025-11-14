@@ -1,0 +1,1 @@
+"use client"; import * as React from "react"; export const Label=(p:any)=> <label {...p}/>;

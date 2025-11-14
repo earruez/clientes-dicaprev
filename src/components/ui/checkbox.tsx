@@ -1,0 +1,1 @@
+"use client"; import * as React from "react"; export const Checkbox=React.forwardRef<HTMLInputElement, any>((props, ref)=> <input ref={ref} type="checkbox" {...props}/>); Checkbox.displayName="Checkbox";
