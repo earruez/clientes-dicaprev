@@ -1,0 +1,371 @@
+# DICAPREV CODEX v2 — Premium UI & Patrones Oficiales
+
+> Versión extendida sobre CODEX_v1. Esta versión define **tokens visuales**, **componentes base**, **patrones de página** y **nombres estándar**.
+
+====================================================
+1. TOKENS DE DISEÑO (UI SYSTEM)
+====================================================
+
+1.1. Colores base (Tailwind / CSS)
+----------------------------------
+PRIMARY (DICAPREV Verde)
+- primary         = #00A86B
+- primary-dark    = #007A52
+- primary-soft    = #E5F7F1
+
+ACCENT NARANJO (Botones de acción)
+- accent          = #FF7A00
+- accent-soft     = #FFF1E5
+- accent-dark     = #CC5F00
+
+GRISES
+- gray-bg-soft    = #F5F5F5
+- gray-border     = #E5E5E5
+- gray-text       = #555555
+- gray-heading    = #222222
+- gray-muted      = #9CA3AF
+
+ESTADOS
+- success         = #10B981
+- success-soft    = #ECFDF5
+- warning         = #F59E0B
+- warning-soft    = #FFFBEB
+- danger          = #EF4444
+- danger-soft     = #FEF2F2
+- info-soft       = #EEF2FF
+
+1.2. Tipografía
+---------------
+- Fuente base: **Inter**
+- Tamaños recomendados:
+  - h1 → text-3xl / font-semibold / tracking-tight
+  - h2 → text-2xl / font-semibold
+  - h3 → text-xl / font-semibold
+  - body → text-sm / text-gray-700
+  - captions → text-xs / text-gray-500
+
+1.3. Bordes y sombras
+---------------------
+- Tarjetas / panels: rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.06)]
+- Modales: rounded-3xl shadow-[0_18px_45px_rgba(15,23,42,0.18)]
+- Inputs: rounded-lg border border-gray-200
+- Badges: rounded-full text-xs font-medium
+
+1.4. Espaciado
+--------------
+- Layout general: p-6 en desktop, p-4 en mobile
+- Gaps internos: gap-4 (tarjetas / grids), gap-6 en secciones grandes
+- Separación vertical entre secciones: space-y-6 o space-y-8
+
+1.5. Transiciones
+-----------------
+- Todas las interacciones:
+  - class: transition-all duration-200 ease-out
+- Hover principal:
+  - scale-[1.01], sombra levemente más marcada
+
+
+====================================================
+2. COMPONENTES BASE (PRIMITIVOS UI)
+====================================================
+
+> Estos no son archivos todavía, pero definen cómo construiremos los componentes reales bajo `/components/custom/`.
+
+2.1. Botones
+------------
+
+ButtonPrimary
+- Uso: acciones principales (Guardar, Crear, Vincular)
+- Estilo:
+  - bg-accent text-white
+  - hover:bg-accent-dark
+  - rounded-full
+  - px-5 py-2.5
+  - text-sm font-medium
+  - shadow-[0_10px_30px_rgba(255,122,0,0.25)]
+
+ButtonSecondary
+- Uso: acciones secundarias (Cancelar, Volver)
+- Estilo:
+  - bg-white text-gray-700
+  - border border-gray-200
+  - hover:bg-gray-50
+  - rounded-full
+  - px-4 py-2
+  - text-sm
+
+ButtonGhost
+- Uso: filtros, acciones “ligeras”
+- Estilo:
+  - bg-transparent
+  - text-gray-600
+  - hover:bg-gray-100
+  - rounded-full
+  - px-3 py-1.5
+  - text-xs
+
+2.2. Tarjetas
+-------------
+
+CardSection
+- Contenedor estándar de secciones:
+  - rounded-2xl
+  - bg-white
+  - border border-gray-100
+  - shadow-[0_4px_20px_rgba(0,0,0,0.04)]
+  - p-5 / p-6
+- Header opcional con:
+  - título
+  - descripción corta
+  - acciones (botón, filtro, etc.)
+
+CardMetric
+- Uso: métricas de resumen (cumplimiento, pendientes, etc.)
+- Estilo:
+  - layout horizontal
+  - icono circular a la izquierda
+  - número grande
+  - label en texto pequeño
+  - fondo soft (primary-soft, accent-soft, etc.)
+
+2.3. Badges / Estados
+---------------------
+
+BadgeEstadoDocumento
+- Estados:
+  - Vigente     → bg-success-soft text-success
+  - Por vencer  → bg-warning-soft text-warning
+  - Vencido     → bg-danger-soft text-danger
+- Clases:
+  - inline-flex items-center rounded-full px-3 py-1 text-xs font-medium
+
+BadgeCategoria
+- Uso: categoría de documento / tipo de obra
+- Estilo:
+  - bg-gray-100 text-gray-700
+  - rounded-full px-3 py-1 text-[11px] font-medium uppercase tracking-wide
+
+2.4. ModalPremium
+-----------------
+
+ModalPremium (basado en ShadCN Dialog)
+- Overlay con bg-black/40 + backdrop-blur-sm
+- Contenedor:
+  - max-w-xl / max-w-2xl según caso
+  - bg-white
+  - rounded-3xl
+  - shadow-[0_18px_45px_rgba(15,23,42,0.18)]
+  - p-6 md:p-7
+- Header:
+  - Título en text-lg font-semibold
+  - Subtítulo en text-sm text-gray-500
+- Footer:
+  - Alineado a la derecha
+  - Botón secundario + ButtonPrimary
+
+2.5. Chips / Filtros
+--------------------
+
+FilterChip
+- Uso: filtrado rápido (aplica/no aplica, vigente, etc.)
+- Estilo:
+  - rounded-full
+  - border border-gray-200
+  - px-3 py-1.5
+  - text-xs
+  - bg-white
+  - estado activo:
+    - bg-primary-soft border-primary text-primary
+
+
+====================================================
+3. PATRONES DE PÁGINA
+====================================================
+
+3.1. Layout general DICAPREV
+----------------------------
+
+Estructura recomendada (sin código, solo patrón):
+
+- Sidebar (colapsable)
+- Header superior (breadcrumb, cliente, plan)
+- Contenido principal con:
+  - Título de página
+  - Descripción corta
+  - Acciones (botones + filtros)
+  - Grilla de secciones
+
+Pattern:
+
+<Layout>
+  <Sidebar />
+  <main className="flex-1 bg-gray-bg-soft min-h-screen">
+    <HeaderCliente />
+    <section className="p-6 space-y-6">
+      {/* Título + acciones */}
+      {/* Secciones (CardSection) */}
+    </section>
+  </main>
+</Layout>
+
+3.2. Página tipo “Dashboard”
+----------------------------
+Secciones recomendadas:
+- Cumplimiento general
+- Próximos vencimientos
+- Accesos rápidos
+- Estado por obra (resumen, no detalle)
+
+Cada bloque dentro de **CardSection**.
+
+3.3. Página tipo “Listado con filtros + tabla”
+----------------------------------------------
+Patrón para:
+- Documentación generales
+- Documentación por obra
+- Trabajadores
+
+Estructura:
+- Header con título + ButtonPrimary “Nuevo X”
+- Fila de filtros (FilterChip + Inputs)
+- Lista tipo cards o tabla compacta
+
+3.4. Página tipo “Detalle”
+--------------------------
+Ejemplo: vista rápida del trabajador, detalle de obra.
+
+Secciones:
+- CardSection con datos principales
+- Tabs para:
+  - Documentación
+  - Historial
+  - Observaciones
+  - Trazabilidad
+
+Tabs deben seguir mismo estilo premium en toda la app.
+
+
+====================================================
+4. PATRONES DE INTERACCIÓN
+====================================================
+
+4.1. Modales
+------------
+- Abrir:
+  - desde botón principal (ej: “Vincular documento”)
+- Cierre:
+  - botón “Cancelar” (ButtonSecondary)
+  - ícono de cerrar opcional
+- Validación:
+  - ButtonPrimary deshabilitado hasta que haya selección válida.
+
+4.2. Confirmaciones
+-------------------
+Para acciones críticas (eliminar, desvincular):
+
+- Modal pequeño (max-w-sm)
+- Título claro (“¿Desvincular documento?”)
+- Texto corto explicando consecuencia
+- Botón rojo (danger) + botón “Cancelar”
+
+4.3. Estados vacíos
+-------------------
+Cuando una lista está vacía:
+
+- Icono soft (outline)
+- Título corto (“Aún no tienes documentos vinculados”)
+- Texto explicando siguiente paso
+- ButtonPrimary para crear / vincular
+
+4.4. Mensajes de feedback (futuro toast)
+----------------------------------------
+- Success → borde/ícono verde
+- Error → borde/ícono rojo
+- Info → borde/ícono azul suave
+
+
+====================================================
+5. NOMENCLATURA OFICIAL (NOMBRES)
+====================================================
+
+5.1. Archivos y componentes
+---------------------------
+- Páginas:
+  - `page.tsx`
+- Componentes:
+  - `NombreComponente.tsx` (PascalCase)
+- Hooks:
+  - `useNombre.ts`
+- Utils:
+  - `nombre-util.ts` o agrupados en `utils.ts`
+
+5.2. Rutas DICAPREV
+-------------------
+Ejemplos coherentes:
+- `/dicaprev/dashboard`
+- `/dicaprev/documentacion/generales`
+- `/dicaprev/documentacion/centrotrabajo`
+- `/dicaprev/documentacion/contratistas`
+- `/dicaprev/trabajadores`
+- `/dicaprev/ds44/obligaciones`
+- `/dicaprev/hallazgos`
+- `/dicaprev/resumen`
+
+5.3. Tipos (TypeScript)
+-----------------------
+Nombres sugeridos:
+- `Empresa`
+- `Obra`
+- `Trabajador`
+- `DocumentoGeneral`
+- `DocumentoObra`
+- `CategoriaDocumento`
+- `RequisitoLegal`
+- `VinculacionDocumento`
+
+Estados:
+- `EstadoDocumento = "Vigente" | "Por vencer" | "Vencido";`
+
+====================================================
+6. FIRESTORE (CAPA DE DATOS — ESQUEMA BASE)
+====================================================
+
+> Referencial para cuando conectemos Firestore. No implica que ya esté implementado.
+
+Colecciones sugeridas:
+- `empresas`          → Datos generales de la empresa cliente
+- `obras`             → Ref a empresa + datos de la obra
+- `trabajadores`      → Ref a empresa/obra + datos personales
+- `documentosGenerales`
+- `documentosObra`
+- `categoriasDocumentos`
+- `requisitosLegales`
+- `vinculaciones`     → vínculo entre documento ↔ trabajador / obra / categoría
+
+Cada documento debe incluir:
+- `empresaId`
+- `obraId?`
+- `createdAt`, `updatedAt`
+- `estado` si aplica
+- `vigenteHasta` si aplica
+
+Helpers:
+- `formatDate(isoString)`
+- `estadoClase(estado)`
+- `getEstadoDesdeFecha(vigenteHasta)`
+
+====================================================
+7. REGLAS DE EVOLUCIÓN DEL CODEX
+====================================================
+
+- Toda nueva pantalla importante se documenta en CODEX.
+- Todo nuevo patrón visual (nuevo tipo de tarjeta, nuevo estilo de tabs) debe:
+  - Ser aprobado visualmente
+  - Agregarse aquí antes de replicarse en la app
+- Si algo en el proyecto NO sigue este CODEX:
+  - Se ajusta en el siguiente refactor
+  - O se actualiza el CODEX si el cambio mejora el estándar
+
+====================================================
+FIN DEL CODEX v2 — DICAPREV
+====================================================
