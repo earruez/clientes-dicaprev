@@ -23,6 +23,7 @@ function Sidebar({
 
   // estados para colapsar cada sección
   const [openSections, setOpenSections] = useState({
+    empresa: true,   // 👈 agregado
     ds44: true,
     docs: true,
     programa: true,
@@ -68,6 +69,58 @@ function Sidebar({
           {!collapsed && <span>Dashboard</span>}
         </Link>
 
+        {/* ============= Empresa ============= */}
+        {!collapsed && (
+          <>
+            <button
+              type="button"
+              onClick={() => toggleSection("empresa")}
+              className={`${baseItem} mt-2 text-emerald-300 hover:bg-slate-900/60`}
+            >
+              <span className="text-lg">▣</span>
+              <span className="flex-1 text-left">Empresa</span>
+              <span className="text-xs">
+                {openSections.empresa ? "▾" : "▸"}
+              </span>
+            </button>
+
+            {openSections.empresa && (
+              <div className="space-y-1">
+                {/* Vista principal */}
+                <Link href="/dicaprev/empresa" className={subItem}>
+                  Resumen
+                </Link>
+
+                {/* Tab Gobierno SST */}
+                <Link href="/dicaprev/empresa?tab=sst" className={subItem}>
+                  Gobierno SST
+                </Link>
+
+                {/* Bloque estructura organizativa */}
+                <div className="px-10 pt-2 pb-1 text-[10px] uppercase tracking-wide text-slate-500/70">
+                  Estructura
+                </div>
+
+                <Link href="/dicaprev/empresa/areas" className={subItem}>
+                  Áreas
+                </Link>
+                <Link href="/dicaprev/empresa/cargos" className={subItem}>
+                  Cargos
+                </Link>
+                <Link href="/dicaprev/empresa/puestos" className={subItem}>
+                  Puestos
+                </Link>
+                <Link href="/dicaprev/empresa/trabajadores" className={subItem}>
+                  Trabajadores
+                </Link>
+                <Link href="/dicaprev/empresa/organigrama" className={subItem}>
+                  Organigrama
+                </Link>
+              </div>
+            )}
+          </>
+        )}
+
         {/* ============= Centro DS44 ============= */}
         {!collapsed && (
           <>
@@ -88,13 +141,10 @@ function Sidebar({
                 <Link href="/dicaprev/ds44/resumen" className={subItem}>
                   Resumen
                 </Link>
-                <Link
-                  href="/dicaprev/ds44/obligaciones"
-                  className={subItem}
-                >
+                <Link href="/dicaprev/ds44/obligaciones" className={subItem}>
                   Obligaciones
                 </Link>
-                
+
                 <Link href="/dicaprev/ds44/hallazgos" className={subItem}>
                   Hallazgos
                 </Link>
@@ -133,40 +183,34 @@ function Sidebar({
                   Centro de trabajo
                 </Link>
                 <Link
-                  href="/dicaprev/documentacion/centrotrabajo"
+                  href="/dicaprev/documentacion/contratistas"
                   className={subItem}
                 >
                   Contratistas
                 </Link>
                 <Link
-                  href="/dicaprev/documentacion?tab=aprobaciones"
+                  href="/dicaprev/documentacion/aprobaciones"
                   className={subItem}
                 >
                   Aprobaciones
                 </Link>
                 <Link
-                  href="/dicaprev/documentacion?tab=vencimientos"
+                  href="/dicaprev/documentacion/vencimientos"
                   className={subItem}
                 >
                   Vencimientos
                 </Link>
                 <Link
-                  href="/dicaprev/documentacion?tab=plantillas"
+                  href="/dicaprev/documentacion/plantillas"
                   className={subItem}
                 >
                   Plantillas
                 </Link>
                 <Link
-                  href="/dicaprev/documentacion?tab=firmas"
+                  href="/dicaprev/documentacion/firmas"
                   className={subItem}
                 >
                   Firmas Digitales
-                </Link>
-                <Link
-                  href="/dicaprev/documentacion?tab=accesos"
-                  className={subItem}
-                >
-                  Accesos Rápidos
                 </Link>
               </div>
             )}
@@ -191,13 +235,13 @@ function Sidebar({
             {openSections.programa && (
               <div className="space-y-1">
                 <Link
-                  href="/dicaprev/sgsst/plan"
+                  href="/dicaprev/plandetrabajo/plananual"
                   className={subItem}
                 >
                   Plan Anual
                 </Link>
                 <Link
-                  href="/dicaprev/sgsst/indicadores"
+                  href="/dicaprev/plandetrabajo/indicadores"
                   className={subItem}
                 >
                   Indicadores
@@ -225,7 +269,7 @@ function Sidebar({
             {openSections.cap && (
               <div className="space-y-1">
                 <Link
-                  href="/dicaprev/capacitacion/plan"
+                  href="/dicaprev/capacitacion/plandecapacitacion"
                   className={subItem}
                 >
                   Plan de Capacitación

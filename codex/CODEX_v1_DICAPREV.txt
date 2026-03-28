@@ -1,0 +1,171 @@
+# DICAPREV CODEX v1
+
+## 1. Componentes Premium Oficiales
+
+### Modal Premium
+- Diseño con bordes 2xl
+- Sombra suave
+- Overlay con blur
+- Botones primarios corporativos (#FF7A00 / verde DICAPREV)
+- Comportamiento: abrir/cerrar con **Dialog** de ShadCN
+
+### Sidebar Colapsable
+- Animación suave
+- Submenú plegable
+- Estados activos resaltados
+- Iconos Lucide
+- Modo compacto (iconos solos)
+- Modo expandido (texto + icono)
+
+### Tarjetas de Obra
+- Card premium
+- Header con color corporativo
+- Estado visible
+- Badges (vigente, por vencer, vencido)
+
+### Tabs Premium
+- TabsList centrado
+- Trigger con borde inferior redondeado
+- Animación fade entre contenidos
+
+### Carrousel
+- 3 elementos visibles máximo
+- Scroll suave horizontal
+- Flechas laterales opcionales
+- Perfecto para mostrar obras
+
+---
+
+## 2. Estructura Oficial de Carpetas (Next.js /app)
+
+src/
+ ├─ app/
+ │   ├─ dicaprev/
+ │   │    ├─ layout.tsx   → Layout oficial
+ │   │    ├─ dashboard/
+ │   │    │     └─ page.tsx
+ │   │    ├─ documentacion/
+ │   │    ├─ obras/
+ │   │    ├─ requisitos/
+ │   │    ├─ trabajadores/
+ │   │    └─ utils/
+ │   │         ├─ firestore.ts
+ │   │         ├─ tipos.ts
+ │   │         └─ helpers.ts
+ │   └─ page.tsx
+ ├─ components/
+ │    ├─ ui/ (ShadCN)
+ │    └─ custom/ (Nuestros componentes premium)
+ └─ public/
+
+---
+
+## 3. Reglas de Diseño Premium
+
+### Tipografía
+- Inter (general)
+- Display serif para títulos largos
+
+### Bordes
+- **rounded-2xl** por defecto
+- Inputs: rounded-lg
+- Modales: rounded-3xl
+
+### Colores DICAPREV
+- **Verde corporativo**: #00A86B
+- **Verde oscuro**: #007A52
+- **Naranjo botones premium**: #FF7A00
+- **Grises UI**:
+  - #F5F5F5 (fondos)
+  - #E5E5E5 (bordes)
+  - #222 (texto headings)
+
+### Sombras Premium
+- shadow-[0_4px_20px_rgba(0,0,0,0.08)]
+
+### Transiciones
+- Todas las interacciones: transition-all duration-200
+
+---
+
+## 4. Helpers y Utilidades Oficiales
+
+### formatDate()
+Convierte fechas para evitar hydration mismatch.
+
+### estadoClase()
+Asigna colores según el estado del documento:
+- Vigente → verde
+- Por vencer → amarillo
+- Vencido → rojo
+
+### getVigencia()
+Reglas para calcular estados según fecha de vencimiento.
+
+---
+
+## 5. Convenciones Internas
+
+### Nombres de Archivos
+- page.tsx para páginas
+- Modal + Nombre.tsx para modales
+- Card + Componente.tsx para tarjetas
+- use + Nombre.ts para hooks
+
+### Normalización
+- Ningún componente debe tener estilos inline
+- Todo debe usar Tailwind + clases comunes
+- No se duplican componentes
+- Cada cambio grande se integra al CODEX
+
+---
+
+## 6. Firestore (Preparado para integración)
+
+### Colecciones Base
+- empresas
+- obras
+- trabajadores
+- documentosGenerales
+- categorias
+- requisitos
+- vinculaciones
+
+### Reglas de lectura/escritura
+- Siempre leer datos con hooks asíncronos
+- Siempre tipar cada documento en `/utils/tipos.ts`
+
+---
+
+## 7. Estándar de Desarrollo
+
+### Cuando pidas un cambio:
+Tú dices:
+> “Actualizar modal de vincular documentos”
+
+Yo:
+- Consulto CODEX
+- Genero código compatible
+- Te entrego .txt listo para VSCode
+
+### Cuando creamos algo nuevo:
+- Se documenta en CODEX v1
+- Se mantiene consistencia total
+
+---
+
+## 8. Indicaciones de GitHub
+
+### Subir cambios
+git add .
+git commit -m "Descripción"
+git push
+
+### Ramas recomendadas
+- main (producción)
+- dev (trabajo nuevo)
+- feature/nombre (módulos específicos)
+
+---
+
+# FIN DEL CODEX v1

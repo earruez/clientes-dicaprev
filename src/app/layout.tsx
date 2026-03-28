@@ -1,17 +1,19 @@
-import type { Metadata } from "next";
 import "./globals.css";
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Clientes DICAPREV",
-  description: "Portal limpio con sidebar y topbar",
+  title: "DICAPREV",
+  description: "Portal DICAPREV",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="es">
-      <body className="min-h-screen bg-gray-50 text-gray-900 antialiased">
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -44,6 +44,7 @@ export function Tabs({
         if (firstTrigger?.props?.value) setValue(firstTrigger.props.value);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -63,7 +64,8 @@ export function TabsList({
   return (
     <div
       className={
-        "inline-flex w-full gap-2 rounded-xl bg-gray-100 p-1 " + (className ?? "")
+        "inline-flex w-full gap-2 rounded-xl bg-gray-100 p-1 " +
+        (className ?? "")
       }
       role="tablist"
     >
@@ -76,9 +78,11 @@ TabsList.displayName = "TabsList";
 export function TabsTrigger({
   value,
   children,
+  className,
 }: {
   value: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   const ctx = React.useContext(TabsCtx);
   if (!ctx) throw new Error("TabsTrigger must be used within <Tabs>");
@@ -93,7 +97,8 @@ export function TabsTrigger({
         "flex-1 rounded-lg px-4 py-2 text-sm font-medium transition " +
         (active
           ? "bg-white shadow text-gray-900"
-          : "text-gray-600 hover:bg-white/60 hover:text-gray-900")
+          : "text-gray-600 hover:bg-white/60 hover:text-gray-900") +
+        (className ? " " + className : "")
       }
     >
       {children}
