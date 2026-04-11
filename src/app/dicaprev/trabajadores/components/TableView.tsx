@@ -59,7 +59,6 @@ export default function TableView({ data, onEdit, onDelete }: TableViewProps) {
               <th className="w-10 px-4 py-3 text-left">
                 <Checkbox
                   checked={allSelected}
-                  indeterminate={someSelected}
                   onCheckedChange={(v: boolean) => handleToggleAll(v)}
                   aria-label="Seleccionar todos"
                 />

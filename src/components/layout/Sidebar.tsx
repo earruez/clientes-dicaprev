@@ -3,13 +3,16 @@ import Link from "next/link";
 export default function Sidebar() {
   const items = [
     { href: "/dicaprev", label: "Dashboard" },
+    { href: "/dicaprev/trabajadores", label: "Trabajadores" },
+    { href: "/dicaprev/trabajadores/control-documental", label: "Control Documental" },
+    { href: "/dicaprev/capacitacion", label: "Capacitaciones" },
     { href: "/dicaprev/documentos", label: "Documentos" },
     { href: "/dicaprev/login", label: "Login" },
   ];
 
   return (
     <aside className="w-60 shrink-0 border-r bg-white">
-      <div className="p-4 font-semibold">DICAPREV</div>
+      <div className="p-4 font-semibold">PREVANTIA</div>
       <nav className="space-y-1 p-2">
         {items.map((it) => (
           <Link

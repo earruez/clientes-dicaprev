@@ -69,7 +69,7 @@ const DOCUMENTOS_MOCK: DocumentoVencimiento[] = [
     nombre: "Contrato de prestación de servicios 2025",
     tipoDocumento: "Contrato marco",
     origen: "Contratista",
-    relacionadoCon: "Constructora Andes SpA",
+    relacionadoCon: "MVP CHILE SPA",
     categoria: "Documentación legal",
     fechaVencimiento: "20-11-2025",
     diasRestantes: 5,

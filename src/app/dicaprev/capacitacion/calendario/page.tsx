@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { CalendarOff } from "lucide-react";
 
 type Modalidad = "presencial" | "online" | "mixta";
 
@@ -158,6 +160,20 @@ export default function CalendarioCapacitacionPage() {
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8 flex flex-col gap-6">
+      {/* BREADCRUMB + SUB-NAV */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+          <Link href="/dicaprev/trabajadores/dotacion" className="hover:text-slate-700 transition-colors">Trabajadores</Link>
+          <span>›</span>
+          <span className="text-slate-600 font-medium">Capacitaciones</span>
+        </div>
+        <div className="flex gap-0 border-b border-slate-200">
+          <Link href="/dicaprev/capacitacion/calendario" className="px-4 py-2 text-sm font-semibold border-b-2 border-cyan-500 text-cyan-700">Calendario</Link>
+          <Link href="/dicaprev/capacitacion/historial" className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-colors">Historial</Link>
+          <Link href="/dicaprev/capacitacion/evaluaciones" className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-colors">Evaluaciones</Link>
+        </div>
+      </div>
+
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -165,8 +181,7 @@ export default function CalendarioCapacitacionPage() {
             Calendario de Capacitaciones
           </h1>
           <p className="text-slate-500 mt-1 max-w-2xl">
-            Programa sesiones, asigna cupos y visualiza en un calendario limpio.
-            Esta sección se conecta con participación, evaluaciones e historial.
+            Programa sesiones de capacitación, asigna cupos por obra y controla inscritos. Se conecta con historial, participación y evaluaciones.
           </p>
         </div>
 
@@ -258,9 +273,11 @@ export default function CalendarioCapacitacionPage() {
             <TabsContent value="agenda" className="pt-0">
               <div className="space-y-2">
                 {sesionesFiltradas.length === 0 && (
-                  <p className="text-xs text-slate-500">
-                    No hay capacitaciones con los filtros actuales.
-                  </p>
+                  <div className="py-12 text-center">
+                    <CalendarOff className="mx-auto h-9 w-9 text-slate-200 mb-3" />
+                    <p className="text-sm font-medium text-slate-500">Sin sesiones que coincidan</p>
+                    <p className="text-xs text-slate-400 mt-1">Ajusta los filtros o programa una nueva capacitación.</p>
+                  </div>
                 )}
                 {sesionesFiltradas
                   .slice()

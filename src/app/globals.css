@@ -2,10 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Variables de color opcionales (puedes ajustar a tu marca) */
+/* Variables de color del sistema de diseño */
 :root {
-  --background: 255 255 255;
-  --foreground: 17 24 39;
+  --background: 249 250 251; /* slate-50 */
+  --foreground: 15 23 42; /* slate-900 */
+  --card: 255 255 255; /* white */
+  --card-foreground: 15 23 42; /* slate-900 */
+  --popover: 255 255 255; /* white */
+  --popover-foreground: 15 23 42; /* slate-900 */
+  --primary: 16 185 129; /* emerald-500 */
+  --primary-foreground: 255 255 255; /* white */
+  --secondary: 241 245 249; /* slate-100 */
+  --secondary-foreground: 51 65 85; /* slate-700 */
+  --muted: 241 245 249; /* slate-100 */
+  --muted-foreground: 100 116 139; /* slate-500 */
+  --accent: 241 245 249; /* slate-100 */
+  --accent-foreground: 51 65 85; /* slate-700 */
+  --destructive: 239 68 68; /* red-500 */
+  --destructive-foreground: 255 255 255; /* white */
+  --border: 226 232 240; /* slate-200 */
+  --input: 255 255 255; /* white */
+  --ring: 16 185 129; /* emerald-500 */
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: 0 0 0;
+  --foreground: 255 255 255;
+  --card: 0 0 0;
+  --card-foreground: 255 255 255;
+  --popover: 0 0 0;
+  --popover-foreground: 255 255 255;
+  --primary: 255 255 255;
+  --primary-foreground: 0 0 0;
+  --secondary: 255 255 255;
+  --secondary-foreground: 0 0 0;
+  --muted: 255 255 255;
+  --muted-foreground: 0 0 0;
+  --accent: 255 255 255;
+  --accent-foreground: 0 0 0;
+  --destructive: 0 84 199;
+  --destructive-foreground: 255 255 255;
+  --border: 255 255 255;
+  --input: 255 255 255;
+  --ring: 255 255 255;
+  --radius: 0.5rem;
 }
 
 html, body, #__next {

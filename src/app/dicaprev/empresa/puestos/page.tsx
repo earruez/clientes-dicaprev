@@ -1,940 +1,650 @@
 // src/app/dicaprev/empresa/puestos/page.tsx
 "use client";
 
-import React, {
-  useState,
-  useMemo,
-  ChangeEvent,
-  FormEvent,
-  useEffect,
-} from "react";
-
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import React, { useState, useMemo, useCallback, useEffect, ChangeEvent, FormEvent } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import {
+  Building2, Users, UserCheck, AlertTriangle, MapPin,
+  Clock, Layers, SlidersHorizontal,
+  Search, Plus, X, Shield, BookOpen, FileCheck, TrendingUp,
+} from "lucide-react";
+import { CARGO_REFS } from "@/lib/empresa/domain";
+import {
+  type Posicion,
+  getPosiciones,
+  addPosicion as storeAdd,
+  updatePosicion as storeUpdate,
+  subscribe,
+  vacantesPos,
+  isSobredotado,
+  coberturaLabel,
+  coberturaPct,
+} from "@/lib/dotacion/dotacion-store";
+import { getCentroNombres } from "@/lib/centros/centros-store";
 
-/* ======================================================================= */
-/*                                TYPES                                    */
-/* ======================================================================= */
-
-type PuestoEstado = "activo" | "inactivo";
+/* ─────────────────────────────────────────────
+   TYPES
+───────────────────────────────────────────── */
+type Estado = "activo" | "inactivo";
 type Turno = "Diurno" | "Nocturno" | "Mixto" | "Especial";
 type Modalidad = "Presencial" | "Híbrido" | "Remoto";
 
-type CentroOption = {
+// Posicion is imported from dotacion-store
+type PosicionForm = Omit<Posicion, "id" | "creadoEl">;
+
+interface CargoOption { id: string; nombre: string; riesgos?: string; ds44?: boolean; }
+
+interface TrabajadorMock {
   id: string;
   nombre: string;
-};
-
-type CargoOption = {
-  id: string;
-  nombre: string;
-  riesgosClaveTexto?: string;
-  requiereDS44?: boolean;
-};
-
-type Puesto = {
-  id: string;
-  nombre: string;
-  codigo: string;
-  centroId: string;
-  centroNombre: string;
-  cargoId: string;
-  cargoNombre: string;
-  turno: Turno;
-  modalidad: Modalidad;
-  ubicacion: string;
-  riesgosClave: string;
-  dotacionPlanificada: number;
-  trabajadoresAsignados: number;
-  requiereDS44: boolean;
-  estado: PuestoEstado;
-  creadoEl: string;
-};
-
-type PuestoForm = Omit<Puesto, "id" | "creadoEl">;
-
-/* ======================================================================= */
-/*                      DATOS LOCALES INICIALES                            */
-/* ======================================================================= */
-
-const INITIAL_CENTROS: CentroOption[] = [
-  { id: "centro_principal", nombre: "Centro principal" },
-  { id: "centro_obra_1", nombre: "Obra 1" },
-];
-
-const INITIAL_CARGOS: CargoOption[] = [
-  {
-    id: "prevencionista_obra",
-    nombre: "Prevencionista de Riesgos Obra",
-    riesgosClaveTexto: "Trabajo en terreno, coordinación SST, gestión DS44.",
-    requiereDS44: true,
-  },
-  {
-    id: "maestro_obra",
-    nombre: "Maestro de Obra",
-    riesgosClaveTexto: "Trabajo en altura, manejo de herramientas y equipos.",
-    requiereDS44: true,
-  },
-];
-
-const INITIAL_PUESTOS: Puesto[] = [
-  {
-    id: "puesto_001",
-    nombre: "Prevencionista Obra 1",
-    codigo: "PST-001",
-    centroId: "centro_obra_1",
-    centroNombre: "Obra 1",
-    cargoId: "prevencionista_obra",
-    cargoNombre: "Prevencionista de Riesgos Obra",
-    turno: "Diurno",
-    modalidad: "Presencial",
-    ubicacion: "Obra 1, sector faena principal",
-    riesgosClave:
-      "Trabajo en terreno, inspecciones, coordinación de actividades críticas y liderazgo en SST.",
-    dotacionPlanificada: 1,
-    trabajadoresAsignados: 1,
-    requiereDS44: true,
-    estado: "activo",
-    creadoEl: new Date().toISOString().slice(0, 10),
-  },
-];
-
-/* ======================================================================= */
-/*                    HELPERS PARA CÓDIGO INTERNO                          */
-/* ======================================================================= */
-
-function getNextPuestoCodigo(puestos: Puesto[]): string {
-  const prefix = "PST";
-  const regex = new RegExp(`^${prefix}-(\\d+)$`);
-
-  const numeros = puestos
-    .map((p) => {
-      const match = p.codigo?.match(regex);
-      return match ? parseInt(match[1], 10) : 0;
-    })
-    .filter((n) => n > 0);
-
-  const next = (numeros.length ? Math.max(...numeros) : 0) + 1;
-  return `${prefix}-${String(next).padStart(3, "0")}`;
+  rut: string;
+  estado: "Al día" | "Pendiente" | "Crítico";
+  completitudDoc: number;
+  capacitaciones: number;
 }
 
-/* ======================================================================= */
-/*                             PAGE COMPONENT                               */
-/* ======================================================================= */
+/* ─────────────────────────────────────────────
+   MOCK DATA
+───────────────────────────────────────────── */
+const CARGOS: CargoOption[] = CARGO_REFS.map((c) => ({
+  id:      c.id,
+  nombre:  c.nombre,
+  riesgos: c.riesgos,
+  ds44:    c.requiereDS44,
+}));
 
-export default function PuestosPage() {
-  const [puestos, setPuestos] = useState<Puesto[]>([]);
-  const [centrosOptions, setCentrosOptions] =
-    useState<CentroOption[]>(INITIAL_CENTROS);
-  const [cargosOptions, setCargosOptions] =
-    useState<CargoOption[]>(INITIAL_CARGOS);
-  const [loading, setLoading] = useState<boolean>(true);
+const WORKERS_MOCK: Record<string, TrabajadorMock[]> = {
+  "pos-001": [
+    { id: "w1", nombre: "Carlos Pérez Rojas", rut: "12.345.678-9", estado: "Al día", completitudDoc: 95, capacitaciones: 8 },
+  ],
+  "pos-002": [
+    { id: "w2", nombre: "María González Soto", rut: "15.678.901-2", estado: "Pendiente", completitudDoc: 72, capacitaciones: 5 },
+    { id: "w3", nombre: "Jorge Muñoz López", rut: "13.222.333-4", estado: "Crítico", completitudDoc: 40, capacitaciones: 2 },
+  ],
+  "pos-003": [
+    { id: "w4", nombre: "Ana Torres Vidal", rut: "16.111.222-3", estado: "Al día", completitudDoc: 100, capacitaciones: 10 },
+    { id: "w5", nombre: "Pedro Ramos Silva", rut: "14.555.666-7", estado: "Al día", completitudDoc: 88, capacitaciones: 7 },
+  ],
+  "pos-004": [
+    { id: "w6", nombre: "Luis Contreras Díaz", rut: "11.444.555-K", estado: "Pendiente", completitudDoc: 65, capacitaciones: 4 },
+  ],
+  "pos-005": [],
+  "pos-006": [
+    { id: "w7", nombre: "Francisca Ibáñez Vera", rut: "17.888.999-0", estado: "Al día", completitudDoc: 91, capacitaciones: 9 },
+    { id: "w8", nombre: "Manuel Ortega Fuentes", rut: "10.333.444-5", estado: "Al día", completitudDoc: 83, capacitaciones: 6 },
+    { id: "w9", nombre: "Rodrigo Espinoza Cruz", rut: "9.222.111-6", estado: "Pendiente", completitudDoc: 57, capacitaciones: 3 },
+  ],
+};
 
-  const [search, setSearch] = useState<string>("");
-  const [estadoFilter, setEstadoFilter] = useState<PuestoEstado | "todos">(
-    "todos"
-  );
-  const [centroFilter, setCentroFilter] = useState<string>("todos");
-  const [cargoFilter, setCargoFilter] = useState<string>("todos");
-  const [turnoFilter, setTurnoFilter] = useState<Turno | "todos">("todos");
+/* ─────────────────────────────────────────────
+   HELPERS
+───────────────────────────────────────────── */
+function coverageColor(p: Posicion): string {
+  if (isSobredotado(p)) return "text-purple-700 bg-purple-50 border-purple-100";
+  const v = vacantesPos(p);
+  if (v === 0) return "text-emerald-700 bg-emerald-50 border-emerald-100";
+  if (v >= p.dotacionRequerida) return "text-rose-700 bg-rose-50 border-rose-100";
+  return "text-amber-700 bg-amber-50 border-amber-100";
+}
 
-  const [modalOpen, setModalOpen] = useState<boolean>(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
+function workerEstadoColor(e: TrabajadorMock["estado"]): string {
+  if (e === "Al día") return "bg-emerald-50 text-emerald-700 border-emerald-100";
+  if (e === "Pendiente") return "bg-amber-50 text-amber-700 border-amber-100";
+  return "bg-rose-50 text-rose-700 border-rose-100";
+}
 
-  const [form, setForm] = useState<PuestoForm>({
-    nombre: "",
-    codigo: "",
-    centroId: "",
-    centroNombre: "",
-    cargoId: "",
-    cargoNombre: "",
-    turno: "Diurno",
-    modalidad: "Presencial",
-    ubicacion: "",
-    riesgosClave: "",
-    dotacionPlanificada: 1,
-    trabajadoresAsignados: 0,
-    requiereDS44: true,
-    estado: "activo",
-  });
+function nextCodigo(posiciones: Posicion[]): string {
+  const nums = posiciones.map((p) => { const m = p.codigo.match(/^DOT-(\d+)$/); return m ? parseInt(m[1]) : 0; }).filter((n) => n > 0);
+  return `DOT-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, "0")}`;
+}
 
+function emptyForm(firstCentro: string): PosicionForm {
+  return {
+    codigo: "", centroNombre: firstCentro,
+    cargoNombre: CARGOS[0].nombre,
+    dotacionRequerida: 1, asignados: 0,
+    turno: "Diurno", modalidad: "Presencial",
+    ubicacion: "", riesgosClave: CARGOS[0].riesgos ?? "",
+    requiereDS44: CARGOS[0].ds44 ?? false, estado: "activo",
+  };
+}
+
+/* ─────────────────────────────────────────────
+   PAGE
+───────────────────────────────────────────── */
+export default function DotacionPage() {
+  const CENTROS = getCentroNombres();
+  const firstCentro = CENTROS[0] ?? "Casa Matriz";
+  const [posiciones, setPosiciones] = useState<Posicion[]>(getPosiciones);
+
+  // Sync with store when another module (Trabajadores) mutates it
+  useEffect(() => subscribe(() => setPosiciones(getPosiciones())), []);
+
+  const [search, setSearch]     = useState("");
+  const [fCentro, setFCentro]   = useState("todos");
+  const [fCargo, setFCargo]     = useState("todos");
+  const [fEstado, setFEstado]   = useState<"todos" | Estado>("todos");
+  const [fTurno, setFTurno]     = useState<"todos" | Turno>("todos");
+  const [fDs44, setFDs44]       = useState(false);
+
+  const [drawerPos, setDrawerPos] = useState<Posicion | null>(null);
+
+  const [modalOpen, setModalOpen]   = useState(false);
+  const [editingId, setEditingId]   = useState<string | null>(null);
+  const [form, setForm]             = useState<PosicionForm>(emptyForm(firstCentro));
   const isEdit = editingId !== null;
 
-  /* ------------------------------------------------------------------- */
-  /*                       CARGA INICIAL LOCAL                           */
-  /* ------------------------------------------------------------------- */
+  /* KPIs */
+  const activas      = posiciones.filter((p) => p.estado === "activo");
+  const kpiTotal     = activas.length;
+  const kpiCubiertas = activas.filter((p) => !isSobredotado(p) && vacantesPos(p) === 0).length;
+  const kpiVacantes  = activas.reduce((s, p) => s + vacantesPos(p), 0);
+  const kpiCentros   = new Set(activas.map((p) => p.centroNombre)).size;
+  const kpiDs44      = activas.filter((p) => p.requiereDS44 && vacantesPos(p) > 0).length;
+  const kpiSobredotadas = activas.filter((p) => isSobredotado(p)).length;
 
-  useEffect(() => {
-    // Simulamos carga de datos (en vez de Firestore)
-    setLoading(true);
-    setPuestos(INITIAL_PUESTOS);
-    setLoading(false);
+  /* Filtered */
+  const filtradas = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return posiciones.filter((p) => {
+      if (q && !`${p.codigo} ${p.centroNombre} ${p.cargoNombre} ${p.ubicacion}`.toLowerCase().includes(q)) return false;
+      if (fCentro !== "todos" && p.centroNombre !== fCentro) return false;
+      if (fCargo !== "todos" && p.cargoNombre !== fCargo) return false;
+      if (fEstado !== "todos" && p.estado !== fEstado) return false;
+      if (fTurno !== "todos" && p.turno !== fTurno) return false;
+      if (fDs44 && !(p.requiereDS44 && vacantesPos(p) > 0)) return false;
+      return true;
+    });
+  }, [posiciones, search, fCentro, fCargo, fEstado, fTurno, fDs44]);
+
+  /* Handlers */
+  const openCreate = useCallback(() => {
+    setEditingId(null);
+    setForm({ ...emptyForm(firstCentro), codigo: nextCodigo(posiciones) });
+    setModalOpen(true);
+  }, [firstCentro, posiciones]);
+
+  const openEdit = useCallback((p: Posicion) => {
+    setEditingId(p.id);
+    setForm({
+      codigo: p.codigo, centroNombre: p.centroNombre, cargoNombre: p.cargoNombre,
+      dotacionRequerida: p.dotacionRequerida, asignados: p.asignados,
+      turno: p.turno, modalidad: p.modalidad,
+      ubicacion: p.ubicacion, riesgosClave: p.riesgosClave,
+      requiereDS44: p.requiereDS44, estado: p.estado,
+    });
+    setModalOpen(true);
+    setDrawerPos(null);
   }, []);
 
-  /* ------------------------------------------------------------------- */
-  /*                              MÉTRICAS                               */
-  /* ------------------------------------------------------------------- */
+  const toggleEstado = (id: string) => {
+    const updated = posiciones.map((p) => p.id === id ? { ...p, estado: (p.estado === "activo" ? "inactivo" : "activo") as Estado } : p);
+    updated.forEach((p) => { if (p.id === id) storeUpdate(p); });
+    setPosiciones(updated);
+    setDrawerPos((prev) => prev?.id === id ? { ...prev, estado: prev.estado === "activo" ? "inactivo" : "activo" } : prev);
+  };
 
-  const totalPuestos = puestos.length;
-  const activos = puestos.filter((p) => p.estado === "activo").length;
-  const totalDotacion = puestos.reduce(
-    (acc, p) => acc + p.dotacionPlanificada,
-    0
-  );
-  const trabajadoresAsignadosTotal = puestos.reduce(
-    (acc, p) => acc + p.trabajadoresAsignados,
-    0
-  );
+  const deletePos = (id: string) => {
+    if (!confirm("¿Eliminar esta posición?")) return;
+    setPosiciones((prev) => prev.filter((p) => p.id !== id));
+    if (drawerPos?.id === id) setDrawerPos(null);
+  };
 
-  /* ------------------------------------------------------------------- */
-  /*                            FILTROS                                  */
-  /* ------------------------------------------------------------------- */
-
-  const filtrados = useMemo(() => {
-    return puestos.filter((p) => {
-      const matchSearch =
-        search.trim().length === 0 ||
-        p.nombre.toLowerCase().includes(search.toLowerCase()) ||
-        p.codigo.toLowerCase().includes(search.toLowerCase()) ||
-        p.centroNombre.toLowerCase().includes(search.toLowerCase()) ||
-        p.cargoNombre.toLowerCase().includes(search.toLowerCase());
-
-      const matchEstado =
-        estadoFilter === "todos" ? true : p.estado === estadoFilter;
-
-      const matchCentro =
-        centroFilter === "todos" ? true : p.centroId === centroFilter;
-
-      const matchCargo =
-        cargoFilter === "todos" ? true : p.cargoId === cargoFilter;
-
-      const matchTurno =
-        turnoFilter === "todos" ? true : p.turno === turnoFilter;
-
-      return (
-        matchSearch && matchEstado && matchCentro && matchCargo && matchTurno
-      );
-    });
-  }, [puestos, search, estadoFilter, centroFilter, cargoFilter, turnoFilter]);
-
-  /* ------------------------------------------------------------------- */
-  /*                            HANDLERS                                 */
-  /* ------------------------------------------------------------------- */
-
-  const handleInputChange = (
-    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const target = e.target as HTMLInputElement;
-    const { name, value, type } = target;
-
-    if (type === "number") {
-      const num = Number(value);
-      setForm((prev) => ({
-        ...prev,
-        [name]: Number.isNaN(num) ? 0 : num,
-      }));
-      return;
-    }
-
+  const handleInput = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target;
+    const checked = (e.target as HTMLInputElement).checked;
     setForm((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : type === "number" ? (isNaN(+value) ? 0 : +value) : value,
     }));
   };
 
-  const handleOpenCreate = () => {
-    const centroDefault = centrosOptions[0];
-    const cargoDefault = cargosOptions[0];
-    const nextCodigo = getNextPuestoCodigo(puestos);
-
-    setEditingId(null);
-    setForm({
-      nombre: "",
-      codigo: nextCodigo, // código automático, editable
-      centroId: centroDefault?.id ?? "",
-      centroNombre: centroDefault?.nombre ?? "",
-      cargoId: cargoDefault?.id ?? "",
-      cargoNombre: cargoDefault?.nombre ?? "",
-      turno: "Diurno",
-      modalidad: "Presencial",
-      ubicacion: "",
-      riesgosClave: cargoDefault?.riesgosClaveTexto ?? "",
-      dotacionPlanificada: 1,
-      trabajadoresAsignados: 0,
-      requiereDS44: cargoDefault?.requiereDS44 ?? true,
-      estado: "activo",
-    });
-
-    setModalOpen(true);
-  };
-
-  const handleOpenEdit = (puesto: Puesto) => {
-    setEditingId(puesto.id);
-    setForm({
-      nombre: puesto.nombre,
-      codigo: puesto.codigo,
-      centroId: puesto.centroId,
-      centroNombre: puesto.centroNombre,
-      cargoId: puesto.cargoId,
-      cargoNombre: puesto.cargoNombre,
-      turno: puesto.turno,
-      modalidad: puesto.modalidad,
-      ubicacion: puesto.ubicacion,
-      riesgosClave: puesto.riesgosClave,
-      dotacionPlanificada: puesto.dotacionPlanificada,
-      trabajadoresAsignados: puesto.trabajadoresAsignados,
-      requiereDS44: puesto.requiereDS44,
-      estado: puesto.estado,
-    });
-
-    setModalOpen(true);
-  };
-
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-
-    const centroSel = centrosOptions.find((c) => c.id === form.centroId);
-    const cargoSel = cargosOptions.find((c) => c.id === form.cargoId);
-
-    const centroNombre = centroSel?.nombre ?? form.centroNombre;
-    const cargoNombre = cargoSel?.nombre ?? form.cargoNombre;
-
     if (isEdit && editingId) {
-      setPuestos((prev) =>
-        prev.map((p) =>
-          p.id === editingId
-            ? {
-                ...p,
-                ...form,
-                centroNombre,
-                cargoNombre,
-              }
-            : p
-        )
-      );
+      const updated = posiciones.map((p) => p.id === editingId ? { ...p, ...form } : p);
+      storeUpdate({ ...posiciones.find((p) => p.id === editingId)!, ...form });
+      setPosiciones(updated);
+      setDrawerPos((prev) => prev?.id === editingId ? { ...prev, ...form } : prev);
     } else {
-      const codigoFinal =
-        form.codigo && form.codigo.trim().length > 0
-          ? form.codigo
-          : getNextPuestoCodigo(puestos);
-
-      const nuevo: Puesto = {
-        id: crypto.randomUUID ? crypto.randomUUID() : `puesto_${Date.now()}`,
-        ...form,
-        codigo: codigoFinal,
-        centroNombre,
-        cargoNombre,
-        creadoEl: new Date().toISOString().slice(0, 10),
-      };
-
-      setPuestos((prev) => [...prev, nuevo]);
+      const nueva: Posicion = { id: `pos-${Date.now()}`, ...form, creadoEl: new Date().toISOString().slice(0, 10) };
+      storeAdd(nueva);
+      setPosiciones((prev) => [nueva, ...prev]);
     }
-
     setModalOpen(false);
   };
 
-  const toggleEstado = (id: string) => {
-    setPuestos((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              estado: p.estado === "activo" ? "inactivo" : "activo",
-            }
-          : p
-      )
-    );
-  };
+  const drawerWorkers: TrabajadorMock[] = drawerPos ? (WORKERS_MOCK[drawerPos.id] ?? []) : [];
 
-  const deletePuesto = (id: string) => {
-    if (!confirm("¿Eliminar este puesto?")) return;
-    setPuestos((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  /* ======================================================================= */
-  /*                               RENDER                                    */
-  /* ======================================================================= */
+  const clearFilters = () => { setSearch(""); setFCentro("todos"); setFCargo("todos"); setFEstado("todos"); setFTurno("todos"); setFDs44(false); };
+  const hasFilters = search || fCentro !== "todos" || fCargo !== "todos" || fEstado !== "todos" || fTurno !== "todos" || fDs44;
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 p-8 flex flex-col gap-8">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            Puestos de trabajo
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Define puestos concretos por centro de trabajo y cargo asociado.
-            Aquí controlas dotación, turnos y modalidad para conectar con
-            trabajadores y DS44.
-          </p>
+    <div className="w-full min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
+
+        {/* ── HEADER ── */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2.5 mb-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 shadow-sm">
+                <Layers className="h-5 w-5 text-white" />
+              </div>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dotación</h1>
+            </div>
+            <p className="text-sm text-slate-500 max-w-xl pl-[52px]">
+              Posiciones operativas por centro de trabajo. Cada posición vincula un cargo maestro con su cobertura real, turno y cumplimiento DS44.
+            </p>
+          </div>
+          <button
+            onClick={openCreate}
+            className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 hover:shadow-md"
+          >
+            <Plus className="h-4 w-4" />
+            Nueva posición
+          </button>
         </div>
 
-        <Button
-          onClick={handleOpenCreate}
-          className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 shadow-sm"
-        >
-          + Nuevo puesto
-        </Button>
-      </div>
+        {/* ── KPIs ── */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <KpiCard icon={<Layers className="h-5 w-5 text-indigo-600" />}     label="Posiciones activas"  value={kpiTotal}        bg="bg-indigo-50" />
+          <KpiCard icon={<UserCheck className="h-5 w-5 text-emerald-600" />} label="Cubiertas"            value={kpiCubiertas}    bg="bg-emerald-50" />
+          <KpiCard icon={<Users className="h-5 w-5 text-amber-600" />}       label="Vacantes totales"     value={kpiVacantes}     bg="bg-amber-50"   highlight={kpiVacantes > 0} />
+          <KpiCard icon={<Building2 className="h-5 w-5 text-sky-600" />}     label="Centros activos"      value={kpiCentros}      bg="bg-sky-50" />
+          <KpiCard icon={<TrendingUp className="h-5 w-5 text-purple-600" />} label="Sobredotadas"         value={kpiSobredotadas} bg="bg-purple-50"  highlight={kpiSobredotadas > 0} />
+        </div>
 
-      {/* MÉTRICAS */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        <MetricCard label="Puestos totales" value={totalPuestos.toString()} />
-        <MetricCard label="Puestos activos" value={activos.toString()} />
-        <MetricCard
-          label="Dotación planificada"
-          value={totalDotacion.toString()}
-        />
-        <MetricCard
-          label="Trabajadores asignados"
-          value={trabajadoresAsignadosTotal.toString()}
-        />
-      </div>
+        {/* ── FILTROS ── */}
+        <Card className="border border-slate-200 rounded-2xl shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex flex-wrap gap-3 items-end">
+              {/* Buscar */}
+              <div className="flex-1 min-w-[220px]">
+                <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Buscar</Label>
+                <div className="relative mt-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                  <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Código, centro, cargo…" className="pl-9 rounded-xl" />
+                </div>
+              </div>
 
-      {/* FILTROS */}
-      <Card className="border border-slate-200 rounded-2xl shadow-sm">
-        <CardContent className="p-4 flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
-          <div className="flex-1 flex flex-col md:flex-row gap-3">
-            <div className="w-full md:max-w-md">
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                Buscar
-              </Label>
-              <Input
-                placeholder="Buscar por nombre, código, centro o cargo…"
-                className="mt-1 rounded-xl"
-                value={search}
-                onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                  setSearch(e.target.value)
-                }
-              />
+              <FilterSelect label="Centro"   value={fCentro} onChange={setFCentro} options={[{ value: "todos", label: "Todos" }, ...CENTROS.map((c) => ({ value: c, label: c }))]} />
+              <FilterSelect label="Cargo"    value={fCargo}  onChange={setFCargo}  options={[{ value: "todos", label: "Todos" }, ...CARGOS.map((c)  => ({ value: c.nombre, label: c.nombre }))]} />
+              <FilterSelect label="Estado"   value={fEstado} onChange={(v) => setFEstado(v as "todos" | Estado)} options={[{ value: "todos", label: "Todos" }, { value: "activo", label: "Activo" }, { value: "inactivo", label: "Inactivo" }]} />
+              <FilterSelect label="Turno"    value={fTurno}  onChange={(v) => setFTurno(v as "todos" | Turno)}   options={[{ value: "todos", label: "Todos" }, { value: "Diurno", label: "Diurno" }, { value: "Nocturno", label: "Nocturno" }, { value: "Mixto", label: "Mixto" }, { value: "Especial", label: "Especial" }]} />
+
+              {/* DS44 */}
+              <div className="flex flex-col gap-1">
+                <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">DS44 crítico</Label>
+                <button
+                  type="button"
+                  onClick={() => setFDs44((v) => !v)}
+                  className={`mt-1 h-10 px-4 rounded-xl border text-sm font-medium transition ${fDs44 ? "bg-rose-600 border-rose-600 text-white" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
+                >
+                  <AlertTriangle className={`inline h-4 w-4 mr-1.5 ${fDs44 ? "text-white" : "text-rose-500"}`} />
+                  {fDs44 ? "Solo críticos" : "Todos"}
+                </button>
+              </div>
+
+              {hasFilters && (
+                <button type="button" onClick={clearFilters} className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700 mt-6 transition">
+                  <X className="h-3.5 w-3.5" /> Limpiar
+                </button>
+              )}
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <div className="w-36">
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                Estado
-              </Label>
-              <Select
-                value={estadoFilter}
-                onValueChange={(v: string) =>
-                  setEstadoFilter(v as PuestoEstado | "todos")
-                }
-              >
-                <SelectTrigger className="mt-1 rounded-xl">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="activo">Activos</SelectItem>
-                  <SelectItem value="inactivo">Inactivos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="w-44">
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                Centro
-              </Label>
-              <Select
-                value={centroFilter}
-                onValueChange={(v: string) => setCentroFilter(v)}
-              >
-                <SelectTrigger className="mt-1 rounded-xl">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {centrosOptions.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="w-44">
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                Cargo
-              </Label>
-              <Select
-                value={cargoFilter}
-                onValueChange={(v: string) => setCargoFilter(v)}
-              >
-                <SelectTrigger className="mt-1 rounded-xl">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  {cargosOptions.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="w-40">
-              <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                Turno
-              </Label>
-              <Select
-                value={turnoFilter}
-                onValueChange={(v: string) =>
-                  setTurnoFilter(v as Turno | "todos")
-                }
-              >
-                <SelectTrigger className="mt-1 rounded-xl">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos</SelectItem>
-                  <SelectItem value="Diurno">Diurno</SelectItem>
-                  <SelectItem value="Nocturno">Nocturno</SelectItem>
-                  <SelectItem value="Mixto">Mixto</SelectItem>
-                  <SelectItem value="Especial">Especial</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* LISTADO DE PUESTOS */}
-      {loading ? (
-        <Card className="border border-slate-200 rounded-2xl">
-          <CardContent className="p-8 text-center text-slate-500 text-sm">
-            Cargando puestos…
+            <p className="mt-3 text-xs text-slate-400">{filtradas.length} de {posiciones.length} posiciones</p>
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-4">
-          {filtrados.map((p) => (
-            <Card
-              key={p.id}
-              className="border border-slate-200 rounded-2xl shadow-sm hover:shadow-md hover:-translate-y-[1px] transition-all bg-white"
-            >
-              <CardContent className="p-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                {/* IZQUIERDA: info principal */}
-                <div className="flex-1 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold text-slate-900">
-                      {p.nombre}
-                    </h2>
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-slate-200 bg-slate-50 text-xs"
-                    >
-                      {p.codigo}
-                    </Badge>
-                    <Badge
-                      className={`rounded-full text-xs ${
-                        p.estado === "activo"
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                          : "bg-slate-100 text-slate-500 border border-slate-200"
-                      }`}
-                    >
-                      {p.estado === "activo" ? "Activo" : "Inactivo"}
-                    </Badge>
-                    {p.requiereDS44 && (
-                      <Badge
-                        variant="outline"
-                        className="rounded-full border-emerald-100 bg-emerald-50 text-[11px] text-emerald-700"
-                      >
-                        Vinculado DS44
-                      </Badge>
-                    )}
-                  </div>
 
-                  <p className="text-sm text-slate-500 line-clamp-2">
-                    {p.ubicacion}
-                  </p>
-
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-slate-200 bg-slate-50 text-[11px]"
-                    >
-                      Centro: {p.centroNombre}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-indigo-100 bg-indigo-50 text-[11px] text-indigo-700"
-                    >
-                      Cargo: {p.cargoNombre}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-amber-100 bg-amber-50 text-[11px] text-amber-700"
-                    >
-                      Turno: {p.turno}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className="rounded-full border-sky-100 bg-sky-50 text-[11px] text-sky-700"
-                    >
-                      Modalidad: {p.modalidad}
-                    </Badge>
-                    <span className="text-[11px]">
-                      Creado el {p.creadoEl}
-                    </span>
-                  </div>
-                </div>
-
-                {/* CENTRO: riesgos clave */}
-                <div className="flex flex-col gap-2 min-w-[260px] text-sm text-slate-600">
-                  <div className="flex items-start gap-2">
-                    <span className="text-slate-400 text-lg">⚠️</span>
-                    <div>
-                      <p className="font-semibold text-slate-800">
-                        Riesgos clave
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {p.riesgosClave}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* DERECHA: dotación + acciones */}
-                <div className="flex flex-col gap-3 min-w-[190px]">
-                  <div className="flex flex-row md:flex-col gap-2 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 text-lg">👥</span>
-                      <span>
-                        Dotación{" "}
-                        <span className="font-semibold">
-                          {p.dotacionPlanificada}
-                        </span>
+        {/* ── TABLA ── */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/70 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3">Centro</th>
+                  <th className="px-4 py-3">Cargo</th>
+                  <th className="px-4 py-3 text-center">Req.</th>
+                  <th className="px-4 py-3 text-center">Asig.</th>
+                  <th className="px-4 py-3 text-center">Vac.</th>
+                  <th className="px-4 py-3">Turno</th>
+                  <th className="px-4 py-3">Modalidad</th>
+                  <th className="px-4 py-3 text-center">DS44</th>
+                  <th className="px-4 py-3">Cobertura</th>
+                  <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtradas.map((p) => (
+                  <tr
+                    key={p.id}
+                    onClick={() => setDrawerPos((prev) => prev?.id === p.id ? null : p)}
+                    className={`group hover:bg-slate-50/60 transition-colors cursor-pointer ${drawerPos?.id === p.id ? "bg-indigo-50/40" : ""}`}
+                  >
+                    <td className="px-5 py-3.5">
+                      <div className="font-medium text-slate-800">{p.centroNombre}</div>
+                      <div className="text-[11px] text-slate-400 font-mono">{p.codigo}</div>
+                    </td>
+                    <td className="px-4 py-3.5 font-medium text-slate-700">{p.cargoNombre}</td>
+                    <td className="px-4 py-3.5 text-center font-semibold text-slate-700">{p.dotacionRequerida}</td>
+                    <td className="px-4 py-3.5 text-center">
+                      <span className={`inline-block font-semibold ${isSobredotado(p) ? "text-purple-700" : "text-slate-700"}`}>
+                        {p.asignados}
+                        {isSobredotado(p) && <span className="ml-1 text-[10px] font-bold text-purple-600">+{p.asignados - p.dotacionRequerida}</span>}
                       </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 text-lg">👷</span>
-                      <span>
-                        Asignados{" "}
-                        <span className="font-semibold">
-                          {p.trabajadoresAsignados}
-                        </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <span className={`inline-flex items-center justify-center min-w-[24px] rounded-full px-2 py-0.5 text-xs font-bold border ${vacantesPos(p) > 0 ? "bg-amber-50 text-amber-700 border-amber-100" : "bg-slate-50 text-slate-400 border-slate-100"}`}>
+                        {vacantesPos(p)}
                       </span>
-                    </div>
-                  </div>
+                    </td>
+                    <td className="px-4 py-3.5 text-xs text-slate-600">
+                      <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3 text-slate-400" />{p.turno}</span>
+                    </td>
+                    <td className="px-4 py-3.5 text-xs text-slate-600">{p.modalidad}</td>
+                    <td className="px-4 py-3.5 text-center">
+                      {p.requiereDS44 ? (
+                        <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold border ${vacantesPos(p) > 0 ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"}`}>
+                          {vacantesPos(p) > 0 ? "⚠ Crítico" : "✓ OK"}
+                        </span>
+                      ) : (
+                        <span className="text-slate-300 text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${coverageColor(p)}`}>
+                        {coberturaLabel(p)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold border ${p.estado === "activo" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-100 text-slate-400 border-slate-200"}`}>
+                        {p.estado === "activo" ? "Activo" : "Inactivo"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setDrawerPos((prev) => prev?.id === p.id ? null : p)} className="rounded-lg px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50 transition font-medium">Ver</button>
+                        <button onClick={() => openEdit(p)} className="rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 transition">Editar</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      variant="outline"
-                      className="rounded-xl w-full"
-                      onClick={() => handleOpenEdit(p)}
-                    >
-                      Editar puesto
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="rounded-xl w-full text-xs"
-                      onClick={() => toggleEstado(p.id)}
-                    >
-                      {p.estado === "activo"
-                        ? "Marcar como inactivo"
-                        : "Reactivar puesto"}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      className="rounded-xl w-full text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                      onClick={() => deletePuesto(p.id)}
-                    >
-                      Eliminar
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-
-          {filtrados.length === 0 && (
-            <Card className="border border-dashed border-slate-300 rounded-2xl bg-slate-50/60">
-              <CardContent className="p-8 text-center text-slate-500 text-sm">
-                No se encontraron puestos con los filtros aplicados.
-              </CardContent>
-            </Card>
-          )}
+            {filtradas.length === 0 && (
+              <div className="py-16 text-center text-slate-400 text-sm">
+                <SlidersHorizontal className="mx-auto h-8 w-8 mb-3 text-slate-300" />
+                No se encontraron posiciones con los filtros aplicados.
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* MODAL CREAR / EDITAR PUESTO */}
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-4xl rounded-3xl border border-slate-200 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold text-slate-900">
-              {isEdit ? "Editar puesto" : "Nuevo puesto"}
-            </DialogTitle>
-            <DialogDescription className="text-sm text-slate-500">
-              Define el puesto en un centro específico, el cargo asociado, la
-              dotación y su vínculo con la gestión DS44.
-            </DialogDescription>
-          </DialogHeader>
-
-          <form onSubmit={handleSubmit} className="space-y-6 pt-2">
-            {/* BLOQUE 1: INFO BÁSICA */}
-            <div className="rounded-2xl bg-slate-50/80 border border-slate-100 px-4 py-4 space-y-4">
-              <p className="text-xs font-semibold tracking-wide uppercase text-slate-500">
-                Información básica
-              </p>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="nombre">Nombre del puesto</Label>
-                  <Input
-                    id="nombre"
-                    name="nombre"
-                    value={form.nombre}
-                    onChange={handleInputChange}
-                    placeholder="Ej: Prevencionista Obra 1"
-                    className="rounded-xl bg-white"
-                    required
-                  />
+      {/* ═══════════════════════════════════════════
+          DRAWER LATERAL
+      ═══════════════════════════════════════════ */}
+      <div className={`fixed inset-y-0 right-0 z-40 flex flex-col w-full max-w-md bg-white shadow-2xl border-l border-slate-200 transition-transform duration-300 ${drawerPos ? "translate-x-0" : "translate-x-full"}`}>
+        {drawerPos && (
+          <>
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-6 py-5">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-1">
+                  <span className="font-mono text-xs text-slate-400 bg-slate-100 rounded px-1.5 py-0.5">{drawerPos.codigo}</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold border ${drawerPos.estado === "activo" ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-slate-100 text-slate-400 border-slate-200"}`}>
+                    {drawerPos.estado === "activo" ? "Activo" : "Inactivo"}
+                  </span>
+                  {isSobredotado(drawerPos) && (
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-100">
+                      <TrendingUp className="h-3 w-3" /> Sobredotado
+                    </span>
+                  )}
+                  {drawerPos.requiereDS44 && vacantesPos(drawerPos) > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
+                      <AlertTriangle className="h-3 w-3" /> DS44 Crítico
+                    </span>
+                  )}
                 </div>
+                <h2 className="text-lg font-semibold text-slate-900">{drawerPos.cargoNombre}</h2>
+                <p className="text-sm text-slate-500 flex items-center gap-1 mt-0.5">
+                  <MapPin className="h-3.5 w-3.5 shrink-0" />{drawerPos.centroNombre}
+                </p>
+              </div>
+              <button onClick={() => setDrawerPos(null)} className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="codigo">Código interno</Label>
-                  <Input
-                    id="codigo"
-                    name="codigo"
-                    value={form.codigo}
-                    onChange={handleInputChange}
-                    placeholder="Ej: PST-001"
-                    className="rounded-xl bg-white"
-                    required
-                  />
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+              {/* Cobertura stats */}
+              <div className="grid grid-cols-3 gap-3">
+                <DrawerStat label="Requeridos" value={drawerPos.dotacionRequerida} color="text-slate-700" />
+                <DrawerStat label="Asignados"  value={drawerPos.asignados}          color={isSobredotado(drawerPos) ? "text-purple-700" : "text-emerald-700"} />
+                <DrawerStat label="Vacantes"   value={vacantesPos(drawerPos)}        color={vacantesPos(drawerPos) > 0 ? "text-amber-600" : "text-slate-400"} />
+              </div>
+
+              {/* Barra cobertura */}
+              <div>
+                <div className="flex justify-between text-xs text-slate-500 mb-1.5">
+                  <span>Cobertura</span>
+                  <span className={`font-semibold ${isSobredotado(drawerPos) ? "text-purple-700" : ""}`}>
+                    {coberturaPct(drawerPos)}%{isSobredotado(drawerPos) ? " — exceso" : ""}
+                  </span>
                 </div>
-
-                <div className="flex flex-col gap-1">
-                  <Label>Centro de trabajo</Label>
-                  <Select
-                    value={form.centroId}
-                    onValueChange={(v: string) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        centroId: v,
-                        centroNombre:
-                          centrosOptions.find((c) => c.id === v)?.nombre ??
-                          prev.centroNombre,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="rounded-xl bg-white">
-                      <SelectValue placeholder="Selecciona un centro" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {centrosOptions.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.nombre}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <Label>Cargo asociado</Label>
-                  <Select
-                    value={form.cargoId}
-                    onValueChange={(v: string) => {
-                      const cargoSel = cargosOptions.find((c) => c.id === v);
-                      setForm((prev) => ({
-                        ...prev,
-                        cargoId: v,
-                        cargoNombre: cargoSel?.nombre ?? prev.cargoNombre,
-                        riesgosClave:
-                          cargoSel?.riesgosClaveTexto ?? prev.riesgosClave,
-                        requiereDS44:
-                          cargoSel?.requiereDS44 ?? prev.requiereDS44,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger className="rounded-xl bg-white">
-                      <SelectValue placeholder="Selecciona un cargo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cargosOptions.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.nombre}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <Label>Turno</Label>
-                  <Select
-                    value={form.turno}
-                    onValueChange={(v: string) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        turno: v as Turno,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="rounded-xl bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Diurno">Diurno</SelectItem>
-                      <SelectItem value="Nocturno">Nocturno</SelectItem>
-                      <SelectItem value="Mixto">Mixto</SelectItem>
-                      <SelectItem value="Especial">Especial</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <Label>Modalidad</Label>
-                  <Select
-                    value={form.modalidad}
-                    onValueChange={(v: string) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        modalidad: v as Modalidad,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="rounded-xl bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Presencial">Presencial</SelectItem>
-                      <SelectItem value="Híbrido">Híbrido</SelectItem>
-                      <SelectItem value="Remoto">Remoto</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <Label>Estado</Label>
-                  <Select
-                    value={form.estado}
-                    onValueChange={(v: string) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        estado: v as PuestoEstado,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="rounded-xl bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="activo">Activo</SelectItem>
-                      <SelectItem value="inactivo">Inactivo</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="dotacionPlanificada">
-                    Dotación planificada
-                  </Label>
-                  <Input
-                    id="dotacionPlanificada"
-                    name="dotacionPlanificada"
-                    type="number"
-                    min={0}
-                    value={form.dotacionPlanificada}
-                    onChange={handleInputChange}
-                    className="rounded-xl bg-white"
+                <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${isSobredotado(drawerPos) ? "bg-purple-500" : vacantesPos(drawerPos) === 0 ? "bg-emerald-500" : vacantesPos(drawerPos) >= drawerPos.dotacionRequerida ? "bg-rose-500" : "bg-amber-400"}`}
+                    style={{ width: `${Math.min(100, coberturaPct(drawerPos))}%` }}
                   />
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="ubicacion">Ubicación / referencia</Label>
-                <textarea
-                  id="ubicacion"
-                  name="ubicacion"
-                  value={form.ubicacion}
-                  onChange={handleInputChange}
-                  placeholder="Ej: Sector torre A, piso 10, zona de estructura metálica…"
-                  className="rounded-xl bg-white min-h-[70px] border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-inner resize-y"
+              {/* Detalles operativos */}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4 space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Detalles operativos</p>
+                <InfoRow icon={<Clock className="h-4 w-4 text-slate-400" />}    label="Turno"      value={drawerPos.turno} />
+                <InfoRow icon={<Building2 className="h-4 w-4 text-slate-400" />} label="Modalidad"  value={drawerPos.modalidad} />
+                <InfoRow icon={<MapPin className="h-4 w-4 text-slate-400" />}    label="Ubicación"  value={drawerPos.ubicacion || "—"} />
+                <InfoRow icon={<Shield className="h-4 w-4 text-slate-400" />}    label="DS44"       value={drawerPos.requiereDS44 ? "Incluido en matriz" : "No aplica"} />
+              </div>
+
+              {/* Riesgos */}
+              {drawerPos.riesgosClave && (
+                <div className="rounded-2xl border border-amber-100 bg-amber-50/40 px-4 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-600 mb-2 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5" /> Riesgos clave
+                  </p>
+                  <p className="text-sm text-slate-700 leading-relaxed">{drawerPos.riesgosClave}</p>
+                </div>
+              )}
+
+              {/* Trabajadores */}
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1.5">
+                  <Users className="h-3.5 w-3.5" /> Personas asignadas ({drawerWorkers.length})
+                </p>
+                {drawerWorkers.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">
+                    Sin trabajadores asignados
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {drawerWorkers.map((w) => (
+                      <div key={w.id} className="rounded-xl border border-slate-100 bg-white px-4 py-3 flex items-center gap-3 shadow-sm">
+                        <div className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold text-white ${w.estado === "Al día" ? "bg-emerald-500" : w.estado === "Pendiente" ? "bg-amber-500" : "bg-rose-500"}`}>
+                          {w.nombre.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-800 truncate">{w.nombre}</p>
+                          <p className="text-[11px] text-slate-400">{w.rut}</p>
+                        </div>
+                        <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold border ${workerEstadoColor(w.estado)}`}>
+                          {w.estado}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Cumplimiento mock */}
+              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4 space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cumplimiento (posición)</p>
+                <ComplianceBar
+                  icon={<FileCheck className="h-4 w-4 text-sky-500" />}
+                  label="Documental promedio"
+                  pct={drawerWorkers.length > 0 ? Math.round(drawerWorkers.reduce((s, w) => s + w.completitudDoc, 0) / drawerWorkers.length) : 0}
+                />
+                <ComplianceBar
+                  icon={<BookOpen className="h-4 w-4 text-indigo-500" />}
+                  label="Capacitaciones promedio"
+                  pct={drawerWorkers.length > 0 ? Math.min(100, Math.round((drawerWorkers.reduce((s, w) => s + w.capacitaciones, 0) / drawerWorkers.length / 10) * 100)) : 0}
                 />
               </div>
             </div>
 
-            {/* BLOQUE 2: RIESGOS / DS44 */}
-            <div className="rounded-2xl bg-slate-50/80 border border-slate-100 px-4 py-4 space-y-4">
-              <p className="text-xs font-semibold tracking-wide uppercase text-slate-500">
-                Riesgos y vínculo DS44
-              </p>
+            {/* Footer */}
+            <div className="border-t border-slate-100 px-6 py-4 flex gap-2">
+              <button onClick={() => openEdit(drawerPos)} className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition">
+                Editar
+              </button>
+              <button
+                onClick={() => toggleEstado(drawerPos.id)}
+                className={`flex-1 rounded-xl py-2.5 text-sm font-semibold transition ${drawerPos.estado === "activo" ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
+              >
+                {drawerPos.estado === "activo" ? "Desactivar" : "Reactivar"}
+              </button>
+              <button onClick={() => deletePos(drawerPos.id)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition border border-rose-100">
+                Eliminar
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="riesgosClave">Riesgos clave</Label>
-                  <textarea
-                    id="riesgosClave"
-                    name="riesgosClave"
-                    value={form.riesgosClave}
-                    onChange={handleInputChange}
-                    placeholder="Ej: Trabajo en altura, montajes, izaje de cargas, excavaciones…"
-                    className="rounded-xl bg-white min-h-[80px] border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-inner resize-y"
-                  />
-                </div>
+      {/* Overlay mobile */}
+      {drawerPos && (
+        <div className="fixed inset-0 z-30 bg-slate-900/20 backdrop-blur-sm lg:hidden" onClick={() => setDrawerPos(null)} />
+      )}
 
-                <div className="flex flex-col gap-3 justify-center">
-                  <label className="flex items-start gap-2 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      name="requiereDS44"
-                      checked={form.requiereDS44}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        setForm((prev) => ({
-                          ...prev,
-                          requiereDS44: e.target.checked,
-                        }))
-                      }
-                      className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600"
-                    />
-                    <span>
-                      Este puesto estará incluido en la matriz DS44 del centro
-                      de trabajo para control de riesgos críticos.
-                    </span>
-                  </label>
-                </div>
+      {/* ═══════════════════════════════════════════
+          MODAL CREAR / EDITAR
+      ═══════════════════════════════════════════ */}
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent className="max-w-2xl rounded-3xl border border-slate-200 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-slate-900">
+              {isEdit ? "Editar posición" : "Nueva posición"}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-500">
+              Define el centro, cargo base, dotación requerida y condiciones operativas.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-5 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Código */}
+              <div>
+                <Label htmlFor="m-codigo">Código</Label>
+                <Input id="m-codigo" name="codigo" value={form.codigo} onChange={handleInput} className="mt-1 rounded-xl" required />
+              </div>
+
+              {/* Centro */}
+              <div>
+                <Label>Centro de trabajo</Label>
+                <Select value={form.centroNombre} onValueChange={(v) => setForm((p) => ({ ...p, centroNombre: v }))}>
+                  <SelectTrigger className="mt-1 rounded-xl"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+                  <SelectContent>{CENTROS.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+
+              {/* Cargo */}
+              <div>
+                <Label>Cargo base</Label>
+                <Select value={form.cargoNombre} onValueChange={(v) => { const c = CARGOS.find((x) => x.nombre === v); setForm((p) => ({ ...p, cargoNombre: v, riesgosClave: c?.riesgos ?? p.riesgosClave, requiereDS44: c?.ds44 ?? p.requiereDS44 })); }}>
+                  <SelectTrigger className="mt-1 rounded-xl"><SelectValue placeholder="Selecciona" /></SelectTrigger>
+                  <SelectContent>{CARGOS.map((c) => <SelectItem key={c.nombre} value={c.nombre}>{c.nombre}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+
+              {/* Dotación */}
+              <div>
+                <Label htmlFor="m-dot">Dotación requerida</Label>
+                <Input id="m-dot" name="dotacionRequerida" type="number" min={1} value={form.dotacionRequerida} onChange={handleInput} className="mt-1 rounded-xl" />
+              </div>
+
+              {/* Turno */}
+              <div>
+                <Label>Turno</Label>
+                <Select value={form.turno} onValueChange={(v) => setForm((p) => ({ ...p, turno: v as Turno }))}>
+                  <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(["Diurno", "Nocturno", "Mixto", "Especial"] as Turno[]).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Modalidad */}
+              <div>
+                <Label>Modalidad</Label>
+                <Select value={form.modalidad} onValueChange={(v) => setForm((p) => ({ ...p, modalidad: v as Modalidad }))}>
+                  <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(["Presencial", "Híbrido", "Remoto"] as Modalidad[]).map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Estado */}
+              <div>
+                <Label>Estado</Label>
+                <Select value={form.estado} onValueChange={(v) => setForm((p) => ({ ...p, estado: v as Estado }))}>
+                  <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="activo">Activo</SelectItem>
+                    <SelectItem value="inactivo">Inactivo</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Ubicación */}
+              <div>
+                <Label htmlFor="m-ubi">Ubicación / referencia</Label>
+                <Input id="m-ubi" name="ubicacion" value={form.ubicacion} onChange={handleInput} placeholder="Ej: Sector torre A, piso 10…" className="mt-1 rounded-xl" />
+              </div>
+
+              {/* Riesgos */}
+              <div className="sm:col-span-2">
+                <Label htmlFor="m-riesgos">Riesgos clave</Label>
+                <textarea
+                  id="m-riesgos" name="riesgosClave" value={form.riesgosClave} onChange={handleInput}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 min-h-[72px] resize-y shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                  placeholder="Ej: Trabajo en altura, izaje de cargas…"
+                />
+              </div>
+
+              {/* DS44 */}
+              <div className="sm:col-span-2 flex items-center gap-2">
+                <input type="checkbox" id="m-ds44" name="requiereDS44" checked={form.requiereDS44} onChange={handleInput} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
+                <Label htmlFor="m-ds44" className="cursor-pointer">Incluir en matriz DS44</Label>
               </div>
             </div>
 
-            <DialogFooter className="pt-2 flex justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full px-5"
-                onClick={() => setModalOpen(false)}
-              >
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                className="rounded-full px-6 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm"
-              >
-                {isEdit ? "Guardar cambios" : "Crear puesto"}
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" className="rounded-full px-5" onClick={() => setModalOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="rounded-full px-6 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm">
+                {isEdit ? "Guardar cambios" : "Crear posición"}
               </Button>
             </DialogFooter>
           </form>
@@ -944,20 +654,69 @@ export default function PuestosPage() {
   );
 }
 
-/* ======================================================================= */
-/*                       COMPONENTE MÉTRICA                                */
-/* ======================================================================= */
-
-function MetricCard(props: { label: string; value: string }) {
-  const { label, value } = props;
+/* ─────────────────────────────────────────────
+   SUB-COMPONENTS
+───────────────────────────────────────────── */
+function KpiCard({ icon, label, value, bg, highlight }: {
+  icon: React.ReactNode; label: string; value: number; bg: string; highlight?: boolean;
+}) {
   return (
-    <Card className="border border-slate-200 shadow-sm rounded-2xl bg-white/90">
+    <Card className={`border border-slate-200 shadow-sm rounded-2xl ${highlight ? "ring-1 ring-rose-200" : ""}`}>
       <CardContent className="p-5">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-          {label}
-        </p>
-        <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+        <div className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${bg} mb-3`}>{icon}</div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+        <p className={`mt-1 text-2xl font-bold ${highlight ? "text-rose-600" : "text-slate-900"}`}>{value}</p>
       </CardContent>
     </Card>
+  );
+}
+
+function FilterSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="min-w-[140px]">
+      <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">{label}</Label>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
+        <SelectContent>{options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function DrawerStat({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-white px-4 py-3 text-center shadow-sm">
+      <p className="text-[11px] text-slate-400 uppercase tracking-wide">{label}</p>
+      <p className={`text-2xl font-bold mt-0.5 ${color}`}>{value}</p>
+    </div>
+  );
+}
+
+function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <div className="flex items-start gap-2.5 text-sm">
+      <span className="shrink-0 mt-0.5">{icon}</span>
+      <span className="text-slate-500 min-w-[80px] shrink-0">{label}</span>
+      <span className="text-slate-800 font-medium">{value}</span>
+    </div>
+  );
+}
+
+function ComplianceBar({ icon, label, pct }: { icon: React.ReactNode; label: string; pct: number }) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-xs text-slate-500">
+        <span className="flex items-center gap-1.5">{icon}{label}</span>
+        <span className={`font-semibold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-rose-600"}`}>{pct}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+        <div
+          className={`h-full rounded-full ${pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-400" : "bg-rose-500"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
   );
 }

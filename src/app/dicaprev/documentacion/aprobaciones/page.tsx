@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { FileClock } from "lucide-react";
 
 // Vista previa del menú Aprobaciones (mock UI)
 // Esta pantalla se alimentaría en producción de:
@@ -208,8 +209,10 @@ export default function AprobacionesPreview() {
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-slate-400 text-xs">
-                      No hay documentos en este filtro.
+                    <td colSpan={6} className="py-16 text-center">
+                      <FileClock className="mx-auto h-9 w-9 text-slate-200 mb-3" />
+                      <p className="text-sm font-medium text-slate-500">Sin aprobaciones pendientes</p>
+                      <p className="text-xs text-slate-400 mt-1">No hay documentos que requieran revisión con los filtros actuales.</p>
                     </td>
                   </tr>
                 )}

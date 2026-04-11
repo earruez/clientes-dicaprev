@@ -59,7 +59,7 @@ interface HallazgoForm {
 }
 
 // Simulación de usuario actual y rol (luego se conectará a Firestore/Auth)
-const currentUserName = "Prevencionista DICAPREV";
+const currentUserName = "Prevencionista PREVANTIA";
 const userRole: UserRole = "admin"; // "admin" | "supervisor" | "prevencionista"
 const canReabrir = userRole === "admin" || userRole === "supervisor";
 
@@ -77,7 +77,7 @@ const hallazgosMock: Hallazgo[] = [
     historial: [
       {
         fecha: "2025-11-10T10:00:00Z",
-        usuario: "Prevencionista DICAPREV",
+        usuario: "Prevencionista PREVANTIA",
         accion: "Creación de hallazgo",
       },
     ],
@@ -95,7 +95,7 @@ const hallazgosMock: Hallazgo[] = [
     historial: [
       {
         fecha: "2025-11-09T09:30:00Z",
-        usuario: "Prevencionista DICAPREV",
+        usuario: "Prevencionista PREVANTIA",
         accion: "Creación de hallazgo",
       },
       {

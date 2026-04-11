@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 64" fill="none">
+  <defs>
+    <linearGradient id="shield-g" x1="0%" y1="0%" x2="60%" y2="100%">
+      <stop offset="0%" stop-color="#5FCF6B"/>
+      <stop offset="100%" stop-color="#2E8B3A"/>
+    </linearGradient>
+    <linearGradient id="shield-fold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3DAB49"/>
+      <stop offset="100%" stop-color="#1F6B27"/>
+    </linearGradient>
+  </defs>
+  <!-- Shield body -->
+  <path d="M8 6 L40 6 L40 30 Q40 52 24 58 Q8 52 8 30 Z" fill="url(#shield-g)"/>
+  <!-- Shield right fold shadow -->
+  <path d="M24 58 Q40 52 40 30 L40 6 L24 6 Z" fill="url(#shield-fold)" opacity="0.55"/>
+  <!-- Checkmark -->
+  <polyline points="16,30 22,38 34,20" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Brand name -->
+  <text x="52" y="41" font-family="'Inter', 'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="26" fill="white" letter-spacing="2">PREVANTIA</text>
+</svg>

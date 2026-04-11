@@ -353,14 +353,14 @@ function DocumentosTable({
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"
-                  size="xs"
+                  size="sm"
                   className="h-7 px-2 text-[11px]"
                 >
                   Ver / subir
                 </Button>
                 <Button
                   variant="outline"
-                  size="xs"
+                  size="sm"
                   className="h-7 px-2 text-[11px]"
                 >
                   Historial

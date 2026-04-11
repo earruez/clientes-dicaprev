@@ -32,7 +32,7 @@ export default function EditCellModal({
 }: Props) {
   if (!selectedCell) return null;
 
-  const role = roles.find((r) => r.roleId === selectedCell.roleId);
+  const role = roles.find((r) => r.id === selectedCell.roleId);
   const course = courses.find((c) => c.id === selectedCell.courseId);
 
   const [local, setLocal] = React.useState<Requirement>(selectedCell);
@@ -90,7 +90,7 @@ export default function EditCellModal({
               <Input
                 placeholder="dd-mm-aaaa"
                 value={local.ultimaFecha || ""}
-                onChange={(e) =>
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setLocal((prev) => ({ ...prev, ultimaFecha: e.target.value }))
                 }
                 className="h-9 text-xs"
@@ -101,7 +101,7 @@ export default function EditCellModal({
               <Input
                 placeholder="dd-mm-aaaa"
                 value={local.proximaFecha || ""}
-                onChange={(e) =>
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setLocal((prev) => ({ ...prev, proximaFecha: e.target.value }))
                 }
                 className="h-9 text-xs"

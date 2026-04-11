@@ -1269,7 +1269,7 @@ const handleGuardarTrabajador = () => {
               </p>
             )}
             <p>
-              01-11-2025 · 10:24 · <strong>admin@dicaprev.cl</strong> subió documento
+              01-11-2025 · 10:24 · <strong>admin@prevantia.cl</strong> subió documento
               inicial.
             </p>
             <p>

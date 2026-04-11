@@ -55,7 +55,7 @@ export default function Matriz({
             <Checkbox
               id="critico"
               checked={filtroCritico}
-              onCheckedChange={(v) => onChangeFiltroCritico(Boolean(v))}
+              onCheckedChange={(v: boolean) => onChangeFiltroCritico(Boolean(v))}
             />
             <label htmlFor="critico" className="cursor-pointer">
               Ver solo riesgos críticos / obligatorios
@@ -67,7 +67,7 @@ export default function Matriz({
           <Input
             placeholder="Buscar curso (ej. Trabajo en altura)…"
             value={search}
-            onChange={(e) => onChangeSearch(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChangeSearch(e.target.value)}
             className="bg-white shadow-sm text-sm md:w-80"
           />
           <div className="flex gap-2">

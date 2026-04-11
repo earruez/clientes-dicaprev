@@ -85,7 +85,7 @@ export default function Page() {
     {
       id: "1",
       nombre: "Contrato marco contratistas 2025",
-      empresa: "Constructora Andes SpA",
+      empresa: "MVP CHILE SPA",
       obra: "Obra Los Alerces",
       tipo: "Contrato",
       firmantes: 3,
@@ -436,7 +436,7 @@ export default function Page() {
                 <span>
                   Creado · 10-11-2025 10:23
                   <span className="block text-slate-400">
-                    Usuario: admin@dicaprev.cl
+                    Usuario: admin@prevantia.cl
                   </span>
                 </span>
               </li>

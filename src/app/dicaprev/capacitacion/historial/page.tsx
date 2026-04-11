@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ClipboardList } from "lucide-react";
 
 type EstadoHist = "vigente" | "vencido" | "pendiente";
 
@@ -152,6 +154,20 @@ export default function HistorialCapacitacionPage() {
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8 flex flex-col gap-6">
+      {/* BREADCRUMB + SUB-NAV */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-1.5 text-xs text-slate-400">
+          <Link href="/dicaprev/trabajadores/dotacion" className="hover:text-slate-700 transition-colors">Trabajadores</Link>
+          <span>›</span>
+          <span className="text-slate-600 font-medium">Capacitaciones</span>
+        </div>
+        <div className="flex gap-0 border-b border-slate-200">
+          <Link href="/dicaprev/capacitacion/calendario" className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-colors">Calendario</Link>
+          <Link href="/dicaprev/capacitacion/historial" className="px-4 py-2 text-sm font-semibold border-b-2 border-cyan-500 text-cyan-700">Historial</Link>
+          <Link href="/dicaprev/capacitacion/evaluaciones" className="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition-colors">Evaluaciones</Link>
+        </div>
+      </div>
+
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
@@ -159,9 +175,7 @@ export default function HistorialCapacitacionPage() {
             Historial de Capacitaciones
           </h1>
           <p className="text-slate-500 mt-1 max-w-2xl">
-            Evidencia completa por trabajador: qué cursos realizó, cuándo,
-            vigencia, notas y estado actual. Pensado para auditorías, mutual y
-            DS44.
+            Registro completo de capacitaciones por trabajador — vigencias, notas y estado de cumplimiento. Útil para auditorías, organismos administradores y DS44.
           </p>
         </div>
         <div className="flex gap-2">
@@ -274,9 +288,11 @@ export default function HistorialCapacitacionPage() {
                   <tr>
                     <td
                       colSpan={9}
-                      className="text-center text-xs text-slate-500 py-4"
+                      className="py-16 text-center"
                     >
-                      No se encontraron registros con los filtros aplicados.
+                      <ClipboardList className="mx-auto h-9 w-9 text-slate-200 mb-3" />
+                      <p className="text-sm font-medium text-slate-500">Sin registros que coincidan</p>
+                      <p className="text-xs text-slate-400 mt-1">Ajusta los filtros o busca por nombre del trabajador.</p>
                     </td>
                   </tr>
                 )}
