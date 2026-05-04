@@ -418,18 +418,17 @@ function StepDatosGenerales({ form, errors, onChange }: StepDatosGeneralesProps)
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-1.5">
             <Label className="text-xs text-slate-600">RUT *</Label>
-            // RUT
-<Input
-  value={form.rut}
-  placeholder="11.111.111-1"
-  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-    onChange("rut", e.target.value)
-  }
-  className={cn(
-    "h-9 font-mono text-sm",
-    errors.rut && "border-red-400 bg-red-50/40"
-  )}
-/>
+            <Input
+              value={form.rut}
+              placeholder="11.111.111-1"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                onChange("rut", e.target.value)
+              }
+              className={cn(
+                "h-9 font-mono text-sm",
+                errors.rut && "border-red-400 bg-red-50/40"
+              )}
+            />
             {errors.rut && (
               <p className="text-[11px] text-red-500">{errors.rut}</p>
             )}
@@ -438,16 +437,16 @@ function StepDatosGenerales({ form, errors, onChange }: StepDatosGeneralesProps)
           <div className="space-y-1.5">
             <Label className="text-xs text-slate-600">Nombres *</Label>
             <Input
-  value={form.nombres}
-  placeholder="Sebastián Andrés"
-  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-    onChange("nombres", e.target.value)
-  }
-  className={cn(
-    "h-9",
-    errors.nombres && "border-red-400 bg-red-50/40"
-  )}
-/>
+              value={form.nombres}
+              placeholder="Sebastián Andrés"
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                onChange("nombres", e.target.value)
+              }
+              className={cn(
+                "h-9",
+                errors.nombres && "border-red-400 bg-red-50/40"
+              )}
+            />
             {errors.nombres && (
               <p className="text-[11px] text-red-500">{errors.nombres}</p>
             )}

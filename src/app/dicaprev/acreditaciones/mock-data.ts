@@ -14,7 +14,6 @@ import type {
   DocumentoInstancia,
   DocumentoBase,
   HistorialExpediente,
-  ExpedienteAgrupado,
   BloqueTrabajador,
   RegistroHistorial,
 } from "./types";

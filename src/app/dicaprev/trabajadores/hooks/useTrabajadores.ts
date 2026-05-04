@@ -108,7 +108,7 @@ export function useTrabajadores(
   const filtrados = useMemo(() => {
     const base = trabajadores.filter(filtrar);
     return ordenar(base);
-  }, [trabajadores, filtros, orden]);
+  }, [trabajadores, filtrar, ordenar]);
 
   // CRUD en memoria (luego se conectan a Firestore)
   const crearTrabajador = (t: Trabajador) => {

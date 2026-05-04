@@ -4,7 +4,6 @@ import React, { useEffect, useState, useMemo } from "react";
 import {
   getSesiones,
   getCatalogo,
-  getAsignaciones,
   createSesion,
   updateSesion,
   subscribe,
@@ -18,7 +17,6 @@ import { registrarAccion } from "@/lib/auditoria/audit-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -41,7 +39,6 @@ import {
   Users,
   Plus,
   Pencil,
-  ChevronRight,
   BookOpen,
   Video,
   Monitor,

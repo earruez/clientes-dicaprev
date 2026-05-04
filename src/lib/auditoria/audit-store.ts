@@ -1,7 +1,7 @@
 /**
  * audit-store.ts
  *
- * Shared runtime audit log for PREVANTIA.
+ * Shared runtime audit log for NEXTPREV.
  * Architecture: module-level singleton (same pattern as vehiculos-store).
  * In production this will be replaced by a Firestore/API write.
  *
@@ -62,7 +62,7 @@ const SEED: AuditLog[] = [
   {
     id: "al-001",
     usuarioId: "usr-admin",
-    usuarioNombre: "Prevencionista PREVANTIA",
+    usuarioNombre: "Prevencionista NEXTPREV",
     accion: "crear",
     modulo: "trabajadores",
     entidadTipo: "Trabajador",
@@ -73,7 +73,7 @@ const SEED: AuditLog[] = [
   {
     id: "al-002",
     usuarioId: "usr-admin",
-    usuarioNombre: "Prevencionista PREVANTIA",
+    usuarioNombre: "Prevencionista NEXTPREV",
     accion: "crear",
     modulo: "cumplimiento",
     entidadTipo: "Hallazgo",
@@ -84,7 +84,7 @@ const SEED: AuditLog[] = [
   {
     id: "al-003",
     usuarioId: "usr-admin",
-    usuarioNombre: "Prevencionista PREVANTIA",
+    usuarioNombre: "Prevencionista NEXTPREV",
     accion: "subir_documento",
     modulo: "cumplimiento",
     entidadTipo: "Evidencia",
@@ -95,7 +95,7 @@ const SEED: AuditLog[] = [
   {
     id: "al-004",
     usuarioId: "usr-admin",
-    usuarioNombre: "Prevencionista PREVANTIA",
+    usuarioNombre: "Prevencionista NEXTPREV",
     accion: "cambiar_estado",
     modulo: "acreditaciones",
     entidadTipo: "Acreditación",
@@ -106,7 +106,7 @@ const SEED: AuditLog[] = [
   {
     id: "al-005",
     usuarioId: "usr-admin",
-    usuarioNombre: "Prevencionista PREVANTIA",
+    usuarioNombre: "Prevencionista NEXTPREV",
     accion: "editar",
     modulo: "vehiculos",
     entidadTipo: "Vehículo",
@@ -117,7 +117,7 @@ const SEED: AuditLog[] = [
   {
     id: "al-006",
     usuarioId: "usr-admin",
-    usuarioNombre: "Prevencionista PREVANTIA",
+    usuarioNombre: "Prevencionista NEXTPREV",
     accion: "cambiar_estado",
     modulo: "cumplimiento",
     entidadTipo: "Hallazgo",
@@ -128,7 +128,7 @@ const SEED: AuditLog[] = [
   {
     id: "al-007",
     usuarioId: "usr-admin",
-    usuarioNombre: "Prevencionista PREVANTIA",
+    usuarioNombre: "Prevencionista NEXTPREV",
     accion: "crear",
     modulo: "vehiculos",
     entidadTipo: "Vehículo",
@@ -139,7 +139,7 @@ const SEED: AuditLog[] = [
   {
     id: "al-008",
     usuarioId: "usr-admin",
-    usuarioNombre: "Prevencionista PREVANTIA",
+    usuarioNombre: "Prevencionista NEXTPREV",
     accion: "editar",
     modulo: "trabajadores",
     entidadTipo: "Trabajador",
@@ -175,7 +175,7 @@ export function registrarAccion(input: AuditLogInput): AuditLog {
     fecha: input.fecha ?? new Date().toISOString(),
     // Default user — override with real auth context when backend is ready
     usuarioId: input.usuarioId ?? "usr-admin",
-    usuarioNombre: input.usuarioNombre ?? "Prevencionista PREVANTIA",
+    usuarioNombre: input.usuarioNombre ?? "Prevencionista NEXTPREV",
   };
   _logs = [log, ..._logs];
   notify();

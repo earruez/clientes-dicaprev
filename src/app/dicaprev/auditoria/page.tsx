@@ -10,7 +10,6 @@ import {
   type ModuloAudit,
 } from "@/lib/auditoria/audit-store";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -36,6 +35,7 @@ import {
   Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ─── Config de visualización ──────────────────────────────────────────────── //
 
@@ -110,34 +110,26 @@ export default function AuditoriaPage() {
     <div className="min-h-screen bg-slate-50/60 py-8 px-4 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
 
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="h-11 w-11 rounded-2xl bg-slate-900 flex items-center justify-center shrink-0">
-              <ClipboardList className="h-5 w-5 text-emerald-400" />
+        <StandardPageHeader
+          moduleLabel="Sistema"
+          title="Auditoría del sistema"
+          description="Registro de todas las acciones realizadas por usuarios en el SaaS."
+          icon={ClipboardList}
+          actions={
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs text-slate-400">{filtered.length} eventos</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-xl border-slate-200 text-slate-600"
+                onClick={handleReset}
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                Limpiar
+              </Button>
             </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                Auditoría del sistema
-              </h1>
-              <p className="text-sm text-slate-500 mt-0.5">
-                Registro de todas las acciones realizadas por usuarios en el SaaS.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-slate-400">{filtered.length} eventos</span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl border-slate-200 text-slate-600"
-              onClick={handleReset}
-            >
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              Limpiar
-            </Button>
-          </div>
-        </div>
+          }
+        />
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-center bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">

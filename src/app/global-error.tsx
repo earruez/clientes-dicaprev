@@ -3,12 +3,14 @@
 import "./globals.css";
 
 export default function GlobalError({
-  error,
+  error: _error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  void _error;
+
   return (
     <html>
       <body className="flex items-center justify-center min-h-screen bg-slate-50">

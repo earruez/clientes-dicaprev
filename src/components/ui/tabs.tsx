@@ -34,14 +34,22 @@ export function Tabs({
 
   React.useEffect(() => {
     if (!current) {
-      const first = React.Children.toArray(children).find(
-        (c: any) => c?.type?.displayName === "TabsList"
-      ) as any;
-      if (first) {
-        const firstTrigger = React.Children.toArray(first.props.children).find(
-          (c: any) => c?.type?.displayName === "TabsTrigger"
-        ) as any;
-        if (firstTrigger?.props?.value) setValue(firstTrigger.props.value);
+      const first = React.Children.toArray(children).find((child) => {
+        if (!React.isValidElement(child)) return false;
+        const typeWithDisplay = child.type as { displayName?: string };
+        return typeWithDisplay.displayName === "TabsList";
+      });
+
+      if (React.isValidElement(first)) {
+        const firstTrigger = React.Children.toArray(first.props.children).find((child) => {
+          if (!React.isValidElement(child)) return false;
+          const typeWithDisplay = child.type as { displayName?: string };
+          return typeWithDisplay.displayName === "TabsTrigger";
+        });
+
+        if (React.isValidElement<{ value?: string }>(firstTrigger) && firstTrigger.props.value) {
+          setValue(firstTrigger.props.value);
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

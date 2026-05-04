@@ -149,7 +149,6 @@ export default function DotacionPage() {
   const kpiCubiertas = activas.filter((p) => !isSobredotado(p) && vacantesPos(p) === 0).length;
   const kpiVacantes  = activas.reduce((s, p) => s + vacantesPos(p), 0);
   const kpiCentros   = new Set(activas.map((p) => p.centroNombre)).size;
-  const kpiDs44      = activas.filter((p) => p.requiereDS44 && vacantesPos(p) > 0).length;
   const kpiSobredotadas = activas.filter((p) => isSobredotado(p)).length;
 
   /* Filtered */

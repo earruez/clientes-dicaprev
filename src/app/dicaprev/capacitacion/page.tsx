@@ -19,6 +19,7 @@ import {
   History,
   GraduationCap,
 } from "lucide-react";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 type Tab = "asignaciones" | "calendario" | "catalogo" | "historial";
 
@@ -48,31 +49,24 @@ export default function CapacitacionPage() {
 
   return (
     <div className="min-h-screen bg-slate-50/80">
-      <div className="max-w-[1400px] mx-auto px-6 py-8 space-y-6">
-        {/* Page header */}
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-cyan-100 flex items-center justify-center">
-              <GraduationCap className="h-5 w-5 text-cyan-700" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold text-slate-800">Capacitaciones</h1>
-              <p className="text-sm text-slate-400 mt-0.5">
-                {catalogo.filter((c) => c.activa).length} capacitaciones activas ·{" "}
-                {asignaciones.length} asignaciones ·{" "}
-                {sesiones.length} sesiones
-              </p>
-            </div>
-          </div>
-          {pendientes > 0 && (
-            <div className="shrink-0 flex items-center gap-1.5 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
-              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-              <span className="text-xs font-medium text-amber-700">
-                {pendientes} {pendientes === 1 ? "asignación pendiente de envío" : "asignaciones pendientes de envío"}
-              </span>
-            </div>
-          )}
-        </div>
+      <div className="py-8 space-y-6">
+        <StandardPageHeader
+          moduleLabel="Módulo Personas"
+          title="Capacitaciones"
+          description={`${catalogo.filter((c) => c.activa).length} capacitaciones activas · ${asignaciones.length} asignaciones · ${sesiones.length} sesiones`}
+          icon={<GraduationCap className="h-6 w-6" />}
+          iconWrapClassName="bg-cyan-700"
+          actions={
+            pendientes > 0 ? (
+              <div className="shrink-0 flex items-center gap-1.5 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2">
+                <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-xs font-medium text-amber-700">
+                  {pendientes} {pendientes === 1 ? "asignación pendiente de envío" : "asignaciones pendientes de envío"}
+                </span>
+              </div>
+            ) : null
+          }
+        />
 
         {/* Tab bar */}
         <div className="flex gap-1 bg-white border border-slate-200 rounded-2xl p-1 shadow-sm w-fit">

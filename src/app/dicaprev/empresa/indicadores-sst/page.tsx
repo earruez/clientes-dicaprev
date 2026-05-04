@@ -3,6 +3,7 @@
 import React from "react";
 import { ShieldCheck, TrendingDown, AlertTriangle, Activity, Users, CalendarOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ── Mock SST indicators ────────────────────────────────────────────────
 
@@ -80,27 +81,17 @@ const ESTADO_BADGE: Record<string, string> = {
 export default function IndicadoresSSTPage() {
   return (
     <div className="min-h-screen bg-slate-50/60">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-6">
-        <div className="max-w-screen-lg mx-auto flex items-start gap-4">
-          <div className="h-12 w-12 rounded-2xl bg-emerald-900 flex items-center justify-center shrink-0">
-            <ShieldCheck className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">
-              Empresa
-            </p>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              Indicadores SST
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Tasas e índices de seguridad y salud en el trabajo del período vigente.
-            </p>
-          </div>
-        </div>
+      <div className="px-6 pt-2">
+        <StandardPageHeader
+          moduleLabel="Módulo Empresa"
+          title="Indicadores SST"
+          description="Tasas e índices de seguridad y salud en el trabajo del período vigente."
+          icon={<ShieldCheck className="h-6 w-6" />}
+          iconWrapClassName="bg-emerald-800"
+        />
       </div>
 
-      <div className="max-w-screen-lg mx-auto px-6 py-6">
+      <div className="py-6">
         {/* Período */}
         <div className="mb-5 flex items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-widest text-slate-400">

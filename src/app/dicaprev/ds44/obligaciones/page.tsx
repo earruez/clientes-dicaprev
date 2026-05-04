@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { FileCheck2, Link2, Eye, Download, X } from "lucide-react";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 type CompanySize = "micro" | "pequena" | "mediana" | "grande";
 
@@ -398,25 +399,21 @@ const DS44ObligacionesPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100 px-4 py-6 md:px-8">
-      {/* Encabezado DS44 */}
-      <div className="bg-white/80 backdrop-blur shadow-sm border border-gray-200 rounded-xl p-5 mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl md:text-2xl font-bold text-gray-900">
-              Centro DS44 — Obligaciones
-            </h1>
-            <p className="text-sm text-gray-500">
-              Matriz de obligaciones mínimas según tamaño de empresa, vinculadas
-              a la documentación existente.
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-2 text-xs md:text-sm">
-            <span className="text-gray-500">Perfil de empresa actual:</span>
-            <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-              {sizeLabelMap[companySize]}
-            </span>
-          </div>
-        </div>
+      <div className="mb-6">
+        <StandardPageHeader
+          moduleLabel="DS44"
+          title="Centro DS44 - Obligaciones"
+          description="Matriz de obligaciones mínimas según tamaño de empresa, vinculadas a la documentación existente."
+          icon={FileCheck2}
+          actions={
+            <div className="flex flex-col items-end gap-2 text-xs md:text-sm">
+              <span className="text-slate-500">Perfil de empresa actual:</span>
+              <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                {sizeLabelMap[companySize]}
+              </span>
+            </div>
+          }
+        />
       </div>
 
       {/* Filtros superiores y exportación */}

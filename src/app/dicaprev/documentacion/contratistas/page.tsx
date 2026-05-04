@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
   Building2,
   FileText,
@@ -569,37 +570,32 @@ const handleGuardarTrabajador = () => {
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8 flex flex-col gap-6 text-slate-900">
-      {/* HEADER */}
-      <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">
-            Contratistas acreditados
-          </h1>
-          <p className="text-sm text-slate-500 max-w-2xl">
-            Gestiona la acreditación documental de empresas contratistas y la
-            documentación de sus trabajadores, alineada a la normativa chilena
-            (Ley 16.744, DS 76, DS 67, DS 594, DS 40, entre otras).
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[150px]">
-            <span className="text-[11px] text-slate-500">Contratistas activos</span>
-            <span className="text-lg font-semibold">
-              {contratistas.filter((c) => c.estado === "Vigente").length}
-            </span>
+      <StandardPageHeader
+        moduleLabel="Documentación"
+        title="Contratistas acreditados"
+        description="Gestiona la acreditación documental de empresas contratistas y la documentación de sus trabajadores, alineada a la normativa chilena (Ley 16.744, DS 76, DS 67, DS 594, DS 40, entre otras)."
+        icon={Building2}
+        actions={
+          <div className="flex flex-wrap gap-2 text-xs">
+            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[150px]">
+              <span className="text-[11px] text-slate-500">Contratistas activos</span>
+              <span className="text-lg font-semibold">
+                {contratistas.filter((c) => c.estado === "Vigente").length}
+              </span>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[150px]">
+              <span className="text-[11px] text-slate-500">Trabajadores vinculados</span>
+              <span className="text-lg font-semibold">{totalTrabajadores}</span>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[150px]">
+              <span className="text-[11px] text-slate-500">
+                Documentos empresa (mock)
+              </span>
+              <span className="text-lg font-semibold">{totalDocsEmpresa}</span>
+            </div>
           </div>
-          <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[150px]">
-            <span className="text-[11px] text-slate-500">Trabajadores vinculados</span>
-            <span className="text-lg font-semibold">{totalTrabajadores}</span>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[150px]">
-            <span className="text-[11px] text-slate-500">
-              Documentos empresa (mock)
-            </span>
-            <span className="text-lg font-semibold">{totalDocsEmpresa}</span>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* FILTROS SUPERIORES */}
       <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1269,7 +1265,7 @@ const handleGuardarTrabajador = () => {
               </p>
             )}
             <p>
-              01-11-2025 · 10:24 · <strong>admin@prevantia.cl</strong> subió documento
+              01-11-2025 · 10:24 · <strong>admin@nextprev.cl</strong> subió documento
               inicial.
             </p>
             <p>

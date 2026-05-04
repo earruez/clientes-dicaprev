@@ -41,6 +41,7 @@ import {
 } from "@/lib/cumplimiento/cumplimiento-engine";
 import { EMPRESA_MOCK } from "@/lib/empresa";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ─── Config visual ──────────────────────────────────────────────────────────────
 
@@ -155,20 +156,12 @@ export default function CumplimientoCentroPage() {
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-7xl space-y-8 px-4 lg:px-0">
 
-        {/* ── Header ── */}
-        <header>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600">
-              <Building2 className="h-5 w-5 text-white" />
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-              Cumplimiento por Centro
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-slate-500 pl-[3.25rem]">
-            Nivel de cumplimiento DS44 evaluado automáticamente para cada centro de trabajo.
-          </p>
-        </header>
+        <StandardPageHeader
+          moduleLabel="Reportes"
+          title="Cumplimiento por Centro"
+          description="Nivel de cumplimiento DS44 evaluado automáticamente para cada centro de trabajo."
+          icon={Building2}
+        />
 
         {/* ── Global indicator ── */}
         <Card className="border-none shadow-sm bg-gradient-to-br from-indigo-50 to-indigo-100">

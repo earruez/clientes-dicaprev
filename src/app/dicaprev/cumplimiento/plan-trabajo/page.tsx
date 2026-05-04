@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,7 +40,6 @@ import {
   calcularTamañoEmpresa,
   type DocumentoEvaluable,
   type EntidadInput,
-  type EvaluacionCumplimiento,
 } from "@/lib/cumplimiento/cumplimiento-engine";
 import {
   type AccionCumplimiento,
@@ -50,6 +48,7 @@ import {
 } from "../types";
 import { derivarAccionesDesdeHallazgos, hallazgosEstructurales } from "../acciones";
 import { EMPRESA_MOCK } from "@/lib/empresa";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -300,7 +299,7 @@ export default function PlanTrabajoPage() {
 
   const evaluaciones = useMemo(
     () => evaluarObligaciones(OBLIGACIONES_MOCK, docs, entidades, new Date(), tamanoEmpresa),
-    [docs, entidades]
+    [docs, entidades, tamanoEmpresa]
   );
 
   // ── Acciones derivadas del motor + hallazgos estructurales + manuales ──────
@@ -392,20 +391,12 @@ export default function PlanTrabajoPage() {
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-7xl space-y-8 px-4 lg:px-0">
 
-        {/* ── header ── */}
-        <header>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600">
-              <ClipboardList className="h-5 w-5 text-white" />
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-              Plan de trabajo DS44
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-slate-500 pl-[3.25rem]">
-            Acciones derivadas automáticamente del motor de cumplimiento y hallazgos activos.
-          </p>
-        </header>
+        <StandardPageHeader
+          moduleLabel="Cumplimiento DS44"
+          title="Plan de trabajo DS44"
+          description="Acciones derivadas automáticamente del motor de cumplimiento y hallazgos activos."
+          icon={ClipboardList}
+        />
 
         {/* ── motor badge ── */}
         <div className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">

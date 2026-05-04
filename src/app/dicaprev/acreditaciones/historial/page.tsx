@@ -414,7 +414,7 @@ export default function HistorialGestionPage() {
       tipo: derivado.tipo,
       descripcion: derivado.titulo,
       centroId: "c1",
-      centroNombre: "PREVANTIA SpA",
+      centroNombre: "NEXTPREV SpA",
       trabajadorNombre: undefined,
       obligacionId: undefined,
       obligacionNombre: undefined,

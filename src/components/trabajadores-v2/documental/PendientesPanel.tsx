@@ -4,7 +4,6 @@ import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   Search,
-  FileWarning,
   UploadCloud,
   ExternalLink,
   ChevronDown,
@@ -696,7 +695,7 @@ export function PendientesPanel({ initialWorkerId, initialSearch }: PendientesPa
                                   {/* Row 4: observación */}
                                   {doc.observacion && (
                                     <p className="rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px] italic text-slate-600">
-                                      "{doc.observacion}"
+                                      &quot;{doc.observacion}&quot;
                                     </p>
                                   )}
 

@@ -513,7 +513,7 @@ export function generateAccessToken(workerId: string, trainingId: string): Elear
     trainingId,
     createdAt: created,
     expiresAt: addMonths(created, 1),
-    link: `https://lms.prevantia.cl/acceso/${token}`,
+    link: `https://lms.nextprev.cl/acceso/${token}`,
   };
 }
 

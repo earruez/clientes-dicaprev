@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import { FileSignature } from "lucide-react";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 type DocumentoFirma = {
   id: string;
@@ -137,47 +139,45 @@ export default function Page() {
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-6 md:p-8 flex flex-col gap-6 text-slate-900">
-      {/* HEADER */}
-      <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold tracking-tight">Firma digital</h1>
-          <p className="text-sm text-slate-500 max-w-xl">
-            Gestión centralizada de documentos para firma electrónica de
-            empresas, centros de trabajo y contratistas.
-          </p>
-        </div>
-        <div className="flex flex-col gap-2 md:items-end">
-          <div className="flex flex-wrap gap-3 justify-end">
-            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[180px]">
-              <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-                <span>Uso del mes</span>
-                <span>12 / 50 firmas</span>
+      <StandardPageHeader
+        moduleLabel="Documentación"
+        title="Firma digital"
+        description="Gestión centralizada de documentos para firma electrónica de empresas, centros de trabajo y contratistas."
+        icon={FileSignature}
+        actions={
+          <div className="flex flex-col gap-2 md:items-end">
+            <div className="flex flex-wrap gap-3 justify-end">
+              <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[180px]">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                  <span>Uso del mes</span>
+                  <span>12 / 50 firmas</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-full w-[24%] bg-emerald-500" />
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Plan PRO DICAPREV · se renovará el 01-12-2025
+                </p>
               </div>
-              <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                <div className="h-full w-[24%] bg-emerald-500" />
+              <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[200px]">
+                <div className="flex items-center justify-between text-xs font-medium text-slate-500">
+                  <span>Estado integración</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Conectado
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Proveedor: SimpleFirma (demo)
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  Última sincronización: 12-11-2025 · 12:34
+                </p>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Plan PRO DICAPREV · se renovará el 01-12-2025
-              </p>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm flex flex-col gap-1 min-w-[200px]">
-              <div className="flex items-center justify-between text-xs font-medium text-slate-500">
-                <span>Estado integración</span>
-                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-full">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Conectado
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Proveedor: SimpleFirma (demo)
-              </p>
-              <p className="text-[11px] text-slate-400">
-                Última sincronización: 12-11-2025 · 12:34
-              </p>
             </div>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* FILTROS Y CTA */}
       <section className="bg-white border border-slate-200 rounded-2xl shadow-sm px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -436,7 +436,7 @@ export default function Page() {
                 <span>
                   Creado · 10-11-2025 10:23
                   <span className="block text-slate-400">
-                    Usuario: admin@prevantia.cl
+                    Usuario: admin@nextprev.cl
                   </span>
                 </span>
               </li>

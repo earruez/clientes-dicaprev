@@ -20,9 +20,6 @@ export default function TableView({ data, onEdit, onDelete }: TableViewProps) {
   const allSelected =
     data.length > 0 && selectedIds.length === data.map((t) => t.id).length;
 
-  const someSelected =
-    selectedIds.length > 0 && selectedIds.length < data.length;
-
   const total = useMemo(() => data.length, [data]);
 
   const handleToggleAll = (checked: boolean) => {

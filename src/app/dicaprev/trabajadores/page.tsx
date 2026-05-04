@@ -2,7 +2,8 @@
 
 import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { UserPlus, FileStack, GraduationCap } from "lucide-react";
+import { UserPlus, FileStack, GraduationCap, Users } from "lucide-react";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { KPIs, type KpiId } from "@/components/trabajadores-v2/KPIs";
 import { WorkersFilters } from "@/components/trabajadores-v2/WorkersFilters";
 import { WorkersTable } from "@/components/trabajadores-v2/WorkersTable";
@@ -93,16 +94,14 @@ export default function TrabajadoresPage() {
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
-        {/* ── Page header ── */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Trabajadores</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Gestión del capital humano — {workers.length} personas registradas
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
+        <StandardPageHeader
+          moduleLabel="Módulo Personas"
+          title="Trabajadores"
+          description={`Gestión del capital humano — ${workers.length} personas registradas`}
+          icon={<Users className="h-6 w-6" />}
+          iconWrapClassName="bg-sky-700"
+          actions={
+            <>
             <Link
               href="/dicaprev/capacitacion"
               className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:shadow-md"
@@ -126,8 +125,9 @@ export default function TrabajadoresPage() {
               <UserPlus className="h-4 w-4" />
               Nuevo trabajador
             </button>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         <KPIs workers={workers} activeKpiId={activeKpiId} onKpiClick={handleKpiClick} />
 

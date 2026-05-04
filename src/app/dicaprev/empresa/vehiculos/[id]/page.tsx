@@ -93,8 +93,20 @@ export default function VehiculoDetailPage() {
   // ── Edit handlers ────────────────────────────────────────────────────────
 
   function abrirEditar() {
-    const { id: _id, creadoEl: _c, documentos: _d, ...rest } = vehiculo!;
-    setForm(rest);
+    setForm({
+      patente: vehiculo!.patente,
+      codigoInterno: vehiculo!.codigoInterno,
+      marca: vehiculo!.marca,
+      modelo: vehiculo!.modelo,
+      anio: vehiculo!.anio,
+      tipo: vehiculo!.tipo,
+      centro: vehiculo!.centro,
+      responsable: vehiculo!.responsable,
+      estado: vehiculo!.estado,
+      proximaRevision: vehiculo!.proximaRevision,
+      kilometraje: vehiculo!.kilometraje,
+      observaciones: vehiculo!.observaciones,
+    });
     setEditModal(true);
   }
 

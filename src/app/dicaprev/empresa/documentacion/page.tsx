@@ -115,7 +115,6 @@ export default function DocumentacionEmpresaPage() {
     const dias = diasParaVencer(d.fechaVencimiento);
     return d.estado === "completo" && dias !== null && dias <= 30;
   }).length;
-  const reusables = docs.filter((d) => d.reusableEnAcreditaciones).length;
 
   const toggleReusable = (id: string) => {
     setDocs((prev) =>

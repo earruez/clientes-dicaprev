@@ -35,9 +35,10 @@ import {
   Users,
   ShieldCheck,
 } from "lucide-react";
+import type { ComponentProps } from "react";
 
 // Fix TS para TabsTrigger + className
-const AnyTabsTrigger = TabsTrigger as any;
+const AnyTabsTrigger = TabsTrigger as React.ComponentType<ComponentProps<typeof TabsTrigger>>;
 
 /* ===================== Tipos & Mock data ===================== */
 

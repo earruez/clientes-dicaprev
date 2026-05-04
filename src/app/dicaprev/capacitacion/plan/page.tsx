@@ -11,7 +11,6 @@ import {
   Role,
   Course,
   Requirement,
-  statusConfig,
   nextStatus,
   TemplatePlan,
 } from "./components/utils";

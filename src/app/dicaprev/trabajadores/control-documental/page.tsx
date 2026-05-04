@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { FileStack, ShieldCheck, FileWarning, CalendarClock, Settings2, ArrowLeft, UploadCloud } from "lucide-react";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { TiposDocPanel }    from "@/components/trabajadores-v2/documental/TiposDocPanel";
 import { PlantillasPanel }  from "@/components/trabajadores-v2/documental/PlantillasPanel";
 import { ReglasPanel }      from "@/components/trabajadores-v2/documental/ReglasPanel";
@@ -66,32 +67,27 @@ function ControlDocumentalContent() {
       <BulkUploadDrawer isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
       <div className="mx-auto max-w-7xl space-y-8">
 
-        {/* ── Header ── */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
+        <StandardPageHeader
+          moduleLabel="Módulo Personas"
+          title="Control documental"
+          description={
+            linkedWorker
+              ? `Revisando documentación de ${linkedWorker.nombre} ${linkedWorker.apellido} · ${linkedWorker.cargo}`
+              : centro
+                ? `Gestión documental filtrada por centro: ${centro}`
+                : "Gestión centralizada de documentos requeridos por trabajador, con asignación automática por reglas."
+          }
+          icon={<FileStack className="h-6 w-6" />}
+          iconWrapClassName="bg-slate-900"
+          actions={
+            <div className="flex shrink-0 flex-col items-end gap-3">
               <Link
                 href="/dicaprev/trabajadores"
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Trabajadores
               </Link>
-              <h1 className="text-2xl font-bold text-slate-900">Control Documental</h1>
-              <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-bold text-white">
-                SST
-              </span>
-            </div>
-            <p className="mt-1.5 text-sm text-slate-500">
-              {linkedWorker
-                ? `Revisando documentación de ${linkedWorker.nombre} ${linkedWorker.apellido} · ${linkedWorker.cargo}`
-                : centro
-                ? `Gestión documental filtrada por centro: ${centro}`
-                : "Gestión centralizada de documentos requeridos por trabajador, con asignación automática por reglas."}
-            </p>
-          </div>
 
-          {/* Global compliance badge + Carga masiva */}
-          <div className="flex shrink-0 flex-col items-end gap-3">
             <button
               onClick={() => setBulkOpen(true)}
               className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700"
@@ -117,8 +113,9 @@ function ControlDocumentalContent() {
                 />
               </div>
             </div>
-          </div>
-        </div>
+            </div>
+          }
+        />
 
         {/* ── Stats strip ── */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

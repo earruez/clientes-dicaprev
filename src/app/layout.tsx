@@ -2,8 +2,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "PREVANTIA",
-  description: "Portal PREVANTIA — Gestión de Prevención de Riesgos",
+  title: "NEXTPREV",
+  description: "Portal NEXTPREV — Gestión de Prevención de Riesgos",
 };
 
 export default function RootLayout({

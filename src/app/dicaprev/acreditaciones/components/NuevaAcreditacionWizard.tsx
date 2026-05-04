@@ -28,7 +28,6 @@ import type {
   WizardAcreditacionData,
   Mandante,
   TipoAcreditacion,
-  PlantillaAcreditacion,
   Trabajador,
   Vehiculo,
 } from "../types";

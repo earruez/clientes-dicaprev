@@ -18,6 +18,7 @@ import {
   Shield, FileText, GraduationCap, Search, Plus, MapPin, Tag, SlidersHorizontal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
   empresaStore,
   type EmpresaArea as Area,
@@ -346,39 +347,31 @@ export default function AreasCargosPage() {
 
   return (
     <div className="w-full min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+      <div className="py-8 space-y-6">
 
-        {/* ── HEADER ── */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2.5 mb-1">
-              <div className={cn(
-                "flex h-10 w-10 items-center justify-center rounded-xl",
-                mainTab === "areas" ? "bg-teal-600" : "bg-violet-600",
-              )}>
-                {mainTab === "areas"
-                  ? <Network className="h-5 w-5 text-white" />
-                  : <BookOpen className="h-5 w-5 text-white" />}
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900">Áreas y cargos</h1>
-            </div>
-            <p className="text-sm text-slate-500 max-w-xl pl-[3.25rem]">
-              {mainTab === "areas"
-                ? "Estructura organizacional. Cada área agrupa cargos, dotación y trabajadores."
-                : "Catálogo maestro de roles. Define perfiles SST, documentos y capacitaciones base."}
-            </p>
-          </div>
-          <button
-            onClick={mainTab === "areas" ? aOpenCreate : cOpenCreate}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition",
-              mainTab === "areas" ? "bg-teal-600 hover:bg-teal-700" : "bg-violet-600 hover:bg-violet-700",
-            )}
-          >
-            <Plus className="h-4 w-4" />
-            {mainTab === "areas" ? "Nueva área" : "Nuevo cargo"}
-          </button>
-        </div>
+        <StandardPageHeader
+          moduleLabel="Módulo Empresa"
+          title="Áreas y cargos"
+          description={
+            mainTab === "areas"
+              ? "Estructura organizacional. Cada área agrupa cargos, dotación y trabajadores."
+              : "Catálogo maestro de roles. Define perfiles SST, documentos y capacitaciones base."
+          }
+          icon={mainTab === "areas" ? <Network className="h-6 w-6" /> : <BookOpen className="h-6 w-6" />}
+          iconWrapClassName={mainTab === "areas" ? "bg-teal-700" : "bg-violet-700"}
+          actions={
+            <button
+              onClick={mainTab === "areas" ? aOpenCreate : cOpenCreate}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition",
+                mainTab === "areas" ? "bg-teal-600 hover:bg-teal-700" : "bg-violet-600 hover:bg-violet-700",
+              )}
+            >
+              <Plus className="h-4 w-4" />
+              {mainTab === "areas" ? "Nueva área" : "Nuevo cargo"}
+            </button>
+          }
+        />
 
         {/* ── TAB BAR ── */}
         <div className="flex items-center gap-1 border-b border-slate-200">

@@ -49,6 +49,7 @@ import type {
 } from "@/app/dicaprev/cumplimiento/types";
 import type { EstadoHallazgo } from "@/app/dicaprev/cumplimiento/types";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -237,20 +238,12 @@ export default function PendientesPage() {
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-7xl space-y-8 px-4 lg:px-0">
 
-        {/* ── Header ── */}
-        <header>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-600">
-              <ClipboardList className="h-5 w-5 text-white" />
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-              Reporte de Pendientes
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-slate-500 pl-[3.25rem]">
-            Hallazgos activos y acciones del plan de trabajo sin cerrar.
-          </p>
-        </header>
+        <StandardPageHeader
+          moduleLabel="Reportes"
+          title="Reporte de Pendientes"
+          description="Hallazgos activos y acciones del plan de trabajo sin cerrar."
+          icon={ClipboardList}
+        />
 
         {/* ── KPIs ── */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

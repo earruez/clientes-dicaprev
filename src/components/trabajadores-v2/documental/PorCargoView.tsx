@@ -81,7 +81,15 @@ export function PorCargoView({ rows }: { rows: RowData[] }) {
   }, [rows]);
 
   function toggle(k: string) {
-    setExpanded((prev) => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(k)) {
+        n.delete(k);
+      } else {
+        n.add(k);
+      }
+      return n;
+    });
   }
 
   if (groups.length === 0) {

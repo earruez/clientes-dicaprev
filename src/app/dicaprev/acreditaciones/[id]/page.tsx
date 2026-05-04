@@ -24,7 +24,6 @@ import {
   Loader2,
   Info,
   Layers,
-  Calendar,
   Link2,
 } from "lucide-react";
 import JSZip from "jszip";
@@ -244,7 +243,7 @@ function generarPDF(docs: DocumentoInstancia[], ac: { empresaNombre: string; man
     pdf.setPage(i);
     pdf.setFontSize(7);
     pdf.setTextColor(148, 163, 184);
-    pdf.text(`PREVANTIA · Generado: ${fecha} · Página ${i}/${pages}`, 14, 290);
+    pdf.text(`NEXTPREV · Generado: ${fecha} · Página ${i}/${pages}`, 14, 290);
   }
 
   pdf.save(`Indice_${ac.empresaNombre.replace(/\s/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`);
@@ -418,7 +417,7 @@ export default function ExpedientePage() {
   const [estadoActual, setEstadoActual] = useState<EstadoAcreditacion>(
     (acreditacion?.estado as EstadoAcreditacion) ?? "en_preparacion"
   );
-  const [historialEstados, setHistorialEstados] = useState<HistorialEstadoAcreditacion[]>(
+  const [, setHistorialEstados] = useState<HistorialEstadoAcreditacion[]>(
     acreditacion?.historialEstados ?? []
   );
   const [modalCambioEstado, setModalCambioEstado] = useState<EstadoAcreditacion | null>(null);
@@ -438,7 +437,7 @@ export default function ExpedientePage() {
         id: `h-${Date.now()}`,
         acreditacionId: acId,
         fecha: new Date().toISOString(),
-        generadoPor: "Prevencionista PREVANTIA",
+        generadoPor: "Prevencionista NEXTPREV",
         documentosIncluidos: docs.filter((d) => d.estado !== "faltante").length,
         estado,
       },
@@ -471,7 +470,7 @@ export default function ExpedientePage() {
     const entrada: HistorialEstadoAcreditacion = {
       estado: modalCambioEstado,
       fecha: new Date().toISOString(),
-      usuario: "Prevencionista PREVANTIA",
+      usuario: "Prevencionista NEXTPREV",
       ...(comentario ? { comentario } : {}),
     };
     setEstadoActual(modalCambioEstado);

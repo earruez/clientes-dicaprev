@@ -235,7 +235,7 @@ export function DocumentUploadDrawer({
                     Motivo del rechazo anterior
                   </p>
                   <p className="mt-1 text-sm leading-relaxed text-rose-800">
-                    "{context.rejectionObservation}"
+                    &quot;{context.rejectionObservation}&quot;
                   </p>
                 </div>
               </div>

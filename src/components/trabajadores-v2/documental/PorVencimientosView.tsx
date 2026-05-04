@@ -65,7 +65,15 @@ export function PorVencimientosView({ rows }: { rows: RowData[] }) {
   }, [rows]);
 
   function toggle(bucket: Bucket) {
-    setExpanded((prev) => { const n = new Set(prev); n.has(bucket) ? n.delete(bucket) : n.add(bucket); return n; });
+    setExpanded((prev) => {
+      const n = new Set(prev);
+      if (n.has(bucket)) {
+        n.delete(bucket);
+      } else {
+        n.add(bucket);
+      }
+      return n;
+    });
   }
 
   return (

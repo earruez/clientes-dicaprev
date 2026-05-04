@@ -27,6 +27,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import { Users } from "lucide-react";
 
 /* ======================================================================= */
 /*                                TYPES                                    */
@@ -334,25 +336,20 @@ export default function TrabajadoresPage() {
 
   return (
     <div className="w-full min-h-screen bg-slate-50 p-8 flex flex-col gap-8">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            Trabajadores
-          </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Maestro de trabajadores de la empresa. Desde aquí podrás vincularlos
-            a centros, puestos, DS44 y planes de capacitación.
-          </p>
-        </div>
-
-        <Button
-          onClick={handleOpenCreate}
-          className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 shadow-sm"
-        >
-          + Nuevo trabajador
-        </Button>
-      </div>
+      <StandardPageHeader
+        moduleLabel="Empresa"
+        title="Trabajadores"
+        description="Maestro de trabajadores de la empresa. Desde aquí podrás vincularlos a centros, puestos, DS44 y planes de capacitación."
+        icon={Users}
+        actions={
+          <Button
+            onClick={handleOpenCreate}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 shadow-sm"
+          >
+            + Nuevo trabajador
+          </Button>
+        }
+      />
 
       {/* MÉTRICAS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">

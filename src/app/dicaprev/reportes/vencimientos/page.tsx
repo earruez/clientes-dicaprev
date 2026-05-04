@@ -17,7 +17,6 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
-  ChevronRight,
   Clock,
   FileText,
   Search,
@@ -30,6 +29,7 @@ import {
   EVIDENCIAS_MOCK,
 } from "@/app/dicaprev/cumplimiento/mock-data";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -185,20 +185,12 @@ export default function VencimientosPage() {
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-7xl space-y-8 px-4 lg:px-0">
 
-        {/* ── Header ── */}
-        <header>
-          <div className="flex items-center gap-3 mb-1">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-600">
-              <CalendarDays className="h-5 w-5 text-white" />
-            </div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-              Reporte de Vencimientos
-            </h1>
-          </div>
-          <p className="mt-1 text-sm text-slate-500 pl-[3.25rem]">
-            Obligaciones DS44 y evidencias cercanas a vencer o ya vencidas.
-          </p>
-        </header>
+        <StandardPageHeader
+          moduleLabel="Reportes"
+          title="Reporte de Vencimientos"
+          description="Obligaciones DS44 y evidencias cercanas a vencer o ya vencidas."
+          icon={CalendarDays}
+        />
 
         {/* ── KPIs ── */}
         <div className="grid gap-4 sm:grid-cols-3">

@@ -27,7 +27,7 @@ import {
   ChevronRight,
   X,
   FileText,
-  Image,
+  Image as ImageIcon,
   Award,
   FileCheck,
   ClipboardList,
@@ -54,6 +54,7 @@ import type {
   TipoEvidencia,
 } from "../types";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -62,7 +63,7 @@ const TIPO_CFG: Record<
   { label: string; cls: string; icon: React.ReactNode }
 > = {
   documento:   { label: "Documento",   cls: "bg-sky-50 text-sky-700 border border-sky-200",           icon: <FileText className="h-3.5 w-3.5" /> },
-  fotografia:  { label: "Fotografía",  cls: "bg-violet-50 text-violet-700 border border-violet-200",   icon: <Image className="h-3.5 w-3.5" /> },
+  fotografia:  { label: "Fotografía",  cls: "bg-violet-50 text-violet-700 border border-violet-200",   icon: <ImageIcon className="h-3.5 w-3.5" /> },
   certificado: { label: "Certificado", cls: "bg-emerald-50 text-emerald-700 border border-emerald-200", icon: <Award className="h-3.5 w-3.5" /> },
   acta:        { label: "Acta",        cls: "bg-amber-50 text-amber-700 border border-amber-200",       icon: <FileCheck className="h-3.5 w-3.5" /> },
   registro:    { label: "Registro",    cls: "bg-indigo-50 text-indigo-700 border border-indigo-200",    icon: <ClipboardList className="h-3.5 w-3.5" /> },
@@ -548,7 +549,7 @@ export default function EvidenciasPage() {
       entidadNombre: centro?.nombre,
       archivoUrl: data.archivoUrl || undefined,
       observacion: data.observacion || undefined,
-      subidaPor: "Prevencionista PREVANTIA",
+      subidaPor: "Prevencionista NEXTPREV",
       estado: "pendiente",
       cierraHallazgo: data.cierraHallazgo,
     };
@@ -568,29 +569,21 @@ export default function EvidenciasPage() {
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-7xl space-y-8 px-4 lg:px-0">
 
-        {/* ── header ── */}
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600">
-                <Paperclip className="h-5 w-5 text-white" />
-              </div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-                Evidencias
-              </h1>
-            </div>
-            <p className="mt-1 text-sm text-slate-500 pl-[3.25rem]">
-              Documentos vinculados a obligaciones, hallazgos y acciones del plan de trabajo.
-            </p>
-          </div>
-          <Button
-            onClick={() => setModalOpen(true)}
-            className="hidden sm:inline-flex bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm shrink-0"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Nueva evidencia
-          </Button>
-        </header>
+        <StandardPageHeader
+          moduleLabel="Cumplimiento DS44"
+          title="Evidencias"
+          description="Documentos vinculados a obligaciones, hallazgos y acciones del plan de trabajo."
+          icon={Paperclip}
+          actions={
+            <Button
+              onClick={() => setModalOpen(true)}
+              className="hidden sm:inline-flex bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm shrink-0"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Nueva evidencia
+            </Button>
+          }
+        />
 
         {/* ── KPIs ── */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

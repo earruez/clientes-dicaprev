@@ -1,1 +1,9 @@
-"use client"; import * as React from "react"; export const Progress=(p:any)=> <progress {...p}/>;
+"use client";
+
+import * as React from "react";
+
+type ProgressProps = React.ProgressHTMLAttributes<HTMLProgressElement>;
+
+export function Progress(props: ProgressProps) {
+  return <progress {...props} />;
+}

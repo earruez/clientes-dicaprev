@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
@@ -40,6 +39,7 @@ import {
 } from "@/lib/cumplimiento/cumplimiento-engine";
 import { EMPRESA_MOCK } from "@/lib/empresa";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -312,7 +312,7 @@ export default function ObligacionesPage() {
             : ob.cumplimientoGlobal,
       };
     });
-  }, [evalMap]);
+  }, [evalMap, obligacionesAplicables]);
 
   const cumplidas = obligacionesVivas.filter((o) => o.cumplimientoGlobal >= 80).length;
   const conBrechas = obligacionesVivas.filter(
@@ -345,15 +345,12 @@ export default function ObligacionesPage() {
   return (
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-6xl space-y-8 px-4 lg:px-0">
-        {/* ---- header ---- */}
-        <header>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            Obligaciones DS44
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Revisa el estado de cada obligación DS44 y qué centros presentan brechas pendientes de subsanar.
-          </p>
-        </header>
+        <StandardPageHeader
+          moduleLabel="Cumplimiento DS44"
+          title="Obligaciones DS44"
+          description="Revisa el estado de cada obligación DS44 y qué centros presentan brechas pendientes de subsanar."
+          icon={FileText}
+        />
 
         {/* ---- dotación context chip ---- */}
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">

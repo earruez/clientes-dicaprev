@@ -12,7 +12,6 @@ import {
   CalendarClock,
   TriangleAlert,
   ChevronRight,
-  Activity,
   MapPin,
   X,
   Plus,
@@ -32,6 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { cn } from "@/lib/utils";
 import {
   type CentroAdmin,
@@ -256,20 +256,17 @@ export default function CentrosTrabajoExecutivePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_20%_10%,#ecfeff_0%,#f8fafc_45%,#eef2ff_100%)] px-6 py-8">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <header className="rounded-3xl border border-slate-200/70 bg-white/90 p-6 shadow-[0_20px_60px_-45px_rgba(15,23,42,0.55)] backdrop-blur">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-cyan-700">
-                Estructura Empresa
-              </div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Centros de trabajo</h1>
-              <p className="mt-2 max-w-3xl text-sm text-slate-600">
-                Vista ejecutiva por centro: cobertura de dotación, cumplimiento documental, alertas DS44 y focos críticos.
-              </p>
-            </div>
-            <div className="flex items-end gap-3">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_20%_10%,#ecfeff_0%,#f8fafc_45%,#eef2ff_100%)] py-8">
+      <div className="space-y-8">
+        <header>
+          <StandardPageHeader
+            moduleLabel="Módulo Empresa"
+            title="Centros de trabajo"
+            description="Vista ejecutiva por centro: cobertura de dotación, cumplimiento documental, alertas DS44 y focos críticos."
+            icon={<Building2 className="h-6 w-6" />}
+            iconWrapClassName="bg-cyan-700"
+            actions={
+              <div className="flex items-end gap-3">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
                 <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">Estado global</p>
                 <p className={cn("text-3xl font-bold", docColor(kpis.cumplimiento))}>{kpis.cumplimiento}%</p>
@@ -282,8 +279,9 @@ export default function CentrosTrabajoExecutivePage() {
                 <Plus className="h-4 w-4" />
                 Nuevo centro
               </Button>
-            </div>
-          </div>
+              </div>
+            }
+          />
         </header>
 
         <section className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-8">
@@ -327,7 +325,7 @@ export default function CentrosTrabajoExecutivePage() {
 
             {centros.length === 0 && (
               <p className="px-6 py-12 text-center text-sm text-slate-400">
-                No hay centros registrados. Crea el primero con "+ Nuevo centro".
+                No hay centros registrados. Crea el primero con &quot;+ Nuevo centro&quot;.
               </p>
             )}
 

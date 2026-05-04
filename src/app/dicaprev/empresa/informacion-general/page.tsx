@@ -2,7 +2,7 @@
 
 import React from "react";
 import { Building2, MapPin, Users, FileText } from "lucide-react";
-import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 const EMPRESA = {
   razonSocial: "MVP CHILE SPA",
@@ -57,28 +57,15 @@ function SectionCard({
 
 export default function InformacionGeneralPage() {
   return (
-    <div className="min-h-screen bg-slate-50/60">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-6">
-        <div className="max-w-screen-lg mx-auto flex items-start gap-4">
-          <div className="h-12 w-12 rounded-2xl bg-slate-900 flex items-center justify-center shrink-0">
-            <Building2 className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">
-              Empresa
-            </p>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              Información General
-            </h1>
-            <p className="text-sm text-slate-500 mt-1">
-              Datos legales, tributarios y de contacto de la empresa.
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6 p-6">
+      <StandardPageHeader
+        moduleLabel="Módulo Empresa"
+        title="Información general"
+        description="Datos legales, tributarios y de contacto de la empresa."
+        icon={<Building2 className="h-6 w-6" />}
+      />
 
-      <div className="max-w-screen-lg mx-auto px-6 py-6 space-y-4">
+      <div className="space-y-4">
         <SectionCard
           title="Identificación tributaria"
           icon={<FileText className="h-5 w-5" />}

@@ -1,6 +1,6 @@
 "use client";
 
-import { DocumentosFiltros, DocumentStatus } from "../types";
+import { DocumentosFiltros } from "../types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,50 +12,121 @@ type FiltrosProps = {
 };
 
 export default function Filtros({ filtros, onChangeFiltros }: FiltrosProps) {
-  const handleStatusChange = (status: string) => {
-    onChangeFiltros({ ...filtros, status: status as DocumentStatus | "todos" });
-  };
+  function update<K extends keyof DocumentosFiltros>(key: K, value: DocumentosFiltros[K]) {
+    onChangeFiltros({ ...filtros, [key]: value });
+  }
 
-  const handleSearchChange = (search: string) => {
-    onChangeFiltros({ ...filtros, search });
-  };
+  const hasFilters =
+    filtros.categoria !== "todas" ||
+    filtros.estado !== "todos" ||
+    filtros.vigencia !== "todas" ||
+    filtros.search.trim() !== "" ||
+    filtros.subidoPor.trim() !== "" ||
+    filtros.fechaSubida.trim() !== "";
 
   return (
-    <div className="flex flex-col gap-4 md:flex-row md:items-end">
-      <div className="space-y-2">
-        <Label htmlFor="status-filter">Filtrar por estado</Label>
-        <Select value={filtros.status} onValueChange={handleStatusChange}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Seleccionar estado" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos</SelectItem>
-            <SelectItem value="vigente">Vigente</SelectItem>
-            <SelectItem value="pendiente">Pendiente</SelectItem>
-            <SelectItem value="vencido">Vencido</SelectItem>
-          </SelectContent>
-        </Select>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
+        <div className="space-y-1">
+          <Label htmlFor="categoria-filter">Categoría</Label>
+          <Select value={filtros.categoria} onValueChange={(value) => update("categoria", value as DocumentosFiltros["categoria"])}>
+            <SelectTrigger id="categoria-filter">
+              <SelectValue placeholder="Todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas</SelectItem>
+              <SelectItem value="legales_empresa">Legales empresa</SelectItem>
+              <SelectItem value="laborales_previsionales">Laborales y previsionales</SelectItem>
+              <SelectItem value="sst">Seguridad y salud en el trabajo</SelectItem>
+              <SelectItem value="mutualidad_ley_16744">Mutualidad / Ley 16.744</SelectItem>
+              <SelectItem value="protocolos">Protocolos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="estado-filter">Estado</Label>
+          <Select value={filtros.estado} onValueChange={(value) => update("estado", value as DocumentosFiltros["estado"])}>
+            <SelectTrigger id="estado-filter">
+              <SelectValue placeholder="Todos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="vigente">Vigente</SelectItem>
+              <SelectItem value="por_vencer">Por vencer</SelectItem>
+              <SelectItem value="vencido">Vencido</SelectItem>
+              <SelectItem value="pendiente_carga">Pendiente de carga</SelectItem>
+              <SelectItem value="en_revision">En revisión</SelectItem>
+              <SelectItem value="reemplazado">Reemplazado</SelectItem>
+              <SelectItem value="no_aplica">No aplica</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="vigencia-filter">Vigencia</Label>
+          <Select value={filtros.vigencia} onValueChange={(value) => update("vigencia", value as DocumentosFiltros["vigencia"])}>
+            <SelectTrigger id="vigencia-filter">
+              <SelectValue placeholder="Todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas</SelectItem>
+              <SelectItem value="vigente">Vigente</SelectItem>
+              <SelectItem value="por_vencer">Por vencer</SelectItem>
+              <SelectItem value="vencido">Vencido</SelectItem>
+              <SelectItem value="sin_vencimiento">Sin vencimiento</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="search">Buscar por nombre</Label>
+          <Input
+            id="search"
+            placeholder="Ej: Matriz IPER"
+            value={filtros.search}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => update("search", e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="subido-por">Subido por</Label>
+          <Input
+            id="subido-por"
+            placeholder="Usuario o correo"
+            value={filtros.subidoPor}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => update("subidoPor", e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label htmlFor="fecha-subida">Fecha de subida</Label>
+          <Input
+            id="fecha-subida"
+            type="date"
+            value={filtros.fechaSubida}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => update("fechaSubida", e.target.value)}
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="search">Buscar por nombre</Label>
-        <Input
-          id="search"
-          placeholder="Buscar documento..."
-          value={filtros.search}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSearchChange(e.target.value)}
-          className="w-64"
-        />
-      </div>
-
-      {(filtros.status !== "todos" || filtros.search) && (
+      {hasFilters ? (
         <Button
           variant="outline"
-          onClick={() => onChangeFiltros({ status: "todos", search: "" })}
+          onClick={() =>
+            onChangeFiltros({
+              categoria: "todas",
+              estado: "todos",
+              vigencia: "todas",
+              search: "",
+              subidoPor: "",
+              fechaSubida: "",
+            })
+          }
         >
           Limpiar filtros
         </Button>
-      )}
+      ) : null}
     </div>
   );
 }

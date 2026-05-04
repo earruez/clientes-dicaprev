@@ -69,7 +69,6 @@ export default function ExternaPage() {
   const [paso, setPaso] = useState<Paso>("bienvenida");
   const [respuestas, setRespuestas] = useState<Record<number, number>>({});
   const [firma, setFirma] = useState("");
-  const [firmado, setFirmado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [nota, setNota] = useState<number | null>(null);
 
@@ -122,7 +121,6 @@ export default function ExternaPage() {
       descripcion: `Trabajador completó capacitación vía enlace externo. Nota: ${notaFinal.toFixed(1)} — ${aprobado ? "Aprobado" : "Reprobado"}`,
     });
 
-    setFirmado(true);
     setPaso("completado");
     setEnviando(false);
   }
@@ -176,7 +174,7 @@ export default function ExternaPage() {
       <div className="max-w-lg mx-auto space-y-5">
         {/* Brand header */}
         <div className="text-center pt-4 pb-2">
-          <span className="text-sm font-semibold tracking-widest text-cyan-600 uppercase">PREVANTIA</span>
+          <span className="text-sm font-semibold tracking-widest text-cyan-600 uppercase">NEXTPREV</span>
           <p className="text-xs text-slate-400 mt-0.5">Sistema de Gestión de Prevención</p>
         </div>
 
@@ -373,7 +371,7 @@ export default function ExternaPage() {
           </div>
         )}
 
-        <p className="text-center text-xs text-slate-300 pb-6">PREVANTIA © 2026 · Gestión de Prevención de Riesgos</p>
+        <p className="text-center text-xs text-slate-300 pb-6">NEXTPREV © 2026 · Gestión de Prevención de Riesgos</p>
       </div>
     </div>
   );

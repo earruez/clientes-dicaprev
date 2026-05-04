@@ -30,19 +30,19 @@ export default function EditCellModal({
   courses,
   onSave,
 }: Props) {
-  if (!selectedCell) return null;
-
-  const role = roles.find((r) => r.id === selectedCell.roleId);
-  const course = courses.find((c) => c.id === selectedCell.courseId);
-
-  const [local, setLocal] = React.useState<Requirement>(selectedCell);
+  const [local, setLocal] = React.useState<Requirement | null>(selectedCell);
 
   React.useEffect(() => {
     setLocal(selectedCell);
   }, [selectedCell]);
 
+  if (!selectedCell || !local) return null;
+
+  const role = roles.find((r) => r.id === selectedCell.roleId);
+  const course = courses.find((c) => c.id === selectedCell.courseId);
+
   const handleChangeStatus = (value: TrainingStatus) => {
-    setLocal((prev) => ({ ...prev, status: value }));
+    setLocal((prev) => (prev ? { ...prev, status: value } : prev));
   };
 
   return (
@@ -91,7 +91,7 @@ export default function EditCellModal({
                 placeholder="dd-mm-aaaa"
                 value={local.ultimaFecha || ""}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setLocal((prev) => ({ ...prev, ultimaFecha: e.target.value }))
+                  setLocal((prev) => (prev ? { ...prev, ultimaFecha: e.target.value } : prev))
                 }
                 className="h-9 text-xs"
               />
@@ -102,7 +102,7 @@ export default function EditCellModal({
                 placeholder="dd-mm-aaaa"
                 value={local.proximaFecha || ""}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setLocal((prev) => ({ ...prev, proximaFecha: e.target.value }))
+                  setLocal((prev) => (prev ? { ...prev, proximaFecha: e.target.value } : prev))
                 }
                 className="h-9 text-xs"
               />

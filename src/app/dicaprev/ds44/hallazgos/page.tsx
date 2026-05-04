@@ -21,7 +21,8 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Upload } from "lucide-react";
+import { Search, Plus, Upload, AlertTriangle } from "lucide-react";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 type EstadoHallazgo = "Abierto" | "En progreso" | "Cerrado";
 type ModalMode = "create" | "edit";
@@ -59,7 +60,7 @@ interface HallazgoForm {
 }
 
 // Simulación de usuario actual y rol (luego se conectará a Firestore/Auth)
-const currentUserName = "Prevencionista PREVANTIA";
+const currentUserName = "Prevencionista NEXTPREV";
 const userRole: UserRole = "admin"; // "admin" | "supervisor" | "prevencionista"
 const canReabrir = userRole === "admin" || userRole === "supervisor";
 
@@ -77,7 +78,7 @@ const hallazgosMock: Hallazgo[] = [
     historial: [
       {
         fecha: "2025-11-10T10:00:00Z",
-        usuario: "Prevencionista PREVANTIA",
+        usuario: "Prevencionista NEXTPREV",
         accion: "Creación de hallazgo",
       },
     ],
@@ -95,7 +96,7 @@ const hallazgosMock: Hallazgo[] = [
     historial: [
       {
         fecha: "2025-11-09T09:30:00Z",
-        usuario: "Prevencionista PREVANTIA",
+        usuario: "Prevencionista NEXTPREV",
         accion: "Creación de hallazgo",
       },
       {
@@ -324,26 +325,21 @@ export default function HallazgosDS44Page() {
   return (
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="max-w-6xl mx-auto space-y-8 px-4 lg:px-0">
-        {/* ENCABEZADO */}
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-              Hallazgos DS44
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Control y seguimiento centralizado de los hallazgos detectados en
-              tus centros de trabajo.
-            </p>
-          </div>
-
-          <Button
-            onClick={abrirNuevo}
-            className="hidden sm:inline-flex bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo hallazgo
-          </Button>
-        </header>
+        <StandardPageHeader
+          moduleLabel="DS44"
+          title="Hallazgos DS44"
+          description="Control y seguimiento centralizado de los hallazgos detectados en tus centros de trabajo."
+          icon={AlertTriangle}
+          actions={
+            <Button
+              onClick={abrirNuevo}
+              className="hidden sm:inline-flex bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo hallazgo
+            </Button>
+          }
+        />
 
         {/* FILTROS */}
         <Card className="border-none shadow-sm bg-white">

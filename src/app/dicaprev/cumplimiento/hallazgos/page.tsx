@@ -3,7 +3,6 @@
 import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +51,7 @@ import type {
   HistorialHallazgo,
 } from "../types";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
   evaluarObligaciones,
   generarHallazgosDesdeEvaluaciones,
@@ -719,8 +719,8 @@ export default function HallazgosPage() {
         prioridad: data.prioridad,
         fechaCompromiso: data.fechaCompromiso,
         fechaCreacion: ahora,
-        creadoPor: "Prevencionista PREVANTIA",
-        historial: [{ fecha: ahora, usuario: "Prevencionista PREVANTIA", accion: "Creación de hallazgo" }],
+        creadoPor: "Prevencionista NEXTPREV",
+        historial: [{ fecha: ahora, usuario: "Prevencionista NEXTPREV", accion: "Creación de hallazgo" }],
         evidenciaIds: [],
       };
       setHallazgos((prev) => [nuevo, ...prev]);
@@ -737,7 +737,7 @@ export default function HallazgosPage() {
           if (h.id !== editId) return h;
           const historial: HistorialHallazgo[] = [
             ...h.historial,
-            { fecha: ahora, usuario: "Prevencionista PREVANTIA", accion: "Edición de hallazgo" },
+            { fecha: ahora, usuario: "Prevencionista NEXTPREV", accion: "Edición de hallazgo" },
           ];
           return {
             ...h,
@@ -784,7 +784,7 @@ export default function HallazgosPage() {
             ...h.historial,
             {
               fecha: ahora,
-              usuario: "Prevencionista PREVANTIA",
+              usuario: "Prevencionista NEXTPREV",
               accion,
               detalle: comentario.trim() || `${accion} sin comentario adicional.`,
             },
@@ -806,33 +806,30 @@ export default function HallazgosPage() {
   return (
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-6xl space-y-8 px-4 lg:px-0">
-        {/* ---- header ---- */}
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-              Hallazgos DS44
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Incumplimientos detectados que requieren acción correctiva. Cada hallazgo debe tener responsable y fecha compromiso asignados.
-            </p>
-          </div>
-          <div className="hidden sm:flex items-center gap-2">
-            <Link
-              href="/dicaprev/cumplimiento/plan-trabajo"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
-            >
-              <ClipboardList className="h-3.5 w-3.5" />
-              Plan de trabajo
-            </Link>
-            <Button
-              onClick={abrirNuevo}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Nuevo hallazgo
-            </Button>
-          </div>
-        </header>
+        <StandardPageHeader
+          moduleLabel="Cumplimiento DS44"
+          title="Hallazgos DS44"
+          description="Incumplimientos detectados que requieren acción correctiva. Cada hallazgo debe tener responsable y fecha compromiso asignados."
+          icon={AlertTriangle}
+          actions={
+            <div className="hidden sm:flex items-center gap-2">
+              <Link
+                href="/dicaprev/cumplimiento/plan-trabajo"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+                Plan de trabajo
+              </Link>
+              <Button
+                onClick={abrirNuevo}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Nuevo hallazgo
+              </Button>
+            </div>
+          }
+        />
 
         {/* ── Banner críticos ── */}
         {criticos > 0 && (

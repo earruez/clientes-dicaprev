@@ -713,7 +713,7 @@ export default function TabAsignaciones() {
           </DialogHeader>
           <div className="space-y-3 pt-1">
             <div className="bg-emerald-50 rounded-xl border border-emerald-100 p-4 text-center space-y-1">
-              <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wide">PREVANTIA — Certificado SST</p>
+              <p className="text-xs text-emerald-600 font-semibold uppercase tracking-wide">NEXTPREV — Certificado SST</p>
               <p className="text-sm font-semibold text-slate-800">{modalCert?.nombre}</p>
               <p className="text-xs text-slate-500 font-mono mt-2">{modalCert?.certId}</p>
             </div>

@@ -855,7 +855,7 @@ export default function DocumentosGeneralesPage() {
               </div>
               <p className="mt-2 text-[10px] text-slate-400">
                 Al eliminar una categoría, sus documentos quedarán como
-                <span className="font-semibold"> "Sin categoría"</span>.
+                <span className="font-semibold"> &quot;Sin categoría&quot;</span>.
               </p>
             </div>
           </div>

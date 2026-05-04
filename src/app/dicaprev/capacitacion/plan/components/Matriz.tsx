@@ -29,7 +29,7 @@ type MatrizProps = {
 export default function Matriz({
   roles,
   cursosFiltrados,
-  requirements,
+  requirements: _requirements,
   filtroCritico,
   onChangeFiltroCritico,
   search,
@@ -38,6 +38,8 @@ export default function Matriz({
   onCellClick,
   onCellDoubleClick,
 }: MatrizProps) {
+  void _requirements;
+
   return (
     <Card className="border-slate-200 shadow-md rounded-2xl overflow-hidden">
       <div className="border-b border-slate-100 bg-slate-50/80 px-4 py-3 space-y-3">

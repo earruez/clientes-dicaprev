@@ -114,6 +114,7 @@ export function WorkerForm({ worker, isOpen, onClose, onSave }: WorkerFormProps)
     if (!isOpen) return;
     if (worker) {
       const { id, ...rest } = worker;
+      void id;
       setForm(rest);
     } else {
       setForm(EMPTY);

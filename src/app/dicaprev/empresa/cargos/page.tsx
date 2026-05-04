@@ -23,6 +23,7 @@ import {
   type CargoEstado,
   type CargoTipoUI,
 } from "@/lib/empresa/empresa-store";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 /* ─────────────────────────────────────────────
    TYPES
@@ -208,29 +209,24 @@ export default function CargosPage() {
 
   return (
     <div className="w-full min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8 space-y-8">
+      <div className="py-10 space-y-8">
 
-        {/* ── HEADER ── */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2.5 mb-1">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600 shadow-sm">
-                <BookOpen className="h-5 w-5 text-white" />
-              </div>
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900">Cargos</h1>
-            </div>
-            <p className="text-sm text-slate-500 max-w-xl pl-[52px]">
-              Catálogo maestro de roles del sistema. Define qué exige cada cargo en términos de perfil, riesgos, documentación obligatoria y capacitaciones base.
-            </p>
-          </div>
-          <button
-            onClick={openCreate}
-            className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 hover:shadow-md"
-          >
-            <Plus className="h-4 w-4" />
-            Nuevo cargo
-          </button>
-        </div>
+        <StandardPageHeader
+          moduleLabel="Módulo Empresa"
+          title="Cargos"
+          description="Catálogo maestro de roles del sistema. Define qué exige cada cargo en términos de perfil, riesgos, documentación obligatoria y capacitaciones base."
+          icon={<BookOpen className="h-6 w-6" />}
+          iconWrapClassName="bg-violet-700"
+          actions={
+            <button
+              onClick={openCreate}
+              className="inline-flex shrink-0 items-center gap-2 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 hover:shadow-md"
+            >
+              <Plus className="h-4 w-4" />
+              Nuevo cargo
+            </button>
+          }
+        />
 
         {/* ── KPIs ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">

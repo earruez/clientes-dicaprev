@@ -12,6 +12,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { generarAlertas } from "@/lib/alertas";
 import type { AlertaTipo, Notificacion } from "@/lib/alertas";
 
@@ -96,32 +97,23 @@ export default function Page() {
   return (
     <div className="max-w-3xl space-y-5">
 
-      {/* Encabezado */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900">
-            <Bell className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Notificaciones</h1>
-            <p className="text-xs text-slate-500">
-              {noLeidas > 0
-                ? `${noLeidas} sin leer`
-                : "Todas leídas"}
-            </p>
-          </div>
-        </div>
-
-        {noLeidas > 0 && (
-          <button
-            onClick={marcarTodasLeidas}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
-          >
-            <CheckCheck className="h-3.5 w-3.5" />
-            Marcar todas como leídas
-          </button>
-        )}
-      </div>
+      <StandardPageHeader
+        moduleLabel="Sistema"
+        title="Notificaciones"
+        description={noLeidas > 0 ? `${noLeidas} sin leer` : "Todas leídas"}
+        icon={Bell}
+        actions={
+          noLeidas > 0 ? (
+            <button
+              onClick={marcarTodasLeidas}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              Marcar todas como leídas
+            </button>
+          ) : null
+        }
+      />
 
       {/* Filtros */}
       <div className="flex flex-wrap gap-2">

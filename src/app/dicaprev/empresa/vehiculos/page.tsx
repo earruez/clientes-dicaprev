@@ -25,6 +25,7 @@ import {
   type TipoVehiculo, type EstadoVehiculo, type EstadoDocumental,
 } from "@/lib/vehiculos/vehiculos-store";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 // ── Config visual ─────────────────────────────────────────────────────────
 
@@ -117,8 +118,20 @@ export default function VehiculosPage() {
   }
 
   function abrirEditar(v: Vehiculo) {
-    const { id: _id, creadoEl: _c, documentos: _d, ...rest } = v;
-    setForm(rest);
+    setForm({
+      patente: v.patente,
+      codigoInterno: v.codigoInterno,
+      marca: v.marca,
+      modelo: v.modelo,
+      anio: v.anio,
+      tipo: v.tipo,
+      centro: v.centro,
+      responsable: v.responsable,
+      estado: v.estado,
+      proximaRevision: v.proximaRevision,
+      kilometraje: v.kilometraje,
+      observaciones: v.observaciones,
+    });
     setModal({ open: true, modo: "editar", id: v.id });
   }
 
@@ -173,30 +186,26 @@ export default function VehiculosPage() {
   return (
     <div className="min-h-screen bg-slate-50/60">
 
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-6 py-6">
-        <div className="max-w-screen-xl mx-auto flex items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="h-12 w-12 rounded-2xl bg-slate-900 flex items-center justify-center shrink-0">
-              <Car className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1">Empresa</p>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Vehículos y Equipos</h1>
-              <p className="text-sm text-slate-500 mt-1">Flota vehicular y maquinaria con control documental integrado.</p>
-            </div>
-          </div>
-          <Button
-            onClick={abrirCrear}
-            className="h-10 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium shrink-0"
-          >
-            <Plus className="h-4 w-4 mr-1.5" />
-            Nuevo vehículo / equipo
-          </Button>
-        </div>
+      <div className="px-6 pt-2">
+        <StandardPageHeader
+          moduleLabel="Módulo Empresa"
+          title="Vehículos y equipos"
+          description="Flota vehicular y maquinaria con control documental integrado."
+          icon={<Car className="h-6 w-6" />}
+          iconWrapClassName="bg-slate-900"
+          actions={
+            <Button
+              onClick={abrirCrear}
+              className="h-10 px-5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium shrink-0"
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              Nuevo vehículo / equipo
+            </Button>
+          }
+        />
       </div>
 
-      <div className="max-w-screen-xl mx-auto px-6 py-6 space-y-5">
+      <div className="py-6 space-y-5">
 
         {/* KPIs */}
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">

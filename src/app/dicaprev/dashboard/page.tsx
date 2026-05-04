@@ -21,7 +21,6 @@ import {
 import {
   ACREDITACIONES_MOCK,
   HISTORIAL_GESTION_MOCK,
-  VEHICULOS_MOCK,
 } from "../acreditaciones/mock-data";
 import { MOCK_WORKERS } from "@/components/trabajadores-v2/types";
 import {
@@ -177,26 +176,10 @@ function colorText(pct: number) {
     ? "text-amber-600"
     : "text-rose-600";
 }
-function colorStroke(pct: number) {
-  return pct >= 80 ? "stroke-emerald-400" : pct >= 50 ? "stroke-amber-400" : "stroke-rose-400";
-}
-function colorTextLight(pct: number) {
-  return pct >= 80 ? "text-emerald-300" : pct >= 50 ? "text-amber-300" : "text-rose-300";
-}
 
 /* ─── Ranking de riesgo general ────────────────────────────── */
 
 type NivelRiesgo = "ok" | "atencion" | "critico";
-
-const factoresRiesgo = [
-  { label: "Docs trabajadores",     valor: sinDocCompleta,         severo: sinDocCompleta > 5 },
-  { label: "Obligaciones DS44",     valor: oblCriticasIncumplidas, severo: oblCriticasIncumplidas > 2 },
-  { label: "Vehículos",             valor: vehiculosConProblema,   severo: vehiculosConProblema > 1 },
-  { label: "Hallazgos críticos",    valor: pendientesCriticos,     severo: pendientesCriticos > 2 },
-  { label: "Acred. rechazadas",     valor: rechazadas,             severo: rechazadas > 1 },
-];
-
-const factoresConBrecha = factoresRiesgo.filter((f) => f.valor > 0).length;
 
 const RIESGO_CONFIG: Record<NivelRiesgo, {
   bg: string; iconBg: string; iconColor: string;
@@ -445,7 +428,7 @@ export default function Page() {
           {/* Texto */}
           <div className="flex-1">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-slate-500">
-              Panel Gerencial · PREVANTIA
+              Panel Gerencial · NEXTPREV
             </p>
             <h1 className="text-2xl font-bold text-white md:text-3xl">
               MVP CHILE SPA
