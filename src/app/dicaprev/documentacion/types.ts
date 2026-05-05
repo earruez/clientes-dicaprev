@@ -3,7 +3,8 @@ export type CategoriaDocumento =
   | "laborales_previsionales"
   | "sst"
   | "mutualidad_ley_16744"
-  | "protocolos";
+  | "protocolos"
+  | "plantillas_formatos";
 
 export type EstadoDocumento =
   | "vigente"
@@ -12,15 +13,28 @@ export type EstadoDocumento =
   | "pendiente_carga"
   | "en_revision"
   | "reemplazado"
-  | "no_aplica";
+  | "no_aplica"
+  | "Vigente"
+  | "Por vencer"
+  | "Vencido"
+  | "Pendiente de carga"
+  | "En revisión"
+  | "Reemplazado"
+  | "No aplica";
 
 export type HistorialDocumento = {
   id: string;
   fecha: string;
   usuario: string;
   usuarioEmail: string;
-  accion: "Documento cargado" | "Documento reemplazado" | "Estado actualizado" | "Vencimiento actualizado" | "Observación agregada" | "Metadatos actualizados" | "Marcado como no aplica";
+  accion: string;
   detalle: string;
+  version?: string | null;
+  archivoNombre?: string | null;
+  archivoNombreOriginal?: string | null;
+  archivoUrl?: string | null;
+  archivoTipo?: string | null;
+  archivoPeso?: number | null;
 };
 
 export type DocumentoEmpresa = {
@@ -33,6 +47,7 @@ export type DocumentoEmpresa = {
   fechaVencimiento: string | null;
   tieneVencimiento: boolean;
   archivoNombre: string | null;
+  archivoNombreOriginal?: string | null;
   archivoUrl: string | null;
   archivoPeso: number | null;
   archivoTipo: string | null;
@@ -44,6 +59,36 @@ export type DocumentoEmpresa = {
   fechaActualizacion: string;
   observaciones: string;
   historial: HistorialDocumento[];
+};
+
+export type DocumentoMatrizRow = {
+  id: string;
+  documentoRequeridoId: string | null;
+  documentoEmpresaId: string | null;
+  nombre: string;
+  categoria: CategoriaDocumento;
+  descripcion: string;
+  obligatorio: boolean;
+  estado: EstadoDocumento;
+  vigencia: string;
+  ultimoArchivo: string | null;
+  version: string | null;
+  subidoPor: string | null;
+  subidoPorEmail: string | null;
+  fechaSubida: string | null;
+  fechaActualizacion: string | null;
+  archivoNombre: string | null;
+  archivoNombreOriginal?: string | null;
+  archivoUrl: string | null;
+  archivoTipo: string | null;
+  archivoPeso: number | null;
+  tipo: string;
+  fechaEmision: string;
+  fechaVencimiento: string | null;
+  tieneVencimiento: boolean;
+  observaciones: string;
+  historial: HistorialDocumento[];
+  esAdicional: boolean;
 };
 
 export type TabDocumentacion = "todos" | CategoriaDocumento | "historial";

@@ -21,7 +21,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   return (
-    <div className="flex min-h-screen bg-slate-950">
+    <div className="flex h-screen overflow-hidden bg-[#f5f7ff]">
       <Sidebar />
       <div className="flex flex-1 flex-col">
         {/* Topbar */}

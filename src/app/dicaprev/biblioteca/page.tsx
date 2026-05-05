@@ -57,9 +57,9 @@ export default function BibliotecaPage() {
           <BookOpen className="h-5 w-5 text-violet-600" />
         </div>
         <div>
-          <h1 className="text-xl font-semibold text-slate-800">Biblioteca Documental</h1>
+          <h1 className="text-xl font-semibold text-slate-800">Biblioteca documental</h1>
           <p className="text-sm text-slate-500">
-            Repositorio de documentos de la empresa reutilizables en acreditaciones.
+            Plantillas, formatos y documentos base reutilizables para procesos internos, trabajadores, cumplimiento y acreditaciones.
           </p>
         </div>
       </div>

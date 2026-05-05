@@ -40,6 +40,7 @@ export default function Filtros({ filtros, onChangeFiltros }: FiltrosProps) {
               <SelectItem value="sst">Seguridad y salud en el trabajo</SelectItem>
               <SelectItem value="mutualidad_ley_16744">Mutualidad / Ley 16.744</SelectItem>
               <SelectItem value="protocolos">Protocolos</SelectItem>
+              <SelectItem value="plantillas_formatos">Plantillas y formatos</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -52,13 +53,13 @@ export default function Filtros({ filtros, onChangeFiltros }: FiltrosProps) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="vigente">Vigente</SelectItem>
-              <SelectItem value="por_vencer">Por vencer</SelectItem>
-              <SelectItem value="vencido">Vencido</SelectItem>
-              <SelectItem value="pendiente_carga">Pendiente de carga</SelectItem>
-              <SelectItem value="en_revision">En revisión</SelectItem>
-              <SelectItem value="reemplazado">Reemplazado</SelectItem>
-              <SelectItem value="no_aplica">No aplica</SelectItem>
+              <SelectItem value="Vigente">Vigente</SelectItem>
+              <SelectItem value="Por vencer">Por vencer</SelectItem>
+              <SelectItem value="Vencido">Vencido</SelectItem>
+              <SelectItem value="Pendiente de carga">Pendiente de carga</SelectItem>
+              <SelectItem value="En revisión">En revisión</SelectItem>
+              <SelectItem value="Reemplazado">Reemplazado</SelectItem>
+              <SelectItem value="No aplica">No aplica</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -36,7 +36,8 @@ model Empresa {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  usuarios    Usuario[]
+  usuarios            Usuario[]
+  documentosEmpresa   DocumentoEmpresa[]
 }
 
 model Usuario {
@@ -48,5 +49,74 @@ model Usuario {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  empresa   Empresa? @relation(fields: [empresaId], references: [id])
+  empresa               Empresa?                      @relation(fields: [empresaId], references: [id])
+  documentosSubidos     DocumentoEmpresa[]            @relation("UsuarioDocumentosSubidos")
+  documentosHistorial   DocumentoEmpresaHistorial[]   @relation("UsuarioDocumentoHistorial")
+}
+
+model DocumentoEmpresa {
+  id               String    @id @default(uuid())
+  nombre           String
+  categoria        String
+  tipo             String?
+  estado           String
+  version          String    @default("1.0")
+  archivoNombre    String?
+  archivoNombreOriginal String?
+  archivoUrl       String?
+  archivoTipo      String?
+  archivoPeso      Int?
+  tieneVencimiento Boolean   @default(false)
+  fechaEmision     DateTime?
+  fechaVencimiento DateTime?
+  observaciones    String?
+  empresaId        String
+  subidoPorId      String
+  documentoRequeridoId String?
+  creadoPorEmail   String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  empresa            Empresa                     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  subidoPor          Usuario                     @relation("UsuarioDocumentosSubidos", fields: [subidoPorId], references: [id])
+  documentoRequerido DocumentoRequeridoEmpresa? @relation(fields: [documentoRequeridoId], references: [id])
+  historial          DocumentoEmpresaHistorial[]
+}
+
+model DocumentoRequeridoEmpresa {
+  id                    String            @id @default(uuid())
+  nombre                String
+  categoria             String
+  descripcion           String
+  obligatorio           Boolean           @default(true)
+  aplicaDesdeTrabajadores Int?
+  aplicaHastaTrabajadores Int?
+  requiereVencimiento   Boolean           @default(false)
+  periodicidadMeses     Int?
+  activo                Boolean           @default(true)
+  orden                 Int
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  documentos            DocumentoEmpresa[]
+
+  @@unique([nombre, categoria])
+}
+
+model DocumentoEmpresaHistorial {
+  id          String   @id @default(uuid())
+  documentoId String
+  usuarioId   String?
+  accion      String
+  detalle     String?
+  version     String?
+  archivoNombre String?
+  archivoNombreOriginal String?
+  archivoUrl  String?
+  archivoTipo String?
+  archivoPeso Int?
+  createdAt   DateTime @default(now())
+
+  documento  DocumentoEmpresa @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  usuario    Usuario?         @relation("UsuarioDocumentoHistorial", fields: [usuarioId], references: [id])
 }

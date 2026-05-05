@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Building2, CalendarClock, FileSearch, FileText, FolderKanban, ShieldCheck, Upload } from "lucide-react";
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarClock, FileSearch, FileText, FolderKanban, ShieldCheck, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,10 +22,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CategoriaDocumento, DocumentoEmpresa, EstadoDocumento, TabDocumentacion } from "./types";
+import type { CategoriaDocumento, DocumentoMatrizRow, EstadoDocumento, TabDocumentacion } from "./types";
 import { useDocumentos } from "./hooks/useDocumentos";
 import TableView from "./components/TableView";
 import Filtros from "./components/Filtros";
+import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE, formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
+
+type ArchivoSubido = {
+  archivoNombre: string;
+  archivoNombreOriginal: string;
+  archivoUrl: string;
+  archivoTipo: string | null;
+  archivoPeso: number;
+};
 
 export default function DocumentacionPage() {
   const {
@@ -41,51 +51,52 @@ export default function DocumentacionPage() {
     replaceDocumentoArchivo,
     updateDocumentoMetadatos,
     marcarDocumentoNoAplica,
+    marcarDocumentoAplica,
+    restaurarDocumentoVersion,
   } = useDocumentos();
 
-  const [openUpload, setOpenUpload] = useState(false);
-  const [openNewCategory, setOpenNewCategory] = useState(false);
-  const [openRequiredConfig, setOpenRequiredConfig] = useState(false);
+  const [openAdditional, setOpenAdditional] = useState(false);
   const [openReplace, setOpenReplace] = useState(false);
   const [openHistory, setOpenHistory] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
   const [openView, setOpenView] = useState(false);
-  const [selectedDoc, setSelectedDoc] = useState<DocumentoEmpresa | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<DocumentoMatrizRow | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [infoType, setInfoType] = useState<"success" | "error">("success");
+  const infoDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [uploadForm, setUploadForm] = useState({
+  function showInfo(message: string, type: "success" | "error" = "success") {
+    if (infoDismissRef.current) clearTimeout(infoDismissRef.current);
+    setInfoMessage(message);
+    setInfoType(type);
+    infoDismissRef.current = setTimeout(() => setInfoMessage(null), 5000);
+  }
+
+  const [additionalForm, setAdditionalForm] = useState({
     nombre: "",
     categoria: "legales_empresa" as CategoriaDocumento,
     tipo: "",
+    archivoNombre: "",
     fechaEmision: "",
     fechaVencimiento: "",
     tieneVencimiento: true,
     observaciones: "",
-    estado: "vigente" as EstadoDocumento,
+    estado: "Pendiente de carga" as EstadoDocumento,
     version: "1.0",
   });
-  const [replaceForm, setReplaceForm] = useState({ version: "", observaciones: "" });
-  const [newCategoryForm, setNewCategoryForm] = useState({ nombre: "", descripcion: "", grupo: "legales_empresa" });
-  const [customCategories, setCustomCategories] = useState<Array<{ id: string; nombre: string; descripcion: string; grupo: string }>>([]);
-  const [requiredDocsConfig, setRequiredDocsConfig] = useState([
-    { id: "rq-1", nombre: "Escritura / constitución de empresa", categoria: "Legales empresa", requerido: true },
-    { id: "rq-2", nombre: "Inicio de actividades", categoria: "Legales empresa", requerido: true },
-    { id: "rq-3", nombre: "Certificado F30-1", categoria: "Laborales y previsionales", requerido: true },
-    { id: "rq-4", nombre: "Certificado F30", categoria: "Laborales y previsionales", requerido: true },
-    { id: "rq-5", nombre: "Reglamento Interno de Orden, Higiene y Seguridad", categoria: "Seguridad y salud en el trabajo", requerido: true },
-    { id: "rq-6", nombre: "Matriz IPER", categoria: "Seguridad y salud en el trabajo", requerido: true },
-    { id: "rq-7", nombre: "Plan anual de prevención", categoria: "Seguridad y salud en el trabajo", requerido: true },
-    { id: "rq-8", nombre: "Certificado de afiliación Ley 16.744", categoria: "Mutualidad / Ley 16.744", requerido: true },
-    { id: "rq-9", nombre: "Tasa de cotización adicional", categoria: "Mutualidad / Ley 16.744", requerido: true },
-    { id: "rq-10", nombre: "Protocolo psicosocial", categoria: "Protocolos", requerido: true },
-  ]);
 
-  const uploadFileRef = useRef<HTMLInputElement>(null);
-  const replaceFileRef = useRef<HTMLInputElement>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [replaceForm, setReplaceForm] = useState({
+    version: "",
+    observaciones: "",
+  });
+  const [additionalFile, setAdditionalFile] = useState<File | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [replacePreviewUrl, setReplacePreviewUrl] = useState<string | null>(null);
+  const [historyBusyId, setHistoryBusyId] = useState<string | null>(null);
+  const replaceInputRef = useRef<HTMLInputElement | null>(null);
 
-  const hasActiveFilters = filtros.estado !== "todos" || filtros.search.trim() !== "";
   const tabs: Array<{ key: TabDocumentacion; label: string }> = [
     { key: "todos", label: "Todos" },
     { key: "legales_empresa", label: "Legales empresa" },
@@ -93,15 +104,84 @@ export default function DocumentacionPage() {
     { key: "sst", label: "Seguridad y salud en el trabajo" },
     { key: "mutualidad_ley_16744", label: "Mutualidad / Ley 16.744" },
     { key: "protocolos", label: "Protocolos" },
+    { key: "plantillas_formatos", label: "Plantillas y formatos" },
     { key: "historial", label: "Historial" },
   ];
-
-  const dataTable = tabActiva === "historial" ? documentos : filtrados;
 
   const selectedHistory = useMemo(() => {
     if (!selectedDoc) return [];
     return [...selectedDoc.historial].sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [selectedDoc]);
+
+  const selectedVersiones = useMemo(() => {
+    if (!selectedDoc) return [];
+
+    const currentKey = [selectedDoc.version ?? "", selectedDoc.archivoUrl ?? "", selectedDoc.archivoNombre ?? ""].join("::");
+    const historicos = new Map<string, {
+      id: string;
+      isCurrent: false;
+      fecha: string;
+      version: string | null;
+      archivoUrl: string | null;
+      archivoNombre: string | null;
+      archivoNombreOriginal: string | null;
+      archivoTipo: string | null;
+      archivoPeso: number | null;
+      detalle: string;
+    }>();
+
+    for (const item of selectedHistory) {
+      if (!item.archivoUrl) continue;
+      const key = [item.version ?? "", item.archivoUrl ?? "", item.archivoNombre ?? ""].join("::");
+      if (key === currentKey || historicos.has(key)) continue;
+      historicos.set(key, {
+        id: item.id,
+        isCurrent: false,
+        fecha: item.fecha,
+        version: item.version ?? null,
+        archivoUrl: item.archivoUrl ?? null,
+        archivoNombre: item.archivoNombre ?? null,
+        archivoNombreOriginal: item.archivoNombreOriginal ?? null,
+        archivoTipo: item.archivoTipo ?? null,
+        archivoPeso: item.archivoPeso ?? null,
+        detalle: item.detalle,
+      });
+    }
+
+    return [
+      {
+        id: `current-${selectedDoc.id}`,
+        isCurrent: true as const,
+        fecha: selectedDoc.fechaActualizacion ?? selectedDoc.fechaSubida ?? new Date().toISOString(),
+        version: selectedDoc.version,
+        archivoUrl: selectedDoc.archivoUrl,
+        archivoNombre: selectedDoc.archivoNombre,
+        archivoNombreOriginal: selectedDoc.archivoNombreOriginal ?? null,
+        archivoTipo: selectedDoc.archivoTipo,
+        archivoPeso: selectedDoc.archivoPeso,
+        detalle: "Versión vigente del documento.",
+      },
+      ...Array.from(historicos.values()).sort((a, b) => b.fecha.localeCompare(a.fecha)),
+    ];
+  }, [selectedDoc, selectedHistory]);
+
+  useEffect(() => {
+    if (!replaceFile) {
+      setReplacePreviewUrl(null);
+      return;
+    }
+    const nextUrl = URL.createObjectURL(replaceFile);
+    setReplacePreviewUrl(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [replaceFile]);
+
+  const hasActiveFilters =
+    filtros.categoria !== "todas" ||
+    filtros.estado !== "todos" ||
+    filtros.vigencia !== "todas" ||
+    filtros.search.trim() !== "" ||
+    filtros.subidoPor.trim() !== "" ||
+    filtros.fechaSubida.trim() !== "";
 
   function categoryLabel(value: CategoriaDocumento) {
     return {
@@ -110,88 +190,120 @@ export default function DocumentacionPage() {
       sst: "Seguridad y salud en el trabajo",
       mutualidad_ley_16744: "Mutualidad / Ley 16.744",
       protocolos: "Protocolos",
+      plantillas_formatos: "Plantillas y formatos",
     }[value];
   }
 
-  function handleUpload() {
-    if (!uploadFile || !uploadForm.nombre.trim() || !uploadForm.categoria) {
-      setInfoMessage("Debes completar nombre, categoría y archivo.");
+  async function handleCreateAdditional() {
+    if (!additionalForm.nombre.trim()) {
+      showInfo("Debes completar el nombre del documento adicional.", "error");
       return;
     }
-    if (uploadForm.tieneVencimiento && !uploadForm.fechaVencimiento) {
-      setInfoMessage("Si el documento tiene vencimiento, debes ingresar la fecha de vencimiento.");
-      return;
-    }
-
-    const ok = addDocumento({
-      nombre: uploadForm.nombre,
-      categoria: uploadForm.categoria,
-      tipo: uploadForm.tipo,
-      archivo: uploadFile,
-      fechaEmision: uploadForm.fechaEmision,
-      fechaVencimiento: uploadForm.tieneVencimiento ? uploadForm.fechaVencimiento : null,
-      tieneVencimiento: uploadForm.tieneVencimiento,
-      observaciones: uploadForm.observaciones,
-      estado: uploadForm.estado,
-      version: uploadForm.version,
-    });
-
-    if (!ok) {
-      setInfoMessage("No se pudo guardar el documento. Revisa los datos requeridos.");
+    if (additionalForm.tieneVencimiento && !additionalForm.fechaVencimiento) {
+      showInfo("Si el documento tiene vencimiento, debes ingresar la fecha de vencimiento.", "error");
       return;
     }
 
-    setInfoMessage("Documento cargado correctamente con trazabilidad registrada.");
-    setOpenUpload(false);
-    setUploadForm({
-      nombre: "",
-      categoria: "legales_empresa",
-      tipo: "",
-      fechaEmision: "",
-      fechaVencimiento: "",
-      tieneVencimiento: true,
-      observaciones: "",
-      estado: "vigente",
-      version: "1.0",
-    });
-    setUploadFile(null);
-    if (uploadFileRef.current) uploadFileRef.current.value = "";
+    setIsSubmitting(true);
+
+    try {
+      const archivoSubido = additionalFile ? await subirArchivo(additionalFile) : null;
+
+      const ok = await addDocumento({
+        nombre: additionalForm.nombre,
+        categoria: additionalForm.categoria,
+        tipo: additionalForm.tipo,
+        archivoNombre: archivoSubido?.archivoNombre,
+        archivoNombreOriginal: archivoSubido?.archivoNombreOriginal,
+        archivoUrl: archivoSubido?.archivoUrl,
+        archivoTipo: archivoSubido?.archivoTipo,
+        archivoPeso: archivoSubido?.archivoPeso ?? null,
+        fechaEmision: additionalForm.fechaEmision,
+        fechaVencimiento: additionalForm.tieneVencimiento ? additionalForm.fechaVencimiento : null,
+        tieneVencimiento: additionalForm.tieneVencimiento,
+        observaciones: additionalForm.observaciones,
+        estado: additionalForm.estado,
+        version: additionalForm.version,
+        documentoRequeridoId: null,
+      });
+
+      if (!ok) {
+        showInfo("No se pudo guardar el documento adicional.", "error");
+        return;
+      }
+
+      showInfo("Documento adicional creado correctamente.", "success");
+      setOpenAdditional(false);
+      setAdditionalFile(null);
+      setAdditionalForm({
+        nombre: "",
+        categoria: "legales_empresa",
+        tipo: "",
+        archivoNombre: "",
+        fechaEmision: "",
+        fechaVencimiento: "",
+        tieneVencimiento: true,
+        observaciones: "",
+        estado: "Pendiente de carga",
+        version: "1.0",
+      });
+    } catch (error) {
+      showInfo(error instanceof Error ? error.message : "No se pudo cargar el archivo.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  function handleDownload(doc: DocumentoEmpresa) {
-    if (!doc.archivoUrl) {
-      setInfoMessage("Este documento no tiene archivo cargado.");
+  async function handleReplace() {
+    if (!selectedDoc) {
+      showInfo("Selecciona un documento para cargar/reemplazar.", "error");
       return;
     }
-    window.open(doc.archivoUrl, "_blank", "noopener,noreferrer");
+
+    if (!replaceFile) {
+      showInfo("Debes seleccionar un archivo para cargar o reemplazar.", "error");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const archivoSubido = await subirArchivo(replaceFile);
+
+      const ok = await replaceDocumentoArchivo({
+        documentoId: selectedDoc.documentoEmpresaId,
+        documentoRequeridoId: selectedDoc.documentoRequeridoId,
+        archivoNombre: archivoSubido.archivoNombre,
+        archivoNombreOriginal: archivoSubido.archivoNombreOriginal,
+        archivoUrl: archivoSubido.archivoUrl,
+        archivoTipo: archivoSubido.archivoTipo,
+        archivoPeso: archivoSubido.archivoPeso,
+        version: replaceForm.version || selectedDoc.version || "1.0",
+        observaciones: replaceForm.observaciones,
+      });
+
+      if (!ok) {
+        showInfo("No se pudo registrar la carga/reemplazo.", "error");
+        return;
+      }
+
+      showInfo("Archivo subido correctamente.", "success");
+      setOpenReplace(false);
+      setReplaceFile(null);
+      setReplaceForm({ version: "", observaciones: "" });
+    } catch (error) {
+      showInfo(error instanceof Error ? error.message : "No se pudo cargar el archivo.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  function handleReplace() {
-    if (!selectedDoc || !replaceFile) {
-      setInfoMessage("Selecciona un documento y archivo para reemplazar.");
-      return;
-    }
-    const ok = replaceDocumentoArchivo({
-      documentoId: selectedDoc.id,
-      archivo: replaceFile,
-      version: replaceForm.version || selectedDoc.version,
-      observaciones: replaceForm.observaciones,
-    });
-    if (!ok) {
-      setInfoMessage("No se pudo reemplazar el archivo.");
-      return;
-    }
-    setInfoMessage("Archivo reemplazado y trazabilidad actualizada.");
-    setOpenReplace(false);
-    setReplaceFile(null);
-    setReplaceForm({ version: "", observaciones: "" });
-    if (replaceFileRef.current) replaceFileRef.current.value = "";
-  }
-
-  function handleEditMetadata() {
+  async function handleEditMetadata() {
     if (!selectedDoc) return;
-    const ok = updateDocumentoMetadatos({
-      documentoId: selectedDoc.id,
+
+    const ok = await updateDocumentoMetadatos({
+      documentoId: selectedDoc.documentoEmpresaId,
+      documentoRequeridoId: selectedDoc.documentoRequeridoId,
       nombre: selectedDoc.nombre,
       categoria: selectedDoc.categoria,
       tipo: selectedDoc.tipo,
@@ -200,61 +312,119 @@ export default function DocumentacionPage() {
       fechaVencimiento: selectedDoc.tieneVencimiento ? selectedDoc.fechaVencimiento : null,
       tieneVencimiento: selectedDoc.tieneVencimiento,
       observaciones: selectedDoc.observaciones,
-      version: selectedDoc.version,
+      version: selectedDoc.version || "1.0",
+      archivoNombre: selectedDoc.ultimoArchivo || undefined,
     });
-    setInfoMessage(ok ? "Metadatos actualizados correctamente." : "No se pudieron actualizar metadatos.");
+
+    showInfo(ok ? "Metadatos actualizados correctamente." : "No se pudieron actualizar metadatos.", ok ? "success" : "error");
     setOpenEdit(false);
   }
 
-  function openReplaceDialog(doc: DocumentoEmpresa) {
+  function handleDownload(doc: DocumentoMatrizRow) {
+    if (!doc.archivoUrl) {
+      showInfo("Descarga deshabilitada: aún no existe archivo real almacenado.", "error");
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = doc.archivoUrl;
+    link.download = doc.archivoNombreOriginal ?? doc.archivoNombre ?? "documento";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function handleDownloadHistorial(item: { archivoUrl: string | null; archivoNombreOriginal: string | null; archivoNombre: string | null }) {
+    if (!item.archivoUrl) {
+      showInfo("Esta versión histórica no tiene archivo disponible para descarga.", "error");
+      return;
+    }
+    const link = document.createElement("a");
+    link.href = item.archivoUrl;
+    link.download = item.archivoNombreOriginal ?? item.archivoNombre ?? "documento-version";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  function handleOpenDocument(doc: DocumentoMatrizRow) {
+    if (!doc.archivoUrl) {
+      showInfo("Aún no existe un archivo cargado para este documento.", "error");
+      return;
+    }
+    window.open(doc.archivoUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function handleRestoreVersion(historialId: string) {
+    if (!selectedDoc?.documentoEmpresaId) {
+      showInfo("No se encontró el documento actual para restaurar la versión.", "error");
+      return;
+    }
+
+    setHistoryBusyId(historialId);
+    try {
+      const ok = await restaurarDocumentoVersion(selectedDoc.documentoEmpresaId, historialId);
+      showInfo(ok ? "Versión histórica restaurada correctamente." : "No se pudo restaurar la versión.", ok ? "success" : "error");
+      setOpenHistory(false);
+    } catch (error) {
+      showInfo(error instanceof Error ? error.message : "No se pudo restaurar la versión.", "error");
+    } finally {
+      setHistoryBusyId(null);
+    }
+  }
+
+  async function subirArchivo(file: File): Promise<ArchivoSubido> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/dicaprev/documentacion/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = (await response.json()) as ArchivoSubido | { error?: string };
+    if (!response.ok) {
+      throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el archivo.");
+    }
+
+    return payload as ArchivoSubido;
+  }
+
+  function canPreviewInline(doc: DocumentoMatrizRow) {
+    if (!doc.archivoUrl || !doc.archivoTipo) return false;
+    return doc.archivoTipo === "application/pdf" || doc.archivoTipo.startsWith("image/");
+  }
+
+  function openReplaceDialog(doc: DocumentoMatrizRow) {
     setSelectedDoc(doc);
-    setReplaceForm({ version: doc.version, observaciones: doc.observaciones });
+    setReplaceForm({
+      version: doc.version ?? "1.0",
+      observaciones: doc.observaciones,
+    });
+    setReplaceFile(null);
+    setIsDragOver(false);
     setOpenReplace(true);
   }
 
-  function openHistoryDialog(doc: DocumentoEmpresa) {
+  function pickReplaceFile(file: File | null) {
+    if (!file) return;
+    setReplaceFile(file);
+  }
+
+  function openHistoryDialog(doc: DocumentoMatrizRow) {
     setSelectedDoc(doc);
     setOpenHistory(true);
   }
 
-  function openEditDialog(doc: DocumentoEmpresa) {
+  function openEditDialog(doc: DocumentoMatrizRow) {
     setSelectedDoc({ ...doc });
     setOpenEdit(true);
   }
 
-  function openViewDialog(doc: DocumentoEmpresa) {
+  function openViewDialog(doc: DocumentoMatrizRow) {
     setSelectedDoc(doc);
     setOpenView(true);
-  }
-
-  function handleCreateCategory() {
-    if (!newCategoryForm.nombre.trim()) {
-      setInfoMessage("Debes ingresar el nombre de la categoría.");
-      return;
-    }
-
-    setCustomCategories((prev) => [
-      {
-        id: `cat-${Date.now()}`,
-        nombre: newCategoryForm.nombre.trim(),
-        descripcion: newCategoryForm.descripcion.trim(),
-        grupo: newCategoryForm.grupo,
-      },
-      ...prev,
-    ]);
-    setInfoMessage("Nueva categoría registrada (modo mock local).");
-    setOpenNewCategory(false);
-    setNewCategoryForm({ nombre: "", descripcion: "", grupo: "legales_empresa" });
-  }
-
-  function toggleRequiredDoc(id: string) {
-    setRequiredDocsConfig((prev) => prev.map((d) => (d.id === id ? { ...d, requerido: !d.requerido } : d)));
-  }
-
-  function saveRequiredConfig() {
-    const requiredCount = requiredDocsConfig.filter((d) => d.requerido).length;
-    setInfoMessage(`Configuración guardada en modo local. Documentos requeridos activos: ${requiredCount}.`);
-    setOpenRequiredConfig(false);
   }
 
   return (
@@ -267,28 +437,25 @@ export default function DocumentacionPage() {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Módulo Empresa</p>
-              <h1 className="mt-1 text-2xl font-semibold text-slate-900">Documentación legal de la empresa</h1>
+              <h1 className="mt-1 text-2xl font-semibold text-slate-900">Documentación empresa</h1>
               <p className="mt-1 text-sm text-slate-600">
-                Repositorio corporativo para mantener vigente, trazable y auditable la documentación legal, laboral y preventiva de la empresa.
+                Documentos legales, certificados y requisitos corporativos propios de la empresa.
               </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button className="bg-slate-900 text-white hover:bg-slate-800 [&_svg]:text-white" onClick={() => setOpenUpload(true)}>
-              <Upload className="mr-1 h-4 w-4" />Subir documento
+            <Button className="bg-slate-900 text-white hover:bg-slate-800 [&_svg]:text-white" onClick={() => setOpenAdditional(true)}>
+              <Upload className="mr-1 h-4 w-4" />Agregar documento adicional
             </Button>
-            <Button variant="outline" onClick={() => setOpenNewCategory(true)}>Nueva categoría</Button>
-            <Button variant="outline" onClick={() => setOpenRequiredConfig(true)}>Configurar documentos requeridos</Button>
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <KpiCard label="Documentos totales" value={kpis.total} icon={<FileText className="h-4 w-4" />} tone="slate" />
+          <KpiCard label="Requerimientos totales" value={kpis.total} icon={<FileText className="h-4 w-4" />} tone="slate" />
           <KpiCard label="Vigentes" value={kpis.vigentes} icon={<ShieldCheck className="h-4 w-4" />} tone="emerald" />
           <KpiCard label="Por vencer" value={kpis.porVencer} icon={<CalendarClock className="h-4 w-4" />} tone="amber" />
           <KpiCard label="Vencidos" value={kpis.vencidos} icon={<FileSearch className="h-4 w-4" />} tone="rose" />
-          <KpiCard label="Pendientes de carga" value={kpis.pendientesCarga} icon={<Building2 className="h-4 w-4" />} tone="sky" />
-          <KpiCard label="Actualizados este mes" value={kpis.actualizadosMes} icon={<FileText className="h-4 w-4" />} tone="slate" />
+          <KpiCard label="Pendientes de carga" value={kpis.pendientesCarga} icon={<Upload className="h-4 w-4" />} tone="sky" />
         </div>
       </div>
 
@@ -300,9 +467,7 @@ export default function DocumentacionPage() {
               onClick={() => setTabActiva(item.key)}
               className={[
                 "rounded-lg px-3 py-2 text-sm font-medium transition",
-                tabActiva === item.key
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+                tabActiva === item.key ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
               ].join(" ")}
             >
               {item.label}
@@ -314,22 +479,25 @@ export default function DocumentacionPage() {
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-800">Filtros</h2>
-          <span className="text-xs text-slate-500">
-            Mostrando {filtrados.length} de {documentos.length}
-          </span>
+          <span className="text-xs text-slate-500">Mostrando {filtrados.length} de {documentos.length}</span>
         </div>
         <Filtros filtros={filtros} onChangeFiltros={setFiltros} />
       </div>
 
       {hasActiveFilters ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
-          Filtros activos: {filtros.estado !== "todos" ? `estado ${filtros.estado}` : "estado todos"}
-          {filtros.search.trim() ? ` · búsqueda "${filtros.search}"` : ""}
+          Filtros activos aplicados sobre la matriz requerida.
         </div>
       ) : null}
 
       {infoMessage ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+        <div
+          className={
+            infoType === "success"
+              ? "rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
+              : "rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+          }
+        >
           {infoMessage}
         </div>
       ) : null}
@@ -343,63 +511,45 @@ export default function DocumentacionPage() {
             {historialGlobal.map((h) => (
               <div key={h.id} className="border-b border-slate-100 px-4 py-3 text-sm">
                 <p className="font-medium text-slate-800">{h.accion} · {h.documentoNombre}</p>
-                <p className="text-xs text-slate-500">
-                  {new Date(h.fecha).toLocaleString("es-CL")} · {h.usuario} ({h.usuarioEmail})
-                </p>
+                <p className="text-xs text-slate-500">{new Date(h.fecha).toLocaleString("es-CL")} · {h.usuario} ({h.usuarioEmail})</p>
                 <p className="mt-1 text-slate-600">{h.detalle}</p>
               </div>
             ))}
           </div>
         </div>
-      ) : null}
-
-      {tabActiva !== "historial" && filtrados.length === 0 && hasActiveFilters ? (
-        <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-8 text-center">
-          <FileSearch className="mx-auto h-12 w-12 text-slate-200 mb-4" />
-          <h3 className="text-lg font-medium text-slate-900 mb-2">No se encontraron documentos</h3>
-          <p className="text-slate-600 mb-4">
-            No hay documentos que coincidan con los filtros aplicados.
-          </p>
-          <div className="text-sm text-slate-500 space-y-1">
-            {filtros.estado !== "todos" && (
-              <p>Estado filtrado: <span className="font-medium capitalize">{filtros.estado}</span></p>
-            )}
-            {filtros.search.trim() && (
-              <p>Búsqueda: <span className="font-medium">&quot;{filtros.search}&quot;</span></p>
-            )}
-          </div>
-        </div>
       ) : (
-        tabActiva !== "historial" ? (
-          <TableView
-            documentos={dataTable}
-            onView={openViewDialog}
-            onDownload={handleDownload}
-            onReplace={openReplaceDialog}
-            onHistory={openHistoryDialog}
-            onEdit={openEditDialog}
-            onNoAplica={(doc) => {
-              marcarDocumentoNoAplica(doc.id);
-              setInfoMessage("Documento marcado como no aplica.");
-            }}
-          />
-        ) : null
+        <TableView
+          documentos={filtrados}
+          onView={openViewDialog}
+          onDownload={handleDownload}
+          onReplace={openReplaceDialog}
+          onHistory={openHistoryDialog}
+          onEdit={openEditDialog}
+          onNoAplica={async (doc) => {
+            await marcarDocumentoNoAplica(doc.documentoEmpresaId, doc.documentoRequeridoId, doc);
+            showInfo("Documento marcado como no aplica.", "success");
+          }}
+          onAplica={async (doc) => {
+            await marcarDocumentoAplica(doc.documentoEmpresaId, doc.documentoRequeridoId, doc);
+            showInfo("Documento reactivado correctamente.", "success");
+          }}
+        />
       )}
 
-      <Dialog open={openUpload} onOpenChange={setOpenUpload}>
+      <Dialog open={openAdditional} onOpenChange={setOpenAdditional}>
         <DialogContent size="lg">
           <DialogHeader>
-            <DialogTitle>Subir documento</DialogTitle>
-            <DialogDescription>Registro corporativo con trazabilidad automática de carga.</DialogDescription>
+            <DialogTitle>Agregar documento adicional</DialogTitle>
+            <DialogDescription>Solo para documentos no contemplados en la matriz requerida.</DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="space-y-1 md:col-span-2">
               <Label>Nombre del documento</Label>
-              <Input value={uploadForm.nombre} onChange={(e) => setUploadForm((p) => ({ ...p, nombre: e.target.value }))} />
+              <Input value={additionalForm.nombre} onChange={(e) => setAdditionalForm((p) => ({ ...p, nombre: e.target.value }))} />
             </div>
             <div className="space-y-1">
               <Label>Categoría</Label>
-              <Select value={uploadForm.categoria} onValueChange={(v) => setUploadForm((p) => ({ ...p, categoria: v as CategoriaDocumento }))}>
+              <Select value={additionalForm.categoria} onValueChange={(v) => setAdditionalForm((p) => ({ ...p, categoria: v as CategoriaDocumento }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="legales_empresa">Legales empresa</SelectItem>
@@ -407,24 +557,26 @@ export default function DocumentacionPage() {
                   <SelectItem value="sst">Seguridad y salud en el trabajo</SelectItem>
                   <SelectItem value="mutualidad_ley_16744">Mutualidad / Ley 16.744</SelectItem>
                   <SelectItem value="protocolos">Protocolos</SelectItem>
+                  <SelectItem value="plantillas_formatos">Plantillas y formatos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
               <Label>Tipo de documento</Label>
-              <Input value={uploadForm.tipo} onChange={(e) => setUploadForm((p) => ({ ...p, tipo: e.target.value }))} />
+              <Input value={additionalForm.tipo} onChange={(e) => setAdditionalForm((p) => ({ ...p, tipo: e.target.value }))} />
             </div>
             <div className="space-y-1 md:col-span-2">
               <Label>Archivo</Label>
-              <input ref={uploadFileRef} type="file" onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)} />
+              <Input type="file" accept={DOCUMENTO_ACCEPT} onChange={(e) => setAdditionalFile(e.target.files?.[0] ?? null)} />
+              <p className="text-xs text-slate-500">Permitidos: {DOCUMENTO_TIPOS_LABEL}. Máximo {Math.round(MAX_DOCUMENTO_FILE_SIZE / (1024 * 1024))} MB.</p>
             </div>
             <div className="space-y-1">
               <Label>Fecha de emisión</Label>
-              <Input type="date" value={uploadForm.fechaEmision} onChange={(e) => setUploadForm((p) => ({ ...p, fechaEmision: e.target.value }))} />
+              <Input type="date" value={additionalForm.fechaEmision} onChange={(e) => setAdditionalForm((p) => ({ ...p, fechaEmision: e.target.value }))} />
             </div>
             <div className="space-y-1">
               <Label>Tiene vencimiento</Label>
-              <Select value={uploadForm.tieneVencimiento ? "si" : "no"} onValueChange={(v) => setUploadForm((p) => ({ ...p, tieneVencimiento: v === "si" }))}>
+              <Select value={additionalForm.tieneVencimiento ? "si" : "no"} onValueChange={(v) => setAdditionalForm((p) => ({ ...p, tieneVencimiento: v === "si" }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="si">Sí</SelectItem>
@@ -436,124 +588,41 @@ export default function DocumentacionPage() {
               <Label>Fecha de vencimiento</Label>
               <Input
                 type="date"
-                value={uploadForm.fechaVencimiento}
-                onChange={(e) => setUploadForm((p) => ({ ...p, fechaVencimiento: e.target.value }))}
-                disabled={!uploadForm.tieneVencimiento}
+                value={additionalForm.fechaVencimiento}
+                onChange={(e) => setAdditionalForm((p) => ({ ...p, fechaVencimiento: e.target.value }))}
+                disabled={!additionalForm.tieneVencimiento}
               />
             </div>
             <div className="space-y-1">
               <Label>Estado inicial</Label>
-              <Select value={uploadForm.estado} onValueChange={(v) => setUploadForm((p) => ({ ...p, estado: v as EstadoDocumento }))}>
+              <Select value={additionalForm.estado} onValueChange={(v) => setAdditionalForm((p) => ({ ...p, estado: v as EstadoDocumento }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="vigente">Vigente</SelectItem>
-                  <SelectItem value="por_vencer">Por vencer</SelectItem>
-                  <SelectItem value="vencido">Vencido</SelectItem>
-                  <SelectItem value="pendiente_carga">Pendiente de carga</SelectItem>
-                  <SelectItem value="en_revision">En revisión</SelectItem>
-                  <SelectItem value="reemplazado">Reemplazado</SelectItem>
-                  <SelectItem value="no_aplica">No aplica</SelectItem>
+                  <SelectItem value="Pendiente de carga">Pendiente de carga</SelectItem>
+                  <SelectItem value="Vigente">Vigente</SelectItem>
+                  <SelectItem value="Por vencer">Por vencer</SelectItem>
+                  <SelectItem value="Vencido">Vencido</SelectItem>
+                  <SelectItem value="En revisión">En revisión</SelectItem>
+                  <SelectItem value="No aplica">No aplica</SelectItem>
+                  <SelectItem value="Reemplazado">Reemplazado</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
               <Label>Versión</Label>
-              <Input value={uploadForm.version} onChange={(e) => setUploadForm((p) => ({ ...p, version: e.target.value }))} />
+              <Input value={additionalForm.version} onChange={(e) => setAdditionalForm((p) => ({ ...p, version: e.target.value }))} />
             </div>
             <div className="space-y-1 md:col-span-2">
               <Label>Observaciones</Label>
-              <Textarea value={uploadForm.observaciones} onChange={(e) => setUploadForm((p) => ({ ...p, observaciones: e.target.value }))} />
+              <Textarea value={additionalForm.observaciones} onChange={(e) => setAdditionalForm((p) => ({ ...p, observaciones: e.target.value }))} />
             </div>
             <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 md:col-span-2">
               Subido por: {usuarioActual.nombre} ({usuarioActual.email}) · Fecha/hora de carga: automática
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenUpload(false)}>Cancelar</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleUpload}>Guardar documento</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openNewCategory} onOpenChange={setOpenNewCategory}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nueva categoría</DialogTitle>
-            <DialogDescription>Crea una categoría corporativa para organizar documentos legales de empresa.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label>Nombre categoría</Label>
-              <Input
-                value={newCategoryForm.nombre}
-                onChange={(e) => setNewCategoryForm((p) => ({ ...p, nombre: e.target.value }))}
-                placeholder="Ej: Cumplimiento societario"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Grupo base</Label>
-              <Select value={newCategoryForm.grupo} onValueChange={(v) => setNewCategoryForm((p) => ({ ...p, grupo: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="legales_empresa">Legales empresa</SelectItem>
-                  <SelectItem value="laborales_previsionales">Laborales y previsionales</SelectItem>
-                  <SelectItem value="sst">Seguridad y salud en el trabajo</SelectItem>
-                  <SelectItem value="mutualidad_ley_16744">Mutualidad / Ley 16.744</SelectItem>
-                  <SelectItem value="protocolos">Protocolos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Descripción</Label>
-              <Textarea
-                value={newCategoryForm.descripcion}
-                onChange={(e) => setNewCategoryForm((p) => ({ ...p, descripcion: e.target.value }))}
-                placeholder="Describe cuándo usar esta categoría"
-              />
-            </div>
-            {customCategories.length > 0 ? (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Categorías creadas en esta sesión</p>
-                <div className="mt-2 space-y-1 text-sm text-slate-700">
-                  {customCategories.slice(0, 4).map((cat) => (
-                    <p key={cat.id}>{cat.nombre} · {cat.grupo}</p>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenNewCategory(false)}>Cancelar</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleCreateCategory}>Guardar categoría</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={openRequiredConfig} onOpenChange={setOpenRequiredConfig}>
-        <DialogContent size="lg">
-          <DialogHeader>
-            <DialogTitle>Configurar documentos requeridos</DialogTitle>
-            <DialogDescription>Define el set obligatorio para auditoría corporativa. El estado se guarda en modo mock local.</DialogDescription>
-          </DialogHeader>
-          <div className="max-h-[420px] space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-3">
-            {requiredDocsConfig.map((doc) => (
-              <label key={doc.id} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-3 py-2">
-                <input
-                  type="checkbox"
-                  checked={doc.requerido}
-                  onChange={() => toggleRequiredDoc(doc.id)}
-                  className="mt-1 h-4 w-4 rounded border-slate-300"
-                />
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{doc.nombre}</p>
-                  <p className="text-xs text-slate-500">{doc.categoria}</p>
-                </div>
-              </label>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenRequiredConfig(false)}>Cancelar</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={saveRequiredConfig}>Guardar configuración</Button>
+            <Button variant="outline" onClick={() => setOpenAdditional(false)}>Cancelar</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleCreateAdditional} disabled={isSubmitting}>Guardar documento adicional</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -561,11 +630,80 @@ export default function DocumentacionPage() {
       <Dialog open={openReplace} onOpenChange={setOpenReplace}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reemplazar archivo</DialogTitle>
-            <DialogDescription>Mantiene historial y trazabilidad del documento.</DialogDescription>
+            <DialogTitle>{selectedDoc?.archivoUrl ? "Reemplazar documento" : "Subir documento"}</DialogTitle>
+            <DialogDescription>
+              {selectedDoc?.nombre ? `Documento: ${selectedDoc.nombre}` : "Se registra trazabilidad automática en historial."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <input ref={replaceFileRef} type="file" onChange={(e) => setReplaceFile(e.target.files?.[0] ?? null)} />
+            {selectedDoc?.archivoUrl ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                Archivo actual: {selectedDoc.archivoNombreOriginal ?? selectedDoc.archivoNombre ?? "-"}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Pendiente de carga: sube el primer archivo para este documento.
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label>Archivo</Label>
+              <input
+                ref={replaceInputRef}
+                type="file"
+                accept={DOCUMENTO_ACCEPT}
+                className="hidden"
+                onChange={(e) => pickReplaceFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                onClick={() => replaceInputRef.current?.click()}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setIsDragOver(false);
+                  const file = event.dataTransfer.files?.[0] ?? null;
+                  pickReplaceFile(file);
+                }}
+                className={[
+                  "w-full rounded-xl border-2 border-dashed px-4 py-6 text-left transition",
+                  isDragOver
+                    ? "border-slate-700 bg-slate-100"
+                    : "border-slate-300 bg-slate-50 hover:border-slate-400",
+                ].join(" ")}
+              >
+                <p className="text-sm font-medium text-slate-800">
+                  {replaceFile ? "Archivo seleccionado" : "Arrastra y suelta el archivo aquí"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {replaceFile
+                    ? `${replaceFile.name} · ${formatDocumentoPeso(replaceFile.size)}`
+                    : "o haz clic para seleccionar desde tu equipo"}
+                </p>
+              </button>
+              <p className="text-xs text-slate-500">Permitidos: {DOCUMENTO_TIPOS_LABEL}. Máximo {Math.round(MAX_DOCUMENTO_FILE_SIZE / (1024 * 1024))} MB.</p>
+            </div>
+            {replaceFile && replacePreviewUrl ? (
+              <div className="space-y-1">
+                <Label>Vista previa</Label>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                  {replaceFile.type === "application/pdf" ? (
+                    <iframe src={replacePreviewUrl} title="Vista previa PDF" className="h-56 w-full bg-white" />
+                  ) : replaceFile.type.startsWith("image/") ? (
+                    <div className="relative h-56 w-full bg-white">
+                      <Image src={replacePreviewUrl} alt={replaceFile.name} fill className="object-contain" unoptimized />
+                    </div>
+                  ) : (
+                    <div className="px-4 py-8 text-center text-xs text-slate-500">
+                      No hay vista previa para este tipo de archivo.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
             <div className="space-y-1">
               <Label>Versión</Label>
               <Input value={replaceForm.version} onChange={(e) => setReplaceForm((p) => ({ ...p, version: e.target.value }))} />
@@ -577,7 +715,9 @@ export default function DocumentacionPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenReplace(false)}>Cancelar</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleReplace}>Confirmar reemplazo</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleReplace} disabled={isSubmitting}>
+              {isSubmitting ? "Subiendo..." : selectedDoc?.archivoUrl ? "Reemplazar documento" : "Subir documento"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -589,11 +729,42 @@ export default function DocumentacionPage() {
             <DialogDescription>{selectedDoc?.nombre}</DialogDescription>
           </DialogHeader>
           <div className="max-h-[420px] overflow-y-auto rounded-lg border border-slate-200">
-            {selectedHistory.map((h) => (
-              <div key={h.id} className="border-b border-slate-100 px-4 py-3 text-sm">
-                <p className="font-medium text-slate-800">{h.accion}</p>
-                <p className="text-xs text-slate-500">{new Date(h.fecha).toLocaleString("es-CL")} · {h.usuario} ({h.usuarioEmail})</p>
-                <p className="mt-1 text-slate-600">{h.detalle}</p>
+            {selectedVersiones.map((item) => (
+              <div key={item.id} className="border-b border-slate-100 px-4 py-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-medium text-slate-800">Versión {item.version ?? "-"}</p>
+                  {item.isCurrent ? (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">Actual</span>
+                  ) : (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">Histórico</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">{new Date(item.fecha).toLocaleString("es-CL")}</p>
+                <p className="mt-1 text-slate-600">{item.detalle}</p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-slate-500">
+                    Archivo: {item.archivoNombreOriginal ?? item.archivoNombre ?? "sin archivo"}
+                  </span>
+                  {item.isCurrent ? (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => selectedDoc && handleOpenDocument(selectedDoc)} disabled={!selectedDoc?.archivoUrl}>
+                        Ver
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={() => item.archivoUrl && handleDownloadHistorial(item)} disabled={!item.archivoUrl}>
+                        Descargar
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button variant="outline" size="sm" onClick={() => item.archivoUrl && handleDownloadHistorial(item)} disabled={!item.archivoUrl}>
+                        Descargar versión
+                      </Button>
+                      <Button size="sm" className="bg-slate-900 text-white hover:bg-slate-800" onClick={() => handleRestoreVersion(item.id)} disabled={historyBusyId === item.id}>
+                        {historyBusyId === item.id ? "Restaurando..." : "Restaurar versión"}
+                      </Button>
+                    </>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -607,7 +778,7 @@ export default function DocumentacionPage() {
         <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>Editar metadatos</DialogTitle>
-            <DialogDescription>Actualiza nombre, categoría, estado, vigencia y versión del documento.</DialogDescription>
+            <DialogDescription>Actualiza estado, vigencia y campos generales del documento.</DialogDescription>
           </DialogHeader>
           {selectedDoc ? (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -625,6 +796,7 @@ export default function DocumentacionPage() {
                     <SelectItem value="sst">Seguridad y salud en el trabajo</SelectItem>
                     <SelectItem value="mutualidad_ley_16744">Mutualidad / Ley 16.744</SelectItem>
                     <SelectItem value="protocolos">Protocolos</SelectItem>
+                    <SelectItem value="plantillas_formatos">Plantillas y formatos</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -637,19 +809,19 @@ export default function DocumentacionPage() {
                 <Select value={selectedDoc.estado} onValueChange={(v) => setSelectedDoc((p) => (p ? { ...p, estado: v as EstadoDocumento } : p))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="vigente">Vigente</SelectItem>
-                    <SelectItem value="por_vencer">Por vencer</SelectItem>
-                    <SelectItem value="vencido">Vencido</SelectItem>
-                    <SelectItem value="pendiente_carga">Pendiente de carga</SelectItem>
-                    <SelectItem value="en_revision">En revisión</SelectItem>
-                    <SelectItem value="reemplazado">Reemplazado</SelectItem>
-                    <SelectItem value="no_aplica">No aplica</SelectItem>
+                    <SelectItem value="Vigente">Vigente</SelectItem>
+                    <SelectItem value="Por vencer">Por vencer</SelectItem>
+                    <SelectItem value="Vencido">Vencido</SelectItem>
+                    <SelectItem value="Pendiente de carga">Pendiente de carga</SelectItem>
+                    <SelectItem value="En revisión">En revisión</SelectItem>
+                    <SelectItem value="No aplica">No aplica</SelectItem>
+                    <SelectItem value="Reemplazado">Reemplazado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
                 <Label>Versión</Label>
-                <Input value={selectedDoc.version} onChange={(e) => setSelectedDoc((p) => (p ? { ...p, version: e.target.value } : p))} />
+                <Input value={selectedDoc.version ?? ""} onChange={(e) => setSelectedDoc((p) => (p ? { ...p, version: e.target.value } : p))} />
               </div>
               <div className="space-y-1">
                 <Label>Fecha emisión</Label>
@@ -678,25 +850,52 @@ export default function DocumentacionPage() {
       </Dialog>
 
       <Dialog open={openView} onOpenChange={setOpenView}>
-        <DialogContent>
+        <DialogContent size="lg">
           <DialogHeader>
             <DialogTitle>Ver documento</DialogTitle>
             <DialogDescription>{selectedDoc?.nombre}</DialogDescription>
           </DialogHeader>
           {selectedDoc ? (
-            <div className="space-y-2 text-sm text-slate-700">
-              <p><span className="font-medium text-slate-900">Categoría:</span> {categoryLabel(selectedDoc.categoria)}</p>
-              <p><span className="font-medium text-slate-900">Tipo:</span> {selectedDoc.tipo}</p>
-              <p><span className="font-medium text-slate-900">Estado:</span> {selectedDoc.estado}</p>
-              <p><span className="font-medium text-slate-900">Archivo:</span> {selectedDoc.archivoNombre ?? "Sin archivo"}</p>
-              <p><span className="font-medium text-slate-900">Versión:</span> {selectedDoc.version}</p>
-              <p><span className="font-medium text-slate-900">Subido por:</span> {selectedDoc.subidoPorEmail}</p>
-              <p><span className="font-medium text-slate-900">Fecha subida:</span> {new Date(selectedDoc.fechaSubida).toLocaleString("es-CL")}</p>
-              <p><span className="font-medium text-slate-900">Última actualización:</span> {new Date(selectedDoc.fechaActualizacion).toLocaleString("es-CL")}</p>
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                {selectedDoc.archivoUrl ? (
+                  canPreviewInline(selectedDoc) ? (
+                    selectedDoc.archivoTipo === "application/pdf" ? (
+                      <iframe src={selectedDoc.archivoUrl} title={selectedDoc.nombre} className="h-[480px] w-full bg-white" />
+                    ) : (
+                      <div className="relative h-[480px] w-full bg-white">
+                        <Image src={selectedDoc.archivoUrl} alt={selectedDoc.nombre} fill className="object-contain" unoptimized />
+                      </div>
+                    )
+                  ) : (
+                    <div className="flex h-[480px] flex-col items-center justify-center gap-3 px-6 text-center text-sm text-slate-600">
+                      <p>No hay previsualización embebida para este tipo de archivo.</p>
+                      <p className="text-xs text-slate-500">Usa &quot;Abrir documento&quot; o &quot;Descargar&quot; para revisar el contenido.</p>
+                    </div>
+                  )
+                ) : (
+                  <div className="flex h-[480px] items-center justify-center px-6 text-center text-sm text-slate-500">
+                    Este documento aún no tiene un archivo cargado.
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2 text-sm text-slate-700">
+                <p><span className="font-medium text-slate-900">Categoría:</span> {categoryLabel(selectedDoc.categoria)}</p>
+                <p><span className="font-medium text-slate-900">Estado:</span> {selectedDoc.estado}</p>
+                <p><span className="font-medium text-slate-900">Obligatorio:</span> {selectedDoc.obligatorio ? "Sí" : "No"}</p>
+                <p><span className="font-medium text-slate-900">Archivo original:</span> {selectedDoc.archivoNombreOriginal ?? selectedDoc.archivoNombre ?? "Sin archivo"}</p>
+                <p><span className="font-medium text-slate-900">Tipo MIME:</span> {selectedDoc.archivoTipo ?? "-"}</p>
+                <p><span className="font-medium text-slate-900">Peso:</span> {formatDocumentoPeso(selectedDoc.archivoPeso)}</p>
+                <p><span className="font-medium text-slate-900">Versión:</span> {selectedDoc.version ?? "-"}</p>
+                <p><span className="font-medium text-slate-900">Subido por:</span> {selectedDoc.subidoPorEmail ?? "-"}</p>
+                <p><span className="font-medium text-slate-900">Fecha subida:</span> {selectedDoc.fechaSubida ? new Date(selectedDoc.fechaSubida).toLocaleString("es-CL") : "-"}</p>
+                <p><span className="font-medium text-slate-900">Última actualización:</span> {selectedDoc.fechaActualizacion ? new Date(selectedDoc.fechaActualizacion).toLocaleString("es-CL") : "-"}</p>
+              </div>
             </div>
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenView(false)}>Cerrar</Button>
+            <Button variant="outline" onClick={() => selectedDoc && handleOpenDocument(selectedDoc)} disabled={!selectedDoc?.archivoUrl}>Abrir documento</Button>
             <Button onClick={() => selectedDoc && handleDownload(selectedDoc)} disabled={!selectedDoc?.archivoUrl}>Descargar</Button>
           </DialogFooter>
         </DialogContent>

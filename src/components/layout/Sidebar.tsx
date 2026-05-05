@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import SidebarModuleLabel from "@/components/layout/SidebarModuleLabel";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-type NavItem = { href: string; label: string };
+type NavItem = { href: string; label: string; description?: string };
 type ModuleItem = {
   id: string;
   label: string;
@@ -47,8 +47,8 @@ const MODULES: ModuleItem[] = [
       { href: "/dicaprev/empresa/cargos", label: "Cargos" },
       { href: "/dicaprev/empresa/indicadores-sst", label: "Indicadores SST" },
       { href: "/dicaprev/empresa/vehiculos", label: "Vehículos y equipos" },
-      { href: "/dicaprev/documentacion", label: "Documentación" },
-      { href: "/dicaprev/biblioteca", label: "Biblioteca" },
+      { href: "/dicaprev/documentacion", label: "Documentación empresa", description: "Documentos legales y corporativos propios de la empresa." },
+      { href: "/dicaprev/biblioteca", label: "Biblioteca documental", description: "Plantillas, formatos y documentos base reutilizables." },
     ],
   },
   {
@@ -145,7 +145,7 @@ export default function Sidebar() {
     MODULES[0];
 
   return (
-    <aside className="hidden lg:flex h-screen w-[320px] shrink-0 border-r border-slate-200 bg-white">
+    <aside className="hidden h-screen shrink-0 border-r border-slate-200 bg-white lg:flex lg:w-[320px] lg:sticky lg:top-0">
       <div className="flex w-[72px] flex-col items-center gap-3 border-r border-slate-800 bg-[#062b5b] py-4">
         <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-lime-400 via-emerald-500 to-blue-500 text-xs font-extrabold text-white shadow-lg shadow-blue-900/30">
           NP
@@ -180,7 +180,7 @@ export default function Sidebar() {
         </TooltipProvider>
       </div>
 
-      <div className="flex flex-1 flex-col bg-[#07366f] text-white">
+      <div className="flex flex-1 flex-col overflow-y-auto bg-[#07366f] text-white">
         <div className="border-b border-slate-500/30 px-5 py-5">
           <div className="space-y-3">
             <div className="leading-tight">
@@ -198,6 +198,7 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
+                title={item.description ?? item.label}
                 className={cn(
                   "block rounded-lg px-3 py-2 text-sm transition-colors",
                   active

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Trabajador,
   TrabajadorFiltros,
@@ -53,7 +53,7 @@ export function useTrabajadores(
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   // Helpers internos
-  const filtrar = (t: Trabajador): boolean => {
+  const filtrar = useCallback((t: Trabajador): boolean => {
     if (filtros.texto) {
       const q = filtros.texto.toLowerCase().trim();
       const hayTexto =
@@ -89,9 +89,9 @@ export function useTrabajadores(
     }
 
     return true;
-  };
+  }, [filtros]);
 
-  const ordenar = (lista: Trabajador[]): Trabajador[] => {
+  const ordenar = useCallback((lista: Trabajador[]): Trabajador[] => {
     const { campo, direccion } = orden;
     const factor = direccion === "asc" ? 1 : -1;
 
@@ -103,7 +103,7 @@ export function useTrabajadores(
       if (va > vb) return 1 * factor;
       return 0;
     });
-  };
+  }, [orden]);
 
   const filtrados = useMemo(() => {
     const base = trabajadores.filter(filtrar);
