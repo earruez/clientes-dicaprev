@@ -15,6 +15,7 @@ export const PERMISSIONS = {
   canReadDocumentacion: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR", "AUDITOR"],
   canManageDocumentacion: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR"],
   canReadCumplimiento: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR", "AUDITOR"],
+  canManageCumplimiento: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR"],
   canReadAlertas: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR", "AUDITOR"],
   canReadOrganigrama: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR", "AUDITOR"],
   canCreateDocumentacion: ["ADMIN_EMPRESA", "PREVENCIONISTA"],

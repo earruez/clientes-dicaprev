@@ -5,7 +5,6 @@ import { Plus, Clock, ShieldAlert, FileText } from "lucide-react";
 import {
   type TipoDocumento,
   type DocCategoria,
-  TIPOS_DOCUMENTO,
   CATEGORIA_CONFIG,
 } from "./types";
 
@@ -13,8 +12,11 @@ const CATEGORIAS: DocCategoria[] = ["Contratación", "SST", "Capacitación", "M�
 
 const colTh = "px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400";
 
-export function TiposDocPanel() {
-  const [tipos] = useState<TipoDocumento[]>(TIPOS_DOCUMENTO);
+interface TiposDocPanelProps {
+  tipos: TipoDocumento[];
+}
+
+export function TiposDocPanel({ tipos }: TiposDocPanelProps) {
   const [activeCategoria, setActiveCategoria] = useState<DocCategoria | "">("");
 
   const filtered = activeCategoria
@@ -91,6 +93,13 @@ export function TiposDocPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-400">
+                  No hay tipos de documento configurados.
+                </td>
+              </tr>
+            )}
             {filtered.map((tipo) => {
               const cfg = CATEGORIA_CONFIG[tipo.categoria];
               return (

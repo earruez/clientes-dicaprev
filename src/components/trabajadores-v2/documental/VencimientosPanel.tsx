@@ -3,13 +3,13 @@
 import { useState, useMemo } from "react";
 import { CalendarClock, UploadCloud } from "lucide-react";
 import {
-  TIPOS_DOCUMENTO,
-  REGLAS_DOCUMENTALES,
-  MOCK_DOCUMENTOS,
   CATEGORIA_CONFIG,
   getWorkerDocs,
+  type TipoDocumento,
+  type ReglaDocumental,
+  type DocumentoTrabajador,
 } from "./types";
-import { MOCK_WORKERS } from "../types";
+import { type Worker } from "../types";
 
 type RangeFilter = "vencidos" | "30d" | "90d" | "todos";
 
@@ -32,13 +32,26 @@ const RANGE_OPTS: { id: RangeFilter; label: string; color: string }[] = [
   { id: "todos",    label: "Todos",             color: "bg-slate-900 text-white" },
 ];
 
-export function VencimientosPanel() {
+interface VencimientosPanelProps {
+  workers: Worker[];
+  tipos: TipoDocumento[];
+  reglas: ReglaDocumental[];
+  documentos: DocumentoTrabajador[];
+}
+
+export function VencimientosPanel({
+  workers,
+  tipos,
+  reglas,
+  documentos,
+}: VencimientosPanelProps) {
+
   const [range, setRange] = useState<RangeFilter>("todos");
 
   const allRows = useMemo<VencimientoRow[]>(() => {
     const result: VencimientoRow[] = [];
-    for (const worker of MOCK_WORKERS) {
-      const docs = getWorkerDocs(worker, REGLAS_DOCUMENTALES, TIPOS_DOCUMENTO, MOCK_DOCUMENTOS);
+    for (const worker of workers) {
+      const docs = getWorkerDocs(worker, reglas, tipos, documentos);
       for (const doc of docs) {
         if (!doc.tipo.requiereVencimiento || doc.diasParaVencer === undefined) continue;
         result.push({
@@ -55,7 +68,7 @@ export function VencimientosPanel() {
       }
     }
     return result.sort((a, b) => a.diasParaVencer - b.diasParaVencer);
-  }, []);
+  }, [workers, reglas, tipos, documentos]);
 
   const filtered = useMemo(() => {
     switch (range) {

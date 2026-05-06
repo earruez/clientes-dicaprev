@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   X,
   UploadCloud,
@@ -13,14 +13,16 @@ import {
   Trash2,
   Package,
 } from "lucide-react";
-import { MOCK_WORKERS, CENTROS, CARGOS } from "../types";
-import { TIPOS_DOCUMENTO, CATEGORIA_CONFIG } from "./types";
+import { type Worker } from "../types";
+import { CATEGORIA_CONFIG, type TipoDocumento } from "./types";
 
 // ── Public types ───────────────────────────────────────────────────────────────
 
 export interface BulkUploadDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  workers: Worker[];
+  tipos: TipoDocumento[];
 }
 
 // ── Internal types ─────────────────────────────────────────────────────────────
@@ -69,7 +71,7 @@ function FieldSelect(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function BulkUploadDrawer({ isOpen, onClose }: BulkUploadDrawerProps) {
+export function BulkUploadDrawer({ isOpen, onClose, workers, tipos }: BulkUploadDrawerProps) {
   const [step,             setStep]             = useState<Step>(1);
   const [files,            setFiles]            = useState<MockFile[]>([]);
   const [isDragging,       setIsDragging]       = useState(false);
@@ -83,6 +85,15 @@ export function BulkUploadDrawer({ isOpen, onClose }: BulkUploadDrawerProps) {
   const [isSubmitting,     setIsSubmitting]     = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const centrosDisponibles = useMemo(
+    () => Array.from(new Set(workers.map((w) => w.centroTrabajo))).sort(),
+    [workers],
+  );
+  const cargosDisponibles = useMemo(
+    () => Array.from(new Set(workers.map((w) => w.cargo))).sort(),
+    [workers],
+  );
 
   // Reset whenever drawer opens
   useEffect(() => {
@@ -145,14 +156,14 @@ export function BulkUploadDrawer({ isOpen, onClose }: BulkUploadDrawerProps) {
   function selectByCentro(centro: string) {
     setFilterCentro(centro);
     setSelectedIds(
-      new Set(centro ? MOCK_WORKERS.filter((w) => w.centroTrabajo === centro).map((w) => w.id) : [])
+      new Set(centro ? workers.filter((w) => w.centroTrabajo === centro).map((w) => w.id) : [])
     );
   }
 
   function selectByCargo(cargo: string) {
     setFilterCargo(cargo);
     setSelectedIds(
-      new Set(cargo ? MOCK_WORKERS.filter((w) => w.cargo === cargo).map((w) => w.id) : [])
+      new Set(cargo ? workers.filter((w) => w.cargo === cargo).map((w) => w.id) : [])
     );
   }
 
@@ -176,16 +187,16 @@ export function BulkUploadDrawer({ isOpen, onClose }: BulkUploadDrawerProps) {
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
-  const selectedTipo    = TIPOS_DOCUMENTO.find((t) => t.id === tipoDocumentoId);
-  const selectedWorkers = MOCK_WORKERS.filter((w) => selectedIds.has(w.id));
+  const selectedTipo    = tipos.find((t) => t.id === tipoDocumentoId);
+  const selectedWorkers = workers.filter((w) => selectedIds.has(w.id));
   const totalRecords    = files.length * selectedIds.size;
 
   const workerListForMode =
     assignMode === "centro" && filterCentro
-      ? MOCK_WORKERS.filter((w) => w.centroTrabajo === filterCentro)
+      ? workers.filter((w) => w.centroTrabajo === filterCentro)
       : assignMode === "cargo" && filterCargo
-        ? MOCK_WORKERS.filter((w) => w.cargo === filterCargo)
-        : MOCK_WORKERS;
+        ? workers.filter((w) => w.cargo === filterCargo)
+        : workers;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -339,7 +350,7 @@ export function BulkUploadDrawer({ isOpen, onClose }: BulkUploadDrawerProps) {
                 <FieldLabel required>Tipo de documento</FieldLabel>
                 <FieldSelect value={tipoDocumentoId} onChange={(e) => setTipoDocumentoId(e.target.value)}>
                   <option value="">Seleccionar tipo...</option>
-                  {TIPOS_DOCUMENTO.map((t) => (
+                  {tipos.map((t) => (
                     <option key={t.id} value={t.id}>{t.nombre} ({t.categoria})</option>
                   ))}
                 </FieldSelect>
@@ -431,11 +442,11 @@ export function BulkUploadDrawer({ isOpen, onClose }: BulkUploadDrawerProps) {
                   <FieldLabel>Centro de trabajo</FieldLabel>
                   <FieldSelect value={filterCentro} onChange={(e) => selectByCentro(e.target.value)}>
                     <option value="">Seleccionar centro…</option>
-                    {CENTROS.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {centrosDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
                   </FieldSelect>
                   {filterCentro && (
                     <p className="mt-1.5 text-[11px] text-slate-500">
-                      {MOCK_WORKERS.filter((w) => w.centroTrabajo === filterCentro).length} trabajadores seleccionados automáticamente.
+                      {workers.filter((w) => w.centroTrabajo === filterCentro).length} trabajadores seleccionados automáticamente.
                       Puedes ajustar la selección abajo.
                     </p>
                   )}
@@ -448,11 +459,11 @@ export function BulkUploadDrawer({ isOpen, onClose }: BulkUploadDrawerProps) {
                   <FieldLabel>Cargo</FieldLabel>
                   <FieldSelect value={filterCargo} onChange={(e) => selectByCargo(e.target.value)}>
                     <option value="">Seleccionar cargo…</option>
-                    {CARGOS.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {cargosDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
                   </FieldSelect>
                   {filterCargo && (
                     <p className="mt-1.5 text-[11px] text-slate-500">
-                      {MOCK_WORKERS.filter((w) => w.cargo === filterCargo).length} trabajadores seleccionados automáticamente.
+                      {workers.filter((w) => w.cargo === filterCargo).length} trabajadores seleccionados automáticamente.
                       Puedes ajustar la selección abajo.
                     </p>
                   )}

@@ -4,11 +4,15 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Plus, Tag, FileText } from "lucide-react";
 import {
   PLANTILLAS_DOCUMENTALES,
-  TIPOS_DOCUMENTO,
   CATEGORIA_CONFIG,
+  type TipoDocumento,
 } from "./types";
 
-export function PlantillasPanel() {
+interface PlantillasPanelProps {
+  tipos: TipoDocumento[];
+}
+
+export function PlantillasPanel({ tipos }: PlantillasPanelProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["pl-01"]));
 
   const toggle = (id: string) => {
@@ -41,7 +45,7 @@ export function PlantillasPanel() {
       <div className="space-y-3">
         {PLANTILLAS_DOCUMENTALES.map((plantilla) => {
           const isOpen = expanded.has(plantilla.id);
-          const tipos = TIPOS_DOCUMENTO.filter((t) =>
+          const tiposPlantilla = tipos.filter((t) =>
             plantilla.tiposDocumentoIds.includes(t.id)
           );
 
@@ -79,7 +83,7 @@ export function PlantillasPanel() {
 
                 <div className="flex shrink-0 items-center gap-3 pt-1">
                   <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                    {tipos.length} docs
+                    {tiposPlantilla.length} docs
                   </span>
                   {isOpen ? (
                     <ChevronUp className="h-4 w-4 text-slate-400" />
@@ -96,7 +100,12 @@ export function PlantillasPanel() {
                     Tipos de documento incluidos
                   </p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {tipos.map((tipo) => {
+                    {tiposPlantilla.length === 0 && (
+                      <p className="col-span-full rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-xs text-slate-400">
+                        Esta plantilla no tiene tipos de documento activos.
+                      </p>
+                    )}
+                    {tiposPlantilla.map((tipo) => {
                       const cfg = CATEGORIA_CONFIG[tipo.categoria];
                       return (
                         <div

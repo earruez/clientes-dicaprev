@@ -1,5 +1,4 @@
 import { AREA_REFS } from "@/lib/empresa/domain";
-import { getCentroNombres } from "@/lib/centros/centros-store";
 
 export type WorkerEstado = "Activo" | "Inactivo" | "Licencia" | "Vacaciones";
 export type WorkerContrato = "Indefinido" | "Plazo Fijo" | "Por Obra" | "Part Time";
@@ -53,7 +52,7 @@ export const CARGOS = [
   "Administrativa",
 ];
 
-export const CENTROS = getCentroNombres();
+export const CENTROS = ["Sede Central MVP Chile"];
 
 export const CONTRATOS: WorkerContrato[] = [
   "Indefinido",

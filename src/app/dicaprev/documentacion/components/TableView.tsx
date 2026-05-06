@@ -118,7 +118,7 @@ export default function TableView({
           </thead>
           <tbody className="divide-y divide-slate-200">
             {documentos.map((doc) => (
-              <tr key={doc.id} className="hover:bg-slate-50">
+              <tr key={doc.id} className={["hover:bg-slate-50", !doc.esAplicable ? "opacity-70" : ""].join(" ")}>
                 <td className="px-4 py-3">
                   <p className="text-sm font-medium text-slate-900">{doc.nombre}</p>
                   <p className="text-xs text-slate-500">{doc.descripcion}</p>
@@ -128,6 +128,17 @@ export default function TableView({
                       El registro individual se gestiona por trabajador.
                     </p>
                   ) : null}
+                  {!doc.esAdicional && doc.aplicaDesdeTrabajadores !== null ? (
+                    doc.aplicaDesdeTrabajadores <= 1 ? (
+                      <span className="mt-1 inline-block rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                        Aplica a toda empresa
+                      </span>
+                    ) : (
+                      <span className="mt-1 inline-block rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                        Aplica desde {doc.aplicaDesdeTrabajadores} trabajadores
+                      </span>
+                    )
+                  ) : null}
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-600">
                   <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200">
@@ -136,6 +147,12 @@ export default function TableView({
                 </td>
                 <td className="px-4 py-3">
                   <StatusBadge status={doc.estado} />
+                  {!doc.esAplicable && doc.aplicaDesdeTrabajadores !== null && (
+                    <div className="mt-1 space-y-0.5">
+                      <p className="text-[10px] text-slate-500">No aplica por dotación actual</p>
+                      <p className="text-[10px] font-medium text-slate-600">Aplica desde {doc.aplicaDesdeTrabajadores} trabajadores</p>
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-600">
                   {doc.obligatorio ? "Sí" : "No"}

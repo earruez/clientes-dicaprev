@@ -1,8 +1,13 @@
-export default function HomePage() {
-  return (
-    <div className="p-6 space-y-4">
-      <h1 className="text-2xl font-semibold">Inicio</h1>
-      <p className="text-sm text-gray-600">Bienvenido al portal NEXTPREV.</p>
-    </div>
-  );
+import { redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/auth";
+
+export default async function HomePage() {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.email) {
+    redirect("/login");
+  }
+
+  redirect("/dicaprev");
 }

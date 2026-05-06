@@ -1,35 +1,44 @@
 "use client";
 
-import { useState } from "react";
-import type { Trabajador } from "./types"; // 👈 Ojo: ./types (mismo folder)
+import { useCallback, useEffect, useState } from "react";
+import { getTrabajadores } from "@/actions/trabajadores";
+import type { Trabajador } from "./types";
 
-const MOCK_TRABAJADORES: Trabajador[] = [
-  {
-    id: "t-1",
-    rut: "12.345.678-9",
-    nombres: "Juan",
-    apellidos: "Pérez",
-    estado: "vigente",
-    centroId: "c-1",
-    centroNombre: "Planta Santiago",
-    areaId: "a-1",
-    areaNombre: "Operaciones",
-    cargoId: "cg-1",
-    cargoNombre: "Supervisor",
-    puestoId: "p-1",
-    puestoNombre: "Supervisor de Turno",
-    riesgos: ["Ruido", "Caídas", "Corte"],
-    eppObligatorio: ["Casco", "Zapatos de seguridad"],
-    capacitacionObligatoriaCumplida: false,
-    ds44Pendiente: true,
+function toLegacyTrabajador(worker: Awaited<ReturnType<typeof getTrabajadores>>[number]): Trabajador {
+  return {
+    id: worker.id,
+    rut: worker.rut,
+    nombres: worker.nombre,
+    apellidos: worker.apellido,
+    estado: worker.estado === "Activo" ? "vigente" : "baja",
+    centroId: "",
+    centroNombre: worker.centroTrabajo,
+    areaId: "",
+    areaNombre: worker.area,
+    cargoId: "",
+    cargoNombre: worker.cargo,
+    puestoId: "",
+    puestoNombre: worker.cargo,
+    riesgos: [],
+    eppObligatorio: [],
+    capacitacionObligatoriaCumplida: worker.capacitacionesPendientes === 0,
+    ds44Pendiente: worker.documentosPendientes + worker.capacitacionesPendientes > 2,
     creadoEl: new Date().toISOString(),
     actualizadoEl: new Date().toISOString(),
-  },
-];
+  };
+}
 
 export function useTrabajadores() {
-  const [trabajadores, setTrabajadores] =
-    useState<Trabajador[]>(MOCK_TRABAJADORES);
+  const [trabajadores, setTrabajadores] = useState<Trabajador[]>([]);
+
+  const recargar = useCallback(async () => {
+    const data = await getTrabajadores();
+    setTrabajadores(data.map(toLegacyTrabajador));
+  }, []);
+
+  useEffect(() => {
+    void recargar();
+  }, [recargar]);
 
   const agregarTrabajador = (t: Trabajador) => {
     setTrabajadores((prev) => [...prev, t]);
@@ -50,6 +59,7 @@ export function useTrabajadores() {
 
   return {
     trabajadores,
+    recargar,
     agregarTrabajador,
     actualizarTrabajador,
     eliminarTrabajador,

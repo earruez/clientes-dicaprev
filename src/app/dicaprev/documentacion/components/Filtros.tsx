@@ -9,9 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 type FiltrosProps = {
   filtros: DocumentosFiltros;
   onChangeFiltros: (f: DocumentosFiltros) => void;
+  dotacion?: number;
 };
 
-export default function Filtros({ filtros, onChangeFiltros }: FiltrosProps) {
+export default function Filtros({ filtros, onChangeFiltros, dotacion }: FiltrosProps) {
   function update<K extends keyof DocumentosFiltros>(key: K, value: DocumentosFiltros[K]) {
     onChangeFiltros({ ...filtros, [key]: value });
   }
@@ -26,6 +27,13 @@ export default function Filtros({ filtros, onChangeFiltros }: FiltrosProps) {
 
   return (
     <div className="space-y-4">
+      {dotacion !== undefined ? (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+          <span className="font-medium">Dotación usada para el cálculo:</span>
+          <span className="font-bold">{dotacion} trabajador{dotacion !== 1 ? "es" : ""}</span>
+          <span className="text-blue-500">(documentos que aplican se calculan según este número)</span>
+        </div>
+      ) : null}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
         <div className="space-y-1">
           <Label htmlFor="categoria-filter">Categoría</Label>

@@ -12,13 +12,14 @@ import { PendientesPanel }  from "@/components/trabajadores-v2/documental/Pendie
 import { VencimientosPanel } from "@/components/trabajadores-v2/documental/VencimientosPanel";
 import { BulkUploadDrawer } from "@/components/trabajadores-v2/documental/BulkUploadDrawer";
 import {
-  TIPOS_DOCUMENTO,
-  REGLAS_DOCUMENTALES,
-  MOCK_DOCUMENTOS,
+  getControlDocumentalTrabajadores,
+  evaluarReglasDocumentalesEmpresa,
+  type ControlDocumentalTrabajadoresPayload,
+} from "@/actions/trabajadores/documentos";
+import {
   getWorkerDocs,
   getWorkerDocSummary,
 } from "@/components/trabajadores-v2/documental/types";
-import { MOCK_WORKERS } from "@/components/trabajadores-v2/types";
 
 type TabId = "tipos" | "plantillas" | "reglas" | "pendientes" | "vencimientos";
 
@@ -37,34 +38,98 @@ function ControlDocumentalContent() {
 
   const [activeTab, setActiveTab] = useState<TabId>("pendientes");
   const [bulkOpen,  setBulkOpen]  = useState(false);
+  const [evaluandoReglas, setEvaluandoReglas] = useState(false);
+  const [evaluacionMsg, setEvaluacionMsg] = useState<string | null>(null);
+  const [documentalData, setDocumentalData] = useState<ControlDocumentalTrabajadoresPayload>(() => ({
+    workers: [],
+    tipos: [],
+    reglas: [],
+    documentos: [],
+  }));
+
+  const refreshDocumentalData = async () => {
+    try {
+      const payload = await getControlDocumentalTrabajadores();
+      setDocumentalData(payload);
+    } catch {
+      setDocumentalData({
+        workers: [],
+        tipos: [],
+        reglas: [],
+        documentos: [],
+      });
+    }
+  };
+
+  useEffect(() => {
+    let mounted = true;
+
+    void getControlDocumentalTrabajadores()
+      .then((payload) => {
+        if (!mounted) return;
+        setDocumentalData(payload);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setDocumentalData({
+          workers: [],
+          tipos: [],
+          reglas: [],
+          documentos: [],
+        });
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (workerId) setActiveTab("pendientes");
   }, [workerId]);
 
   const stats = useMemo(() => {
-    const allDocs = MOCK_WORKERS.flatMap((w) =>
-      getWorkerDocs(w, REGLAS_DOCUMENTALES, TIPOS_DOCUMENTO, MOCK_DOCUMENTOS)
+    const allDocs = documentalData.workers.flatMap((w) =>
+      getWorkerDocs(w, documentalData.reglas, documentalData.tipos, documentalData.documentos)
     );
-    const workerSummaries = MOCK_WORKERS.map((w) =>
-      getWorkerDocSummary(getWorkerDocs(w, REGLAS_DOCUMENTALES, TIPOS_DOCUMENTO, MOCK_DOCUMENTOS))
+    const workerSummaries = documentalData.workers.map((w) =>
+      getWorkerDocSummary(getWorkerDocs(w, documentalData.reglas, documentalData.tipos, documentalData.documentos))
     );
     return {
-      tiposTotal:    TIPOS_DOCUMENTO.length,
-      reglasActivas: REGLAS_DOCUMENTALES.filter((r) => r.activa).length,
+      tiposTotal:    documentalData.tipos.length,
+      reglasActivas: documentalData.reglas.filter((r) => r.activa).length,
       conPendientes: workerSummaries.filter((s) => s.pendientes > 0 || s.vencidos > 0).length,
       docsVencidos:  allDocs.filter((d) => d.estado === "vencido").length,
       pctGlobal:     workerSummaries.length > 0
         ? Math.round(workerSummaries.reduce((s, r) => s + r.pct, 0) / workerSummaries.length)
         : 0,
     };
-  }, []);
+  }, [documentalData]);
 
-  const linkedWorker = workerId ? MOCK_WORKERS.find((w) => w.id === workerId) : null;
+  const linkedWorker = workerId ? documentalData.workers.find((w) => w.id === workerId) : null;
+
+  const handleEvaluarReglas = async () => {
+    try {
+      setEvaluandoReglas(true);
+      setEvaluacionMsg(null);
+      const result = await evaluarReglasDocumentalesEmpresa();
+      await refreshDocumentalData();
+      setEvaluacionMsg(`Evaluación completada: ${result.pendientesGenerados} pendientes generados.`);
+    } catch {
+      setEvaluacionMsg("No fue posible evaluar reglas documentales.");
+    } finally {
+      setEvaluandoReglas(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 px-6 py-8">
-      <BulkUploadDrawer isOpen={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <BulkUploadDrawer
+        isOpen={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        workers={documentalData.workers}
+        tipos={documentalData.tipos}
+      />
       <div className="mx-auto max-w-7xl space-y-8">
 
         <StandardPageHeader
@@ -87,6 +152,14 @@ function ControlDocumentalContent() {
               >
                 <ArrowLeft className="h-3.5 w-3.5" /> Trabajadores
               </Link>
+
+            <button
+              onClick={handleEvaluarReglas}
+              disabled={evaluandoReglas}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {evaluandoReglas ? "Evaluando..." : "Evaluar reglas"}
+            </button>
 
             <button
               onClick={() => setBulkOpen(true)}
@@ -113,6 +186,9 @@ function ControlDocumentalContent() {
                 />
               </div>
             </div>
+            {evaluacionMsg ? (
+              <p className="text-[11px] font-medium text-slate-500">{evaluacionMsg}</p>
+            ) : null}
             </div>
           }
         />
@@ -168,11 +244,36 @@ function ControlDocumentalContent() {
               {TABS.find((t) => t.id === activeTab)?.description}
             </p>
 
-            {activeTab === "tipos"        && <TiposDocPanel />}
-            {activeTab === "plantillas"   && <PlantillasPanel />}
-            {activeTab === "reglas"       && <ReglasPanel />}
-            {activeTab === "pendientes"   && <PendientesPanel initialWorkerId={workerId} initialSearch={centro} />}
-            {activeTab === "vencimientos" && <VencimientosPanel />}
+            {documentalData.workers.length === 0 &&
+            documentalData.tipos.length === 0 &&
+            documentalData.reglas.length === 0 ? (
+              <div className="mb-6 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">
+                Aún no hay datos de control documental disponibles para esta empresa.
+              </div>
+            ) : null}
+
+            {activeTab === "tipos"        && <TiposDocPanel tipos={documentalData.tipos} />}
+            {activeTab === "plantillas"   && <PlantillasPanel tipos={documentalData.tipos} />}
+            {activeTab === "reglas"       && <ReglasPanel reglas={documentalData.reglas} tipos={documentalData.tipos} />}
+            {activeTab === "pendientes"   && (
+              <PendientesPanel
+                initialWorkerId={workerId}
+                initialSearch={centro}
+                workers={documentalData.workers}
+                tipos={documentalData.tipos}
+                reglas={documentalData.reglas}
+                documentos={documentalData.documentos}
+                onSaved={refreshDocumentalData}
+              />
+            )}
+            {activeTab === "vencimientos" && (
+              <VencimientosPanel
+                workers={documentalData.workers}
+                tipos={documentalData.tipos}
+                reglas={documentalData.reglas}
+                documentos={documentalData.documentos}
+              />
+            )}
           </div>
         </div>
 

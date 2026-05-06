@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   UploadCloud,
@@ -9,12 +10,17 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
-import { MOCK_WORKERS } from "../types";
-import { TIPOS_DOCUMENTO, CATEGORIA_CONFIG } from "./types";
+import { type Worker } from "../types";
+import { CATEGORIA_CONFIG, type TipoDocumento } from "./types";
+import {
+  createTrabajadorDocumento,
+  updateTrabajadorDocumento,
+} from "@/actions/trabajadores/documentos";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export interface DocumentUploadContext {
+  documentoId?: string;
   workerId?: string;
   tipoDocumentoId?: string;
   mode: "subir" | "reenviar";
@@ -25,6 +31,9 @@ export interface DocumentUploadDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   context?: DocumentUploadContext;
+  workers: Worker[];
+  tipos: TipoDocumento[];
+  onSaved?: () => void | Promise<void>;
 }
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -100,13 +109,19 @@ export function DocumentUploadDrawer({
   isOpen,
   onClose,
   context,
+  workers,
+  tipos,
+  onSaved,
 }: DocumentUploadDrawerProps) {
+  const router = useRouter();
   const [form, setForm] = useState<FormState>({
     ...EMPTY_FORM,
     trabajadorId:    context?.workerId       ?? "",
     tipoDocumentoId: context?.tipoDocumentoId ?? "",
   });
   const [phase, setPhase] = useState<Phase>("form");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Re-initialise whenever the drawer opens with new context
   useEffect(() => {
@@ -117,6 +132,8 @@ export function DocumentUploadDrawer({
         tipoDocumentoId: context?.tipoDocumentoId ?? "",
       });
       setPhase("form");
+      setSelectedFile(null);
+      setSubmitError(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, context?.workerId, context?.tipoDocumentoId]);
@@ -135,8 +152,8 @@ export function DocumentUploadDrawer({
     setForm((prev) => ({ ...prev, ...partial }));
   }
 
-  const selectedWorker = MOCK_WORKERS.find((w) => w.id === form.trabajadorId);
-  const selectedTipo   = TIPOS_DOCUMENTO.find((t) => t.id === form.tipoDocumentoId);
+  const selectedWorker = workers.find((w) => w.id === form.trabajadorId);
+  const selectedTipo   = tipos.find((t) => t.id === form.tipoDocumentoId);
   const isPrefilledWorker = !!context?.workerId;
   const isPrefilledTipo   = !!context?.tipoDocumentoId;
   const isReenviar = context?.mode === "reenviar";
@@ -148,13 +165,54 @@ export function DocumentUploadDrawer({
     form.fechaCarga             !== "" &&
     form.cargadoPor.trim()      !== "";
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!isValid || phase !== "form") return;
+
     setPhase("submitting");
-    setTimeout(() => {
+    setSubmitError(null);
+
+    try {
+      const fileName = selectedFile?.name || form.nombreArchivo;
+      const commonPayload = {
+        estado: form.estadoInicial,
+        fechaEmision: form.fechaEmision || undefined,
+        fechaVencimiento: form.fechaVencimiento || undefined,
+        observaciones: form.observaciones || undefined,
+        cargadoPor: form.cargadoPor,
+        archivoNombre: fileName || undefined,
+        archivoNombreOriginal: selectedFile?.name || undefined,
+        archivoTipo: selectedFile?.type || undefined,
+        archivoPeso: selectedFile?.size,
+      };
+
+      if (context?.documentoId) {
+        await updateTrabajadorDocumento({
+          documentoId: context.documentoId,
+          ...commonPayload,
+        });
+      } else {
+        await createTrabajadorDocumento({
+          trabajadorId: form.trabajadorId,
+          tipoDocumentoId: form.tipoDocumentoId,
+          ...commonPayload,
+        });
+      }
+
+      if (onSaved) {
+        await onSaved();
+      }
+
+      router.refresh();
       setPhase("success");
-      setTimeout(onClose, 1800);
-    }, 750);
+      setTimeout(onClose, 1200);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error
+          ? error.message
+          : "No fue posible guardar el documento del trabajador",
+      );
+      setPhase("form");
+    }
   }
 
   const Icon = isReenviar ? RefreshCcw : UploadCloud;
@@ -265,7 +323,7 @@ export function DocumentUploadDrawer({
                 onChange={(e) => patch({ trabajadorId: e.target.value })}
               >
                 <option value="">Seleccionar trabajador...</option>
-                {MOCK_WORKERS.map((w) => (
+                {workers.map((w) => (
                   <option key={w.id} value={w.id}>
                     {w.apellido}, {w.nombre} — {w.cargo}
                   </option>
@@ -302,7 +360,7 @@ export function DocumentUploadDrawer({
                 onChange={(e) => patch({ tipoDocumentoId: e.target.value })}
               >
                 <option value="">Seleccionar tipo de documento...</option>
-                {TIPOS_DOCUMENTO.map((t) => (
+                {tipos.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.nombre} ({t.categoria})
                   </option>
@@ -320,8 +378,19 @@ export function DocumentUploadDrawer({
               value={form.nombreArchivo}
               onChange={(e) => patch({ nombreArchivo: e.target.value })}
             />
+            <input
+              type="file"
+              className="mt-2 block w-full cursor-pointer text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setSelectedFile(file);
+                if (file && !form.nombreArchivo) {
+                  patch({ nombreArchivo: file.name });
+                }
+              }}
+            />
             <p className="mt-1.5 text-[11px] text-slate-400">
-              Referencia del archivo. En producción se adjuntará el documento real.
+              Se registra metadato del archivo. El almacenamiento real se implementara en una fase posterior.
             </p>
           </div>
 
@@ -450,6 +519,11 @@ export function DocumentUploadDrawer({
           {!isValid && phase === "form" && (
             <p className="mt-2 text-center text-[11px] text-slate-400">
               Completa los campos obligatorios para continuar
+            </p>
+          )}
+          {submitError && (
+            <p className="mt-2 text-center text-[11px] font-medium text-red-600">
+              {submitError}
             </p>
           )}
         </div>

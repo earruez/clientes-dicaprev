@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Users, Building2, ShieldCheck, TriangleAlert, MapPin, UserCheck, Activity, Sparkles, CheckCircle2, Briefcase, ChevronRight } from "lucide-react";
 import { calcularTamañoEmpresa, type TamanoEmpresa } from "@/lib/cumplimiento/cumplimiento-engine";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ import {
   applyEmpresaTemplate,
   clearEmpresaTemplate,
 } from "@/lib/empresa/empresa-store";
+import { getEmpresaActual } from "@/app/dicaprev/empresa/informacion-general/actions";
 
 interface CompanyData {
   razonSocial: string;
@@ -135,14 +137,11 @@ const TAMANO_CFG: Record<TamanoEmpresa, { label: string; cls: string }> = {
 };
 
 const GENERAL_EDIT_SECTIONS = [
-  "Empresa",
-  "Identificación Empresa",
-  "Representante Legal",
-  "Ubicación",
   "Configuración SST",
 ] as const;
 
 export default function CompanyPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("general");
   const [companyData, setCompanyData] = useState<CompanyData>(INITIAL_COMPANY_DATA);
   const [sstValues, setSstValues] = useState<SSTIndicatorValues[]>(DEFAULT_SST_VALUES);
@@ -158,6 +157,37 @@ export default function CompanyPage() {
   useEffect(() => {
     empresaStore.init();
     setPlantillaAplicada(empresaStore.getActivePlantillaTipo());
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    getEmpresaActual()
+      .then((empresa) => {
+        if (!mounted) return;
+
+        setCompanyData((prev) => ({
+          ...prev,
+          razonSocial: empresa.razonSocial ?? empresa.nombre,
+          rut: empresa.rut ?? "",
+          tipoEmpresa: empresa.tipoEmpresa ?? prev.tipoEmpresa,
+          representante: empresa.representanteLegal ?? "",
+          rutRepresentante: empresa.rutRepresentanteLegal ?? "",
+          direccion: empresa.direccion ?? "",
+          comuna: empresa.ciudad ?? "",
+          region: empresa.region ?? "",
+          organismoAdministrador: empresa.mutualidad ?? prev.organismoAdministrador,
+          rubroEmpresa: empresa.giro ?? "",
+          cantidadTrabajadores: empresa.cantidadTrabajadores ?? 0,
+        }));
+      })
+      .catch(() => {
+        // Keep fallback local data if remote read fails.
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleAplicarPlantilla = (modo: PlantillaModo) => {
@@ -205,7 +235,7 @@ export default function CompanyPage() {
         <HeaderSection
           title="Empresa"
           subtitle="Gestión de información general y cumplimiento SST"
-          onEdit={() => openEditModal("Empresa")}
+          onEdit={() => openEditModal("Configuración SST")}
         />
 
         {/* KPIs Superiores */}
@@ -278,7 +308,7 @@ export default function CompanyPage() {
                 <InfoCard
                   title="Identificación Empresa"
                   icon={<Building2 className="h-5 w-5 text-emerald-600" />}
-                  onEdit={() => openEditModal("Identificación Empresa")}
+                  onEdit={() => router.push("/dicaprev/empresa/informacion-general")}
                   className="xl:col-span-2"
                 >
                   <div className="grid gap-6 sm:grid-cols-2">
@@ -320,7 +350,7 @@ export default function CompanyPage() {
                 <InfoCard
                   title="Representante Legal"
                   icon={<UserCheck className="h-5 w-5 text-emerald-600" />}
-                  onEdit={() => openEditModal("Representante Legal")}
+                  onEdit={() => router.push("/dicaprev/empresa/informacion-general")}
                 >
                   <div className="grid gap-6 sm:grid-cols-2">
                     <div>
@@ -337,7 +367,7 @@ export default function CompanyPage() {
                 <InfoCard
                   title="Ubicación"
                   icon={<MapPin className="h-5 w-5 text-emerald-600" />}
-                  onEdit={() => openEditModal("Ubicación")}
+                  onEdit={() => router.push("/dicaprev/empresa/informacion-general")}
                 >
                   <div className="grid gap-6 sm:grid-cols-2">
                     <div className="sm:col-span-2">

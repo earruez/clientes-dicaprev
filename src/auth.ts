@@ -1,16 +1,14 @@
 import type { NextAuthOptions } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
   session: {
-    strategy: "database",
+    strategy: "jwt",
   },
   secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
   pages: {
-    signIn: "/dicaprev/login",
+    signIn: "/login",
   },
   providers: [
     Credentials({
@@ -29,7 +27,7 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const devPassword = process.env.AUTH_DEV_PASSWORD;
+        const devPassword = process.env.AUTH_DEV_PASSWORD ?? (process.env.NODE_ENV === "development" ? "dev1234" : undefined);
         if (!devPassword) {
           throw new Error("AUTH_DEV_PASSWORD no esta definida");
         }
@@ -47,26 +45,10 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const authUser = await prisma.user.upsert({
-          where: { email },
-          update: {
-            name: usuario.nombre,
-          },
-          create: {
-            email,
-            name: usuario.nombre,
-          },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        });
-
         return {
-          id: authUser.id,
-          name: authUser.name,
-          email: authUser.email,
+          id: usuario.id,
+          name: usuario.nombre,
+          email: usuario.email,
         };
       },
     }),

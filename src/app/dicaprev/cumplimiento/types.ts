@@ -51,6 +51,13 @@ export interface ObligacionCumplimiento {
    * Cuando está vacío o ausente la obligación aplica a todos los tamaños.
    */
   tamañosAplica?: TamanoEmpresa[];
+  /**
+   * Umbral numérico de dotación mínima para que aplique.
+   * Alineado con DocumentoRequeridoEmpresa.aplicaDesdeTrabajadores.
+   */
+  aplicaDesdeTrabajadores?: number | null;
+  /** Umbral máximo. null = sin límite superior. */
+  aplicaHastaTrabajadores?: number | null;
 }
 
 // ---- Hallazgo ----
@@ -63,6 +70,9 @@ export interface HistorialHallazgo {
 
 export interface Hallazgo {
   id: string;
+  centroTrabajoId?: string;
+  trabajadorId?: string;
+  obligacionClave?: string;
   tipo: TipoHallazgo;
   descripcion: string;
   centroId: string;

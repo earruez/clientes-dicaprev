@@ -192,6 +192,8 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit }: WorkerDrawerPr
         isOpen={uploadOpen}
         onClose={() => setUploadOpen(false)}
         context={uploadCtx}
+        workers={worker ? [worker] : []}
+        tipos={TIPOS_DOCUMENTO}
       />
       {/* Backdrop */}
       <div

@@ -49,6 +49,7 @@ export interface DocumentoTrabajador {
 }
 
 export interface DocTrabajadorView {
+  documentoId?: string;
   tipo: TipoDocumento;
   estado: DocEstado;
   fechaCarga?: string;
@@ -249,6 +250,7 @@ export function getWorkerDocs(
         }
       }
       return {
+        documentoId:      up?.id,
         tipo,
         estado,
         fechaCarga:       up?.fechaCarga,

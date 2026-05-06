@@ -23,16 +23,22 @@ import {
   Users,
 } from "lucide-react";
 import {
-  TIPOS_DOCUMENTO,
-  REGLAS_DOCUMENTALES,
-  MOCK_DOCUMENTOS,
   CATEGORIA_CONFIG,
   ESTADO_DOC_CONFIG,
   PLANTILLAS_DOCUMENTALES,
   getWorkerDocs,
   getWorkerDocSummary,
+  type TipoDocumento,
+  type ReglaDocumental,
+  type DocumentoTrabajador,
 } from "./types";
-import { MOCK_WORKERS, formatDate } from "../types";
+import { formatDate, type Worker } from "../types";
+import {
+  cambiarEstadoTrabajadorDocumento,
+  getHistorialDocumentoTrabajador,
+  type EstadoDocumentoTrabajadorInput,
+  type HistorialEntryView,
+} from "@/actions/trabajadores/documentos";
 import {
   DocumentUploadDrawer,
   type DocumentUploadContext,
@@ -44,13 +50,28 @@ import { PorVencimientosView } from "./PorVencimientosView";
 type FilterEstado = "todos" | "criticos" | "pendientes" | "vencidos" | "rechazados" | "en_revision";
 type BulkModal    = null | "plantilla" | "revisado" | "exportar" | "recordar" | "estado";
 type MainView     = "trabajador" | "centro" | "cargo" | "vencimientos";
+type DocActionType = "aprobar" | "rechazar" | "no_aplica" | "en_revision";
 
 interface PendientesPanelProps {
   initialWorkerId?: string;
   initialSearch?: string;
+  workers: Worker[];
+  tipos: TipoDocumento[];
+  reglas: ReglaDocumental[];
+  documentos: DocumentoTrabajador[];
+  onSaved?: () => void | Promise<void>;
 }
 
-export function PendientesPanel({ initialWorkerId, initialSearch }: PendientesPanelProps = {}) {
+export function PendientesPanel({
+  initialWorkerId,
+  initialSearch,
+  workers,
+  tipos,
+  reglas,
+  documentos,
+  onSaved,
+}: PendientesPanelProps) {
+
   const [mainView, setMainView]                 = useState<MainView>("trabajador");
   const [soloDS44, setSoloDS44]                 = useState(false);
   const [search, setSearch]                     = useState("");
@@ -69,6 +90,75 @@ export function PendientesPanel({ initialWorkerId, initialSearch }: PendientesPa
   const [mockBulkDone, setMockBulkDone]                 = useState<string | null>(null);
   const [selectedPlantilla, setSelectedPlantilla]       = useState("");
   const [selectedBulkEstado, setSelectedBulkEstado]     = useState("en_revision");
+
+  // ── Per-document state actions ─────────────────────────────
+  const [actionModal, setActionModal]   = useState<{ documentoId: string; tipoNombre: string; accion: DocActionType } | null>(null);
+  const [actionMotivo, setActionMotivo] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError]   = useState<string | null>(null);
+  const [actionDone, setActionDone]     = useState<string | null>(null);
+
+  function openActionModal(documentoId: string, tipoNombre: string, accion: DocActionType) {
+    setActionModal({ documentoId, tipoNombre, accion });
+    setActionMotivo("");
+    setActionError(null);
+  }
+
+  // ── Historial modal ──────────────────────────────────
+  const [historialModal, setHistorialModal] = useState<{ documentoId: string; tipoNombre: string } | null>(null);
+  const [historialEntries, setHistorialEntries] = useState<HistorialEntryView[]>([]);
+  const [historialLoading, setHistorialLoading] = useState(false);
+  const [historialError, setHistorialError] = useState<string | null>(null);
+
+  async function openHistorialModal(documentoId: string, tipoNombre: string) {
+    setHistorialModal({ documentoId, tipoNombre });
+    setHistorialEntries([]);
+    setHistorialError(null);
+    setHistorialLoading(true);
+    try {
+      const data = await getHistorialDocumentoTrabajador(documentoId);
+      setHistorialEntries(data);
+    } catch (err) {
+      setHistorialError(err instanceof Error ? err.message : "Error al cargar historial");
+    } finally {
+      setHistorialLoading(false);
+    }
+  }
+
+  async function handleDocAction() {
+    if (!actionModal) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const estadoMap: Record<DocActionType, EstadoDocumentoTrabajadorInput> = {
+        aprobar:    "aprobado",
+        rechazar:   "rechazado",
+        no_aplica:  "no_aplica",
+        en_revision: "en_revision",
+      };
+      const labels: Record<DocActionType, string> = {
+        aprobar:    "aprobado",
+        rechazar:   "rechazado",
+        no_aplica:  "marcado como no aplica",
+        en_revision: "enviado a revisión",
+      };
+      await cambiarEstadoTrabajadorDocumento(
+        actionModal.documentoId,
+        estadoMap[actionModal.accion],
+        actionMotivo.trim() || undefined,
+      );
+      const msg = `Documento "${actionModal.tipoNombre}" ${labels[actionModal.accion]}`;
+      setActionDone(msg);
+      setTimeout(() => setActionDone(null), 3500);
+      setActionModal(null);
+      setActionMotivo("");
+      await onSaved?.();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Error al cambiar estado");
+    } finally {
+      setActionLoading(false);
+    }
+  }
 
   function toggleCheck(id: string) {
     setCheckedIds((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -118,12 +208,12 @@ export function PendientesPanel({ initialWorkerId, initialSearch }: PendientesPa
   }, [initialSearch]);
 
   const rows = useMemo(() => {
-    return MOCK_WORKERS.map((worker) => {
-      const docs    = getWorkerDocs(worker, REGLAS_DOCUMENTALES, TIPOS_DOCUMENTO, MOCK_DOCUMENTOS);
+    return workers.map((worker) => {
+      const docs    = getWorkerDocs(worker, reglas, tipos, documentos);
       const summary = getWorkerDocSummary(docs);
       return { worker, docs, summary };
     });
-  }, []);
+  }, [workers, reglas, tipos, documentos]);
 
   const baseRows = useMemo(() => {
     if (!soloDS44) return rows;
@@ -201,7 +291,191 @@ export function PendientesPanel({ initialWorkerId, initialSearch }: PendientesPa
         isOpen={uploadOpen}
         onClose={() => setUploadOpen(false)}
         context={uploadCtx}
+        workers={workers}
+        tipos={tipos}
+        onSaved={onSaved}
       />
+
+      {/* ── Doc action confirmation toast ── */}
+      {actionDone && (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-[100] -translate-x-1/2">
+          <div className="flex items-center gap-2.5 rounded-2xl bg-slate-900 px-5 py-3 shadow-2xl ring-1 ring-white/10">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+            <p className="text-sm font-semibold text-white">{actionDone}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Historial modal ── */}
+      {historialModal && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setHistorialModal(null)}>
+          <div className="flex w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Historial documental</p>
+                <h3 className="mt-0.5 text-sm font-bold text-slate-900">{historialModal.tipoNombre}</h3>
+              </div>
+              <button onClick={() => setHistorialModal(null)} className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              {historialLoading && (
+                <div className="flex items-center justify-center py-10">
+                  <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+                </div>
+              )}
+              {historialError && (
+                <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-red-200">{historialError}</p>
+              )}
+              {!historialLoading && !historialError && historialEntries.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100">
+                    <Clock className="h-5 w-5 text-slate-400" />
+                  </div>
+                  <p className="mt-3 text-sm font-semibold text-slate-500">Sin historial registrado</p>
+                  <p className="mt-1 text-xs text-slate-400">Las acciones sobre este documento aparecerán aquí.</p>
+                </div>
+              )}
+              {!historialLoading && historialEntries.length > 0 && (
+                <ol className="relative border-l border-slate-200 pl-5 space-y-5">
+                  {historialEntries.map((entry) => {
+                    const date = new Date(entry.createdAt);
+                    const dateStr = date.toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
+                    const timeStr = date.toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+                    const accionLabel: Record<string, string> = {
+                      DOCUMENTO_CREADO:          "Documento creado",
+                      ESTADO_ACTUALIZADO:        "Estado actualizado",
+                      DOCUMENTO_GENERADO_POR_REGLA: "Generado por regla",
+                      ARCHIVO_SUBIDO:            "Archivo subido",
+                      OBSERVACION_AGREGADA:      "Observación agregada",
+                    };
+                    return (
+                      <li key={entry.id} className="relative">
+                        <span className="absolute -left-[1.35rem] top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white ring-2 ring-slate-300">
+                          <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                        </span>
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                              {accionLabel[entry.accion] ?? entry.accion}
+                            </span>
+                            <span className="shrink-0 text-[11px] text-slate-400">{dateStr} · {timeStr}</span>
+                          </div>
+                          {entry.detalle && (
+                            <p className="mt-2 text-xs text-slate-600 leading-relaxed">{entry.detalle}</p>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                            {entry.usuarioNombre && (
+                              <span>Por: <span className="font-medium text-slate-700">{entry.usuarioNombre}</span></span>
+                            )}
+                            {!entry.usuarioNombre && entry.usuarioEmail && (
+                              <span>Por: <span className="font-medium text-slate-700">{entry.usuarioEmail}</span></span>
+                            )}
+                            {entry.version && (
+                              <span>Versión: <span className="font-medium text-slate-700">{entry.version}</span></span>
+                            )}
+                            {(entry.archivoNombreOriginal ?? entry.archivoNombre) && (
+                              <span>Archivo: <span className="font-medium text-slate-700">{entry.archivoNombreOriginal ?? entry.archivoNombre}</span></span>
+                            )}
+                            {entry.archivoPeso && (
+                              <span>{(entry.archivoPeso / 1024).toFixed(0)} KB</span>
+                            )}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Doc action modal ── */}
+      {actionModal && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => !actionLoading && setActionModal(null)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(e) => e.stopPropagation()}>
+            <div className="p-6">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
+                actionModal.accion === "aprobar"    ? "bg-emerald-100" :
+                actionModal.accion === "rechazar"   ? "bg-red-100"     :
+                actionModal.accion === "no_aplica"  ? "bg-slate-100"   :
+                "bg-blue-100"
+              }`}>
+                {actionModal.accion === "aprobar"    && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+                {actionModal.accion === "rechazar"   && <XCircle      className="h-5 w-5 text-red-600" />}
+                {actionModal.accion === "no_aplica"  && <X            className="h-5 w-5 text-slate-500" />}
+                {actionModal.accion === "en_revision" && <Clock       className="h-5 w-5 text-blue-600" />}
+              </div>
+              <h3 className="mt-4 text-sm font-bold text-slate-900">
+                {actionModal.accion === "aprobar"    && "Aprobar documento"}
+                {actionModal.accion === "rechazar"   && "Rechazar documento"}
+                {actionModal.accion === "no_aplica"  && "Marcar como No aplica"}
+                {actionModal.accion === "en_revision" && "Enviar a revisión"}
+              </h3>
+              <p className="mt-1.5 text-xs text-slate-500">
+                <span className="font-semibold text-slate-700">{actionModal.tipoNombre}</span>
+                {actionModal.accion === "aprobar"    && " — Se marcará como aprobado/completo."}
+                {actionModal.accion === "rechazar"   && " — Se marcará como rechazado y se solicitará corrección."}
+                {actionModal.accion === "no_aplica"  && " — Se marcará como no requerido para este trabajador."}
+                {actionModal.accion === "en_revision" && " — Se enviará a revisión."}
+              </p>
+
+              {/* Motivo / observación */}
+              <div className="mt-4">
+                <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
+                  {actionModal.accion === "rechazar" ? "Motivo de rechazo *" : "Observación (opcional)"}
+                </label>
+                <textarea
+                  className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none resize-none"
+                  rows={3}
+                  placeholder={actionModal.accion === "rechazar" ? "Describe el motivo del rechazo..." : "Comentario o detalle..."}
+                  value={actionMotivo}
+                  onChange={(e) => setActionMotivo(e.target.value)}
+                />
+              </div>
+
+              {actionError && (
+                <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 ring-1 ring-red-200">
+                  {actionError}
+                </p>
+              )}
+
+              <div className="mt-5 flex gap-2.5">
+                <button
+                  onClick={() => { setActionModal(null); setActionMotivo(""); }}
+                  disabled={actionLoading}
+                  className="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDocAction}
+                  disabled={actionLoading || (actionModal.accion === "rechazar" && !actionMotivo.trim())}
+                  className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    actionModal.accion === "aprobar"    ? "bg-emerald-600 hover:bg-emerald-700" :
+                    actionModal.accion === "rechazar"   ? "bg-red-600 hover:bg-red-700" :
+                    actionModal.accion === "no_aplica"  ? "bg-slate-700 hover:bg-slate-800" :
+                    "bg-blue-600 hover:bg-blue-700"
+                  }`}
+                >
+                  {actionLoading ? "Guardando..." : (
+                    actionModal.accion === "aprobar"    ? "Aprobar" :
+                    actionModal.accion === "rechazar"   ? "Rechazar" :
+                    actionModal.accion === "no_aplica"  ? "Confirmar" :
+                    "Enviar a revisión"
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Bulk confirmation toast ── */}
       {mockBulkDone && (
@@ -699,12 +973,14 @@ export function PendientesPanel({ initialWorkerId, initialSearch }: PendientesPa
                                     </p>
                                   )}
 
-                                  {/* Row 5: action */}
-                                  {needsAction && (
-                                    <div className="mt-0.5">
+                                  {/* Row 5: actions */}
+                                  <div className="mt-0.5 flex flex-wrap gap-1.5">
+                                    {/* Upload/reenviar — for pendiente, vencido, rechazado */}
+                                    {needsAction && (
                                       <button
                                         onClick={() =>
                                           openUpload({
+                                            documentoId:           doc.documentoId,
                                             workerId:              worker.id,
                                             tipoDocumentoId:       doc.tipo.id,
                                             mode:                  doc.estado === "rechazado" ? "reenviar" : "subir",
@@ -720,8 +996,63 @@ export function PendientesPanel({ initialWorkerId, initialSearch }: PendientesPa
                                         <UploadCloud className="h-2.5 w-2.5" />
                                         {doc.estado === "rechazado" ? "Reenviar" : "Subir"}
                                       </button>
-                                    </div>
-                                  )}
+                                    )}
+
+                                    {/* Aprobar — for en_revision docs with real DB record */}
+                                    {doc.estado === "en_revision" && doc.documentoId && (
+                                      <button
+                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "aprobar")}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-emerald-700"
+                                      >
+                                        <CheckCircle2 className="h-2.5 w-2.5" />
+                                        Aprobar
+                                      </button>
+                                    )}
+
+                                    {/* Rechazar — for en_revision docs with real DB record */}
+                                    {doc.estado === "en_revision" && doc.documentoId && (
+                                      <button
+                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "rechazar")}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-red-700"
+                                      >
+                                        <XCircle className="h-2.5 w-2.5" />
+                                        Rechazar
+                                      </button>
+                                    )}
+
+                                    {/* Enviar a revisión — for completo docs (re-review) */}
+                                    {doc.estado === "completo" && doc.documentoId && (
+                                      <button
+                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "en_revision")}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-blue-700"
+                                      >
+                                        <Clock className="h-2.5 w-2.5" />
+                                        En revisión
+                                      </button>
+                                    )}
+
+                                    {/* No aplica — for any doc with a real DB record except already no_aplica */}
+                                    {doc.estado !== "no_aplica" && doc.documentoId && (
+                                      <button
+                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "no_aplica")}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                                      >
+                                        <X className="h-2.5 w-2.5" />
+                                        No aplica
+                                      </button>
+                                    )}
+
+                                    {/* Ver historial — for any doc with a real DB record */}
+                                    {doc.documentoId && (
+                                      <button
+                                        onClick={() => openHistorialModal(doc.documentoId!, doc.tipo.nombre)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-500 transition hover:bg-slate-50"
+                                      >
+                                        <Clock className="h-2.5 w-2.5" />
+                                        Historial
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
                               );
                             })}

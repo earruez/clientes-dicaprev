@@ -49,6 +49,16 @@ export interface ObligacionInput {
    * Cuando está vacío o ausente la obligación aplica a todos los tamaños.
    */
   tamañosAplica?: TamanoEmpresa[];
+  /**
+   * Umbral numérico mínimo de trabajadores.
+   * Alineado con DocumentoRequeridoEmpresa.aplicaDesdeTrabajadores.
+   * Cuando está presente se usa junto a (o en lugar de) tamañosAplica.
+   */
+  aplicaDesdeTrabajadores?: number | null;
+  /**
+   * Umbral numérico máximo de trabajadores. null = sin límite superior.
+   */
+  aplicaHastaTrabajadores?: number | null;
 }
 
 /**
@@ -280,20 +290,44 @@ export function evaluarObligacion(
  *   `tamañosAplica` definidos se filtran: solo se evalúan aquellas que
  *   incluyen el tamaño actual. Obligaciones sin `tamañosAplica` (o con
  *   array vacío) siempre se evalúan.
+ * @param nTrabajadores - Opcional. Cuando se indica, las obligaciones con
+ *   `aplicaDesdeTrabajadores` / `aplicaHastaTrabajadores` se filtran
+ *   por umbral numérico exacto (alineado con DocumentoRequeridoEmpresa).
  */
 export function evaluarObligaciones(
   obligaciones: ObligacionInput[],
   docs: DocumentoEvaluable[],
   entidades: EntidadInput[],
   hoy: Date = new Date(),
-  tamanoEmpresa?: TamanoEmpresa
+  tamanoEmpresa?: TamanoEmpresa,
+  nTrabajadores?: number
 ): EvaluacionCumplimiento[] {
-  const obligacionesAplicables = tamanoEmpresa
-    ? obligaciones.filter(
-        (o) =>
-          !o.tamañosAplica?.length || o.tamañosAplica.includes(tamanoEmpresa)
-      )
-    : obligaciones;
+  const obligacionesAplicables = obligaciones.filter((o) => {
+    // Filtro por tamaño categórico (tamañosAplica)
+    if (
+      tamanoEmpresa &&
+      o.tamañosAplica?.length &&
+      !o.tamañosAplica.includes(tamanoEmpresa)
+    ) {
+      return false;
+    }
+    // Filtro por umbral numérico (aplicaDesdeTrabajadores / aplicaHastaTrabajadores)
+    if (nTrabajadores !== undefined) {
+      if (
+        o.aplicaDesdeTrabajadores != null &&
+        nTrabajadores < o.aplicaDesdeTrabajadores
+      ) {
+        return false;
+      }
+      if (
+        o.aplicaHastaTrabajadores != null &&
+        nTrabajadores > o.aplicaHastaTrabajadores
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   const resultados: EvaluacionCumplimiento[] = [];
   for (const entidad of entidades) {

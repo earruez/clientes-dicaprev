@@ -75,22 +75,42 @@ enum Rol {
 // ─────────────────────────────────────────────
 
 model Empresa {
-  id          String    @id @default(cuid())
-  nombre      String
-  rut         String?
-  razonSocial String?
-  giro        String?
-  direccion   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  nombre                 String
+  rut                    String?
+  razonSocial            String?
+  giro                   String?
+  direccion              String?
+  tipoEmpresa            String?
+  tamanoEmpresa          String?
+  codigoCiiu             String?
+  inicioActividades      String?
+  ciudad                 String?
+  region                 String?
+  telefono               String?
+  correo                 String?
+  web                    String?
+  representanteLegal     String?
+  rutRepresentanteLegal  String?
+  mutualidad             String?
+  cotizacionAdicional    String?
+  cantidadTrabajadores   Int       @default(0)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   usuarios            Usuario[]
   documentosEmpresa   DocumentoEmpresa[]
+  trabajadorDocumentos TrabajadorDocumento[] @relation("TrabajadorDocumentosEmpresa")
   centrosTrabajo      CentroTrabajo[]
   areas               Area[]
   cargos              Cargo[]
   trabajadores        Trabajador[]
   posicionesDotacion  PosicionDotacion[]
+  vehiculos           Vehiculo[]
+  obligacionesEstado  ObligacionEmpresaEstado[]
+  hallazgosCumplimiento HallazgoCumplimiento[]
+  documentoTiposTrabajador DocumentoTipoTrabajador[]
+  reglasDocumentoTrabajador ReglaDocumentoTrabajador[]
 }
 
 model Usuario {
@@ -102,9 +122,13 @@ model Usuario {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  empresa               Empresa?                      @relation(fields: [empresaId], references: [id])
-  documentosSubidos     DocumentoEmpresa[]            @relation("UsuarioDocumentosSubidos")
-  documentosHistorial   DocumentoEmpresaHistorial[]   @relation("UsuarioDocumentoHistorial")
+  empresa                          Empresa?                      @relation(fields: [empresaId], references: [id])
+  documentosSubidos                DocumentoEmpresa[]            @relation("UsuarioDocumentosSubidos")
+  documentosHistorial              DocumentoEmpresaHistorial[]   @relation("UsuarioDocumentoHistorial")
+  trabajadorDocumentosSubidos      TrabajadorDocumento[]         @relation("UsuarioTrabajadorDocumentosSubidos")
+  trabajadorDocumentosHistorial    TrabajadorDocumentoHistorial[]@relation("UsuarioTrabajadorDocumentoHistorial")
+  obligacionesEstadoActualizadas   ObligacionEmpresaEstado[]     @relation("UsuarioObligacionEmpresaEstado")
+  hallazgosCumplimientoCreados     HallazgoCumplimiento[]        @relation("UsuarioHallazgoCumplimientoCreado")
 }
 
 model DocumentoEmpresa {
@@ -174,6 +198,53 @@ model DocumentoEmpresaHistorial {
   usuario    Usuario?         @relation("UsuarioDocumentoHistorial", fields: [usuarioId], references: [id])
 }
 
+model ObligacionEmpresaEstado {
+  id             String   @id @default(uuid())
+  empresaId      String
+  obligacionClave String
+  cumple         Boolean  @default(false)
+  estado         String
+  observacion    String?
+  actualizadoPorId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  empresa        Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  actualizadoPor Usuario? @relation("UsuarioObligacionEmpresaEstado", fields: [actualizadoPorId], references: [id])
+
+  @@unique([empresaId, obligacionClave])
+  @@index([empresaId])
+  @@index([actualizadoPorId])
+}
+
+model HallazgoCumplimiento {
+  id               String   @id @default(uuid())
+  empresaId        String
+  centroTrabajoId  String?
+  trabajadorId     String?
+  obligacionClave  String?
+  tipo             String
+  prioridad        String
+  descripcion      String
+  estado           String
+  fechaCompromiso  DateTime
+  creadoPorId      String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  empresa          Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  centroTrabajo    CentroTrabajo? @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+  trabajador       Trabajador?   @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  creadoPor        Usuario       @relation("UsuarioHallazgoCumplimientoCreado", fields: [creadoPorId], references: [id])
+
+  @@index([empresaId])
+  @@index([centroTrabajoId])
+  @@index([trabajadorId])
+  @@index([obligacionClave])
+  @@index([estado])
+  @@index([creadoPorId])
+}
+
 model CentroTrabajo {
   id                  String   @id @default(uuid())
   empresaId           String
@@ -190,6 +261,9 @@ model CentroTrabajo {
   empresa             Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   trabajadores        Trabajador[]
   posicionesDotacion  PosicionDotacion[]
+  vehiculos           Vehiculo[]
+  hallazgosCumplimiento HallazgoCumplimiento[]
+  reglasDocumentoTrabajador ReglaDocumentoTrabajador[]
 
   @@index([empresaId])
 }
@@ -206,6 +280,7 @@ model Area {
   empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   cargos      Cargo[]
   trabajadores Trabajador[]
+  reglasDocumentoTrabajador ReglaDocumentoTrabajador[]
 
   @@index([empresaId])
 }
@@ -226,6 +301,7 @@ model Cargo {
   area        Area?    @relation(fields: [areaId], references: [id], onDelete: SetNull)
   trabajadores Trabajador[]
   posicionesDotacion PosicionDotacion[]
+  reglasDocumentoTrabajador ReglaDocumentoTrabajador[]
 
   @@index([empresaId])
   @@index([areaId])
@@ -255,12 +331,112 @@ model Trabajador {
   area            Area?        @relation(fields: [areaId], references: [id], onDelete: SetNull)
   cargo           Cargo?       @relation(fields: [cargoId], references: [id], onDelete: SetNull)
   posicionDotacion PosicionDotacion? @relation(fields: [posicionDotacionId], references: [id], onDelete: SetNull)
+  documentos      TrabajadorDocumento[]
+  hallazgosCumplimiento HallazgoCumplimiento[]
 
   @@index([empresaId])
   @@index([centroTrabajoId])
   @@index([areaId])
   @@index([cargoId])
   @@index([posicionDotacionId])
+}
+
+model TrabajadorDocumento {
+  id                  String    @id @default(uuid())
+  trabajadorId        String
+  empresaId           String
+  nombre              String
+  tipo                String
+  categoria           String    @default("trabajador")
+  estado              String    @default("pendiente_carga")
+  version             String    @default("1.0")
+  archivoNombre       String?
+  archivoNombreOriginal String?
+  archivoUrl          String?
+  archivoTipo         String?
+  archivoPeso         Int?
+  tieneVencimiento    Boolean   @default(false)
+  fechaEmision        DateTime?
+  fechaVencimiento    DateTime?
+  observaciones       String?
+  subidoPorId         String?
+  creadoPorEmail      String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  trabajador          Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  empresa             Empresa    @relation("TrabajadorDocumentosEmpresa", fields: [empresaId], references: [id], onDelete: Cascade)
+  subidoPor           Usuario?   @relation("UsuarioTrabajadorDocumentosSubidos", fields: [subidoPorId], references: [id])
+  historial           TrabajadorDocumentoHistorial[]
+
+  @@index([trabajadorId])
+  @@index([empresaId])
+  @@index([subidoPorId])
+  @@unique([trabajadorId, tipo])
+}
+
+model TrabajadorDocumentoHistorial {
+  id          String   @id @default(uuid())
+  documentoId String
+  usuarioId   String?
+  accion      String
+  detalle     String?
+  version     String?
+  archivoNombre String?
+  archivoNombreOriginal String?
+  archivoUrl  String?
+  archivoTipo String?
+  archivoPeso Int?
+  createdAt   DateTime @default(now())
+
+  documento   TrabajadorDocumento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+  usuario     Usuario?            @relation("UsuarioTrabajadorDocumentoHistorial", fields: [usuarioId], references: [id])
+}
+
+model DocumentoTipoTrabajador {
+  id                 String   @id @default(uuid())
+  empresaId          String
+  nombre             String
+  codigo             String
+  descripcion        String?
+  vigenciaDias       Int?
+  requiereVencimiento Boolean @default(false)
+  requiereArchivo    Boolean  @default(true)
+  activo             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  empresa            Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  reglas             ReglaDocumentoTrabajador[]
+
+  @@index([empresaId])
+  @@unique([empresaId, codigo])
+}
+
+model ReglaDocumentoTrabajador {
+  id                 String   @id @default(uuid())
+  empresaId          String
+  tipoDocumentoId    String
+  cargoId            String?
+  areaId             String?
+  centroTrabajoId    String?
+  tipoContrato       String?
+  obligatorio        Boolean  @default(true)
+  activo             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  empresa            Empresa                  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  tipoDocumento      DocumentoTipoTrabajador  @relation(fields: [tipoDocumentoId], references: [id], onDelete: Cascade)
+  cargo              Cargo?                   @relation(fields: [cargoId], references: [id], onDelete: SetNull)
+  area               Area?                    @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  centroTrabajo      CentroTrabajo?           @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId])
+  @@index([tipoDocumentoId])
+  @@index([cargoId])
+  @@index([areaId])
+  @@index([centroTrabajoId])
 }
 
 model PosicionDotacion {
@@ -283,4 +459,63 @@ model PosicionDotacion {
   @@index([centroTrabajoId])
   @@index([cargoId])
   @@unique([empresaId, centroTrabajoId, cargoId])
+}
+
+model Vehiculo {
+  id              String   @id @default(uuid())
+  empresaId       String
+  centroTrabajoId String?
+  patente         String
+  codigoInterno   String?
+  tipo            String
+  marca           String
+  modelo          String
+  anio            Int?
+  estado          String   @default("operativo")
+  responsable     String?
+  proximaRevision String?
+  kilometraje     Int?
+  observaciones   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  documentos      VehiculoDocumento[]
+  mantenciones    VehiculoMantencion[]
+
+  empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  centroTrabajo CentroTrabajo? @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId])
+}
+
+model VehiculoDocumento {
+  id            String   @id @default(uuid())
+  vehiculoId    String
+  tipo          String
+  subido        Boolean  @default(false)
+  vencimiento   String?
+  archivoNombre String?
+  archivoUrl    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  vehiculo      Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  @@index([vehiculoId])
+  @@unique([vehiculoId, tipo])
+}
+
+model VehiculoMantencion {
+  id            String   @id @default(uuid())
+  vehiculoId    String
+  tipo          String
+  fecha         String
+  estado        String   @default("programada")
+  observaciones String?
+  kilometraje   Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  vehiculo      Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  @@index([vehiculoId])
 }

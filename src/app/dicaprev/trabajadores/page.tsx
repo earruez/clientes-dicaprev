@@ -13,17 +13,16 @@ import {
   type Worker,
   type FilterConfig,
   DEFAULT_FILTERS,
-  MOCK_WORKERS,
   applyFilters,
 } from "@/components/trabajadores-v2/types";
-import {
-  findOrCreateDotacion,
-  incrementAsignados,
-  decrementAsignados,
-} from "@/lib/dotacion/dotacion-store";
+import { useTrabajadores } from "./hooks/useTrabajadores";
 
 export default function TrabajadoresPage() {
-  const [workers, setWorkers]       = useState<Worker[]>(MOCK_WORKERS);
+  const {
+    trabajadores: workers,
+    guardarTrabajador,
+    eliminarTrabajador,
+  } = useTrabajadores();
   const [filters, setFilters]       = useState<FilterConfig>(DEFAULT_FILTERS);
   const [activeKpiId, setActiveKpiId] = useState<KpiId | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -60,34 +59,12 @@ export default function TrabajadoresPage() {
   const openEditForm = (w: Worker) => { setEditWorker(w); setIsFormOpen(true); if (isDrawerOpen) closeDrawer(); };
   const closeForm    = () => setIsFormOpen(false);
 
-  const handleSaveWorker = (w: Worker) => {
-    setWorkers((prev) => {
-      const existing = prev.find((p) => p.id === w.id);
-
-      // Auto-link dotación: find or create a posicion for this centro + cargo
-      const dotacion = findOrCreateDotacion({
-        centroNombre: w.centroTrabajo,
-        cargoNombre: w.cargo,
-      });
-      const updatedWorker: Worker = { ...w, dotacionId: dotacion.id };
-
-      if (!existing) {
-        // New worker — increment asignados
-        incrementAsignados(dotacion.id);
-      } else if (existing.dotacionId !== dotacion.id) {
-        // Centro or cargo changed — decrement old, increment new
-        if (existing.dotacionId) decrementAsignados(existing.dotacionId);
-        incrementAsignados(dotacion.id);
-      }
-
-      return existing
-        ? prev.map((p) => (p.id === w.id ? updatedWorker : p))
-        : [updatedWorker, ...prev];
-    });
+  const handleSaveWorker = async (w: Worker) => {
+    await guardarTrabajador(w);
   };
 
-  const handleDelete = (id: string) => {
-    setWorkers((prev) => prev.filter((w) => w.id !== id));
+  const handleDelete = async (id: string) => {
+    await eliminarTrabajador(id);
     setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
   };
 

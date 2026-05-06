@@ -27,6 +27,8 @@ export const OBLIGACIONES_MOCK: ObligacionCumplimiento[] = [
     cumplimientoGlobal: 50,
     vencimiento: "2026-06-30",
     tamañosAplica: ["micro", "pequena", "mediana", "grande"],
+    aplicaDesdeTrabajadores: 1,
+    aplicaHastaTrabajadores: null,
   },
   {
     id: "ob-02",
@@ -39,6 +41,8 @@ export const OBLIGACIONES_MOCK: ObligacionCumplimiento[] = [
     cumplimientoGlobal: 0,
     vencimiento: "2026-03-31",
     tamañosAplica: ["micro", "pequena", "mediana", "grande"],
+    aplicaDesdeTrabajadores: 1,
+    aplicaHastaTrabajadores: null,
   },
   {
     id: "ob-03",
@@ -51,6 +55,8 @@ export const OBLIGACIONES_MOCK: ObligacionCumplimiento[] = [
     cumplimientoGlobal: 100,
     vencimiento: "2026-12-31",
     tamañosAplica: ["pequena", "mediana", "grande"],
+    aplicaDesdeTrabajadores: 10,
+    aplicaHastaTrabajadores: null,
   },
   {
     id: "ob-04",
@@ -63,6 +69,8 @@ export const OBLIGACIONES_MOCK: ObligacionCumplimiento[] = [
     cumplimientoGlobal: 50,
     vencimiento: "2026-12-31",
     tamañosAplica: ["mediana", "grande"],
+    aplicaDesdeTrabajadores: 10,
+    aplicaHastaTrabajadores: null,
   },
   {
     id: "ob-05",
@@ -74,6 +82,8 @@ export const OBLIGACIONES_MOCK: ObligacionCumplimiento[] = [
     estadosPorCentro: { c1: "cumplida" },
     cumplimientoGlobal: 100,
     tamañosAplica: ["micro", "pequena", "mediana", "grande"],
+    aplicaDesdeTrabajadores: 1,
+    aplicaHastaTrabajadores: null,
   },
   {
     id: "ob-06",
@@ -86,6 +96,8 @@ export const OBLIGACIONES_MOCK: ObligacionCumplimiento[] = [
     cumplimientoGlobal: 0,
     vencimiento: "2026-04-30",
     tamañosAplica: ["pequena", "mediana", "grande"],
+    aplicaDesdeTrabajadores: 1,
+    aplicaHastaTrabajadores: null,
   },
 ];
 

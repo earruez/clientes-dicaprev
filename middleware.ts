@@ -2,11 +2,11 @@ import { withAuth } from "next-auth/middleware";
 
 export default withAuth({
   pages: {
-    signIn: "/dicaprev/login",
+    signIn: "/login",
   },
   callbacks: {
     authorized: ({ token, req }) => {
-      if (req.nextUrl.pathname.startsWith("/dicaprev/login")) {
+      if (req.nextUrl.pathname.startsWith("/login")) {
         return true;
       }
       return Boolean(token);
@@ -15,5 +15,5 @@ export default withAuth({
 });
 
 export const config = {
-  matcher: ["/dicaprev/:path*"],
+  matcher: ["/", "/login", "/dicaprev/:path*"],
 };

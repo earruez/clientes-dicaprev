@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useTransition, FormEvent } from "react";
 import {
   X, Pencil, Car, Truck, Wrench,
   CheckCircle2, AlertTriangle, XCircle,
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   type Vehiculo,
   type TipoVehiculo,
@@ -20,9 +21,29 @@ import {
   diasParaVencer,
   DOC_NOMBRE,
   DOCS_REQUERIDOS,
-  updateDocumento,
-  getVehiculoById,
 } from "@/lib/vehiculos/vehiculos-store";
+import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
+import {
+  crearMantencionVehiculo,
+  getVehiculoDetalle,
+  upsertVehiculoDocumento,
+  type MantencionEstado,
+  type VehiculoMantencionDTO,
+} from "./actions";
+
+type ArchivoSubido = {
+  archivoNombre: string;
+  archivoNombreOriginal: string;
+  archivoUrl: string;
+};
+
+type DocumentoVehiculoState = {
+  tipo: TipoDocumento;
+  subido: boolean;
+  vencimiento: string | null;
+  archivoNombre?: string | null;
+  archivoUrl?: string | null;
+};
 
 // ── Visual config ─────────────────────────────────────────────────────────
 
@@ -82,39 +103,7 @@ function SectionTitle({ label }: { label: string }) {
 
 // ── Mock data ─────────────────────────────────────────────────────────────
 
-interface Mantencion {
-  id: string;
-  tipo: string;
-  fecha: string;
-  estado: "completada" | "pendiente" | "programada";
-  observaciones: string;
-}
-
-function mockMantenciones(v: Vehiculo): Mantencion[] {
-  return [
-    {
-      id: "m1",
-      tipo: "Mantención preventiva mayor",
-      fecha: `${v.anio + 2}-11-10`,
-      estado: "completada",
-      observaciones: "Sin novedades. Filtros y aceite reemplazados.",
-    },
-    {
-      id: "m2",
-      tipo: "Cambio de aceite y filtros",
-      fecha: `${v.anio + 3}-06-22`,
-      estado: "completada",
-      observaciones: "Aceite 15W-40 sintético.",
-    },
-    {
-      id: "m3",
-      tipo: "Revisión sistema de frenos",
-      fecha: v.proximaRevision || "2026-07-01",
-      estado: "programada",
-      observaciones: "Programar con taller autorizado según kilometraje.",
-    },
-  ];
-}
+type Mantencion = VehiculoMantencionDTO;
 
 interface AsignacionHistorial {
   id: string;
@@ -175,6 +164,26 @@ export function VehiculoDetailDrawer({
 }: VehiculoDetailDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabId>("resumen");
   const [vehiculo, setVehiculo] = useState<Vehiculo | null>(vehiculoProp);
+  const [documentos, setDocumentos] = useState<DocumentoVehiculoState[]>(
+    (vehiculoProp?.documentos ?? []).map((d) => ({
+      tipo: d.tipo,
+      subido: d.subido,
+      vencimiento: d.vencimiento,
+      archivoNombre: null,
+      archivoUrl: null,
+    }))
+  );
+  const [mantenciones, setMantenciones] = useState<Mantencion[]>([]);
+  const [mantencionModalOpen, setMantencionModalOpen] = useState(false);
+  const [mantencionForm, setMantencionForm] = useState({
+    tipo: "",
+    fecha: "",
+    estado: "programada" as MantencionEstado,
+    observaciones: "",
+    kilometraje: vehiculoProp?.kilometraje ?? 0,
+  });
+  const [isPending, startTransition] = useTransition();
+  const [docFile, setDocFile] = useState<File | null>(null);
   const [docEdit, setDocEdit] = useState<{
     tipo: TipoDocumento;
     subido: boolean;
@@ -184,7 +193,49 @@ export function VehiculoDetailDrawer({
   // Sync from prop (reflects store updates after edits)
   useEffect(() => {
     setVehiculo(vehiculoProp);
+    setDocumentos(
+      (vehiculoProp?.documentos ?? []).map((d) => ({
+        tipo: d.tipo,
+        subido: d.subido,
+        vencimiento: d.vencimiento,
+        archivoNombre: null,
+        archivoUrl: null,
+      }))
+    );
+    setMantencionForm((prev) => ({
+      ...prev,
+      kilometraje: vehiculoProp?.kilometraje ?? 0,
+    }));
   }, [vehiculoProp]);
+
+  useEffect(() => {
+    if (!open || !vehiculoProp?.id) return;
+
+    let cancelled = false;
+    startTransition(async () => {
+      try {
+        const detalle = await getVehiculoDetalle(vehiculoProp.id);
+        if (cancelled) return;
+        setDocumentos(
+          detalle.documentos.map((d) => ({
+            tipo: d.tipo,
+            subido: d.subido,
+            vencimiento: d.vencimiento,
+            archivoNombre: d.archivoNombre,
+            archivoUrl: d.archivoUrl,
+          }))
+        );
+        setMantenciones(detalle.mantenciones);
+      } catch {
+        if (cancelled) return;
+        setMantenciones([]);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, vehiculoProp?.id, startTransition]);
 
   // Reset tab when opening a different vehicle
   useEffect(() => {
@@ -201,16 +252,93 @@ export function VehiculoDetailDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  async function subirArchivo(file: File): Promise<ArchivoSubido> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/dicaprev/documentacion/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = (await response.json()) as ArchivoSubido | { error?: string };
+    if (!response.ok) {
+      throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el archivo.");
+    }
+
+    return payload as ArchivoSubido;
+  }
+
   function handleDocSave(e: FormEvent) {
     e.preventDefault();
     if (!vehiculo || !docEdit) return;
-    updateDocumento(vehiculo.id, docEdit.tipo, {
-      subido: docEdit.subido,
-      vencimiento: docEdit.vencimiento || null,
+
+    startTransition(async () => {
+      try {
+        const archivoSubido = docFile ? await subirArchivo(docFile) : null;
+        const updated = await upsertVehiculoDocumento(vehiculo.id, {
+          tipo: docEdit.tipo,
+          subido: docEdit.subido,
+          vencimiento: docEdit.vencimiento,
+          archivoNombre: archivoSubido?.archivoNombre,
+          archivoUrl: archivoSubido?.archivoUrl,
+        });
+
+        setDocumentos((prev) => {
+          const next = prev.filter((d) => d.tipo !== updated.tipo);
+          next.push({
+            tipo: updated.tipo,
+            subido: updated.subido,
+            vencimiento: updated.vencimiento,
+            archivoNombre: updated.archivoNombre,
+            archivoUrl: updated.archivoUrl,
+          });
+          return next;
+        });
+        setDocFile(null);
+        setDocEdit(null);
+      } catch {
+        // keep modal open so user can retry
+      }
     });
-    const updated = getVehiculoById(vehiculo.id);
-    if (updated) setVehiculo(updated);
-    setDocEdit(null);
+  }
+
+  function submitMantencion(e: FormEvent) {
+    e.preventDefault();
+    if (!vehiculo || !mantencionForm.tipo || !mantencionForm.fecha) return;
+
+    startTransition(async () => {
+      try {
+        const created = await crearMantencionVehiculo(vehiculo.id, {
+          tipo: mantencionForm.tipo,
+          fecha: mantencionForm.fecha,
+          estado: mantencionForm.estado,
+          observaciones: mantencionForm.observaciones,
+          kilometraje: mantencionForm.kilometraje,
+        });
+
+        setMantenciones((prev) => [created, ...prev]);
+        setVehiculo((prev) =>
+          prev
+            ? {
+                ...prev,
+                kilometraje:
+                  mantencionForm.kilometraje > 0 ? mantencionForm.kilometraje : prev.kilometraje,
+              }
+            : prev
+        );
+        setMantencionModalOpen(false);
+        setMantencionForm((prev) => ({
+          ...prev,
+          tipo: "",
+          fecha: "",
+          estado: "programada",
+          observaciones: "",
+        }));
+      } catch {
+        // keep form values to retry
+      }
+    });
   }
 
   return (
@@ -261,12 +389,27 @@ export function VehiculoDetailDrawer({
                   }
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label>Archivo (opcional)</Label>
+                <Input
+                  type="file"
+                  className="rounded-xl"
+                  accept={DOCUMENTO_ACCEPT}
+                  onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
+                />
+                {docFile && (
+                  <p className="text-xs text-slate-500">Archivo seleccionado: {docFile.name}</p>
+                )}
+              </div>
               <div className="flex justify-end gap-2 pt-1">
                 <Button
                   type="button"
                   variant="outline"
                   className="rounded-xl"
-                  onClick={() => setDocEdit(null)}
+                  onClick={() => {
+                    setDocFile(null);
+                    setDocEdit(null);
+                  }}
                 >
                   Cancelar
                 </Button>
@@ -275,6 +418,112 @@ export function VehiculoDetailDrawer({
                   className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white"
                 >
                   Guardar
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {mantencionModalOpen && vehiculo && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+          <div
+            aria-hidden
+            onClick={() => setMantencionModalOpen(false)}
+            className="absolute inset-0 bg-slate-900/30"
+          />
+          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="mb-4 text-sm font-semibold text-slate-900">Nueva mantención</h3>
+            <form onSubmit={submitMantencion} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label>Tipo de mantención</Label>
+                <Input
+                  className="rounded-xl"
+                  value={mantencionForm.tipo}
+                  onChange={(e) =>
+                    setMantencionForm((prev) => ({ ...prev, tipo: e.target.value }))
+                  }
+                  placeholder="Ej: Cambio de aceite y filtros"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Fecha</Label>
+                  <Input
+                    type="date"
+                    className="rounded-xl"
+                    value={mantencionForm.fecha}
+                    onChange={(e) =>
+                      setMantencionForm((prev) => ({ ...prev, fecha: e.target.value }))
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Estado</Label>
+                  <select
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+                    value={mantencionForm.estado}
+                    onChange={(e) =>
+                      setMantencionForm((prev) => ({
+                        ...prev,
+                        estado: e.target.value as MantencionEstado,
+                      }))
+                    }
+                  >
+                    <option value="programada">Programada</option>
+                    <option value="pendiente">Pendiente</option>
+                    <option value="completada">Completada</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Kilometraje actual</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="rounded-xl"
+                  value={mantencionForm.kilometraje}
+                  onChange={(e) =>
+                    setMantencionForm((prev) => ({
+                      ...prev,
+                      kilometraje: Number.parseInt(e.target.value, 10) || 0,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Observaciones</Label>
+                <Textarea
+                  className="rounded-xl"
+                  rows={3}
+                  value={mantencionForm.observaciones}
+                  onChange={(e) =>
+                    setMantencionForm((prev) => ({ ...prev, observaciones: e.target.value }))
+                  }
+                  placeholder="Detalle de trabajos realizados"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-xl"
+                  onClick={() => setMantencionModalOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white"
+                  disabled={isPending}
+                >
+                  Guardar mantención
                 </Button>
               </div>
             </form>
@@ -294,18 +543,20 @@ export function VehiculoDetailDrawer({
         {vehiculo &&
           (() => {
             const estadoOp  = ESTADO_OP_CFG[vehiculo.estado];
-            const estDocStr = evaluarEstadoDocumental(vehiculo);
+            const estDocStr = evaluarEstadoDocumental({
+              ...vehiculo,
+              documentos,
+            });
             const estadoDoc = ESTADO_DOC_CFG[estDocStr];
             const requeridos    = DOCS_REQUERIDOS[vehiculo.tipo];
             const aniosUso      = new Date().getFullYear() - vehiculo.anio;
             const hoy           = new Date();
             const docsPendientes = requeridos.filter((req) => {
-              const doc = vehiculo.documentos.find((d) => d.tipo === req);
+              const doc = documentos.find((d) => d.tipo === req);
               if (!doc || !doc.subido) return true;
               if (doc.vencimiento && new Date(doc.vencimiento) < hoy) return true;
               return false;
             }).length;
-            const mantenciones = mockMantenciones(vehiculo);
             const asignaciones = mockAsignaciones(vehiculo);
 
             return (
@@ -529,7 +780,7 @@ export function VehiculoDetailDrawer({
 
                       <div className="space-y-3">
                         {requeridos.map((req) => {
-                          const doc = vehiculo.documentos.find((d) => d.tipo === req);
+                          const doc = documentos.find((d) => d.tipo === req);
                           const dias = doc?.vencimiento
                             ? diasParaVencer(doc.vencimiento)
                             : null;
@@ -575,6 +826,16 @@ export function VehiculoDetailDrawer({
                                     ? "Sin fecha de vencimiento"
                                     : "No cargado"}
                                 </p>
+                                {doc?.archivoUrl && (
+                                  <a
+                                    href={doc.archivoUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-1 inline-block text-xs font-medium text-slate-600 underline"
+                                  >
+                                    Ver archivo
+                                  </a>
+                                )}
                               </div>
                               <div className="flex shrink-0 items-center gap-2">
                                 <span
@@ -587,13 +848,14 @@ export function VehiculoDetailDrawer({
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() =>
+                                  onClick={() => {
+                                    setDocFile(null);
                                     setDocEdit({
                                       tipo: req,
                                       subido: doc?.subido ?? false,
                                       vencimiento: doc?.vencimiento ?? "",
-                                    })
-                                  }
+                                    });
+                                  }}
                                   className="rounded-lg border border-slate-200 p-1.5 text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-700"
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
@@ -609,7 +871,28 @@ export function VehiculoDetailDrawer({
                   {/* Mantenciones */}
                   {activeTab === "mantenciones" && (
                     <div className="p-5 space-y-4">
-                      <SectionTitle label="Historial de mantenciones" />
+                      <div className="flex items-center justify-between gap-2">
+                        <SectionTitle label="Historial de mantenciones" />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 rounded-lg text-xs"
+                          onClick={() => setMantencionModalOpen(true)}
+                        >
+                          Agregar mantención
+                        </Button>
+                      </div>
+
+                      {isPending && mantenciones.length === 0 && (
+                        <p className="text-xs text-slate-400">Cargando mantenciones...</p>
+                      )}
+
+                      {!isPending && mantenciones.length === 0 && (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6">
+                          <p className="text-sm text-slate-500">No hay mantenciones registradas.</p>
+                        </div>
+                      )}
+
                       <div className="space-y-3">
                         {mantenciones.map((m) => (
                           <div
@@ -633,6 +916,9 @@ export function VehiculoDetailDrawer({
                                 month: "long",
                                 year: "numeric",
                               })}
+                              {typeof m.kilometraje === "number" && m.kilometraje > 0
+                                ? ` · ${m.kilometraje.toLocaleString("es-CL")} km`
+                                : ""}
                             </p>
                             {m.observaciones && (
                               <p className="mt-1.5 text-xs text-slate-500">{m.observaciones}</p>

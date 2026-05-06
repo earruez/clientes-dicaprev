@@ -4,13 +4,12 @@ import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { X, User, Briefcase, AlertCircle } from "lucide-react";
 import { type Worker, AREAS, CARGOS, CENTROS, CONTRATOS, ESTADOS } from "./types";
 import { CARGO_TO_AREA } from "@/lib/empresa/domain";
-import { getCentroNombres } from "@/lib/centros/centros-store";
 
 interface WorkerFormProps {
   worker: Worker | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (w: Worker) => void;
+  onSave: (w: Worker) => void | Promise<void>;
 }
 
 type FormData = Omit<Worker, "id">;
@@ -34,8 +33,7 @@ const EMPTY: FormData = {
 };
 
 const centroOptions = () => {
-  const centros = getCentroNombres();
-  return centros.length > 0 ? centros : CENTROS;
+  return CENTROS;
 };
 
 function formatRut(v: string): string {
@@ -140,10 +138,10 @@ export function WorkerForm({ worker, isOpen, onClose, onSave }: WorkerFormProps)
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    onSave({ id: worker?.id ?? `w-${Date.now()}`, ...form });
+    await Promise.resolve(onSave({ id: worker?.id ?? `w-${Date.now()}`, ...form }));
     onClose();
   };
 

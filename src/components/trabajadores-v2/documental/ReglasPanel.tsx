@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { Plus, Tag, FileText, Check, X, ChevronDown, ChevronUp } from "lucide-react";
-import { REGLAS_DOCUMENTALES, TIPOS_DOCUMENTO, type ReglaDocumental } from "./types";
+import {
+  type ReglaDocumental,
+  type TipoDocumento,
+} from "./types";
 
-export function ReglasPanel() {
-  const [reglas, setReglas] = useState<ReglaDocumental[]>(REGLAS_DOCUMENTALES);
+interface ReglasPanelProps {
+  reglas: ReglaDocumental[];
+  tipos: TipoDocumento[];
+}
+
+export function ReglasPanel({ reglas: reglasProp, tipos }: ReglasPanelProps) {
+  const [reglas, setReglas] = useState<ReglaDocumental[]>(reglasProp);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const toggle = (id: string) =>
@@ -59,6 +67,11 @@ export function ReglasPanel() {
 
       {/* Rules list */}
       <div className="space-y-3">
+        {reglas.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-8 text-center text-sm text-slate-400">
+            No hay reglas documentales configuradas.
+          </div>
+        )}
         {reglas.map((regla) => {
           const isOpen = expanded.has(regla.id);
           const tags = condicionTags(regla.condicion);
@@ -134,7 +147,7 @@ export function ReglasPanel() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {regla.tiposDocumentoIds.map((tid) => {
-                      const tipo = TIPOS_DOCUMENTO.find((t) => t.id === tid);
+                      const tipo = tipos.find((t) => t.id === tid);
                       if (!tipo) return null;
                       return (
                         <span
