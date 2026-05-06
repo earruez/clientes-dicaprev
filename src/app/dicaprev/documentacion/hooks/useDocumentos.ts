@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { calcularMetricasDocumentos, calcularVigenciaDocumento } from "@/lib/documentacion/cumplimiento-documento";
 import {
   actualizarDocumentoEmpresa,
   crearDocumentoEmpresa,
@@ -28,10 +29,14 @@ export type UseDocumentosResult = {
   historialGlobal: Array<HistorialDocumento & { documentoId: string; documentoNombre: string; categoria: CategoriaDocumento }>;
   kpis: {
     total: number;
+    aplicables: number;
     vigentes: number;
     porVencer: number;
     vencidos: number;
+    pendientes: number;
     pendientesCarga: number;
+    noAplica: number;
+    cumplimientoPct: number;
     actualizadosMes: number;
   };
   addDocumento: (input: DocumentoEmpresaInput) => Promise<boolean>;
@@ -81,13 +86,9 @@ const USUARIO_POR_DEFECTO = {
 };
 
 function vigenciaDocumento(doc: DocumentoMatrizRow) {
-  if (!doc.tieneVencimiento || !doc.fechaVencimiento) return "sin_vencimiento" as const;
-  const today = new Date();
-  const due = new Date(doc.fechaVencimiento);
-  const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return "vencido" as const;
-  if (diffDays <= 30) return "por_vencer" as const;
-  return "vigente" as const;
+  if (doc.estado === "No aplica") return "no_aplica" as const;
+  if (doc.estado === "Pendiente de carga") return "pendiente" as const;
+  return calcularVigenciaDocumento(doc, 1);
 }
 
 export function useDocumentos(): UseDocumentosResult {
@@ -183,24 +184,7 @@ export function useDocumentos(): UseDocumentosResult {
       .sort((a, b) => b.fecha.localeCompare(a.fecha));
   }, [documentos]);
 
-  const kpis = useMemo(() => {
-    const now = new Date();
-    const month = now.getMonth();
-    const year = now.getFullYear();
-
-    return {
-      total: documentos.length,
-      vigentes: documentos.filter((d) => d.estado === "Vigente").length,
-      porVencer: documentos.filter((d) => d.estado === "Por vencer").length,
-      vencidos: documentos.filter((d) => d.estado === "Vencido").length,
-      pendientesCarga: documentos.filter((d) => d.estado === "Pendiente de carga").length,
-      actualizadosMes: documentos.filter((d) => {
-        if (!d.fechaActualizacion) return false;
-        const date = new Date(d.fechaActualizacion);
-        return date.getMonth() === month && date.getFullYear() === year;
-      }).length,
-    };
-  }, [documentos]);
+  const kpis = useMemo(() => calcularMetricasDocumentos(documentos), [documentos]);
 
   const addDocumento: UseDocumentosResult["addDocumento"] = async (input) => {
     if (!input.nombre.trim() || !input.categoria) return false;

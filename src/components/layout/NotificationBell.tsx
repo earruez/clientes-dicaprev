@@ -4,89 +4,31 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Bell, AlertCircle, AlertTriangle, Info, ChevronRight, CheckCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getAlertasEmpresa } from "@/app/dicaprev/alertas/actions";
 
-type Prioridad = "critica" | "alta" | "media";
+type Prioridad = "alta" | "media" | "baja";
 
 interface Notificacion {
   id: string;
-  titulo: string;
-  descripcion: string;
+  documento: string;
+  mensaje: string;
   href: string;
   prioridad: Prioridad;
   leida: boolean;
 }
 
-const NOTIFICACIONES_INICIALES: Notificacion[] = [
-  {
-    id: "n-01",
-    titulo: "Hallazgo crítico: Equipos defectuosos",
-    descripcion: "Equipos de protección con defectos detectados — acción requerida.",
-    href: "/dicaprev/cumplimiento/hallazgos",
-    prioridad: "critica",
-    leida: false,
-  },
-  {
-    id: "n-02",
-    titulo: "Hallazgo crítico: Documentación incompleta",
-    descripcion: "Documentación de seguridad incompleta en contratistas.",
-    href: "/dicaprev/cumplimiento/hallazgos",
-    prioridad: "critica",
-    leida: false,
-  },
-  {
-    id: "n-03",
-    titulo: "Obligación DS44 vencida: IPER",
-    descripcion: "Matriz de riegos venció el 31-03-2026. Renovar de inmediato.",
-    href: "/dicaprev/cumplimiento/obligaciones",
-    prioridad: "critica",
-    leida: false,
-  },
-  {
-    id: "n-04",
-    titulo: "Sebastián Vidal — 3 documentos pendientes",
-    descripcion: "Trabajador sin documentación laboral completa.",
-    href: "/dicaprev/trabajadores-v2/control-documental",
-    prioridad: "alta",
-    leida: false,
-  },
-  {
-    id: "n-05",
-    titulo: "Ricardo Flores — 2 documentos vencidos",
-    descripcion: "Documentos de trabajador vencidos que requieren renovación.",
-    href: "/dicaprev/trabajadores-v2/control-documental",
-    prioridad: "alta",
-    leida: false,
-  },
-  {
-    id: "n-06",
-    titulo: "Acreditación rechazada — Constructora Altamira",
-    descripcion: "Documentos de vehículo no cumplen el formato requerido.",
-    href: "/dicaprev/acreditaciones",
-    prioridad: "alta",
-    leida: false,
-  },
-  {
-    id: "n-07",
-    titulo: "Juan Muñoz — Capacitación vencida",
-    descripcion: "Inducción SST venció en sep 2024. Requiere renovación.",
-    href: "/dicaprev/trabajadores-v2",
-    prioridad: "media",
-    leida: false,
-  },
-];
-
 const prioridadCfg: Record<Prioridad, { icon: React.ReactNode; dot: string; row: string }> = {
-  critica: {
+  alta: {
     icon: <AlertCircle className="h-4 w-4 shrink-0 text-red-500" />,
     dot: "bg-red-500",
     row: "hover:bg-red-50/60",
   },
-  alta: {
+  media: {
     icon: <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />,
     dot: "bg-amber-500",
     row: "hover:bg-amber-50/60",
   },
-  media: {
+  baja: {
     icon: <Info className="h-4 w-4 shrink-0 text-blue-400" />,
     dot: "bg-blue-400",
     row: "hover:bg-blue-50/40",
@@ -94,13 +36,40 @@ const prioridadCfg: Record<Prioridad, { icon: React.ReactNode; dot: string; row:
 };
 
 export default function NotificationBell() {
-  const [notifs, setNotifs] = useState<Notificacion[]>(NOTIFICACIONES_INICIALES);
+  const [notifs, setNotifs] = useState<Notificacion[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const unread = notifs.filter((n) => !n.leida).length;
 
   // Close on outside click
+  useEffect(() => {
+    let mounted = true;
+
+    getAlertasEmpresa()
+      .then((result) => {
+        if (!mounted) return;
+        setNotifs(
+          result.alertas.map((alerta) => ({
+            id: alerta.id,
+            documento: alerta.documento,
+            mensaje: alerta.mensaje,
+            href: "/dicaprev/empresa/resumen?tab=gobierno",
+            prioridad: alerta.prioridad,
+            leida: false,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setNotifs([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -188,9 +157,9 @@ export default function NotificationBell() {
                     <div className="mt-0.5">{cfg.icon}</div>
                     <div className="flex-1 min-w-0">
                       <p className={cn("text-sm leading-snug text-slate-800", !n.leida && "font-semibold")}>
-                        {n.titulo}
+                        {n.documento}
                       </p>
-                      <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{n.descripcion}</p>
+                      <p className="mt-0.5 text-xs text-slate-500 line-clamp-2">{n.mensaje}</p>
                     </div>
                     {!n.leida && (
                       <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", cfg.dot)} />
@@ -200,6 +169,9 @@ export default function NotificationBell() {
                 </li>
               );
             })}
+            {notifs.length === 0 && (
+              <li className="px-4 py-6 text-center text-sm text-slate-500">Sin alertas de cumplimiento.</li>
+            )}
           </ul>
 
           {/* Footer */}

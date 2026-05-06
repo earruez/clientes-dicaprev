@@ -450,8 +450,32 @@ export default function DocumentacionPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <KpiCard label="Requerimientos totales" value={kpis.total} icon={<FileText className="h-4 w-4" />} tone="slate" />
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[1.4fr_repeat(5,minmax(0,1fr))]">
+          <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-emerald-100/80 p-4 shadow-sm xl:col-span-1">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Cumplimiento documental</p>
+                <p className="mt-2 text-3xl font-semibold text-slate-900">{kpis.cumplimientoPct}%</p>
+                <p className="mt-1 text-sm text-slate-600">{kpis.vigentes} vigentes sobre {kpis.aplicables} documentos aplicables.</p>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-white/80 p-2 text-emerald-700">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="h-2 overflow-hidden rounded-full bg-emerald-100">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-500 to-lime-400 transition-all"
+                  style={{ width: `${Math.max(0, Math.min(100, kpis.cumplimientoPct))}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                <span>No aplica: {kpis.noAplica}</span>
+                <span>Total: {kpis.total}</span>
+              </div>
+            </div>
+          </div>
+          <KpiCard label="Documentos aplicables" value={kpis.aplicables} icon={<FileText className="h-4 w-4" />} tone="slate" />
           <KpiCard label="Vigentes" value={kpis.vigentes} icon={<ShieldCheck className="h-4 w-4" />} tone="emerald" />
           <KpiCard label="Por vencer" value={kpis.porVencer} icon={<CalendarClock className="h-4 w-4" />} tone="amber" />
           <KpiCard label="Vencidos" value={kpis.vencidos} icon={<FileSearch className="h-4 w-4" />} tone="rose" />

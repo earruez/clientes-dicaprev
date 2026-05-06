@@ -10,6 +10,8 @@ const EstructuraTab: React.FC<EstructuraTabProps> = ({ data }) => {
     { title: "Áreas", description: "Gestiona áreas internas de la empresa.", count: data.areas },
     { title: "Cargos", description: "Define cargos y perfiles SST.", count: data.cargos },
     { title: "Puestos", description: "Define posiciones por centro.", count: data.puestos },
+    { title: "Posiciones cubiertas", description: "Cupos de dotación con trabajador activo.", count: data.posicionesCubiertas },
+    { title: "Vacantes", description: "Cupos pendientes de cobertura en dotación.", count: data.vacantes },
     { title: "Trabajadores", description: "Listado maestro de trabajadores.", count: data.trabajadores },
     { title: "Organigrama", description: "Estructura jerárquica.", count: null },
   ];

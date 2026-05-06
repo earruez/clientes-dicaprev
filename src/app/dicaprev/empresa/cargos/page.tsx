@@ -24,6 +24,8 @@ import {
   type CargoTipoUI,
 } from "@/lib/empresa/empresa-store";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import { getAreas } from "@/app/dicaprev/empresa/areas/actions";
+import { getCargos, crearCargo, actualizarCargo, desactivarCargo } from "./actions";
 
 /* ─────────────────────────────────────────────
    TYPES
@@ -59,11 +61,47 @@ function nextCodigo(cargos: Cargo[]): string {
   return `CAR-${String(cargos.length + 1).padStart(3, "0")}`;
 }
 
+type DbArea = {
+  id: string;
+  nombre: string;
+};
+
+type DbCargo = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  perfilSST: string | null;
+  estado: string;
+  esCritico: boolean;
+  createdAt: Date;
+  area: DbArea | null;
+};
+
+function mapDbCargoToUi(cargo: DbCargo): Cargo {
+  return {
+    id: cargo.id,
+    nombre: cargo.nombre,
+    codigo: `CAR-${cargo.id.slice(0, 4).toUpperCase()}`,
+    areaId: cargo.area?.id ?? "",
+    areaNombre: cargo.area?.nombre ?? "Sin área",
+    tipo: "Operativo",
+    descripcion: cargo.descripcion ?? "",
+    perfilSST: cargo.perfilSST ?? "",
+    riesgosClave: "",
+    requiereDS44: cargo.esCritico,
+    documentosBase: [],
+    capacitacionesBase: [],
+    estado: cargo.estado === "inactivo" ? "inactivo" : "activo",
+    trabajadores: 0,
+    centros: [],
+    creadoEl: cargo.createdAt.toISOString().slice(0, 10),
+  };
+}
+
 function emptyForm(): CargoForm {
-  const areas = empresaStore.getAreas();
   return {
     nombre: "", codigo: "",
-    areaId: areas[0]?.id ?? "", areaNombre: areas[0]?.nombre ?? "",
+    areaId: "", areaNombre: "Sin área",
     tipo: "Operativo", descripcion: "", perfilSST: "",
     riesgosClave: "", requiereDS44: false,
     documentosBase: [], capacitacionesBase: [],
@@ -75,7 +113,9 @@ function emptyForm(): CargoForm {
    PAGE
 ───────────────────────────────────────────── */
 export default function CargosPage() {
-  const [cargos, setCargos]       = useState<Cargo[]>(() => empresaStore.getCargos());
+  const [cargos, setCargos]       = useState<Cargo[]>([]);
+  const [areas, setAreas]         = useState<DbArea[]>([]);
+  const [loading, setLoading]     = useState(false);
 
   /* filters */
   const [search, setSearch]       = useState("");
@@ -92,9 +132,29 @@ export default function CargosPage() {
   // Initialise store on client mount and sync state
   useEffect(() => {
     empresaStore.init();
-    const s = empresaStore.getActiveStructure();
-    setCargos(s.cargos);
-    setPlantillaActiva(s.tipoPlantilla);
+    setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
+
+    let mounted = true;
+    setLoading(true);
+
+    Promise.all([getCargos(), getAreas()])
+      .then(([cargoRows, areaRows]) => {
+        if (!mounted) return;
+
+        const mappedAreas = areaRows.map((area) => ({ id: area.id, nombre: area.nombre }));
+        const mappedCargos = cargoRows.map((cargo) => mapDbCargoToUi(cargo as DbCargo));
+
+        setAreas(mappedAreas);
+        setCargos(mappedCargos);
+        empresaStore.setCargos(mappedCargos);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // Wrapper: update local state AND sync to store
@@ -154,19 +214,41 @@ export default function CargosPage() {
     setDrawerCargo(null);
   }, []);
 
-  const toggleEstado = (id: string) => {
-    updateCargos((prev) => prev.map((c) => c.id === id ? { ...c, estado: c.estado === "activo" ? "inactivo" : "activo" } : c));
-    setDrawerCargo((prev) => prev?.id === id ? { ...prev, estado: prev.estado === "activo" ? "inactivo" : "activo" } : prev);
+  const toggleEstado = async (id: string) => {
+    const current = cargos.find((cargo) => cargo.id === id);
+    if (!current) return;
+
+    if (current.estado === "activo") {
+      const updated = await desactivarCargo(id);
+      const mapped = mapDbCargoToUi(updated as DbCargo);
+      updateCargos((prev) => prev.map((c) => (c.id === id ? { ...c, ...mapped } : c)));
+      setDrawerCargo((prev) => (prev?.id === id ? { ...prev, ...mapped } : prev));
+      return;
+    }
+
+    const updated = await actualizarCargo(id, {
+      nombre: current.nombre,
+      areaId: current.areaId || undefined,
+      descripcion: current.descripcion,
+      perfilSST: current.perfilSST,
+      estado: "activo",
+      esCritico: current.requiereDS44,
+    });
+    const mapped = mapDbCargoToUi(updated as DbCargo);
+    updateCargos((prev) => prev.map((c) => (c.id === id ? { ...c, ...mapped } : c)));
+    setDrawerCargo((prev) => (prev?.id === id ? { ...prev, ...mapped } : prev));
   };
 
   const tryDeleteCargo = (cargo: Cargo) => {
     setDeleteTarget(cargo);
   };
 
-  const confirmDeleteCargo = () => {
+  const confirmDeleteCargo = async () => {
     if (!deleteTarget) return;
-    updateCargos((prev) => prev.filter((c) => c.id !== deleteTarget.id));
-    if (drawerCargo?.id === deleteTarget.id) setDrawerCargo(null);
+    const updated = await desactivarCargo(deleteTarget.id);
+    const mapped = mapDbCargoToUi(updated as DbCargo);
+    updateCargos((prev) => prev.map((c) => (c.id === deleteTarget.id ? { ...c, ...mapped } : c)));
+    if (drawerCargo?.id === deleteTarget.id) setDrawerCargo(mapped);
     setDeleteTarget(null);
   };
 
@@ -190,17 +272,36 @@ export default function CargosPage() {
   };
   const removeCap = (c: string) => setForm((p) => ({ ...p, capacitacionesBase: p.capacitacionesBase.filter((x) => x !== c) }));
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const area = empresaStore.getAreas().find((a) => a.id === form.areaId);
-    const merged = { ...form, areaNombre: area?.nombre ?? form.areaNombre };
+    const area = areas.find((a) => a.id === form.areaId);
+    const merged = { ...form, areaNombre: area?.nombre ?? "Sin área" };
+
     if (isEdit && editingId) {
-      updateCargos((prev) => prev.map((c) => c.id === editingId ? { ...c, ...merged } : c));
-      setDrawerCargo((prev) => prev?.id === editingId ? { ...prev, ...merged } : prev);
+      const updated = await actualizarCargo(editingId, {
+        nombre: merged.nombre,
+        areaId: merged.areaId || undefined,
+        descripcion: merged.descripcion,
+        perfilSST: merged.perfilSST,
+        estado: merged.estado,
+        esCritico: merged.requiereDS44,
+      });
+      const mapped = mapDbCargoToUi(updated as DbCargo);
+      updateCargos((prev) => prev.map((c) => (c.id === editingId ? { ...c, ...mapped } : c)));
+      setDrawerCargo((prev) => (prev?.id === editingId ? { ...prev, ...mapped } : prev));
     } else {
-      const nuevo: Cargo = { id: `c-${Date.now()}`, ...merged, trabajadores: 0, centros: [], creadoEl: new Date().toISOString().slice(0, 10) };
-      updateCargos((prev) => [nuevo, ...prev]);
+      const created = await crearCargo({
+        nombre: merged.nombre,
+        areaId: merged.areaId || undefined,
+        descripcion: merged.descripcion,
+        perfilSST: merged.perfilSST,
+        estado: merged.estado,
+        esCritico: merged.requiereDS44,
+      });
+      const mapped = mapDbCargoToUi(created as DbCargo);
+      updateCargos((prev) => [mapped, ...prev]);
     }
+
     setModalOpen(false);
   };
 
@@ -265,7 +366,7 @@ export default function CargosPage() {
                 </div>
               </div>
 
-              <FilterSelect label="Área"   value={fArea}   onChange={setFArea}   options={[{ value: "todas", label: "Todas" }, ...empresaStore.getAreas().map((a) => ({ value: a.id, label: a.nombre }))]} />
+              <FilterSelect label="Área"   value={fArea}   onChange={setFArea}   options={[{ value: "todas", label: "Todas" }, ...areas.map((a) => ({ value: a.id, label: a.nombre }))]} />
               <FilterSelect label="Estado" value={fEstado} onChange={(v) => setFEstado(v as "todos" | Estado)} options={[{ value: "todos", label: "Todos" }, { value: "activo", label: "Activo" }, { value: "inactivo", label: "Inactivo" }]} />
               <FilterSelect label="Tipo"   value={fTipo}   onChange={(v) => setFTipo(v as "todos" | Tipo)}     options={[{ value: "todos", label: "Todos" }, ...["Operativo","Supervisión","Administración","Prevención","Técnico"].map((t) => ({ value: t, label: t }))]} />
 
@@ -372,7 +473,7 @@ export default function CargosPage() {
             {filtrados.length === 0 && (
               <div className="py-16 text-center text-slate-400 text-sm">
                 <SlidersHorizontal className="mx-auto h-8 w-8 mb-3 text-slate-300" />
-                No se encontraron cargos con los filtros aplicados.
+                {loading ? "Cargando cargos..." : "No se encontraron cargos con los filtros aplicados."}
               </div>
             )}
           </div>
@@ -553,9 +654,19 @@ export default function CargosPage() {
                 </div>
                 <div>
                   <Label>Área</Label>
-                  <Select value={form.areaId} onValueChange={(v) => setForm((p) => ({ ...p, areaId: v, areaNombre: empresaStore.getAreas().find((a) => a.id === v)?.nombre ?? p.areaNombre }))}>
+                  <Select value={form.areaId || "sin-area"} onValueChange={(v) => {
+                    const nextAreaId = v === "sin-area" ? "" : v;
+                    setForm((p) => ({
+                      ...p,
+                      areaId: nextAreaId,
+                      areaNombre: areas.find((a) => a.id === nextAreaId)?.nombre ?? "Sin área",
+                    }));
+                  }}>
                     <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>{empresaStore.getAreas().map((a) => <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      <SelectItem value="sin-area">Sin área</SelectItem>
+                      {areas.map((a) => <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>)}
+                    </SelectContent>
                   </Select>
                 </div>
                 <div>

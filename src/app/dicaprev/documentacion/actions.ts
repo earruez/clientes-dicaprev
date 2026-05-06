@@ -1,15 +1,16 @@
 "use server";
 
+import { calcularEstadoDocumento, esDocumentoAplicable } from "@/lib/documentacion/cumplimiento-documento";
 import { prisma } from "@/lib/prisma";
+import { requirePermission } from "@/server/auth/permissions";
+import type { AppContext } from "@/server/context";
 import type {
   CategoriaDocumento,
   DocumentoMatrizRow,
   EstadoDocumento,
   HistorialDocumento,
 } from "./types";
-
-const EMPRESA_ID = "1b3f9c7e-8c2a-4f6a-9d1e-123456789abc";
-const USUARIO_ID = "9d9b1e2f-7b2c-4b8e-9a3e-123456789abc";
+const EMPRESA_CANTIDAD_TRABAJADORES = 5;
 
 const ESTADOS_VALIDOS: EstadoDocumento[] = [
   "Vigente",
@@ -206,7 +207,13 @@ function normalizarEstado(estado?: string | null): EstadoDocumento {
   return "Pendiente de carga";
 }
 
-function vigenciaLabel(tieneVencimiento: boolean, fechaVencimiento: Date | null) {
+function vigenciaLabel(
+  estado: EstadoDocumento,
+  tieneVencimiento: boolean,
+  fechaVencimiento: Date | null
+) {
+  if (estado === "No aplica") return "No aplica";
+  if (estado === "Pendiente de carga") return "Pendiente";
   if (!tieneVencimiento || !fechaVencimiento) return "Sin vencimiento";
   return fechaVencimiento.toLocaleDateString("es-CL");
 }
@@ -218,30 +225,31 @@ function normalizarStringOpcional(value: string | null | undefined, trim = false
   return normalized === "" ? null : normalized;
 }
 
-async function asegurarContextoBase() {
+async function asegurarContextoBase(context: AppContext) {
   await prisma.empresa.upsert({
-    where: { id: EMPRESA_ID },
+    where: { id: context.empresaId },
     update: {},
     create: {
-      id: EMPRESA_ID,
+      id: context.empresaId,
       nombre: "DICAPREV Empresa Base",
       razonSocial: "DICAPREV SPA",
     },
   });
 
   await prisma.usuario.upsert({
-    where: { id: USUARIO_ID },
+    where: { id: context.usuarioId },
     update: {
-      empresaId: EMPRESA_ID,
+      empresaId: context.empresaId,
       nombre: "Usuario Base",
-      email: "usuario.base@nextprev.local",
+      email: context.email,
+      rol: context.rol,
     },
     create: {
-      id: USUARIO_ID,
+      id: context.usuarioId,
       nombre: "Usuario Base",
-      email: "usuario.base@nextprev.local",
-      rol: "ADMIN_EMPRESA",
-      empresaId: EMPRESA_ID,
+      email: context.email,
+      rol: context.rol,
+      empresaId: context.empresaId,
     },
   });
 }
@@ -423,6 +431,8 @@ function rowFromDocumentoRequerido(requerido: {
   categoria: string;
   descripcion: string;
   obligatorio: boolean;
+  aplicaDesdeTrabajadores: number | null;
+  aplicaHastaTrabajadores: number | null;
   requiereVencimiento: boolean;
   documentos: Array<{
     id: string;
@@ -458,6 +468,20 @@ function rowFromDocumentoRequerido(requerido: {
   }>;
 }): DocumentoMatrizRow {
   const doc = requerido.documentos[0];
+  const baseDocumento = {
+    documentoEmpresaId: doc?.id ?? null,
+    archivoNombre: doc?.archivoNombre ?? null,
+    archivoUrl: doc?.archivoUrl ?? null,
+    tieneVencimiento: doc?.tieneVencimiento ?? requerido.requiereVencimiento,
+    fechaVencimiento: doc?.fechaVencimiento ? doc.fechaVencimiento.toISOString().slice(0, 10) : null,
+    estado: normalizarEstado(doc?.estado),
+    aplicaDesdeTrabajadores: requerido.aplicaDesdeTrabajadores,
+    aplicaHastaTrabajadores: requerido.aplicaHastaTrabajadores,
+    esAdicional: false,
+  } as const;
+  const estadoCalculado = calcularEstadoDocumento(baseDocumento, EMPRESA_CANTIDAD_TRABAJADORES);
+  const esAplicable = esDocumentoAplicable(baseDocumento, EMPRESA_CANTIDAD_TRABAJADORES);
+
   if (!doc) {
     return {
       id: `req-${requerido.id}`,
@@ -467,8 +491,8 @@ function rowFromDocumentoRequerido(requerido: {
       categoria: requerido.categoria as CategoriaDocumento,
       descripcion: requerido.descripcion,
       obligatorio: requerido.obligatorio,
-      estado: "Pendiente de carga",
-      vigencia: "Pendiente",
+      estado: estadoCalculado,
+      vigencia: vigenciaLabel(estadoCalculado, requerido.requiereVencimiento, null),
       ultimoArchivo: null,
       version: null,
       subidoPor: null,
@@ -487,6 +511,9 @@ function rowFromDocumentoRequerido(requerido: {
       observaciones: "",
       historial: [],
       esAdicional: false,
+      aplicaDesdeTrabajadores: requerido.aplicaDesdeTrabajadores,
+      aplicaHastaTrabajadores: requerido.aplicaHastaTrabajadores,
+      esAplicable,
     };
   }
 
@@ -498,8 +525,8 @@ function rowFromDocumentoRequerido(requerido: {
     categoria: requerido.categoria as CategoriaDocumento,
     descripcion: requerido.descripcion,
     obligatorio: requerido.obligatorio,
-    estado: normalizarEstado(doc.estado),
-    vigencia: vigenciaLabel(doc.tieneVencimiento, doc.fechaVencimiento),
+    estado: estadoCalculado,
+    vigencia: vigenciaLabel(estadoCalculado, doc.tieneVencimiento, doc.fechaVencimiento),
     ultimoArchivo: doc.archivoNombre,
     version: doc.version,
     subidoPor: doc.subidoPor.nombre,
@@ -518,6 +545,9 @@ function rowFromDocumentoRequerido(requerido: {
     observaciones: doc.observaciones ?? "",
     historial: mapHistorial(doc.historial),
     esAdicional: false,
+    aplicaDesdeTrabajadores: requerido.aplicaDesdeTrabajadores,
+    aplicaHastaTrabajadores: requerido.aplicaHastaTrabajadores,
+    esAplicable,
   };
 }
 
@@ -554,6 +584,19 @@ function rowFromDocumentoAdicional(doc: {
     usuario: { nombre: string; email: string } | null;
   }>;
 }): DocumentoMatrizRow {
+  const baseDocumento = {
+    documentoEmpresaId: doc.id,
+    archivoNombre: doc.archivoNombre,
+    archivoUrl: doc.archivoUrl,
+    tieneVencimiento: doc.tieneVencimiento,
+    fechaVencimiento: doc.fechaVencimiento ? doc.fechaVencimiento.toISOString().slice(0, 10) : null,
+    estado: normalizarEstado(doc.estado),
+    aplicaDesdeTrabajadores: null,
+    aplicaHastaTrabajadores: null,
+    esAdicional: true,
+  } as const;
+  const estadoCalculado = calcularEstadoDocumento(baseDocumento, EMPRESA_CANTIDAD_TRABAJADORES);
+
   return {
     id: `doc-${doc.id}`,
     documentoRequeridoId: null,
@@ -562,8 +605,8 @@ function rowFromDocumentoAdicional(doc: {
     categoria: doc.categoria as CategoriaDocumento,
     descripcion: "Documento adicional fuera de la matriz base",
     obligatorio: false,
-    estado: normalizarEstado(doc.estado),
-    vigencia: vigenciaLabel(doc.tieneVencimiento, doc.fechaVencimiento),
+    estado: estadoCalculado,
+    vigencia: vigenciaLabel(estadoCalculado, doc.tieneVencimiento, doc.fechaVencimiento),
     ultimoArchivo: doc.archivoNombre,
     version: doc.version,
     subidoPor: doc.subidoPor.nombre,
@@ -582,6 +625,9 @@ function rowFromDocumentoAdicional(doc: {
     observaciones: doc.observaciones ?? "",
     historial: mapHistorial(doc.historial),
     esAdicional: true,
+    aplicaDesdeTrabajadores: null,
+    aplicaHastaTrabajadores: null,
+    esAplicable: true,
   };
 }
 
@@ -597,10 +643,12 @@ export async function registrarHistorialDocumento(params: {
   archivoTipo?: string | null;
   archivoPeso?: number | null;
 }) {
+  const context = await requirePermission("canManageDocumentacion");
+
   await prisma.documentoEmpresaHistorial.create({
     data: {
       documentoId: params.documentoId,
-      usuarioId: params.usuarioId ?? USUARIO_ID,
+      usuarioId: params.usuarioId ?? context.usuarioId,
       accion: params.accion,
       detalle: params.detalle,
       version: params.version ?? null,
@@ -617,7 +665,8 @@ export async function restaurarDocumentoVersion(params: {
   documentoId: string;
   historialId: string;
 }) {
-  await asegurarContextoBase();
+  const context = await requirePermission("canManageDocumentacion");
+  await asegurarContextoBase(context);
 
   const [documento, historial] = await Promise.all([
     prisma.documentoEmpresa.findUnique({
@@ -714,7 +763,8 @@ export async function restaurarDocumentoVersion(params: {
 }
 
 export async function getDocumentosEmpresa(): Promise<DocumentoMatrizRow[]> {
-  await asegurarContextoBase();
+  const context = await requirePermission("canReadDocumentacion");
+  await asegurarContextoBase(context);
   await asegurarMatrizBase();
 
   const requeridos = await prisma.documentoRequeridoEmpresa.findMany({
@@ -722,7 +772,7 @@ export async function getDocumentosEmpresa(): Promise<DocumentoMatrizRow[]> {
     orderBy: { orden: "asc" },
     include: {
       documentos: {
-        where: { empresaId: EMPRESA_ID },
+        where: { empresaId: context.empresaId },
         orderBy: { updatedAt: "desc" },
         take: 1,
         include: {
@@ -744,7 +794,7 @@ export async function getDocumentosEmpresa(): Promise<DocumentoMatrizRow[]> {
 
   const adicionales = await prisma.documentoEmpresa.findMany({
     where: {
-      empresaId: EMPRESA_ID,
+      empresaId: context.empresaId,
       documentoRequeridoId: null,
     },
     include: {
@@ -770,7 +820,8 @@ export async function getDocumentosEmpresa(): Promise<DocumentoMatrizRow[]> {
 }
 
 export async function crearDocumentoEmpresa(data: DocumentoEmpresaInput) {
-  await asegurarContextoBase();
+  const context = await requirePermission("canCreateDocumentacion");
+  await asegurarContextoBase(context);
   await asegurarMatrizBase();
 
   if (!data.nombre.trim()) {
@@ -796,10 +847,10 @@ export async function crearDocumentoEmpresa(data: DocumentoEmpresaInput) {
       fechaEmision: data.fechaEmision ? new Date(data.fechaEmision) : null,
       fechaVencimiento: data.tieneVencimiento && data.fechaVencimiento ? new Date(data.fechaVencimiento) : null,
       observaciones: data.observaciones?.trim() || null,
-      creadoPorEmail: data.creadoPorEmail?.trim() || "usuario.base@nextprev.local",
+      creadoPorEmail: data.creadoPorEmail?.trim() || context.email,
       documentoRequeridoId: data.documentoRequeridoId ?? null,
-      empresaId: EMPRESA_ID,
-      subidoPorId: USUARIO_ID,
+      empresaId: context.empresaId,
+      subidoPorId: context.usuarioId,
     },
   });
 
@@ -819,7 +870,8 @@ export async function crearDocumentoEmpresa(data: DocumentoEmpresaInput) {
 }
 
 export async function actualizarDocumentoEmpresa(id: string, data: DocumentoEmpresaInput) {
-  await asegurarContextoBase();
+  const context = await requirePermission("canManageDocumentacion");
+  await asegurarContextoBase(context);
 
   if (!ESTADOS_VALIDOS.includes(data.estado)) {
     throw new Error("Estado de documento no válido");
@@ -860,17 +912,18 @@ export async function actualizarDocumentoEmpresa(id: string, data: DocumentoEmpr
 }
 
 export async function getContextoFijoDocumentacion() {
-  await asegurarContextoBase();
+  const context = await requirePermission("canReadDocumentacion");
+  await asegurarContextoBase(context);
   await asegurarMatrizBase();
 
   const usuario = await prisma.usuario.findUnique({
-    where: { id: USUARIO_ID },
+    where: { id: context.usuarioId },
     select: { id: true, nombre: true, email: true, empresaId: true },
   });
 
   return {
-    empresaId: EMPRESA_ID,
-    usuarioId: USUARIO_ID,
+    empresaId: context.empresaId,
+    usuarioId: context.usuarioId,
     usuario,
   };
 }

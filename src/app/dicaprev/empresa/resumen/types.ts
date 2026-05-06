@@ -18,6 +18,11 @@ export interface GobiernoSSTData {
   accidentabilidad: string;
   reglamentoInterno: string;
   comiteEstado: string;
+  cumplimientoDocumentalEmpresa: number;
+  documentosVigentes: number;
+  documentosPendientes: number;
+  documentosVencidos: number;
+  documentosPorVencer: number;
   keyDates: {
     ultimaEleccion: string;
     vigenciaHasta: string;
@@ -29,6 +34,8 @@ export interface EstructuraData {
   cargos: number;
   puestos: number;
   trabajadores: number;
+  posicionesCubiertas: number;
+  vacantes: number;
   organigrama: string;
 }
 

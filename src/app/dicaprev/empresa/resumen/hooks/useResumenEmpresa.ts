@@ -21,6 +21,11 @@ const mockData: ResumenData = {
     accidentabilidad: "1.2%",
     reglamentoInterno: "Vigente",
     comiteEstado: "Constituido",
+    cumplimientoDocumentalEmpresa: 85,
+    documentosVigentes: 17,
+    documentosPendientes: 2,
+    documentosVencidos: 1,
+    documentosPorVencer: 3,
     keyDates: {
       ultimaEleccion: "12-11-2024",
       vigenciaHasta: "12-11-2026",
@@ -31,6 +36,8 @@ const mockData: ResumenData = {
     cargos: 4,
     puestos: 4,
     trabajadores: 5,
+    posicionesCubiertas: 3,
+    vacantes: 1,
     organigrama: "Estructura jerárquica de la empresa",
   },
 };

@@ -27,6 +27,8 @@ import {
   type CargoEstado,
   type CargoTipoUI,
 } from "@/lib/empresa/empresa-store";
+import { getAreas, crearArea, actualizarArea, desactivarArea } from "./actions";
+import { getCargos, crearCargo, actualizarCargo, desactivarCargo } from "@/app/dicaprev/empresa/cargos/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,6 +44,77 @@ const EMPTY_AREA_FORM: AreaForm = {
   nombre: "", codigo: "", descripcion: "",
   responsable: "", correoResponsable: "", telefonoResponsable: "", estado: "activa",
 };
+
+type DbArea = {
+  id: string;
+  empresaId: string;
+  nombre: string;
+  descripcion: string | null;
+  estado: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type DbCargo = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  perfilSST: string | null;
+  estado: string;
+  esCritico: boolean;
+  createdAt: Date;
+  area: {
+    id: string;
+    nombre: string;
+  } | null;
+};
+
+function areaCodeFromId(id: string) {
+  return `AR-${id.slice(0, 4).toUpperCase()}`;
+}
+
+function mapDbAreaToUi(area: DbArea): Area {
+  return {
+    id: area.id,
+    nombre: area.nombre,
+    codigo: areaCodeFromId(area.id),
+    descripcion: area.descripcion ?? "",
+    responsable: "",
+    correoResponsable: "",
+    telefonoResponsable: "",
+    cargosNombres: [],
+    cargosIds: [],
+    dotacionTotal: 0,
+    asignadosTotal: 0,
+    vacantesTotal: 0,
+    trabajadores: 0,
+    cumplimientoPromedio: 0,
+    tieneDs44: false,
+    estado: area.estado === "inactiva" ? "inactiva" : "activa",
+    creadaEl: area.createdAt.toISOString().slice(0, 10),
+  };
+}
+
+function mapDbCargoToUi(cargo: DbCargo): Cargo {
+  return {
+    id: cargo.id,
+    nombre: cargo.nombre,
+    codigo: `CAR-${cargo.id.slice(0, 4).toUpperCase()}`,
+    areaId: cargo.area?.id ?? "",
+    areaNombre: cargo.area?.nombre ?? "Sin área",
+    tipo: "Operativo",
+    descripcion: cargo.descripcion ?? "",
+    perfilSST: cargo.perfilSST ?? "",
+    riesgosClave: "",
+    requiereDS44: cargo.esCritico,
+    documentosBase: [],
+    capacitacionesBase: [],
+    estado: cargo.estado === "inactivo" ? "inactivo" : "activo",
+    trabajadores: 0,
+    centros: [],
+    creadoEl: cargo.createdAt.toISOString().slice(0, 10),
+  };
+}
 
 function emptyCargoForm(): CargoForm {
   const areas = empresaStore.getAreas();
@@ -170,7 +243,7 @@ export default function AreasCargosPage() {
   const [aDeleteTarget, setADeleteTarget]   = useState<Area | null>(null);
 
   // ── Cargos state ──
-  const [cargos, setCargos]                     = useState<Cargo[]>(() => empresaStore.getCargos());
+  const [cargos, setCargos]                     = useState<Cargo[]>([]);
   const [cSearch, setCSearch]                   = useState("");
   const [cFArea, setCFArea]                     = useState("todas");
   const [cFEstado, setCFEstado]                 = useState<"todos" | CargoEstado>("todos");
@@ -183,14 +256,32 @@ export default function AreasCargosPage() {
   const [cForm, setCForm]                       = useState<CargoForm>(emptyCargoForm());
   const [docInput, setDocInput]                 = useState("");
   const [capInput, setCapInput]                 = useState("");
+  const [areasLoading, setAreasLoading]         = useState(false);
 
   // ── Init ──
   useEffect(() => {
     empresaStore.init();
-    const s = empresaStore.getActiveStructure();
-    setAreas(s.areas);
-    setCargos(s.cargos);
-    setPlantillaActiva(s.tipoPlantilla);
+    setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
+
+    let mounted = true;
+    setAreasLoading(true);
+    Promise.all([getAreas(), getCargos()])
+      .then(([areaRows, cargoRows]) => {
+        if (!mounted) return;
+        const mappedAreas = areaRows.map((row) => mapDbAreaToUi(row as DbArea));
+        const mappedCargos = cargoRows.map((row) => mapDbCargoToUi(row as DbCargo));
+        setAreas(mappedAreas);
+        setCargos(mappedCargos);
+        empresaStore.setAreas(mappedAreas);
+        empresaStore.setCargos(mappedCargos);
+      })
+      .finally(() => {
+        if (mounted) setAreasLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // ── Store sync helpers ──
@@ -243,23 +334,43 @@ export default function AreasCargosPage() {
     });
     setAModalOpen(true);
   }
-  function aHandleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function aHandleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (editingAreaId) {
-      updateAreas((prev) => prev.map((a) => a.id === editingAreaId ? { ...a, ...aForm } : a));
+      const updated = await actualizarArea(editingAreaId, {
+        nombre: aForm.nombre,
+        descripcion: aForm.descripcion,
+        estado: aForm.estado,
+      });
+      const mapped = mapDbAreaToUi(updated as DbArea);
+      updateAreas((prev) => prev.map((a) => (a.id === editingAreaId ? { ...a, ...mapped } : a)));
     } else {
-      const newArea: Area = {
-        id: `a-${Date.now()}`, creadaEl: new Date().toISOString().slice(0, 10),
-        cargosNombres: [], cargosIds: [], dotacionTotal: 0, asignadosTotal: 0,
-        vacantesTotal: 0, trabajadores: 0, cumplimientoPromedio: 0, tieneDs44: false,
-        ...aForm,
-      };
-      updateAreas((prev) => [newArea, ...prev]);
+      const created = await crearArea({
+        nombre: aForm.nombre,
+        descripcion: aForm.descripcion,
+        estado: aForm.estado,
+      });
+      const mapped = mapDbAreaToUi(created as DbArea);
+      updateAreas((prev) => [mapped, ...prev]);
     }
     setAModalOpen(false);
   }
-  function aToggleEstado(id: string) {
-    updateAreas((prev) => prev.map((a) => a.id === id ? { ...a, estado: a.estado === "activa" ? "inactiva" : "activa" } : a));
+  async function aToggleEstado(id: string) {
+    const current = areas.find((a) => a.id === id);
+    if (!current) return;
+    if (current.estado === "activa") {
+      const updated = await desactivarArea(id);
+      const mapped = mapDbAreaToUi(updated as DbArea);
+      updateAreas((prev) => prev.map((a) => (a.id === id ? { ...a, ...mapped } : a)));
+      return;
+    }
+    const updated = await actualizarArea(id, {
+      nombre: current.nombre,
+      descripcion: current.descripcion,
+      estado: "activa",
+    });
+    const mapped = mapDbAreaToUi(updated as DbArea);
+    updateAreas((prev) => prev.map((a) => (a.id === id ? { ...a, ...mapped } : a)));
   }
 
   // ─── Cargos KPIs ───
@@ -304,9 +415,29 @@ export default function AreasCargosPage() {
     setDrawerCargo(null);
   }, []);
 
-  function cToggleEstado(id: string) {
-    updateCargos((prev) => prev.map((c) => c.id === id ? { ...c, estado: c.estado === "activo" ? "inactivo" : "activo" } : c));
-    setDrawerCargo((prev) => prev?.id === id ? { ...prev, estado: prev.estado === "activo" ? "inactivo" : "activo" } : prev);
+  async function cToggleEstado(id: string) {
+    const current = cargos.find((cargo) => cargo.id === id);
+    if (!current) return;
+
+    if (current.estado === "activo") {
+      const updated = await desactivarCargo(id);
+      const mapped = mapDbCargoToUi(updated as DbCargo);
+      updateCargos((prev) => prev.map((c) => (c.id === id ? { ...c, ...mapped } : c)));
+      setDrawerCargo((prev) => (prev?.id === id ? { ...prev, ...mapped } : prev));
+      return;
+    }
+
+    const updated = await actualizarCargo(id, {
+      nombre: current.nombre,
+      areaId: current.areaId || undefined,
+      descripcion: current.descripcion,
+      perfilSST: current.perfilSST,
+      estado: "activo",
+      esCritico: current.requiereDS44,
+    });
+    const mapped = mapDbCargoToUi(updated as DbCargo);
+    updateCargos((prev) => prev.map((c) => (c.id === id ? { ...c, ...mapped } : c)));
+    setDrawerCargo((prev) => (prev?.id === id ? { ...prev, ...mapped } : prev));
   }
   function cHandleInput(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const { name, value, type } = e.target;
@@ -325,20 +456,36 @@ export default function AreasCargosPage() {
     setCapInput("");
   }
   function removeCap(c: string) { setCForm((p) => ({ ...p, capacitacionesBase: p.capacitacionesBase.filter((x) => x !== c) })); }
-  function cHandleSubmit(e: FormEvent) {
+  async function cHandleSubmit(e: FormEvent) {
     e.preventDefault();
-    const area = empresaStore.getAreas().find((a) => a.id === cForm.areaId);
-    const merged = { ...cForm, areaNombre: area?.nombre ?? cForm.areaNombre };
+    const area = areas.find((a) => a.id === cForm.areaId);
+    const merged = { ...cForm, areaNombre: area?.nombre ?? "Sin área" };
+
     if (editingCargoId) {
-      updateCargos((prev) => prev.map((c) => c.id === editingCargoId ? { ...c, ...merged } : c));
-      setDrawerCargo((prev) => prev?.id === editingCargoId ? { ...prev, ...merged } : prev);
+      const updated = await actualizarCargo(editingCargoId, {
+        nombre: merged.nombre,
+        areaId: merged.areaId || undefined,
+        descripcion: merged.descripcion,
+        perfilSST: merged.perfilSST,
+        estado: merged.estado,
+        esCritico: merged.requiereDS44,
+      });
+      const mapped = mapDbCargoToUi(updated as DbCargo);
+      updateCargos((prev) => prev.map((c) => (c.id === editingCargoId ? { ...c, ...mapped } : c)));
+      setDrawerCargo((prev) => (prev?.id === editingCargoId ? { ...prev, ...mapped } : prev));
     } else {
-      const nuevo: Cargo = {
-        id: `c-${Date.now()}`, ...merged,
-        trabajadores: 0, centros: [], creadoEl: new Date().toISOString().slice(0, 10),
-      };
-      updateCargos((prev) => [nuevo, ...prev]);
+      const created = await crearCargo({
+        nombre: merged.nombre,
+        areaId: merged.areaId || undefined,
+        descripcion: merged.descripcion,
+        perfilSST: merged.perfilSST,
+        estado: merged.estado,
+        esCritico: merged.requiereDS44,
+      });
+      const mapped = mapDbCargoToUi(created as DbCargo);
+      updateCargos((prev) => [mapped, ...prev]);
     }
+
     setCModalOpen(false);
   }
   const cHasFilters = cSearch || cFArea !== "todas" || cFEstado !== "todos" || cFTipo !== "todos" || cFDs44;
@@ -524,8 +671,8 @@ export default function AreasCargosPage() {
                 {aFiltradas.length === 0 && (
                   <div className="py-16 text-center">
                     <Network className="mx-auto h-9 w-9 text-slate-200 mb-3" />
-                    <p className="text-sm font-medium text-slate-500">Sin áreas que coincidan</p>
-                    <p className="text-xs text-slate-400 mt-1">Ajusta los filtros o crea una nueva área.</p>
+                    <p className="text-sm font-medium text-slate-500">{areasLoading ? "Cargando áreas..." : "Sin áreas que coincidan"}</p>
+                    <p className="text-xs text-slate-400 mt-1">{areasLoading ? "Consultando datos desde Prisma." : "Ajusta los filtros o crea una nueva área."}</p>
                   </div>
                 )}
               </div>
@@ -566,7 +713,7 @@ export default function AreasCargosPage() {
                     </div>
                   </div>
                   <FilterSelect label="Área"   value={cFArea}   onChange={setCFArea}
-                    options={[{ value: "todas", label: "Todas las áreas" }, ...empresaStore.getAreas().map((a) => ({ value: a.id, label: a.nombre }))]} />
+                    options={[{ value: "todas", label: "Todas las áreas" }, ...areas.map((a) => ({ value: a.id, label: a.nombre }))]} />
                   <FilterSelect label="Estado" value={cFEstado} onChange={(v) => setCFEstado(v as "todos" | CargoEstado)}
                     options={[{ value: "todos", label: "Todos" }, { value: "activo", label: "Activo" }, { value: "inactivo", label: "Inactivo" }]} />
                   <FilterSelect label="Tipo"   value={cFTipo}   onChange={(v) => setCFTipo(v as "todos" | CargoTipoUI)}
@@ -666,7 +813,7 @@ export default function AreasCargosPage() {
                 {cFiltrados.length === 0 && (
                   <div className="py-16 text-center text-slate-400 text-sm">
                     <SlidersHorizontal className="mx-auto h-8 w-8 mb-3 text-slate-300" />
-                    No se encontraron cargos con los filtros aplicados.
+                    {areasLoading ? "Cargando cargos..." : "No se encontraron cargos con los filtros aplicados."}
                   </div>
                 )}
               </div>
@@ -1047,9 +1194,19 @@ export default function AreasCargosPage() {
                 </div>
                 <div>
                   <Label>Área</Label>
-                  <Select value={cForm.areaId} onValueChange={(v) => setCForm((p) => ({ ...p, areaId: v, areaNombre: empresaStore.getAreas().find((a) => a.id === v)?.nombre ?? p.areaNombre }))}>
+                  <Select value={cForm.areaId || "sin-area"} onValueChange={(v) => {
+                    const nextAreaId = v === "sin-area" ? "" : v;
+                    setCForm((p) => ({
+                      ...p,
+                      areaId: nextAreaId,
+                      areaNombre: areas.find((a) => a.id === nextAreaId)?.nombre ?? "Sin área",
+                    }));
+                  }}>
                     <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
-                    <SelectContent>{empresaStore.getAreas().map((a) => <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>)}</SelectContent>
+                    <SelectContent>
+                      <SelectItem value="sin-area">Sin área</SelectItem>
+                      {areas.map((a) => <SelectItem key={a.id} value={a.id}>{a.nombre}</SelectItem>)}
+                    </SelectContent>
                   </Select>
                 </div>
                 <div>
@@ -1168,17 +1325,17 @@ export default function AreasCargosPage() {
             <DialogHeader>
               <div className="flex items-center gap-3 mb-1">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50"><AlertTriangle className="h-4 w-4 text-rose-600" /></div>
-                <DialogTitle className="text-xl font-semibold text-slate-900">¿Eliminar área?</DialogTitle>
+                <DialogTitle className="text-xl font-semibold text-slate-900">¿Desactivar área?</DialogTitle>
               </div>
               <DialogDescription className="text-sm text-slate-600 ml-[3rem]">
-                Se eliminará <strong>{aDeleteTarget.nombre}</strong> de forma permanente.
+                Se desactivará <strong>{aDeleteTarget.nombre}</strong>.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="mt-4">
               <Button type="button" variant="outline" className="rounded-xl" onClick={() => setADeleteTarget(null)}>Cancelar</Button>
-              <Button type="button" className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
-                onClick={() => { updateAreas((prev) => prev.filter((a) => a.id !== aDeleteTarget!.id)); if (selectedAreaId === aDeleteTarget.id) setSelectedAreaId(null); setADeleteTarget(null); }}>
-                Sí, eliminar
+              <Button type="button" className="rounded-xl bg-slate-700 text-white"
+                onClick={async () => { await aToggleEstado(aDeleteTarget.id); if (selectedAreaId === aDeleteTarget.id) setSelectedAreaId(null); setADeleteTarget(null); }}>
+                Sí, desactivar
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1218,7 +1375,13 @@ export default function AreasCargosPage() {
             <DialogFooter className="mt-4">
               <Button type="button" variant="outline" className="rounded-xl" onClick={() => setCDeleteTarget(null)}>Cancelar</Button>
               <Button type="button" className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
-                onClick={() => { updateCargos((prev) => prev.filter((c) => c.id !== cDeleteTarget!.id)); if (drawerCargo?.id === cDeleteTarget.id) setDrawerCargo(null); setCDeleteTarget(null); }}>
+                onClick={async () => {
+                  const updated = await desactivarCargo(cDeleteTarget.id);
+                  const mapped = mapDbCargoToUi(updated as DbCargo);
+                  updateCargos((prev) => prev.map((c) => (c.id === cDeleteTarget.id ? { ...c, ...mapped } : c)));
+                  if (drawerCargo?.id === cDeleteTarget.id) setDrawerCargo(mapped);
+                  setCDeleteTarget(null);
+                }}>
                 Sí, eliminar
               </Button>
             </DialogFooter>

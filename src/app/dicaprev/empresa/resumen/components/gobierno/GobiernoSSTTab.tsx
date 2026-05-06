@@ -37,6 +37,30 @@ const GobiernoSSTTab: React.FC<GobiernoSSTTabProps> = ({ data }) => {
         <p className="text-gray-900">Última Elección: {data.keyDates.ultimaEleccion}</p>
         <p className="text-gray-900">Vigencia Hasta: {data.keyDates.vigenciaHasta}</p>
       </div>
+
+      <div className="bg-white p-4 rounded shadow">
+        <h3 className="text-lg font-semibold text-gray-700">Cumplimiento documental empresa</h3>
+        <p className="text-2xl font-bold text-gray-900">{data.cumplimientoDocumentalEmpresa}%</p>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded shadow">
+          <h3 className="text-sm font-semibold text-gray-700">Vigentes</h3>
+          <p className="text-2xl font-bold text-gray-900">{data.documentosVigentes}</p>
+        </div>
+        <div className="bg-white p-4 rounded shadow">
+          <h3 className="text-sm font-semibold text-gray-700">Pendientes</h3>
+          <p className="text-2xl font-bold text-gray-900">{data.documentosPendientes}</p>
+        </div>
+        <div className="bg-white p-4 rounded shadow">
+          <h3 className="text-sm font-semibold text-gray-700">Vencidos</h3>
+          <p className="text-2xl font-bold text-gray-900">{data.documentosVencidos}</p>
+        </div>
+        <div className="bg-white p-4 rounded shadow">
+          <h3 className="text-sm font-semibold text-gray-700">Por vencer</h3>
+          <p className="text-2xl font-bold text-gray-900">{data.documentosPorVencer}</p>
+        </div>
+      </div>
     </div>
   );
 };

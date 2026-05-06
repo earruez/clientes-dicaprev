@@ -89,6 +89,9 @@ export type DocumentoMatrizRow = {
   observaciones: string;
   historial: HistorialDocumento[];
   esAdicional: boolean;
+  aplicaDesdeTrabajadores: number | null;
+  aplicaHastaTrabajadores: number | null;
+  esAplicable: boolean;
 };
 
 export type TabDocumentacion = "todos" | CategoriaDocumento | "historial";

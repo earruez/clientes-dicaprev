@@ -17,19 +17,14 @@ import {
   Clock, Layers, SlidersHorizontal,
   Search, Plus, X, Shield, BookOpen, FileCheck, TrendingUp,
 } from "lucide-react";
-import { CARGO_REFS } from "@/lib/empresa/domain";
 import {
-  type Posicion,
-  getPosiciones,
-  addPosicion as storeAdd,
-  updatePosicion as storeUpdate,
-  subscribe,
-  vacantesPos,
-  isSobredotado,
-  coberturaLabel,
-  coberturaPct,
-} from "@/lib/dotacion/dotacion-store";
-import { getCentroNombres } from "@/lib/centros/centros-store";
+  getDotacion,
+  crearPosicion,
+  actualizarPosicion,
+  desactivarPosicion,
+} from "./actions";
+import { getCentrosTrabajo } from "@/app/dicaprev/empresa/centros/actions";
+import { getCargos } from "@/app/dicaprev/empresa/cargos/actions";
 
 /* ─────────────────────────────────────────────
    TYPES
@@ -38,12 +33,58 @@ type Estado = "activo" | "inactivo";
 type Turno = "Diurno" | "Nocturno" | "Mixto" | "Especial";
 type Modalidad = "Presencial" | "Híbrido" | "Remoto";
 
+type Posicion = {
+  id: string;
+  codigo: string;
+  centroNombre: string;
+  cargoNombre: string;
+  dotacionRequerida: number;
+  asignados: number;
+  turno: Turno;
+  modalidad: Modalidad;
+  ubicacion: string;
+  riesgosClave: string;
+  requiereDS44: boolean;
+  estado: Estado;
+  creadoEl: string;
+};
+
+type RefCentro = {
+  id: string;
+  nombre: string;
+};
+
+type DotacionRow = {
+  id: string;
+  cantidad: number;
+  asignados: number;
+  vacantes: number;
+  estado: string;
+  esCritica: boolean;
+  createdAt: Date;
+  centroTrabajo: {
+    id: string;
+    nombre: string;
+  };
+  cargo: {
+    id: string;
+    nombre: string;
+  };
+  trabajadoresAsignados: {
+    id: string;
+    nombres: string;
+    apellidos: string;
+    rut: string | null;
+    estado: string;
+  }[];
+};
+
 // Posicion is imported from dotacion-store
 type PosicionForm = Omit<Posicion, "id" | "creadoEl">;
 
 interface CargoOption { id: string; nombre: string; riesgos?: string; ds44?: boolean; }
 
-interface TrabajadorMock {
+interface TrabajadorAsignado {
   id: string;
   nombre: string;
   rut: string;
@@ -55,35 +96,7 @@ interface TrabajadorMock {
 /* ─────────────────────────────────────────────
    MOCK DATA
 ───────────────────────────────────────────── */
-const CARGOS: CargoOption[] = CARGO_REFS.map((c) => ({
-  id:      c.id,
-  nombre:  c.nombre,
-  riesgos: c.riesgos,
-  ds44:    c.requiereDS44,
-}));
-
-const WORKERS_MOCK: Record<string, TrabajadorMock[]> = {
-  "pos-001": [
-    { id: "w1", nombre: "Carlos Pérez Rojas", rut: "12.345.678-9", estado: "Al día", completitudDoc: 95, capacitaciones: 8 },
-  ],
-  "pos-002": [
-    { id: "w2", nombre: "María González Soto", rut: "15.678.901-2", estado: "Pendiente", completitudDoc: 72, capacitaciones: 5 },
-    { id: "w3", nombre: "Jorge Muñoz López", rut: "13.222.333-4", estado: "Crítico", completitudDoc: 40, capacitaciones: 2 },
-  ],
-  "pos-003": [
-    { id: "w4", nombre: "Ana Torres Vidal", rut: "16.111.222-3", estado: "Al día", completitudDoc: 100, capacitaciones: 10 },
-    { id: "w5", nombre: "Pedro Ramos Silva", rut: "14.555.666-7", estado: "Al día", completitudDoc: 88, capacitaciones: 7 },
-  ],
-  "pos-004": [
-    { id: "w6", nombre: "Luis Contreras Díaz", rut: "11.444.555-K", estado: "Pendiente", completitudDoc: 65, capacitaciones: 4 },
-  ],
-  "pos-005": [],
-  "pos-006": [
-    { id: "w7", nombre: "Francisca Ibáñez Vera", rut: "17.888.999-0", estado: "Al día", completitudDoc: 91, capacitaciones: 9 },
-    { id: "w8", nombre: "Manuel Ortega Fuentes", rut: "10.333.444-5", estado: "Al día", completitudDoc: 83, capacitaciones: 6 },
-    { id: "w9", nombre: "Rodrigo Espinoza Cruz", rut: "9.222.111-6", estado: "Pendiente", completitudDoc: 57, capacitaciones: 3 },
-  ],
-};
+const WORKERS_BY_POSICION: Record<string, TrabajadorAsignado[]> = {};
 
 /* ─────────────────────────────────────────────
    HELPERS
@@ -96,10 +109,30 @@ function coverageColor(p: Posicion): string {
   return "text-amber-700 bg-amber-50 border-amber-100";
 }
 
-function workerEstadoColor(e: TrabajadorMock["estado"]): string {
+function workerEstadoColor(e: TrabajadorAsignado["estado"]): string {
   if (e === "Al día") return "bg-emerald-50 text-emerald-700 border-emerald-100";
   if (e === "Pendiente") return "bg-amber-50 text-amber-700 border-amber-100";
   return "bg-rose-50 text-rose-700 border-rose-100";
+}
+
+function vacantesPos(p: Posicion): number {
+  return Math.max(0, p.dotacionRequerida - p.asignados);
+}
+
+function isSobredotado(p: Posicion): boolean {
+  return p.asignados > p.dotacionRequerida;
+}
+
+function coberturaLabel(p: Posicion): string {
+  if (isSobredotado(p)) return "Sobredotado";
+  if (vacantesPos(p) === 0) return "Cubierta";
+  if (vacantesPos(p) >= p.dotacionRequerida) return "Vacante";
+  return "Parcial";
+}
+
+function coberturaPct(p: Posicion): number {
+  if (p.dotacionRequerida === 0) return 0;
+  return Math.round((p.asignados / p.dotacionRequerida) * 100);
 }
 
 function nextCodigo(posiciones: Posicion[]): string {
@@ -107,14 +140,42 @@ function nextCodigo(posiciones: Posicion[]): string {
   return `DOT-${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, "0")}`;
 }
 
-function emptyForm(firstCentro: string): PosicionForm {
+function emptyForm(firstCentro: string, cargos: CargoOption[]): PosicionForm {
+  const firstCargo = cargos[0];
   return {
     codigo: "", centroNombre: firstCentro,
-    cargoNombre: CARGOS[0].nombre,
+    cargoNombre: firstCargo?.nombre ?? "",
     dotacionRequerida: 1, asignados: 0,
     turno: "Diurno", modalidad: "Presencial",
-    ubicacion: "", riesgosClave: CARGOS[0].riesgos ?? "",
-    requiereDS44: CARGOS[0].ds44 ?? false, estado: "activo",
+    ubicacion: "", riesgosClave: firstCargo?.riesgos ?? "",
+    requiereDS44: firstCargo?.ds44 ?? false, estado: "activo",
+  };
+}
+
+function mapDbPosicionToUi(row: DotacionRow): Posicion {
+  WORKERS_BY_POSICION[row.id] = row.trabajadoresAsignados.map((trabajador) => ({
+    id: trabajador.id,
+    nombre: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
+    rut: trabajador.rut ?? "Sin RUT",
+    estado: trabajador.estado === "activo" ? "Al día" : trabajador.estado === "inactivo" ? "Pendiente" : "Crítico",
+    completitudDoc: trabajador.estado === "activo" ? 100 : trabajador.estado === "inactivo" ? 60 : 35,
+    capacitaciones: trabajador.estado === "activo" ? 8 : trabajador.estado === "inactivo" ? 4 : 2,
+  }));
+
+  return {
+    id: row.id,
+    codigo: `DOT-${row.id.slice(0, 4).toUpperCase()}`,
+    centroNombre: row.centroTrabajo.nombre,
+    cargoNombre: row.cargo.nombre,
+    dotacionRequerida: row.cantidad,
+    asignados: row.asignados,
+    turno: "Diurno",
+    modalidad: "Presencial",
+    ubicacion: "",
+    riesgosClave: "",
+    requiereDS44: row.esCritica,
+    estado: row.estado === "inactiva" ? "inactivo" : "activo",
+    creadoEl: row.createdAt.toISOString().slice(0, 10),
   };
 }
 
@@ -122,12 +183,44 @@ function emptyForm(firstCentro: string): PosicionForm {
    PAGE
 ───────────────────────────────────────────── */
 export default function DotacionPage() {
-  const CENTROS = getCentroNombres();
-  const firstCentro = CENTROS[0] ?? "Casa Matriz";
-  const [posiciones, setPosiciones] = useState<Posicion[]>(getPosiciones);
+  const [posiciones, setPosiciones] = useState<Posicion[]>([]);
+  const [centrosRef, setCentrosRef] = useState<RefCentro[]>([]);
+  const [cargosRef, setCargosRef] = useState<CargoOption[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Sync with store when another module (Trabajadores) mutates it
-  useEffect(() => subscribe(() => setPosiciones(getPosiciones())), []);
+  const CENTROS = centrosRef.map((c) => c.nombre);
+  const CARGOS = cargosRef;
+  const firstCentro = CENTROS[0] ?? "Casa Matriz";
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+
+    Promise.all([getDotacion(), getCentrosTrabajo(), getCargos()])
+      .then(([dotacionRows, centrosRows, cargosRows]) => {
+        if (!mounted) return;
+
+        const mappedPosiciones = dotacionRows.map((row) => mapDbPosicionToUi(row));
+        const mappedCentros = centrosRows.map((row) => ({ id: row.id, nombre: row.nombre }));
+        const mappedCargos = cargosRows.map((row) => ({
+          id: row.id,
+          nombre: row.nombre,
+          riesgos: row.perfilSST ?? row.descripcion ?? "",
+          ds44: row.esCritico,
+        }));
+
+        setPosiciones(mappedPosiciones);
+        setCentrosRef(mappedCentros);
+        setCargosRef(mappedCargos);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const [search, setSearch]     = useState("");
   const [fCentro, setFCentro]   = useState("todos");
@@ -140,7 +233,7 @@ export default function DotacionPage() {
 
   const [modalOpen, setModalOpen]   = useState(false);
   const [editingId, setEditingId]   = useState<string | null>(null);
-  const [form, setForm]             = useState<PosicionForm>(emptyForm(firstCentro));
+  const [form, setForm]             = useState<PosicionForm>(emptyForm(firstCentro, CARGOS));
   const isEdit = editingId !== null;
 
   /* KPIs */
@@ -168,9 +261,9 @@ export default function DotacionPage() {
   /* Handlers */
   const openCreate = useCallback(() => {
     setEditingId(null);
-    setForm({ ...emptyForm(firstCentro), codigo: nextCodigo(posiciones) });
+    setForm({ ...emptyForm(firstCentro, CARGOS), codigo: nextCodigo(posiciones) });
     setModalOpen(true);
-  }, [firstCentro, posiciones]);
+  }, [firstCentro, CARGOS, posiciones]);
 
   const openEdit = useCallback((p: Posicion) => {
     setEditingId(p.id);
@@ -185,17 +278,43 @@ export default function DotacionPage() {
     setDrawerPos(null);
   }, []);
 
-  const toggleEstado = (id: string) => {
-    const updated = posiciones.map((p) => p.id === id ? { ...p, estado: (p.estado === "activo" ? "inactivo" : "activo") as Estado } : p);
-    updated.forEach((p) => { if (p.id === id) storeUpdate(p); });
-    setPosiciones(updated);
-    setDrawerPos((prev) => prev?.id === id ? { ...prev, estado: prev.estado === "activo" ? "inactivo" : "activo" } : prev);
+  const toggleEstado = async (id: string) => {
+    const current = posiciones.find((p) => p.id === id);
+    if (!current) return;
+
+    const centro = centrosRef.find((c) => c.nombre === current.centroNombre);
+    const cargo = CARGOS.find((c) => c.nombre === current.cargoNombre);
+    if (!centro || !cargo) {
+      alert("No fue posible resolver centro/cargo para actualizar la posición.");
+      return;
+    }
+
+    if (current.estado === "activo") {
+      const updated = await desactivarPosicion(id);
+      const mapped = mapDbPosicionToUi(updated);
+      setPosiciones((prev) => prev.map((p) => (p.id === id ? { ...p, ...mapped } : p)));
+      setDrawerPos((prev) => (prev?.id === id ? { ...prev, ...mapped } : prev));
+      return;
+    }
+
+    const updated = await actualizarPosicion(id, {
+      centroTrabajoId: centro.id,
+      cargoId: cargo.id,
+      cantidad: current.dotacionRequerida,
+      estado: "activa",
+      esCritica: current.requiereDS44,
+    });
+    const mapped = mapDbPosicionToUi(updated);
+    setPosiciones((prev) => prev.map((p) => (p.id === id ? { ...p, ...mapped } : p)));
+    setDrawerPos((prev) => (prev?.id === id ? { ...prev, ...mapped } : prev));
   };
 
-  const deletePos = (id: string) => {
-    if (!confirm("¿Eliminar esta posición?")) return;
-    setPosiciones((prev) => prev.filter((p) => p.id !== id));
-    if (drawerPos?.id === id) setDrawerPos(null);
+  const deletePos = async (id: string) => {
+    if (!confirm("¿Desactivar esta posición?")) return;
+    const updated = await desactivarPosicion(id);
+    const mapped = mapDbPosicionToUi(updated);
+    setPosiciones((prev) => prev.map((p) => (p.id === id ? { ...p, ...mapped } : p)));
+    if (drawerPos?.id === id) setDrawerPos(mapped);
   };
 
   const handleInput = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -207,22 +326,72 @@ export default function DotacionPage() {
     }));
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    const centro = centrosRef.find((c) => c.nombre === form.centroNombre);
+    const cargo = CARGOS.find((c) => c.nombre === form.cargoNombre);
+
+    if (!centro || !cargo) {
+      alert("Selecciona un centro y cargo válidos.");
+      return;
+    }
+
     if (isEdit && editingId) {
-      const updated = posiciones.map((p) => p.id === editingId ? { ...p, ...form } : p);
-      storeUpdate({ ...posiciones.find((p) => p.id === editingId)!, ...form });
-      setPosiciones(updated);
-      setDrawerPos((prev) => prev?.id === editingId ? { ...prev, ...form } : prev);
+      try {
+        const updated = await actualizarPosicion(editingId, {
+          centroTrabajoId: centro.id,
+          cargoId: cargo.id,
+          cantidad: form.dotacionRequerida,
+          estado: form.estado === "activo" ? "activa" : "inactiva",
+          esCritica: form.requiereDS44,
+        });
+
+        const mapped = mapDbPosicionToUi(updated);
+        const enriched = {
+          ...mapped,
+          codigo: form.codigo,
+          asignados: form.asignados,
+          turno: form.turno,
+          modalidad: form.modalidad,
+          ubicacion: form.ubicacion,
+          riesgosClave: form.riesgosClave,
+        };
+        setPosiciones((prev) => prev.map((p) => (p.id === editingId ? enriched : p)));
+        setDrawerPos((prev) => (prev?.id === editingId ? enriched : prev));
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "No se pudo actualizar la posición");
+        return;
+      }
     } else {
-      const nueva: Posicion = { id: `pos-${Date.now()}`, ...form, creadoEl: new Date().toISOString().slice(0, 10) };
-      storeAdd(nueva);
-      setPosiciones((prev) => [nueva, ...prev]);
+      try {
+        const created = await crearPosicion({
+          centroTrabajoId: centro.id,
+          cargoId: cargo.id,
+          cantidad: form.dotacionRequerida,
+          estado: form.estado === "activo" ? "activa" : "inactiva",
+          esCritica: form.requiereDS44,
+        });
+
+        const mapped = mapDbPosicionToUi(created);
+        const enriched = {
+          ...mapped,
+          codigo: form.codigo || nextCodigo(posiciones),
+          asignados: form.asignados,
+          turno: form.turno,
+          modalidad: form.modalidad,
+          ubicacion: form.ubicacion,
+          riesgosClave: form.riesgosClave,
+        };
+        setPosiciones((prev) => [enriched, ...prev]);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "No se pudo crear la posición");
+        return;
+      }
     }
     setModalOpen(false);
   };
 
-  const drawerWorkers: TrabajadorMock[] = drawerPos ? (WORKERS_MOCK[drawerPos.id] ?? []) : [];
+  const drawerWorkers: TrabajadorAsignado[] = drawerPos ? (WORKERS_BY_POSICION[drawerPos.id] ?? []) : [];
 
   const clearFilters = () => { setSearch(""); setFCentro("todos"); setFCargo("todos"); setFEstado("todos"); setFTurno("todos"); setFDs44(false); };
   const hasFilters = search || fCentro !== "todos" || fCargo !== "todos" || fEstado !== "todos" || fTurno !== "todos" || fDs44;
@@ -383,7 +552,7 @@ export default function DotacionPage() {
             {filtradas.length === 0 && (
               <div className="py-16 text-center text-slate-400 text-sm">
                 <SlidersHorizontal className="mx-auto h-8 w-8 mb-3 text-slate-300" />
-                No se encontraron posiciones con los filtros aplicados.
+                {loading ? "Cargando posiciones..." : "No se encontraron posiciones con los filtros aplicados."}
               </div>
             )}
           </div>

@@ -24,19 +24,15 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
 } from "lucide-react";
-import { empresaStore, type EmpresaArea, type EmpresaCargo } from "@/lib/empresa/empresa-store";
+import type { EmpresaArea, EmpresaCargo } from "@/lib/empresa/empresa-store";
+import type { CentroAdmin } from "@/lib/centros/centros-store";
 import {
-  getCentros,
-  subscribe as subscribeCentros,
-  type CentroAdmin,
-} from "@/lib/centros/centros-store";
-import {
-  MOCK_WORKERS,
   type Worker,
   type WorkerEstado,
   getInitials,
   antiguedad,
 } from "@/components/trabajadores-v2/types";
+import { getOrganigramaEmpresa } from "./actions";
 
 // ─── Domain types ─────────────────────────────────────────────────────── //
 
@@ -148,6 +144,7 @@ const ESTADO_BADGE: Record<WorkerEstado, string> = {
 // ─── Tree builders ────────────────────────────────────────────────────── //
 
 function buildAreaTree(
+  empresaNombre: string,
   areas: EmpresaArea[],
   cargos: EmpresaCargo[],
   workers: Worker[],
@@ -224,7 +221,7 @@ function buildAreaTree(
   return {
     id: "empresa-root",
     type: "empresa",
-    label: "DICAPREV",
+    label: empresaNombre,
     subtitle: "Vista por áreas funcionales",
     workerCount: workers.length,
     ds44: false,
@@ -233,6 +230,7 @@ function buildAreaTree(
 }
 
 function buildCentroTree(
+  empresaNombre: string,
   centros: CentroAdmin[],
   cargos: EmpresaCargo[],
   workers: Worker[],
@@ -256,40 +254,62 @@ function buildCentroTree(
     const centroRef = centros.find((c) => c.nombre === centroName);
     if (centroWorkers.length === 0 && !centroRef) continue;
 
-    const cargoMap = new Map<string, Worker[]>();
+    const areaMap = new Map<string, Worker[]>();
     centroWorkers.forEach((w) => {
-      const list = cargoMap.get(w.cargo) ?? [];
+      const areaName = w.area || "Sin área";
+      const list = areaMap.get(areaName) ?? [];
       list.push(w);
-      cargoMap.set(w.cargo, list);
+      areaMap.set(areaName, list);
     });
 
-    const cargoNodes: OrgNode[] = [];
-    for (const [cargoName, cargoWorkers] of cargoMap) {
-      const cargoRef = cargos.find((c) => c.nombre === cargoName);
-      const workerNodes: OrgNode[] = cargoWorkers.map((w) => ({
-        id: `w-centro-${w.id}`,
-        type: "trabajador" as const,
-        label: `${w.nombre} ${w.apellido}`,
-        subtitle: w.estado,
-        workerCount: 1,
-        ds44: false,
-        children: [],
-        workerData: w,
-      }));
-      const cargoDotRef = centroRef?.dotacionPorCargo.find((d) => d.cargo === cargoName);
-      cargoNodes.push({
-        id: `cargo-centro-${centroName}-${cargoName}`,
-        type: "cargo" as const,
-        label: cargoName,
-        workerCount: cargoWorkers.length,
-        ds44: cargoRef?.requiereDS44 ?? false,
-        dotacionRequerida: cargoDotRef?.dotacion,
-        children: workerNodes,
-        cargoData: cargoRef,
+    const areaNodes: OrgNode[] = [];
+    for (const [areaName, areaWorkers] of areaMap) {
+      const cargoMap = new Map<string, Worker[]>();
+      areaWorkers.forEach((w) => {
+        const list = cargoMap.get(w.cargo) ?? [];
+        list.push(w);
+        cargoMap.set(w.cargo, list);
+      });
+
+      const cargoNodes: OrgNode[] = [];
+      for (const [cargoName, cargoWorkers] of cargoMap) {
+        const cargoRef = cargos.find((c) => c.nombre === cargoName);
+        const workerNodes: OrgNode[] = cargoWorkers.map((w) => ({
+          id: `w-centro-${w.id}`,
+          type: "trabajador" as const,
+          label: `${w.nombre} ${w.apellido}`,
+          subtitle: w.estado,
+          workerCount: 1,
+          ds44: false,
+          children: [],
+          workerData: w,
+        }));
+        const cargoDotRef = centroRef?.dotacionPorCargo.find((d) => d.cargo === cargoName);
+        cargoNodes.push({
+          id: `cargo-centro-${centroName}-${areaName}-${cargoName}`,
+          type: "cargo" as const,
+          label: cargoName,
+          workerCount: cargoWorkers.length,
+          ds44: cargoRef?.requiereDS44 ?? false,
+          dotacionRequerida: cargoDotRef?.dotacion,
+          children: workerNodes,
+          cargoData: cargoRef,
+        });
+      }
+
+      cargoNodes.sort((a, b) => Number(b.ds44) - Number(a.ds44));
+
+      areaNodes.push({
+        id: `area-centro-${centroName}-${areaName}`,
+        type: "area" as const,
+        label: areaName,
+        workerCount: areaWorkers.length,
+        ds44: cargoNodes.some((node) => node.ds44),
+        children: cargoNodes,
       });
     }
 
-    cargoNodes.sort((a, b) => Number(b.ds44) - Number(a.ds44));
+    areaNodes.sort((a, b) => b.workerCount - a.workerCount);
 
     centroNodes.push({
       id: `centro-${centroName}`,
@@ -299,7 +319,7 @@ function buildCentroTree(
       workerCount: centroWorkers.length,
       ds44: centroRef?.aplicaDs44 ?? false,
       dotacionRequerida: centroRef?.dotacionTotal,
-      children: cargoNodes,
+      children: areaNodes,
       centroData: centroRef,
     });
   }
@@ -309,7 +329,7 @@ function buildCentroTree(
   return {
     id: "empresa-root",
     type: "empresa",
-    label: "DICAPREV",
+    label: empresaNombre,
     subtitle: "Vista por centros de trabajo",
     workerCount: workers.length,
     ds44: false,
@@ -492,7 +512,11 @@ function NodeCard({
             {isExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
             {isExpanded
               ? "Contraer"
-              : `${node.children.length} cargo${node.children.length !== 1 ? "s" : ""}`}
+              : `${node.children.length} ${
+                  node.type === "centro" && node.children[0]?.type === "area"
+                    ? `área${node.children.length !== 1 ? "s" : ""}`
+                    : `cargo${node.children.length !== 1 ? "s" : ""}`
+                }`}
           </button>
         )}
       </div>
@@ -727,16 +751,16 @@ function WorkerRow({ worker }: { worker: Worker }) {
 
 // Detail panels per node type
 
-function EmpresaDetail({ node }: { node: OrgNode }) {
-  const activeWorkers = MOCK_WORKERS.filter((w) => w.estado === "Activo").length;
-  const withPending = MOCK_WORKERS.filter(
+function EmpresaDetail({ node, workers }: { node: OrgNode; workers: Worker[] }) {
+  const activeWorkers = workers.filter((w) => w.estado === "Activo").length;
+  const withPending = workers.filter(
     (w) => w.documentosPendientes + w.capacitacionesPendientes > 0,
   ).length;
   return (
     <div className="space-y-5">
       <KpiGrid
         items={[
-          { label: "Total trabajadores", value: MOCK_WORKERS.length, icon: Users, color: "text-slate-700" },
+          { label: "Total trabajadores", value: workers.length, icon: Users, color: "text-slate-700" },
           { label: "Activos", value: activeWorkers, icon: Users, color: "text-emerald-600" },
           { label: node.children[0]?.type === "area" ? "Áreas" : "Centros", value: node.children.length, icon: Layers, color: "text-emerald-600" },
           { label: "Con pendientes", value: withPending, icon: AlertTriangle, color: withPending > 0 ? "text-amber-500" : "text-emerald-600" },
@@ -1171,7 +1195,7 @@ function NodeDrawer({
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto p-6">
-          {node.type === "empresa" && <EmpresaDetail node={node} />}
+          {node.type === "empresa" && <EmpresaDetail node={node} workers={allWorkers} />}
           {node.type === "area" &&
             (node.areaData ? (
               <AreaDetail area={node.areaData} workers={allWorkers} />
@@ -1242,28 +1266,44 @@ export default function OrganigramaPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("areas");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(["empresa-root"]));
   const [selectedNode, setSelectedNode] = useState<OrgNode | null>(null);
+  const [empresaNombre, setEmpresaNombre] = useState("DICAPREV");
 
   const [areas, setAreas] = useState<EmpresaArea[]>([]);
   const [cargos, setCargos] = useState<EmpresaCargo[]>([]);
   const [centros, setCentros] = useState<CentroAdmin[]>([]);
+  const [workers, setWorkers] = useState<Worker[]>([]);
 
   useEffect(() => {
-    empresaStore.init();
-    setAreas(empresaStore.getAreas());
-    setCargos(empresaStore.getCargos());
-    setCentros(getCentros());
+    let mounted = true;
 
-    const unsub = subscribeCentros(() => {
-      setCentros(getCentros());
-    });
-    return unsub;
+    getOrganigramaEmpresa()
+      .then((data) => {
+        if (!mounted) return;
+        setEmpresaNombre(data.empresaNombre || "DICAPREV");
+        setAreas(data.areas);
+        setCargos(data.cargos);
+        setCentros(data.centros);
+        setWorkers(data.trabajadores);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setEmpresaNombre("DICAPREV");
+        setAreas([]);
+        setCargos([]);
+        setCentros([]);
+        setWorkers([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const tree = useMemo(() => {
     return viewMode === "areas"
-      ? buildAreaTree(areas, cargos, MOCK_WORKERS)
-      : buildCentroTree(centros, cargos, MOCK_WORKERS);
-  }, [viewMode, areas, cargos, centros]);
+      ? buildAreaTree(empresaNombre, areas, cargos, workers)
+      : buildCentroTree(empresaNombre, centros, cargos, workers);
+  }, [viewMode, empresaNombre, areas, cargos, centros, workers]);
 
   const allIds = useMemo(() => collectAllIds(tree), [tree]);
 
@@ -1390,7 +1430,7 @@ export default function OrganigramaPage() {
       <NodeDrawer
         node={selectedNode}
         onClose={() => setSelectedNode(null)}
-        allWorkers={MOCK_WORKERS}
+        allWorkers={workers}
       />
     </div>
   );

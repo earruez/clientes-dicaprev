@@ -10,6 +10,54 @@ datasource db {
 }
 
 // ─────────────────────────────────────────────
+// AUTH.JS (NEXTAUTH) MODELOS
+// ─────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+// ─────────────────────────────────────────────
 // ENUM
 // ─────────────────────────────────────────────
 
@@ -38,6 +86,11 @@ model Empresa {
 
   usuarios            Usuario[]
   documentosEmpresa   DocumentoEmpresa[]
+  centrosTrabajo      CentroTrabajo[]
+  areas               Area[]
+  cargos              Cargo[]
+  trabajadores        Trabajador[]
+  posicionesDotacion  PosicionDotacion[]
 }
 
 model Usuario {
@@ -119,4 +172,115 @@ model DocumentoEmpresaHistorial {
 
   documento  DocumentoEmpresa @relation(fields: [documentoId], references: [id], onDelete: Cascade)
   usuario    Usuario?         @relation("UsuarioDocumentoHistorial", fields: [usuarioId], references: [id])
+}
+
+model CentroTrabajo {
+  id                  String   @id @default(uuid())
+  empresaId           String
+  nombre              String
+  direccion           String
+  comuna              String
+  region              String
+  tipo                String
+  estado              String
+  cantidadTrabajadores Int     @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  empresa             Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  trabajadores        Trabajador[]
+  posicionesDotacion  PosicionDotacion[]
+
+  @@index([empresaId])
+}
+
+model Area {
+  id          String   @id @default(uuid())
+  empresaId   String
+  nombre      String
+  descripcion String?
+  estado      String   @default("activa")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cargos      Cargo[]
+  trabajadores Trabajador[]
+
+  @@index([empresaId])
+}
+
+model Cargo {
+  id          String   @id @default(uuid())
+  empresaId   String
+  areaId      String?
+  nombre      String
+  descripcion String?
+  perfilSST   String?
+  estado      String   @default("activo")
+  esCritico   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  empresa     Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  area        Area?    @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  trabajadores Trabajador[]
+  posicionesDotacion PosicionDotacion[]
+
+  @@index([empresaId])
+  @@index([areaId])
+}
+
+model Trabajador {
+  id              String       @id @default(uuid())
+  empresaId       String
+  centroTrabajoId String?
+  areaId          String?
+  cargoId         String?
+  posicionDotacionId String?
+  nombres         String
+  apellidos       String
+  rut             String?
+  email           String?
+  telefono        String?
+  estado          String       @default("activo")
+  fechaIngreso    DateTime?
+  tipoContrato    String?
+  jornada         String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  empresa         Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  centroTrabajo   CentroTrabajo? @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+  area            Area?        @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  cargo           Cargo?       @relation(fields: [cargoId], references: [id], onDelete: SetNull)
+  posicionDotacion PosicionDotacion? @relation(fields: [posicionDotacionId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId])
+  @@index([centroTrabajoId])
+  @@index([areaId])
+  @@index([cargoId])
+  @@index([posicionDotacionId])
+}
+
+model PosicionDotacion {
+  id              String       @id @default(uuid())
+  empresaId       String
+  centroTrabajoId String
+  cargoId         String
+  cantidad        Int          @default(1)
+  estado          String       @default("activa")
+  esCritica       Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  empresa         Empresa      @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  centroTrabajo   CentroTrabajo @relation(fields: [centroTrabajoId], references: [id], onDelete: Cascade)
+  cargo           Cargo        @relation(fields: [cargoId], references: [id], onDelete: Cascade)
+  trabajadores    Trabajador[]
+
+  @@index([empresaId])
+  @@index([centroTrabajoId])
+  @@index([cargoId])
+  @@unique([empresaId, centroTrabajoId, cargoId])
 }
