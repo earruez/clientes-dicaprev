@@ -27,6 +27,7 @@ import { useDocumentos } from "./hooks/useDocumentos";
 import TableView from "./components/TableView";
 import Filtros from "./components/Filtros";
 import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE, formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
+import { usePermissions } from "@/lib/permissions";
 
 type ArchivoSubido = {
   archivoNombre: string;
@@ -54,6 +55,8 @@ export default function DocumentacionPage() {
     marcarDocumentoAplica,
     restaurarDocumentoVersion,
   } = useDocumentos();
+  const { hasPermission } = usePermissions();
+  const canManageDocumentacion = hasPermission("canManageDocumentacion");
 
   const [openAdditional, setOpenAdditional] = useState(false);
   const [openReplace, setOpenReplace] = useState(false);
@@ -195,6 +198,10 @@ export default function DocumentacionPage() {
   }
 
   async function handleCreateAdditional() {
+    if (!canManageDocumentacion) {
+      showInfo("No tienes permisos para crear documentos adicionales.", "error");
+      return;
+    }
     if (!additionalForm.nombre.trim()) {
       showInfo("Debes completar el nombre del documento adicional.", "error");
       return;
@@ -255,6 +262,10 @@ export default function DocumentacionPage() {
   }
 
   async function handleReplace() {
+    if (!canManageDocumentacion) {
+      showInfo("No tienes permisos para modificar documentos.", "error");
+      return;
+    }
     if (!selectedDoc) {
       showInfo("Selecciona un documento para cargar/reemplazar.", "error");
       return;
@@ -299,6 +310,10 @@ export default function DocumentacionPage() {
   }
 
   async function handleEditMetadata() {
+    if (!canManageDocumentacion) {
+      showInfo("No tienes permisos para editar metadatos.", "error");
+      return;
+    }
     if (!selectedDoc) return;
 
     const ok = await updateDocumentoMetadatos({
@@ -357,6 +372,10 @@ export default function DocumentacionPage() {
   }
 
   async function handleRestoreVersion(historialId: string) {
+    if (!canManageDocumentacion) {
+      showInfo("No tienes permisos para restaurar versiones.", "error");
+      return;
+    }
     if (!selectedDoc?.documentoEmpresaId) {
       showInfo("No se encontró el documento actual para restaurar la versión.", "error");
       return;
@@ -397,6 +416,7 @@ export default function DocumentacionPage() {
   }
 
   function openReplaceDialog(doc: DocumentoMatrizRow) {
+    if (!canManageDocumentacion) return;
     setSelectedDoc(doc);
     setReplaceForm({
       version: doc.version ?? "1.0",
@@ -418,6 +438,7 @@ export default function DocumentacionPage() {
   }
 
   function openEditDialog(doc: DocumentoMatrizRow) {
+    if (!canManageDocumentacion) return;
     setSelectedDoc({ ...doc });
     setOpenEdit(true);
   }
@@ -443,11 +464,13 @@ export default function DocumentacionPage() {
               </p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button className="bg-slate-900 text-white hover:bg-slate-800 [&_svg]:text-white" onClick={() => setOpenAdditional(true)}>
-              <Upload className="mr-1 h-4 w-4" />Agregar documento adicional
-            </Button>
-          </div>
+          {canManageDocumentacion ? (
+            <div className="flex flex-wrap gap-2">
+              <Button className="bg-slate-900 text-white hover:bg-slate-800 [&_svg]:text-white" onClick={() => setOpenAdditional(true)}>
+                <Upload className="mr-1 h-4 w-4" />Agregar documento adicional
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[1.4fr_repeat(5,minmax(0,1fr))]">
@@ -549,11 +572,20 @@ export default function DocumentacionPage() {
           onReplace={openReplaceDialog}
           onHistory={openHistoryDialog}
           onEdit={openEditDialog}
+          canManageDocumentacion={canManageDocumentacion}
           onNoAplica={async (doc) => {
+            if (!canManageDocumentacion) {
+              showInfo("No tienes permisos para modificar documentos.", "error");
+              return;
+            }
             await marcarDocumentoNoAplica(doc.documentoEmpresaId, doc.documentoRequeridoId, doc);
             showInfo("Documento marcado como no aplica.", "success");
           }}
           onAplica={async (doc) => {
+            if (!canManageDocumentacion) {
+              showInfo("No tienes permisos para modificar documentos.", "error");
+              return;
+            }
             await marcarDocumentoAplica(doc.documentoEmpresaId, doc.documentoRequeridoId, doc);
             showInfo("Documento reactivado correctamente.", "success");
           }}
@@ -783,9 +815,11 @@ export default function DocumentacionPage() {
                       <Button variant="outline" size="sm" onClick={() => item.archivoUrl && handleDownloadHistorial(item)} disabled={!item.archivoUrl}>
                         Descargar versión
                       </Button>
-                      <Button size="sm" className="bg-slate-900 text-white hover:bg-slate-800" onClick={() => handleRestoreVersion(item.id)} disabled={historyBusyId === item.id}>
-                        {historyBusyId === item.id ? "Restaurando..." : "Restaurar versión"}
-                      </Button>
+                      {canManageDocumentacion ? (
+                        <Button size="sm" className="bg-slate-900 text-white hover:bg-slate-800" onClick={() => handleRestoreVersion(item.id)} disabled={historyBusyId === item.id}>
+                          {historyBusyId === item.id ? "Restaurando..." : "Restaurar versión"}
+                        </Button>
+                      ) : null}
                     </>
                   )}
                 </div>

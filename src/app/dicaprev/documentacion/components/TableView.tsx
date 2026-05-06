@@ -15,6 +15,7 @@ type TableViewProps = {
   onEdit: (doc: DocumentoMatrizRow) => void;
   onNoAplica: (doc: DocumentoMatrizRow) => void;
   onAplica: (doc: DocumentoMatrizRow) => void;
+  canManageDocumentacion: boolean;
 };
 
 function categoryLabel(value: DocumentoMatrizRow["categoria"]) {
@@ -72,6 +73,7 @@ export default function TableView({
   onEdit,
   onNoAplica,
   onAplica,
+  canManageDocumentacion,
 }: TableViewProps) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -183,34 +185,40 @@ export default function TableView({
                     <Button variant="outline" size="sm" onClick={() => onDownload(doc)} disabled={!doc.archivoUrl}>
                       <Download className="mr-1 h-3.5 w-3.5" />Descargar
                     </Button>
-                    {!doc.archivoUrl ? (
-                      <Button
-                        size="sm"
-                        onClick={() => onReplace(doc)}
-                        className="bg-slate-900 text-white hover:bg-slate-800"
-                      >
-                        <Upload className="mr-1 h-3.5 w-3.5" />Subir archivo
-                      </Button>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => onReplace(doc)}>
-                        <FileUp className="mr-1 h-3.5 w-3.5" />Reemplazar
-                      </Button>
-                    )}
+                    {canManageDocumentacion ? (
+                      !doc.archivoUrl ? (
+                        <Button
+                          size="sm"
+                          onClick={() => onReplace(doc)}
+                          className="bg-slate-900 text-white hover:bg-slate-800"
+                        >
+                          <Upload className="mr-1 h-3.5 w-3.5" />Subir archivo
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={() => onReplace(doc)}>
+                          <FileUp className="mr-1 h-3.5 w-3.5" />Reemplazar
+                        </Button>
+                      )
+                    ) : null}
                     <Button variant="outline" size="sm" onClick={() => onHistory(doc)}>
                       <History className="mr-1 h-3.5 w-3.5" />Historial
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => onEdit(doc)}>
-                      <FileEdit className="mr-1 h-3.5 w-3.5" />Editar
-                    </Button>
-                    {doc.estado === "No aplica" ? (
-                      <Button variant="outline" size="sm" onClick={() => onAplica(doc)}>
-                        <PlusCircle className="mr-1 h-3.5 w-3.5" />Aplica
-                      </Button>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => onNoAplica(doc)}>
-                        <MinusCircle className="mr-1 h-3.5 w-3.5" />No aplica
-                      </Button>
-                    )}
+                    {canManageDocumentacion ? (
+                      <>
+                        <Button variant="outline" size="sm" onClick={() => onEdit(doc)}>
+                          <FileEdit className="mr-1 h-3.5 w-3.5" />Editar
+                        </Button>
+                        {doc.estado === "No aplica" ? (
+                          <Button variant="outline" size="sm" onClick={() => onAplica(doc)}>
+                            <PlusCircle className="mr-1 h-3.5 w-3.5" />Aplica
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" onClick={() => onNoAplica(doc)}>
+                            <MinusCircle className="mr-1 h-3.5 w-3.5" />No aplica
+                          </Button>
+                        )}
+                      </>
+                    ) : null}
                   </div>
                 </td>
               </tr>

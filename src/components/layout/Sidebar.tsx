@@ -14,15 +14,18 @@ import {
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/lib/permissions";
+import type { PermissionKey } from "@/lib/permissions-matrix";
 import SidebarModuleLabel from "@/components/layout/SidebarModuleLabel";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-type NavItem = { href: string; label: string; description?: string };
+type NavItem = { href: string; label: string; description?: string; permission?: PermissionKey };
 type ModuleItem = {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   defaultHref: string;
+  permission?: PermissionKey;
   items: NavItem[];
 };
 
@@ -39,15 +42,16 @@ const MODULES: ModuleItem[] = [
     label: "Empresa",
     icon: Building2,
     defaultHref: "/dicaprev/empresa",
+    permission: "canReadEmpresa",
     items: [
-      { href: "/dicaprev/empresa", label: "Resumen" },
+      { href: "/dicaprev/empresa", label: "Resumen", permission: "canReadCumplimiento" },
       { href: "/dicaprev/empresa/informacion-general", label: "Información general" },
       { href: "/dicaprev/empresa/centros", label: "Centros de trabajo" },
       { href: "/dicaprev/empresa/areas", label: "Áreas" },
       { href: "/dicaprev/empresa/cargos", label: "Cargos" },
       { href: "/dicaprev/empresa/indicadores-sst", label: "Indicadores SST" },
       { href: "/dicaprev/empresa/vehiculos", label: "Vehículos y equipos" },
-      { href: "/dicaprev/documentacion", label: "Documentación empresa", description: "Documentos legales y corporativos propios de la empresa." },
+      { href: "/dicaprev/documentacion", label: "Documentación empresa", description: "Documentos legales y corporativos propios de la empresa.", permission: "canReadDocumentacion" },
       { href: "/dicaprev/biblioteca", label: "Biblioteca documental", description: "Plantillas, formatos y documentos base reutilizables." },
     ],
   },
@@ -56,6 +60,7 @@ const MODULES: ModuleItem[] = [
     label: "Personas",
     icon: Users,
     defaultHref: "/dicaprev/trabajadores",
+    permission: "canReadTrabajadores",
     items: [
       { href: "/dicaprev/trabajadores", label: "Listado" },
       { href: "/dicaprev/trabajadores/control-documental", label: "Control documental" },
@@ -67,6 +72,7 @@ const MODULES: ModuleItem[] = [
     label: "Cumplimiento",
     icon: ShieldCheck,
     defaultHref: "/dicaprev/cumplimiento",
+    permission: "canReadCumplimiento",
     items: [
       { href: "/dicaprev/cumplimiento", label: "Resumen" },
       { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
@@ -129,6 +135,7 @@ const MODULES: ModuleItem[] = [
     label: "Alertas",
     icon: Bell,
     defaultHref: "/dicaprev/notificaciones",
+    permission: "canReadAlertas",
     items: [{ href: "/dicaprev/notificaciones", label: "Centro de alertas" }],
   },
 ];
@@ -140,9 +147,23 @@ function isItemActive(pathname: string, href: string) {
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { hasPermission } = usePermissions();
+
+  const visibleModules = MODULES
+    .filter((module) => (module.permission ? hasPermission(module.permission) : true))
+    .map((module) => ({
+      ...module,
+      items: module.items.filter((item) => (item.permission ? hasPermission(item.permission) : true)),
+    }))
+    .filter((module) => module.items.length > 0);
+
   const activeModule =
-    MODULES.find((module) => module.items.some((item) => isItemActive(pathname, item.href))) ??
-    MODULES[0];
+    visibleModules.find((module) => module.items.some((item) => isItemActive(pathname, item.href))) ??
+    visibleModules[0];
+
+  if (!activeModule) {
+    return null;
+  }
 
   return (
     <aside className="hidden h-screen shrink-0 border-r border-slate-200 bg-white lg:flex lg:w-[320px] lg:sticky lg:top-0">
@@ -152,7 +173,7 @@ export default function Sidebar() {
         </div>
 
         <TooltipProvider>
-          {MODULES.map((module) => {
+          {visibleModules.map((module) => {
             const Icon = module.icon;
             const active = module.id === activeModule.id;
             return (

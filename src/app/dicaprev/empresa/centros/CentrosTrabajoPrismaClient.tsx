@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import { usePermissions } from "@/lib/permissions";
 import { cn } from "@/lib/utils";
 import {
   crearCentroTrabajo,
@@ -165,6 +166,8 @@ function mapCentro(row: CentroTrabajoDTO): CentroUI {
 }
 
 export default function CentrosTrabajoPrismaClient({ initialCentros }: { initialCentros: CentroTrabajoDTO[] }) {
+  const { hasPermission } = usePermissions();
+  const canManageEmpresa = hasPermission("canManageEmpresa");
   const [centros, setCentros] = useState<CentroUI[]>(initialCentros.map(mapCentro));
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -190,6 +193,7 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
   }, [centros]);
 
   function openCreate() {
+    if (!canManageEmpresa) return;
     setEditingId(null);
     setForm(emptyForm());
     setFormErrors({});
@@ -197,6 +201,7 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
   }
 
   function openEdit(centro: CentroUI) {
+    if (!canManageEmpresa) return;
     setEditingId(centro.id);
     setForm({
       nombre: centro.nombre,
@@ -211,6 +216,7 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
   }
 
   async function handleSave(e: FormEvent) {
+    if (!canManageEmpresa) return;
     e.preventDefault();
     const errors = validate(form);
     if (Object.keys(errors).length > 0) {
@@ -242,6 +248,7 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
   }
 
   async function handleDesactivar(id: string) {
+    if (!canManageEmpresa) return;
     const updated = await desactivarCentroTrabajo(id);
     setCentros((prev) => prev.map((item) => (item.id === updated.id ? mapCentro({
       ...updated,
@@ -274,10 +281,12 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
                   <p className={cn("text-3xl font-bold", docColor(kpis.cumplimiento))}>{kpis.cumplimiento}%</p>
                   <p className="text-xs text-slate-500">Cumplimiento promedio</p>
                 </div>
-                <Button onClick={openCreate} className="flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">
-                  <Plus className="h-4 w-4" />
-                  Nuevo centro
-                </Button>
+                {canManageEmpresa ? (
+                  <Button onClick={openCreate} className="flex items-center gap-2 rounded-2xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">
+                    <Plus className="h-4 w-4" />
+                    Nuevo centro
+                  </Button>
+                ) : null}
               </div>
             }
           />
@@ -360,23 +369,27 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
 
                     <div className="col-span-2 flex flex-col items-end gap-1.5">
                       <div className="flex gap-1.5">
-                        <button type="button" onClick={() => openEdit(centro)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50">
-                          <Pencil className="h-3 w-3" />
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDesactivar(centro.id)}
-                          disabled={centro.estado === "inactivo"}
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition",
-                            centro.estado === "inactivo"
-                              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-                              : "border-amber-200 text-amber-700 hover:bg-amber-50"
-                          )}
-                        >
-                          Desactivar
-                        </button>
+                        {canManageEmpresa ? (
+                          <button type="button" onClick={() => openEdit(centro)} className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 transition hover:bg-slate-50">
+                            <Pencil className="h-3 w-3" />
+                            Editar
+                          </button>
+                        ) : null}
+                        {canManageEmpresa ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDesactivar(centro.id)}
+                            disabled={centro.estado === "inactivo"}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition",
+                              centro.estado === "inactivo"
+                                ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                                : "border-amber-200 text-amber-700 hover:bg-amber-50"
+                            )}
+                          >
+                            Desactivar
+                          </button>
+                        ) : null}
                         <Button variant="outline" className="rounded-xl border-slate-200 px-2.5 py-1.5 text-xs" onClick={() => setSelectedId(centro.id)}>
                           Ver detalle
                         </Button>
@@ -427,23 +440,27 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
 
             <div className="shrink-0 border-t border-slate-200 bg-white px-6 py-4">
               <div className="flex items-center justify-between gap-3">
-                <Button variant="outline" className="rounded-xl" onClick={() => { openEdit(selectedCentro); setSelectedId(null); }}>
-                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                  Editar datos
-                </Button>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "rounded-xl",
-                    selectedCentro.estado === "inactivo"
-                      ? "border-slate-200 text-slate-400"
-                      : "border-amber-200 text-amber-700 hover:bg-amber-50"
-                  )}
-                  onClick={() => handleDesactivar(selectedCentro.id)}
-                  disabled={selectedCentro.estado === "inactivo"}
-                >
-                  Desactivar
-                </Button>
+                {canManageEmpresa ? (
+                  <Button variant="outline" className="rounded-xl" onClick={() => { openEdit(selectedCentro); setSelectedId(null); }}>
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                    Editar datos
+                  </Button>
+                ) : <div />}
+                {canManageEmpresa ? (
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "rounded-xl",
+                      selectedCentro.estado === "inactivo"
+                        ? "border-slate-200 text-slate-400"
+                        : "border-amber-200 text-amber-700 hover:bg-amber-50"
+                    )}
+                    onClick={() => handleDesactivar(selectedCentro.id)}
+                    disabled={selectedCentro.estado === "inactivo"}
+                  >
+                    Desactivar
+                  </Button>
+                ) : null}
               </div>
             </div>
           </aside>

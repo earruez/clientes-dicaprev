@@ -33,6 +33,7 @@ import {
   actualizarTrabajador,
   desactivarTrabajador,
 } from "./actions";
+import { usePermissions } from "@/lib/permissions";
 
 type TrabajadorEstado = "activo" | "inactivo" | "baja";
 type TipoContrato = "Indefinido" | "Plazo fijo" | "Honorarios";
@@ -185,6 +186,11 @@ function toActionPayload(form: TrabajadorForm) {
 }
 
 export default function TrabajadoresPage() {
+  const { hasPermission } = usePermissions();
+  const canCreateTrabajador = hasPermission("canCreateTrabajador");
+  const canUpdateTrabajador = hasPermission("canUpdateTrabajador");
+  const canDeactivateTrabajador = hasPermission("canDeactivateTrabajador");
+
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>([]);
   const [centrosRef, setCentrosRef] = useState<RefEntity[]>([]);
   const [areasRef, setAreasRef] = useState<RefEntity[]>([]);
@@ -280,12 +286,14 @@ export default function TrabajadoresPage() {
   };
 
   const handleOpenCreate = () => {
+    if (!canCreateTrabajador) return;
     setEditingId(null);
     setForm(emptyForm(centrosRef, areasRef, cargosRef));
     setModalOpen(true);
   };
 
   const handleOpenEdit = (t: Trabajador) => {
+    if (!canUpdateTrabajador) return;
     setEditingId(t.id);
     setForm({
       rut: t.rut,
@@ -428,12 +436,14 @@ export default function TrabajadoresPage() {
         description="Maestro de trabajadores de la empresa. Desde aqui podras vincularlos a centros, puestos, DS44 y planes de capacitacion."
         icon={Users}
         actions={
-          <Button
-            onClick={handleOpenCreate}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 shadow-sm"
-          >
-            + Nuevo trabajador
-          </Button>
+          canCreateTrabajador ? (
+            <Button
+              onClick={handleOpenCreate}
+              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 shadow-sm"
+            >
+              + Nuevo trabajador
+            </Button>
+          ) : null
         }
       />
 
@@ -605,22 +615,28 @@ export default function TrabajadoresPage() {
               </div>
 
               <div className="flex flex-col gap-2 min-w-[190px]">
-                <Button variant="outline" className="rounded-xl w-full" onClick={() => handleOpenEdit(t)}>
-                  Editar trabajador
-                </Button>
-                <Button variant="outline" className="rounded-xl w-full text-xs" onClick={() => toggleEstado(t.id)}>
-                  {t.estado === "activo" ? "Marcar baja" : "Reactivar"}
-                </Button>
-                <Button variant="outline" className="rounded-xl w-full text-xs" onClick={() => toggleDs44(t.id)}>
-                  {t.ds44Critico ? "Quitar de DS44 critico" : "Marcar DS44 critico"}
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="rounded-xl w-full text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                  onClick={() => deleteTrabajador(t.id)}
-                >
-                  Desactivar (Prisma)
-                </Button>
+                {canUpdateTrabajador ? (
+                  <>
+                    <Button variant="outline" className="rounded-xl w-full" onClick={() => handleOpenEdit(t)}>
+                      Editar trabajador
+                    </Button>
+                    <Button variant="outline" className="rounded-xl w-full text-xs" onClick={() => toggleEstado(t.id)}>
+                      {t.estado === "activo" ? "Marcar baja" : "Reactivar"}
+                    </Button>
+                    <Button variant="outline" className="rounded-xl w-full text-xs" onClick={() => toggleDs44(t.id)}>
+                      {t.ds44Critico ? "Quitar de DS44 critico" : "Marcar DS44 critico"}
+                    </Button>
+                  </>
+                ) : null}
+                {canDeactivateTrabajador ? (
+                  <Button
+                    variant="ghost"
+                    className="rounded-xl w-full text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                    onClick={() => deleteTrabajador(t.id)}
+                  >
+                    Desactivar (Prisma)
+                  </Button>
+                ) : null}
               </div>
             </CardContent>
           </Card>
