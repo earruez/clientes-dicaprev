@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import {
   CheckCircle2,
@@ -13,156 +11,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { generarAlertas } from "@/lib/alertas";
-import {
-  OBLIGACIONES_MOCK,
-  HALLAZGOS_MOCK,
-  CENTROS_MOCK,
-} from "../cumplimiento/mock-data";
-import {
-  ACREDITACIONES_MOCK,
-  HISTORIAL_GESTION_MOCK,
-} from "../acreditaciones/mock-data";
-import { MOCK_WORKERS } from "@/components/trabajadores-v2/types";
-import {
-  REGLAS_DOCUMENTALES,
-  TIPOS_DOCUMENTO,
-  MOCK_DOCUMENTOS,
-  getWorkerDocs,
-  getWorkerDocSummary,
-} from "@/components/trabajadores-v2/documental/types";
-import {
-  REGLAS_CAPACITACION,
-  TIPO_CAPACITACIONES,
-  MOCK_CAPACITACIONES,
-  getWorkerTrainings,
-} from "@/components/trabajadores-v2/capacitacion/types";
-
-/* ─── Métricas derivadas de datos reales del sistema ───────── */
-
-// 1 · KPIs
-const cumplimientoGlobal = Math.round(
-  OBLIGACIONES_MOCK.reduce((s, o) => s + o.cumplimientoGlobal, 0) /
-    OBLIGACIONES_MOCK.length
-);
-
-const acreditacionesActivas = ACREDITACIONES_MOCK.filter((a) =>
-  ["en_preparacion", "listo_para_enviar", "enviado"].includes(a.estado)
-).length;
-
-const pendientesCriticos = HALLAZGOS_MOCK.filter(
-  (h) => h.prioridad === "critica" && h.estado === "abierto"
-).length;
-
-const conResultado = HISTORIAL_GESTION_MOCK.filter((h) => h.resultado);
-const totalAprobados = conResultado.filter(
-  (h) => h.resultado === "aprobado"
-).length;
-const tasaAprobacion =
-  conResultado.length > 0
-    ? Math.round((totalAprobados / conResultado.length) * 100)
-    : 0;
-
-// 3 · Cumplimiento por centro
-const cumplimientoPorCentro = CENTROS_MOCK.map((c) => {
-  const vals: number[] = [];
-  for (const o of OBLIGACIONES_MOCK) {
-    const e = o.estadosPorCentro[c.id];
-    if (!e || e === "no_aplica") continue;
-    vals.push(e === "cumplida" ? 100 : e === "con_brechas" ? 50 : 0);
-  }
-  const pct =
-    vals.length > 0
-      ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
-      : 0;
-  return { nombre: c.nombre, pct };
-});
-
-// 4 · Acreditaciones
-const envidadas = HISTORIAL_GESTION_MOCK.filter((h) => h.fechaEnvio).length;
-const rechazadas = HISTORIAL_GESTION_MOCK.filter(
-  (h) => h.resultado === "rechazado"
-).length;
-const conRespuesta = HISTORIAL_GESTION_MOCK.filter(
-  (h): h is typeof h & { fechaEnvio: string; fechaRespuesta: string } =>
-    !!h.fechaEnvio && !!h.fechaRespuesta
-);
-const promedioRespuesta =
-  conRespuesta.length > 0
-    ? Math.round(
-        conRespuesta.reduce(
-          (s, h) =>
-            s +
-            (new Date(h.fechaRespuesta).getTime() -
-              new Date(h.fechaEnvio).getTime()) /
-              86400000,
-          0
-        ) / conRespuesta.length
-      )
-    : 0;
-
-// 5 · Tiempos de gestión
-const conEnvio = HISTORIAL_GESTION_MOCK.filter(
-  (h): h is typeof h & { fechaEnvio: string } => !!h.fechaEnvio
-);
-const promedioPreparacion =
-  conEnvio.length > 0
-    ? Math.round(
-        conEnvio.reduce(
-          (s, h) =>
-            s +
-            (new Date(h.fechaEnvio).getTime() -
-              new Date(h.fechaCreacion).getTime()) /
-              86400000,
-          0
-        ) / conEnvio.length
-      )
-    : 0;
-const promedioGestionTotal = Math.round(
-  HISTORIAL_GESTION_MOCK.reduce((s, h) => s + h.diasGestion, 0) /
-    HISTORIAL_GESTION_MOCK.length
-);
-const aprobadosConFecha = HISTORIAL_GESTION_MOCK.filter(
-  (h): h is typeof h & { fechaRespuesta: string } =>
-    h.resultado === "aprobado" && !!h.fechaRespuesta
-);
-const promedioAprobacion =
-  aprobadosConFecha.length > 0
-    ? Math.round(
-        aprobadosConFecha.reduce(
-          (s, h) =>
-            s +
-            (new Date(h.fechaRespuesta).getTime() -
-              new Date(h.fechaCreacion).getTime()) /
-              86400000,
-          0
-        ) / aprobadosConFecha.length
-      )
-    : 0;
-
-// 6 · Brechas operativas
-const trabajadoresActivos = MOCK_WORKERS.filter((w) => w.estado === "Activo");
-
-const sinDocCompleta = trabajadoresActivos.filter((w) => {
-  const docs = getWorkerDocs(w, REGLAS_DOCUMENTALES, TIPOS_DOCUMENTO, MOCK_DOCUMENTOS);
-  const s = getWorkerDocSummary(docs);
-  return s.pendientes > 0 || s.vencidos > 0 || s.rechazados > 0;
-}).length;
-
-const sinCapVigente = trabajadoresActivos.filter((w) => {
-  const caps = getWorkerTrainings(w, REGLAS_CAPACITACION, TIPO_CAPACITACIONES, MOCK_CAPACITACIONES);
-  return caps.some((c) => c.estado === "vencida" || c.estado === "pendiente");
-}).length;
-
-const oblCriticasIncumplidas = OBLIGACIONES_MOCK.filter(
-  (o) => o.cumplimientoGlobal < 50
-).length;
-
-const vehiculosConProblema = HISTORIAL_GESTION_MOCK.filter(
-  (h) => h.motivoRechazo === "documentos_vehiculo"
-).length;
-
-// 7 · Alertas del sistema
-const alertasSistema = generarAlertas().slice(0, 5);
+import { getControlDocumentalTrabajadores } from "@/actions/trabajadores/documentos";
+import { getCapacitacionAsignaciones } from "@/actions/capacitaciones";
+import { TIPOS_DOCUMENTO } from "@/components/trabajadores-v2/documental/types";
+import { TIPO_CAPACITACIONES } from "@/components/trabajadores-v2/capacitacion/types";
 
 /* ─── Helpers visuales ──────────────────────────────────────── */
 
@@ -181,52 +33,78 @@ function colorText(pct: number) {
 
 type NivelRiesgo = "ok" | "atencion" | "critico";
 
-const RIESGO_CONFIG: Record<NivelRiesgo, {
-  bg: string; iconBg: string; iconColor: string;
-  badge: string; title: string; nivelLabel: string; mensaje: string;
-}> = {
+const RIESGO_CONFIG: Record<
+  NivelRiesgo,
+  {
+    bg: string;
+    iconBg: string;
+    iconColor: string;
+    badge: string;
+    title: string;
+    nivelLabel: string;
+    mensaje: string;
+  }
+> = {
   ok: {
-    bg:         "bg-emerald-50 border-emerald-200",
-    iconBg:     "bg-emerald-100",
-    iconColor:  "text-emerald-600",
-    badge:      "bg-emerald-100 text-emerald-800 border-emerald-200",
-    title:      "text-emerald-900",
+    bg: "bg-emerald-50 border-emerald-200",
+    iconBg: "bg-emerald-100",
+    iconColor: "text-emerald-600",
+    badge: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    title: "text-emerald-900",
     nivelLabel: "Sin riesgo crítico",
-    mensaje:    "La empresa opera dentro de los estándares de seguridad esperados.",
+    mensaje: "La empresa opera dentro de los estándares de seguridad esperados.",
   },
   atencion: {
-    bg:         "bg-amber-50 border-amber-200",
-    iconBg:     "bg-amber-100",
-    iconColor:  "text-amber-600",
-    badge:      "bg-amber-100 text-amber-900 border-amber-200",
-    title:      "text-amber-900",
+    bg: "bg-amber-50 border-amber-200",
+    iconBg: "bg-amber-100",
+    iconColor: "text-amber-600",
+    badge: "bg-amber-100 text-amber-900 border-amber-200",
+    title: "text-amber-900",
     nivelLabel: "Atención requerida",
-    mensaje:    "Se detectaron brechas moderadas. Se recomienda atención oportuna.",
+    mensaje: "Se detectaron brechas moderadas. Se recomienda atención oportuna.",
   },
   critico: {
-    bg:         "bg-rose-50 border-rose-200",
-    iconBg:     "bg-rose-100",
-    iconColor:  "text-rose-600",
-    badge:      "bg-rose-100 text-rose-900 border-rose-200",
-    title:      "text-rose-900",
+    bg: "bg-rose-50 border-rose-200",
+    iconBg: "bg-rose-100",
+    iconColor: "text-rose-600",
+    badge: "bg-rose-100 text-rose-900 border-rose-200",
+    title: "text-rose-900",
     nivelLabel: "Estado crítico",
-    mensaje:    "Múltiples brechas activas detectadas. Se requiere acción inmediata.",
+    mensaje: "Múltiples brechas activas detectadas. Se requiere acción inmediata.",
   },
 };
 
-function calcularRiesgoGeneral(): NivelRiesgo {
+function calcularRiesgoGeneral(params: {
+  sinDocCompleta: number;
+  oblCriticasIncumplidas: number;
+  vehiculosConProblema: number;
+  pendientesCriticos: number;
+  rechazadas: number;
+}): NivelRiesgo {
+  const {
+    sinDocCompleta,
+    oblCriticasIncumplidas,
+    vehiculosConProblema,
+    pendientesCriticos,
+    rechazadas,
+  } = params;
+
   let score = 0;
-  if (sinDocCompleta > 5)         score += 2; else if (sinDocCompleta > 0)         score += 1;
-  if (oblCriticasIncumplidas > 2) score += 2; else if (oblCriticasIncumplidas > 0) score += 1;
-  if (vehiculosConProblema > 1)   score += 2; else if (vehiculosConProblema > 0)   score += 1;
-  if (pendientesCriticos > 2)     score += 2; else if (pendientesCriticos > 0)     score += 1;
-  if (rechazadas > 1)             score += 2; else if (rechazadas > 0)             score += 1;
+  if (sinDocCompleta > 5) score += 2;
+  else if (sinDocCompleta > 0) score += 1;
+  if (oblCriticasIncumplidas > 2) score += 2;
+  else if (oblCriticasIncumplidas > 0) score += 1;
+  if (vehiculosConProblema > 1) score += 2;
+  else if (vehiculosConProblema > 0) score += 1;
+  if (pendientesCriticos > 2) score += 2;
+  else if (pendientesCriticos > 0) score += 1;
+  if (rechazadas > 1) score += 2;
+  else if (rechazadas > 0) score += 1;
+
   if (score >= 4) return "critico";
   if (score >= 2) return "atencion";
   return "ok";
 }
-
-const riesgoGeneral = calcularRiesgoGeneral();
 
 /* ─── Alertas predictivas ───────────────────────────────────── */
 
@@ -235,7 +113,6 @@ type TipoAlertaProxima = "documento" | "capacitacion" | "obligacion" | "acredita
 interface AlertaProxima {
   tipo: TipoAlertaProxima;
   texto: string;
-  /** días hasta el vencimiento; 0 = hoy; negativo = ya venció */
   dias: number;
   nivel: "critico" | "advertencia" | "info";
   href: string;
@@ -243,85 +120,58 @@ interface AlertaProxima {
 
 const AHORA_TS = Date.now();
 const MS_DIA = 86_400_000;
-const DIAS_VENTANA = 45; // lookahead window para capturar alertas
+const DIAS_VENTANA = 45;
 
-function calcularAlertasProximas(): AlertaProxima[] {
+interface DocConFecha {
+  tipoDocumentoId: string;
+  workerNombre: string;
+  fechaVencimiento: string;
+  estado: string;
+}
+
+interface AsignacionConFecha {
+  capacitacionNombre: string;
+  trabajadorNombre: string;
+  fechaVencimiento?: string | null;
+  estado: string;
+}
+
+function calcularAlertasProximas(
+  docs: DocConFecha[],
+  asignaciones: AsignacionConFecha[]
+): AlertaProxima[] {
   const resultado: AlertaProxima[] = [];
 
-  // a) Documentos por vencer (sólo estado completo con fechaVencimiento)
-  for (const doc of MOCK_DOCUMENTOS) {
+  for (const doc of docs) {
     if (!doc.fechaVencimiento || doc.estado !== "completo") continue;
-    const dias = Math.ceil(
-      (new Date(doc.fechaVencimiento).getTime() - AHORA_TS) / MS_DIA
-    );
+    const dias = Math.ceil((new Date(doc.fechaVencimiento).getTime() - AHORA_TS) / MS_DIA);
     if (dias < 0 || dias > DIAS_VENTANA) continue;
     const tipo = TIPOS_DOCUMENTO.find((t) => t.id === doc.tipoDocumentoId);
-    const worker = MOCK_WORKERS.find((w) => w.id === doc.workerId);
-    const nombre = worker ? `${worker.nombre} ${worker.apellido.split(" ")[0]}` : doc.workerId;
     resultado.push({
       tipo: "documento",
-      texto: `${tipo?.nombre ?? "Documento"} — ${nombre}`,
+      texto: `${tipo?.nombre ?? "Documento"} — ${doc.workerNombre}`,
       dias,
       nivel: dias <= 7 ? "critico" : dias <= 15 ? "advertencia" : "info",
       href: "/dicaprev/trabajadores/control-documental",
     });
   }
 
-  // b) Capacitaciones por vencer (sólo completadas con fechaVencimiento próxima)
-  for (const cap of MOCK_CAPACITACIONES) {
-    if (!cap.fechaVencimiento || cap.estado !== "completada") continue;
-    const dias = Math.ceil(
-      (new Date(cap.fechaVencimiento).getTime() - AHORA_TS) / MS_DIA
-    );
+  for (const cap of asignaciones) {
+    if (!cap.fechaVencimiento || cap.estado !== "pendiente") continue;
+    const dias = Math.ceil((new Date(cap.fechaVencimiento).getTime() - AHORA_TS) / MS_DIA);
     if (dias < 0 || dias > DIAS_VENTANA) continue;
-    const tipo = TIPO_CAPACITACIONES.find((t) => t.id === cap.tipoCapacitacionId);
-    const worker = MOCK_WORKERS.find((w) => w.id === cap.workerId);
-    const nombre = worker ? `${worker.nombre} ${worker.apellido.split(" ")[0]}` : cap.workerId;
+    const tipo = TIPO_CAPACITACIONES.find((t) => t.nombre === cap.capacitacionNombre);
     resultado.push({
       tipo: "capacitacion",
-      texto: `${tipo?.nombre ?? "Capacitación"} — ${nombre}`,
+      texto: `${tipo?.nombre ?? cap.capacitacionNombre} — ${cap.trabajadorNombre}`,
       dias,
       nivel: dias <= 7 ? "critico" : dias <= 15 ? "advertencia" : "info",
       href: "/dicaprev/trabajadores/capacitaciones",
     });
   }
 
-  // c) Obligaciones DS44 por vencer
-  for (const ob of OBLIGACIONES_MOCK) {
-    if (!ob.vencimiento) continue;
-    const dias = Math.ceil(
-      (new Date(ob.vencimiento).getTime() - AHORA_TS) / MS_DIA
-    );
-    if (dias < 0 || dias > DIAS_VENTANA) continue;
-    resultado.push({
-      tipo: "obligacion",
-      texto: `DS44: ${ob.nombre.slice(0, 44)}`,
-      dias,
-      nivel: dias <= 7 ? "critico" : dias <= 15 ? "advertencia" : "info",
-      href: "/dicaprev/cumplimiento/obligaciones",
-    });
-  }
-
-  // d) Acreditaciones enviadas sin respuesta por más de 30 días
-  for (const ac of ACREDITACIONES_MOCK) {
-    if (ac.estado !== "enviado" || !ac.ultimoExpediente) continue;
-    const diasEspera = Math.ceil(
-      (AHORA_TS - new Date(ac.ultimoExpediente).getTime()) / MS_DIA
-    );
-    if (diasEspera < 30) continue;
-    resultado.push({
-      tipo: "acreditacion",
-      texto: `Acred. ${ac.mandante} sin respuesta`,
-      dias: 0,
-      nivel: "critico",
-      href: "/dicaprev/acreditaciones",
-    });
-  }
-
   return resultado.sort((a, b) => a.dias - b.dias).slice(0, 5);
 }
-
-const alertasProximas = calcularAlertasProximas();
 
 /* ─── Score general de la empresa ──────────────────────────── */
 
@@ -331,31 +181,58 @@ interface ScoreEmpresa {
   detalle: { label: string; peso: number; nota: number; contribucion: number }[];
 }
 
-function calcularScoreEmpresa(): ScoreEmpresa {
-  const activosTotal = trabajadoresActivos.length || 1;
+function calcularScoreEmpresa(params: {
+  trabajadoresActivosTotal: number;
+  cumplimientoGlobal: number;
+  tasaAprobacion: number;
+  sinDocCompleta: number;
+  pendientesCriticos: number;
+  vehiculosConProblema: number;
+}): ScoreEmpresa {
+  const {
+    trabajadoresActivosTotal,
+    cumplimientoGlobal,
+    tasaAprobacion,
+    sinDocCompleta,
+    pendientesCriticos,
+    vehiculosConProblema,
+  } = params;
 
-  // ── Bloque A: Cumplimiento DS44 (40%) ─────────────────────────
-  const notaCumplimiento = cumplimientoGlobal; // 0–100
+  const activosTotal = trabajadoresActivosTotal || 1;
 
-  // ── Bloque B: Acreditaciones (20%) ────────────────────────────
-  const notaAcreditaciones = tasaAprobacion; // 0–100
-
-  // ── Bloque C: Documentación (20%) ─────────────────────────────
-  // Penalización proporcional por trabajadores con docs incompletas
+  const notaCumplimiento = cumplimientoGlobal;
+  const notaAcreditaciones = tasaAprobacion;
   const pctSinDoc = (sinDocCompleta / activosTotal) * 100;
   const notaDocumentacion = Math.max(0, 100 - pctSinDoc * 2);
-
-  // ── Bloque D: Operación (20%) ──────────────────────────────────
-  // Combina hallazgos críticos y vehículos fuera de regla
   const penHallazgos = Math.min(pendientesCriticos * 10, 50);
   const penVehiculos = Math.min(vehiculosConProblema * 10, 50);
   const notaOperacion = Math.max(0, 100 - penHallazgos - penVehiculos);
 
   const detalle = [
-    { label: "Cumplimiento DS44",  peso: 40, nota: notaCumplimiento,  contribucion: notaCumplimiento  * 0.4 },
-    { label: "Acreditaciones",     peso: 20, nota: notaAcreditaciones, contribucion: notaAcreditaciones * 0.2 },
-    { label: "Documentación",      peso: 20, nota: notaDocumentacion,  contribucion: notaDocumentacion  * 0.2 },
-    { label: "Operación",          peso: 20, nota: notaOperacion,      contribucion: notaOperacion      * 0.2 },
+    {
+      label: "Cumplimiento DS44",
+      peso: 40,
+      nota: notaCumplimiento,
+      contribucion: notaCumplimiento * 0.4,
+    },
+    {
+      label: "Acreditaciones",
+      peso: 20,
+      nota: notaAcreditaciones,
+      contribucion: notaAcreditaciones * 0.2,
+    },
+    {
+      label: "Documentación",
+      peso: 20,
+      nota: notaDocumentacion,
+      contribucion: notaDocumentacion * 0.2,
+    },
+    {
+      label: "Operación",
+      peso: 20,
+      nota: notaOperacion,
+      contribucion: notaOperacion * 0.2,
+    },
   ];
 
   const score = Math.round(detalle.reduce((s, d) => s + d.contribucion, 0));
@@ -365,43 +242,108 @@ function calcularScoreEmpresa(): ScoreEmpresa {
   return { score, nivel, detalle };
 }
 
-const scoreEmpresa = calcularScoreEmpresa();
-
-const SCORE_CONFIG: Record<ScoreEmpresa["nivel"], {
-  bg: string; ring: string; numColor: string;
-  badge: string; label: string; mensaje: string;
-}> = {
+const SCORE_CONFIG: Record<
+  ScoreEmpresa["nivel"],
+  { bg: string; ring: string; numColor: string; badge: string; label: string; mensaje: string }
+> = {
   ok: {
-    bg:       "bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200",
-    ring:     "stroke-emerald-400",
+    bg: "bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-200",
+    ring: "stroke-emerald-400",
     numColor: "text-emerald-700",
-    badge:    "bg-emerald-100 text-emerald-800 border-emerald-200",
-    label:    "Empresa saludable",
-    mensaje:  "El nivel de gestión SST es sólido. Mantén el ritmo.",
+    badge: "bg-emerald-100 text-emerald-800 border-emerald-200",
+    label: "Empresa saludable",
+    mensaje: "El nivel de gestión SST es sólido. Mantén el ritmo.",
   },
   atencion: {
-    bg:       "bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200",
-    ring:     "stroke-amber-400",
+    bg: "bg-gradient-to-br from-amber-50 to-yellow-50 border-amber-200",
+    ring: "stroke-amber-400",
     numColor: "text-amber-700",
-    badge:    "bg-amber-100 text-amber-900 border-amber-200",
-    label:    "Mejora requerida",
-    mensaje:  "Existen áreas con brechas. Revisa los bloques con menor puntaje.",
+    badge: "bg-amber-100 text-amber-900 border-amber-200",
+    label: "Mejora requerida",
+    mensaje: "Existen áreas con brechas. Revisa los bloques con menor puntaje.",
   },
   critico: {
-    bg:       "bg-gradient-to-br from-rose-50 to-red-50 border-rose-200",
-    ring:     "stroke-rose-400",
+    bg: "bg-gradient-to-br from-rose-50 to-red-50 border-rose-200",
+    ring: "stroke-rose-400",
     numColor: "text-rose-700",
-    badge:    "bg-rose-100 text-rose-900 border-rose-200",
-    label:    "Atención urgente",
-    mensaje:  "Puntaje bajo. Se requieren acciones correctivas inmediatas.",
+    badge: "bg-rose-100 text-rose-900 border-rose-200",
+    label: "Atención urgente",
+    mensaje: "Puntaje bajo. Se requieren acciones correctivas inmediatas.",
   },
 };
 
 /* ─── Page ──────────────────────────────────────────────────── */
 
-export default function Page() {
+export default async function Page() {
+  const [payload, asignaciones] = await Promise.all([
+    getControlDocumentalTrabajadores(),
+    getCapacitacionAsignaciones(),
+  ]);
+
+  const trabajadoresActivosTotal = payload.workers.filter((w) => w.estado === "Activo").length;
+
+  const sinDocCompleta = payload.workers.filter((w) => {
+    if (w.estado !== "Activo") return false;
+    const workerDocs = payload.documentos.filter((d) => d.workerId === w.id);
+    return workerDocs.some(
+      (d) => d.estado === "pendiente" || d.estado === "vencido" || d.estado === "rechazado"
+    );
+  }).length;
+
+  const sinCapVigente = new Set(
+    asignaciones
+      .filter((a) => a.estado === "pendiente" || a.estado === "vencida")
+      .map((a) => a.trabajadorId)
+  ).size;
+
+  const cumplimientoGlobal = 0;
+  const acreditacionesActivas = 0;
+  const pendientesCriticos = 0;
+  const totalAprobados = 0;
+  const tasaAprobacion = 0;
+  const envidadas = 0;
+  const rechazadas = 0;
+  const promedioRespuesta = 0;
+  const promedioPreparacion = 0;
+  const promedioGestionTotal = 0;
+  const promedioAprobacion = 0;
+  const oblCriticasIncumplidas = 0;
+  const vehiculosConProblema = 0;
+  const cumplimientoPorCentro: { nombre: string; pct: number }[] = [];
+
+  const alertasSistema = generarAlertas(sinDocCompleta).slice(0, 5);
+
+  const docsConFecha: DocConFecha[] = payload.documentos.map((d) => {
+    const worker = payload.workers.find((w) => w.id === d.workerId);
+    return {
+      tipoDocumentoId: d.tipoDocumentoId,
+      workerNombre: worker ? `${worker.nombre} ${worker.apellido.split(" ")[0]}` : d.workerId,
+      fechaVencimiento: d.fechaVencimiento ?? "",
+      estado: d.estado,
+    };
+  });
+
+  const alertasProximas = calcularAlertasProximas(docsConFecha, asignaciones);
+
+  const riesgoGeneral = calcularRiesgoGeneral({
+    sinDocCompleta,
+    oblCriticasIncumplidas,
+    vehiculosConProblema,
+    pendientesCriticos,
+    rechazadas,
+  });
+
+  const scoreEmpresa = calcularScoreEmpresa({
+    trabajadoresActivosTotal,
+    cumplimientoGlobal,
+    tasaAprobacion,
+    sinDocCompleta,
+    pendientesCriticos,
+    vehiculosConProblema,
+  });
+
   const sCfg = SCORE_CONFIG[scoreEmpresa.nivel];
-  const cfg   = RIESGO_CONFIG[riesgoGeneral];
+  const cfg = RIESGO_CONFIG[riesgoGeneral];
 
   const fraseHero =
     scoreEmpresa.score >= 75
@@ -410,13 +352,12 @@ export default function Page() {
       ? "Existen áreas de mejora. Revisa los bloques con menor puntaje."
       : "Se requieren acciones correctivas inmediatas en varios frentes.";
 
-  const r          = 50;
-  const circ       = 2 * Math.PI * r;
+  const r = 50;
+  const circ = 2 * Math.PI * r;
   const dialOffset = circ * (1 - scoreEmpresa.score / 100);
 
   return (
     <div className="space-y-5 max-w-7xl">
-
       {/* ══ HERO EJECUTIVO ══════════════════════════════════════ */}
       <div className="relative overflow-hidden rounded-2xl bg-slate-900 p-6 shadow-md">
         <div className="pointer-events-none absolute inset-0">
@@ -521,8 +462,8 @@ export default function Page() {
           <p className="mb-5 text-sm font-semibold text-slate-800">Composición de brechas</p>
           <div className="space-y-4">
             {[
-              { label: "Sin docs completa",    value: sinDocCompleta,         total: Math.max(trabajadoresActivos.length, 1), href: "/dicaprev/trabajadores",                   color: "bg-amber-400"  },
-              { label: "Sin cap. vigente",      value: sinCapVigente,          total: Math.max(trabajadoresActivos.length, 1), href: "/dicaprev/trabajadores/capacitaciones",    color: "bg-orange-400" },
+              { label: "Sin docs completa",    value: sinDocCompleta,         total: Math.max(trabajadoresActivosTotal, 1), href: "/dicaprev/trabajadores",                   color: "bg-amber-400"  },
+              { label: "Sin cap. vigente",      value: sinCapVigente,          total: Math.max(trabajadoresActivosTotal, 1), href: "/dicaprev/trabajadores/capacitaciones",    color: "bg-orange-400" },
               { label: "Hallazgos críticos",    value: pendientesCriticos,     total: Math.max(pendientesCriticos, 5),         href: "/dicaprev/cumplimiento/hallazgos",         color: "bg-rose-500"   },
               { label: "Obligaciones DS44",     value: oblCriticasIncumplidas, total: Math.max(oblCriticasIncumplidas, 5),     href: "/dicaprev/cumplimiento/obligaciones",      color: "bg-red-400"    },
               { label: "Vehículos c/ problema", value: vehiculosConProblema,   total: Math.max(vehiculosConProblema, 5),       href: "/dicaprev/acreditaciones",                color: "bg-indigo-400" },

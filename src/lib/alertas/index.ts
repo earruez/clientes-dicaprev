@@ -8,14 +8,6 @@ import {
   ACREDITACIONES_MOCK,
   HISTORIAL_GESTION_MOCK,
 } from "@/app/dicaprev/acreditaciones/mock-data";
-import { MOCK_WORKERS } from "@/components/trabajadores-v2/types";
-import {
-  REGLAS_DOCUMENTALES,
-  TIPOS_DOCUMENTO,
-  MOCK_DOCUMENTOS,
-  getWorkerDocs,
-  getWorkerDocSummary,
-} from "@/components/trabajadores-v2/documental/types";
 
 export type AlertaTipo = "critica" | "proxima" | "gestion";
 
@@ -35,24 +27,14 @@ export interface Notificacion extends AlertaSistema {
 }
 
 /** Generates all system alerts, sorted by priority ascending.
- *  Consumers can slice to their own limit. */
-export function generarAlertas(): AlertaSistema[] {
+ *  Consumers can slice to their own limit.
+ *  @param sinDocCompleta - Número de trabajadores con documentación incompleta (calculable desde Prisma).
+ *                          Los módulos Acreditaciones/Cumplimiento siguen siendo mock hasta su migración. */
+export function generarAlertas(sinDocCompleta = 0): AlertaSistema[] {
   const resultado: AlertaSistema[] = [];
   const hoy = new Date().toISOString().slice(0, 10);
 
-  // Compute needed derived values inline so this function is self-contained
-  const activos = MOCK_WORKERS.filter((w) => w.estado === "Activo");
-  const sinDocCompleta = activos.filter((w) => {
-    const docs = getWorkerDocs(
-      w,
-      REGLAS_DOCUMENTALES,
-      TIPOS_DOCUMENTO,
-      MOCK_DOCUMENTOS
-    );
-    const s = getWorkerDocSummary(docs);
-    return s.pendientes > 0 || s.vencidos > 0 || s.rechazados > 0;
-  }).length;
-
+  // vehiculosConProblema: pendiente de migración de Acreditaciones (aún mock)
   const vehiculosConProblema = HISTORIAL_GESTION_MOCK.filter(
     (h) => h.motivoRechazo === "documentos_vehiculo"
   ).length;

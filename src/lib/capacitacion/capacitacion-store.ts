@@ -1,9 +1,10 @@
 /**
  * capacitacion-store.ts
  *
- * Single source of truth for the Capacitaciones module.
- * Pattern: module-level singleton (same as vehiculos-store).
- * In production: replaced by Firestore / REST API calls.
+ * @deprecated
+ * Legacy in-memory store from pre-Prisma migration.
+ * TODO(Fase 17): remove this file once legacy/experimental consumers are fully retired.
+ * Current active Capacitaciones tabs use Prisma actions.
  */
 
 import { MOCK_WORKERS } from "@/components/trabajadores-v2/types";

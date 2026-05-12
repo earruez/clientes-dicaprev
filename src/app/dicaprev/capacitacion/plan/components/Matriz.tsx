@@ -24,6 +24,8 @@ type MatrizProps = {
   getRequirementFor: (roleId: string, courseId: string) => Requirement | undefined;
   onCellClick: (roleId: string, courseId: string) => void;
   onCellDoubleClick: (roleId: string, courseId: string) => void;
+  onGenerarItemsReglas: () => void;
+  onOpenPlantillas: () => void;
 };
 
 export default function Matriz({
@@ -37,6 +39,8 @@ export default function Matriz({
   getRequirementFor,
   onCellClick,
   onCellDoubleClick,
+  onGenerarItemsReglas,
+  onOpenPlantillas,
 }: MatrizProps) {
   void _requirements;
 
@@ -73,11 +77,15 @@ export default function Matriz({
             className="bg-white shadow-sm text-sm md:w-80"
           />
           <div className="flex gap-2">
-            <Button variant="outline" className="rounded-xl border-slate-200 text-xs md:text-sm">
-              Plantilla DS44
+            <Button
+              variant="outline"
+              className="rounded-xl border-slate-200 text-xs md:text-sm"
+              onClick={onOpenPlantillas}
+            >
+              Aplicar plantilla
             </Button>
-            <Button className="rounded-xl text-xs md:text-sm">
-              Agregar curso al plan
+            <Button className="rounded-xl text-xs md:text-sm" onClick={onGenerarItemsReglas}>
+              Generar items por reglas
             </Button>
           </div>
         </div>

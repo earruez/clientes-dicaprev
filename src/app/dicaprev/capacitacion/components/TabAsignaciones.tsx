@@ -2,21 +2,16 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  getAsignaciones,
-  getCatalogo,
-  createAsignacion,
-  updateAsignacion,
-  enviarEnlaceCapacitacion,
-  reasignarCapacitacion,
-  extenderPlazo,
-  generarCertificadoMock,
-  generarTokenCapacitacion,
-  subscribe,
-  ESTADO_ASIG_CFG,
+  getCapacitacionAsignaciones,
+  getCapacitaciones,
+  createCapacitacionAsignacion,
+  updateCapacitacionAsignacion,
+  cambiarEstadoCapacitacionAsignacion,
+  deleteCapacitacionAsignacion,
   type AsignacionCapacitacion,
-  type EstadoAsignacion,
-} from "@/lib/capacitacion/capacitacion-store";
-import { MOCK_WORKERS } from "@/components/trabajadores-v2/types";
+  type CapacitacionCatalogo,
+} from "@/actions/capacitaciones";
+import { getTrabajadores, type Worker } from "@/actions/trabajadores";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +21,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -44,8 +40,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const HOY = "2026-04-10";
-
 function fmt(iso?: string) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("es-CL");
@@ -57,11 +51,33 @@ function copyToClipboard(text: string) {
   }
 }
 
+// ─── Mapping de estados Prisma a UI ──────────────────────────────────────── //
+type EstadoUI = "pendiente" | "enviada" | "en_proceso" | "completada" | "aprobada" | "rechazada" | "vencida" | "cancelada";
+
+function mapEstadoUi(a: AsignacionCapacitacion): EstadoUI {
+  if (a.estado === "completada") {
+    if (a.aprobado === true) return "aprobada";
+    if (a.aprobado === false) return "rechazada";
+    return "completada";
+  }
+  if (a.estado === "en_progreso") return "en_proceso";
+  return a.estado as EstadoUI;
+}
+
+// Configuración de UI por estado
+const ESTADO_ASIG_CFG: Record<EstadoUI, { label: string; cls: string; dot: string }> = {
+  pendiente: { label: "Pendiente", cls: "bg-slate-50 text-slate-700 border-slate-200", dot: "bg-slate-400" },
+  enviada: { label: "Enviada", cls: "bg-cyan-50 text-cyan-700 border-cyan-200", dot: "bg-cyan-400" },
+  en_proceso: { label: "En curso", cls: "bg-violet-50 text-violet-700 border-violet-200", dot: "bg-violet-400" },
+  completada: { label: "Completada", cls: "bg-teal-50 text-teal-700 border-teal-200", dot: "bg-teal-400" },
+  aprobada: { label: "Aprobada", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
+  rechazada: { label: "Rechazada", cls: "bg-rose-50 text-rose-700 border-rose-200", dot: "bg-rose-500" },
+  vencida: { label: "Vencida", cls: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-400" },
+  cancelada: { label: "Cancelada", cls: "bg-slate-100 text-slate-600 border-slate-300", dot: "bg-slate-350" },
+};
+
 type EnrichedAsignacion = AsignacionCapacitacion & {
-  capacitacionNombre: string;
-  trabajadorNombre: string;
-  categoria: string;
-  generaCertificado: boolean;
+  estadoUi: EstadoUI;
 };
 
 // ─── Per-state action buttons (compact, for table row) ──────────────────── //
@@ -75,16 +91,25 @@ function AccionesRow({
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const link = item.token ? `${origin}/capacitacion/externa/${item.token}` : "";
 
-  switch (item.estado) {
+  switch (item.estadoUi) {
     case "pendiente":
       return (
-        <button
-          onClick={(e) => { e.stopPropagation(); onAccion("enviar", item); }}
-          title="Enviar capacitación"
-          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-200 text-[11px] font-medium hover:bg-cyan-100 transition-colors"
-        >
-          <Send className="h-3 w-3" /> Enviar
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => { e.stopPropagation(); onAccion("enviar", item); }}
+            title="Enviar capacitación"
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-200 text-[11px] font-medium hover:bg-cyan-100 transition-colors"
+          >
+            <Send className="h-3 w-3" /> Enviar
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onAccion("cancelar", item); }}
+            title="Cancelar asignación"
+            className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-colors"
+          >
+            <XCircle className="h-3 w-3" />
+          </button>
+        </div>
       );
     case "enviada":
       return (
@@ -103,15 +128,31 @@ function AccionesRow({
           >
             <Copy className="h-3 w-3" />
           </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onAccion("cancelar", item); }}
+            title="Cancelar asignación"
+            className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-colors"
+          >
+            <XCircle className="h-3 w-3" />
+          </button>
         </div>
       );
     case "en_proceso":
       return (
-        <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-50 text-violet-600 border border-violet-200 text-[11px] font-medium">
-          <PlayCircle className="h-3 w-3" /> En curso
-        </span>
+        <div className="flex items-center gap-1">
+          <span className="flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-50 text-violet-600 border border-violet-200 text-[11px] font-medium">
+            <PlayCircle className="h-3 w-3" /> En curso
+          </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onAccion("cancelar", item); }}
+            title="Cancelar asignación"
+            className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 transition-colors"
+          >
+            <XCircle className="h-3 w-3" />
+          </button>
+        </div>
       );
-    case "finalizada":
+    case "completada":
       return (
         <button
           onClick={(e) => { e.stopPropagation(); onAccion("revisar", item); }}
@@ -176,7 +217,7 @@ function DetalleDrawer({
   onAccion: (accion: string, item: EnrichedAsignacion) => void;
 }) {
   if (!item) return null;
-  const cfg = ESTADO_ASIG_CFG[item.estado];
+  const cfg = ESTADO_ASIG_CFG[item.estadoUi];
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const link = item.token ? `/capacitacion/externa/${item.token}` : null;
 
@@ -299,30 +340,39 @@ function DetalleDrawer({
               </Button>
             </div>
           )}
-          {item.estado === "en_proceso" && (
+          {(item.estado === "pendiente" || item.estado === "enviada" || item.estado === "en_progreso") && (
+            <Button
+              variant="outline"
+              className="w-full rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50"
+              onClick={() => onAccion("cancelar", item)}
+            >
+              <XCircle className="h-4 w-4 mr-2" /> Cancelar asignación
+            </Button>
+          )}
+          {item.estado === "en_progreso" && (
             <div className="flex items-center gap-2 bg-violet-50 rounded-xl px-4 py-3 border border-violet-100">
               <PlayCircle className="h-4 w-4 text-violet-500 shrink-0" />
               <p className="text-sm text-violet-700">El trabajador está realizando la capacitación.</p>
             </div>
           )}
-          {item.estado === "finalizada" && (
+          {item.estado === "completada" && item.aprobado === null && (
             <div className="flex gap-2">
               <Button className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => onAccion("aprobar", item)}>
-                <CheckCircle2 className="h-4 w-4 mr-2" /> Aprobar
+                <CheckCircle2 className="h-4 w-4 mr-2" /> Aprobado
               </Button>
               <Button className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white" onClick={() => onAccion("rechazar", item)}>
-                <XCircle className="h-4 w-4 mr-2" /> Rechazar
+                <XCircle className="h-4 w-4 mr-2" /> No aprobado
               </Button>
             </div>
           )}
-          {item.estado === "aprobada" && (
+          {item.estado === "completada" && item.aprobado === true && (
             <div className="flex gap-2">
-              {item.generaCertificado && !item.certificadoId && (
+              {item.generaCertificado && !item.certificadoDocumentoId && (
                 <Button className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => onAccion("generar_cert", item)}>
                   <FileBadge2 className="h-4 w-4 mr-2" /> Generar certificado
                 </Button>
               )}
-              {item.certificadoId && (
+              {item.certificadoDocumentoId && (
                 <>
                   <Button className="flex-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => onAccion("ver_cert", item)}>
                     <Award className="h-4 w-4 mr-2" /> Ver certificado
@@ -336,7 +386,7 @@ function DetalleDrawer({
               )}
             </div>
           )}
-          {item.estado === "rechazada" && (
+          {item.estado === "completada" && item.aprobado === false && (
             <Button className="w-full rounded-xl bg-rose-600 hover:bg-rose-700 text-white" onClick={() => onAccion("reasignar", item)}>
               <RotateCcw className="h-4 w-4 mr-2" /> Reasignar capacitación
             </Button>
@@ -358,10 +408,13 @@ function DetalleDrawer({
 }
 
 export default function TabAsignaciones() {
-  const [asignaciones, setAsignaciones] = useState(() => getAsignaciones());
-  const [catalogo] = useState(() => getCatalogo());
+  const [asignaciones, setAsignaciones] = useState<AsignacionCapacitacion[]>([]);
+  const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
+  const [trabajadores, setTrabajadores] = useState<Worker[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [filtroEstado, setFiltroEstado] = useState<EstadoAsignacion | "todos">("todos");
+  const [filtroEstado, setFiltroEstado] = useState<EstadoUI | "todos">("todos");
   const [filtroOrigen, setFiltroOrigen] = useState<"todos" | "automatica" | "manual">("todos");
   const [selected, setSelected] = useState<EnrichedAsignacion | null>(null);
   const [modalNueva, setModalNueva] = useState(false);
@@ -371,28 +424,50 @@ export default function TabAsignaciones() {
   const [formNueva, setFormNueva] = useState({ trabajadorId: "", capacitacionId: "", observacion: "" });
   const [notaRevisar, setNotaRevisar] = useState("");
 
-  useEffect(() => subscribe(() => setAsignaciones(getAsignaciones())), []);
+  // Cargar datos al montar
+  useEffect(() => {
+    async function loadData() {
+      try {
+        setLoading(true);
+        const [asignacionesData, catalogoData, trabajadoresData] = await Promise.all([
+          getCapacitacionAsignaciones(),
+          getCapacitaciones(),
+          getTrabajadores(),
+        ]);
+        setAsignaciones(asignacionesData);
+        setCatalogo(catalogoData);
+        setTrabajadores(trabajadoresData);
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al cargar datos");
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
 
-  const refresh = useCallback(() => setAsignaciones(getAsignaciones()), []);
+  const refresh = useCallback(async () => {
+    try {
+      const asignacionesData = await getCapacitacionAsignaciones();
+      setAsignaciones(asignacionesData);
+    } catch (err) {
+      console.error("Error al refrescar asignaciones:", err);
+    }
+  }, []);
 
   const enriched = useMemo<EnrichedAsignacion[]>(() =>
-    asignaciones.map((a) => {
-      const cap = catalogo.find((c) => c.id === a.capacitacionId);
-      const worker = MOCK_WORKERS.find((w) => w.id === a.trabajadorId);
-      return {
-        ...a,
-        capacitacionNombre: cap?.nombre ?? a.capacitacionId,
-        trabajadorNombre: worker ? `${worker.nombre} ${worker.apellido}` : a.trabajadorId,
-        categoria: cap?.categoria ?? "otro",
-        generaCertificado: cap?.generaCertificado ?? false,
-      };
-    }),
-    [asignaciones, catalogo]
+    asignaciones.map((a) => ({
+      ...a,
+      estadoUi: mapEstadoUi(a),
+    })),
+    [asignaciones]
   );
 
   const filtered = useMemo(() =>
     enriched.filter((a) => {
-      if (filtroEstado !== "todos" && a.estado !== filtroEstado) return false;
+      if (filtroEstado !== "todos" && a.estadoUi !== filtroEstado) return false;
       if (filtroOrigen !== "todos" && a.origen !== filtroOrigen) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -406,241 +481,288 @@ export default function TabAsignaciones() {
   const kpis = useMemo(() => ({
     total: asignaciones.length,
     pendientes: asignaciones.filter((a) => a.estado === "pendiente").length,
-    enCurso: asignaciones.filter((a) => ["enviada", "en_proceso", "finalizada"].includes(a.estado)).length,
-    aprobadas: asignaciones.filter((a) => a.estado === "aprobada").length,
+    enCurso: asignaciones.filter((a) => ["enviada", "en_progreso"].includes(a.estado)).length,
+    aprobadas: asignaciones.filter((a) => a.estado === "completada" && a.aprobado === true).length,
     vencidas: asignaciones.filter((a) => a.estado === "vencida").length,
   }), [asignaciones]);
 
-  function handleAccion(accion: string, item: EnrichedAsignacion) {
-    switch (accion) {
-      case "enviar":
-      case "reenviar":
-        enviarEnlaceCapacitacion(item.id);
-        registrarAccion({
-          accion: "enviar", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: item.id,
-          descripcion: `${accion === "reenviar" ? "Reenvió" : "Envió"} enlace de '${item.capacitacionNombre}' a ${item.trabajadorNombre}`,
-        });
-        refresh();
-        if (selected?.id === item.id) {
-          const updated = getAsignaciones().find((a) => a.id === item.id);
-          if (updated) setSelected({ ...item, ...updated });
+  async function handleAccion(accion: string, item: EnrichedAsignacion) {
+    try {
+      switch (accion) {
+        case "enviar":
+        case "reenviar":
+          await cambiarEstadoCapacitacionAsignacion(item.id, { estado: "enviada" });
+          registrarAccion({
+            accion: "enviar", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: item.id,
+            descripcion: `${accion === "reenviar" ? "Reenvió" : "Envió"} enlace de '${item.capacitacionNombre}' a ${item.trabajadorNombre}`,
+          });
+          await refresh();
+          if (selected?.id === item.id) {
+            const updated = asignaciones.find((a) => a.id === item.id);
+            if (updated) setSelected({ ...item, ...updated, estadoUi: mapEstadoUi(updated) });
+          }
+          break;
+
+        case "revisar":
+        case "aprobar":
+        case "rechazar":
+          setModalRevisar(item);
+          break;
+
+        case "reasignar": {
+          const newAsignacion = await createCapacitacionAsignacion({
+            trabajadorId: item.trabajadorId,
+            capacitacionId: item.capacitacionId,
+            forceReasignar: true,
+            origen: "manual",
+          });
+          registrarAccion({
+            accion: "crear", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: newAsignacion.id,
+            descripcion: `Reasignó '${item.capacitacionNombre}' a ${item.trabajadorNombre}`,
+          });
+          await refresh();
+          setSelected(null);
+          break;
         }
-        break;
 
-      case "revisar":
-      case "aprobar":
-      case "rechazar":
-        setModalRevisar(item);
-        break;
+        case "extender":
+          setModalExtender(item);
+          break;
 
-      case "reasignar": {
-        const nueva = reasignarCapacitacion(item.id);
-        registrarAccion({
-          accion: "crear", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: nueva.id,
-          descripcion: `Reasignó '${item.capacitacionNombre}' a ${item.trabajadorNombre}`,
-        });
-        refresh();
-        setSelected(null);
-        break;
-      }
-
-      case "extender":
-        setModalExtender(item);
-        break;
-
-      case "generar_cert": {
-        const certId = generarCertificadoMock(item.id);
-        registrarAccion({
-          accion: "crear", modulo: "capacitacion", entidadTipo: "Certificado", entidadId: certId,
-          descripcion: `Generó certificado de '${item.capacitacionNombre}' para ${item.trabajadorNombre}`,
-        });
-        refresh();
-        setModalCert({ certId, nombre: item.capacitacionNombre });
-        if (selected?.id === item.id) {
-          const updated = getAsignaciones().find((a) => a.id === item.id);
-          if (updated) setSelected({ ...item, ...updated });
+        case "cancelar": {
+          await deleteCapacitacionAsignacion(item.id);
+          registrarAccion({
+            accion: "cambiar_estado", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: item.id,
+            descripcion: `Canceló asignación de '${item.capacitacionNombre}' para ${item.trabajadorNombre}`,
+          });
+          await refresh();
+          if (selected?.id === item.id) setSelected(null);
+          break;
         }
-        break;
-      }
 
-      case "ver_cert":
-        setModalCert({ certId: item.certificadoId!, nombre: item.capacitacionNombre });
-        break;
+        case "generar_cert": {
+          // TODO: Implementar generación de certificado con Documento real
+          registrarAccion({
+            accion: "crear", modulo: "capacitacion", entidadTipo: "Certificado", entidadId: "cert-mock",
+            descripcion: `Generó certificado de '${item.capacitacionNombre}' para ${item.trabajadorNombre}`,
+          });
+          setModalCert({ certId: "cert-mock-" + item.id, nombre: item.capacitacionNombre });
+          break;
+        }
+
+        case "ver_cert":
+          setModalCert({ certId: item.certificadoDocumentoId || "cert-" + item.id, nombre: item.capacitacionNombre });
+          break;
+      }
+    } catch (err) {
+      console.error("Error en handleAccion:", err);
+      setError(err instanceof Error ? err.message : "Error al procesar acción");
     }
   }
 
-  function handleRevisar(aprobado: boolean) {
+  async function handleRevisar(aprobado: boolean) {
     if (!modalRevisar) return;
-    const nota = parseFloat(notaRevisar);
-    const notaFinal = !isNaN(nota) ? nota : (aprobado ? 5.0 : 3.0);
-    updateAsignacion(modalRevisar.id, {
-      estado: aprobado ? "aprobada" : "rechazada",
-      nota: notaFinal,
-      aprobado,
-      fechaRespuesta: new Date().toISOString().slice(0, 10),
-    });
-    registrarAccion({
-      accion: "cambiar_estado", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: modalRevisar.id,
-      descripcion: `${aprobado ? "Aprobó" : "Rechazó"} '${modalRevisar.capacitacionNombre}' de ${modalRevisar.trabajadorNombre}. Nota: ${notaFinal.toFixed(1)}`,
-    });
-    refresh();
-    setModalRevisar(null);
-    setNotaRevisar("");
-    if (selected?.id === modalRevisar.id) setSelected(null);
+    try {
+      const nota = parseFloat(notaRevisar);
+      const notaFinal = !isNaN(nota) ? Math.max(1, Math.min(7, nota)) : (aprobado ? 5.0 : 3.0);
+      await cambiarEstadoCapacitacionAsignacion(modalRevisar.id, {
+        estado: "completada",
+        nota: notaFinal,
+        aprobado,
+      });
+      registrarAccion({
+        accion: "cambiar_estado", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: modalRevisar.id,
+        descripcion: `${aprobado ? "Aprobó" : "Rechazó"} '${modalRevisar.capacitacionNombre}' de ${modalRevisar.trabajadorNombre}. Nota: ${notaFinal.toFixed(1)}`,
+      });
+      await refresh();
+      setModalRevisar(null);
+      setNotaRevisar("");
+      if (selected?.id === modalRevisar.id) setSelected(null);
+    } catch (err) {
+      console.error("Error en handleRevisar:", err);
+      setError(err instanceof Error ? err.message : "Error al revisar asignación");
+    }
   }
 
-  function handleExtender(meses: number) {
+  async function handleExtender(meses: number) {
     if (!modalExtender) return;
-    extenderPlazo(modalExtender.id, meses);
-    registrarAccion({
-      accion: "editar", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: modalExtender.id,
-      descripcion: `Extendió plazo ${meses} mes${meses > 1 ? "es" : ""} para '${modalExtender.capacitacionNombre}' de ${modalExtender.trabajadorNombre}`,
-    });
-    refresh();
-    setModalExtender(null);
-    if (selected?.id === modalExtender.id) setSelected(null);
+    try {
+      const nouvecimiento = new Date(modalExtender.fechaVencimiento || new Date());
+      nouvecimiento.setMonth(nouvecimiento.getMonth() + meses);
+      await updateCapacitacionAsignacion(modalExtender.id, {
+        fechaVencimiento: nouvecimiento.toISOString().slice(0, 10),
+      });
+      registrarAccion({
+        accion: "editar", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: modalExtender.id,
+        descripcion: `Extendió plazo ${meses} mes${meses > 1 ? "es" : ""} para '${modalExtender.capacitacionNombre}' de ${modalExtender.trabajadorNombre}`,
+      });
+      await refresh();
+      setModalExtender(null);
+      if (selected?.id === modalExtender.id) setSelected(null);
+    } catch (err) {
+      console.error("Error en handleExtender:", err);
+      setError(err instanceof Error ? err.message : "Error al extender plazo");
+    }
   }
 
-  function handleCrearManual(e: React.FormEvent) {
+  async function handleCrearManual(e: React.FormEvent) {
     e.preventDefault();
     if (!formNueva.trabajadorId || !formNueva.capacitacionId) return;
-    const cap = catalogo.find((c) => c.id === formNueva.capacitacionId);
-    const vencimiento = new Date(HOY);
-    if (cap) vencimiento.setMonth(vencimiento.getMonth() + cap.vigenciaMeses);
-    const nueva = createAsignacion({
-      trabajadorId: formNueva.trabajadorId,
-      capacitacionId: formNueva.capacitacionId,
-      origen: "manual",
-      estado: "pendiente",
-      fechaAsignacion: HOY,
-      fechaVencimiento: cap ? vencimiento.toISOString().slice(0, 10) : undefined,
-      token: generarTokenCapacitacion(),
-      observacion: formNueva.observacion || undefined,
-    });
-    registrarAccion({
-      accion: "crear", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: nueva.id,
-      descripcion: `Creó asignación manual de '${cap?.nombre}' para trabajador ${formNueva.trabajadorId}`,
-    });
-    setModalNueva(false);
-    setFormNueva({ trabajadorId: "", capacitacionId: "", observacion: "" });
+    try {
+      const cap = catalogo.find((c) => c.id === formNueva.capacitacionId);
+      const vencimiento = new Date();
+      if (cap) vencimiento.setMonth(vencimiento.getMonth() + (cap.vigenciaMeses || 12));
+      const nueva = await createCapacitacionAsignacion({
+        trabajadorId: formNueva.trabajadorId,
+        capacitacionId: formNueva.capacitacionId,
+        origen: "manual",
+        estado: "pendiente",
+        fechaVencimiento: vencimiento.toISOString().slice(0, 10),
+        observacion: formNueva.observacion || undefined,
+      });
+      registrarAccion({
+        accion: "crear", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: nueva.id,
+        descripcion: `Creó asignación manual de '${cap?.nombre}' para trabajador ${formNueva.trabajadorId}`,
+      });
+      await refresh();
+      setModalNueva(false);
+      setFormNueva({ trabajadorId: "", capacitacionId: "", observacion: "" });
+    } catch (err) {
+      console.error("Error en handleCrearManual:", err);
+      setError(err instanceof Error ? err.message : "Error al crear asignación");
+    }
   }
 
   return (
     <div className="space-y-5">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {[
-          { label: "Total",      value: kpis.total,      cls: "text-slate-700" },
-          { label: "Pendientes", value: kpis.pendientes, cls: "text-slate-500" },
-          { label: "En curso",   value: kpis.enCurso,    cls: "text-blue-600" },
-          { label: "Aprobadas",  value: kpis.aprobadas,  cls: "text-emerald-600" },
-          { label: "Vencidas",   value: kpis.vencidas,   cls: "text-amber-600" },
-        ].map((k) => (
-          <div key={k.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
-            <p className="text-[11px] text-slate-400 uppercase font-medium">{k.label}</p>
-            <p className={cn("text-2xl font-semibold mt-0.5", k.cls)}>{k.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters + action */}
-      <div className="flex flex-wrap gap-3 items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
-        <div className="flex flex-wrap gap-2 items-center flex-1">
-          <div className="relative min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-            <Input
-              placeholder="Buscar trabajador o capacitación…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 rounded-xl border-slate-200 bg-slate-50 text-sm"
-            />
-          </div>
-          <Select value={filtroEstado} onValueChange={(v) => setFiltroEstado(v as EstadoAsignacion | "todos")}>
-            <SelectTrigger className="w-[165px] h-9 rounded-xl border-slate-200 text-sm bg-white">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos los estados</SelectItem>
-              {(Object.keys(ESTADO_ASIG_CFG) as EstadoAsignacion[]).map((e) => (
-                <SelectItem key={e} value={e}>{ESTADO_ASIG_CFG[e].label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filtroOrigen} onValueChange={(v) => setFiltroOrigen(v as typeof filtroOrigen)}>
-            <SelectTrigger className="w-[130px] h-9 rounded-xl border-slate-200 text-sm bg-white">
-              <SelectValue placeholder="Origen" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
-              <SelectItem value="automatica">Automática</SelectItem>
-              <SelectItem value="manual">Manual</SelectItem>
-            </SelectContent>
-          </Select>
+      {error && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 text-rose-700 text-sm">
+          {error}
         </div>
-        <Button onClick={() => setModalNueva(true)} className="rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white shrink-0" size="sm">
-          <Plus className="h-4 w-4 mr-1.5" /> Asignación manual
-        </Button>
-      </div>
+      )}
 
-      {/* Table */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="grid grid-cols-[1fr_155px_110px_95px_95px_185px_40px] gap-2 px-5 py-3 bg-slate-50 border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-          <span>Trabajador / Capacitación</span>
-          <span>Estado</span>
-          <span>Origen</span>
-          <span>Asignada</span>
-          <span>Vence</span>
-          <span>Acciones</span>
-          <span />
+      {loading ? (
+        <div className="bg-white border border-slate-200 rounded-2xl px-6 py-12 shadow-sm text-center">
+          <p className="text-slate-500">Cargando asignaciones...</p>
         </div>
-        {filtered.length === 0 ? (
-          <div className="py-14 text-center">
-            <ClipboardList className="h-8 w-8 text-slate-200 mx-auto mb-2" />
-            <p className="text-sm text-slate-400">Sin asignaciones para los filtros aplicados.</p>
+      ) : (
+        <>
+          {/* KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {[
+              { label: "Total",      value: kpis.total,      cls: "text-slate-700" },
+              { label: "Pendientes", value: kpis.pendientes, cls: "text-slate-500" },
+              { label: "En curso",   value: kpis.enCurso,    cls: "text-blue-600" },
+              { label: "Aprobadas",  value: kpis.aprobadas,  cls: "text-emerald-600" },
+              { label: "Vencidas",   value: kpis.vencidas,   cls: "text-amber-600" },
+            ].map((k) => (
+              <div key={k.label} className="bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+                <p className="text-[11px] text-slate-400 uppercase font-medium">{k.label}</p>
+                <p className={cn("text-2xl font-semibold mt-0.5", k.cls)}>{k.value}</p>
+              </div>
+            ))}
           </div>
-        ) : (
-          <div className="divide-y divide-slate-50">
-            {filtered.map((a) => {
-              const cfg = ESTADO_ASIG_CFG[a.estado];
-              return (
-                <div
-                  key={a.id}
-                  className="grid grid-cols-[1fr_155px_110px_95px_95px_185px_40px] gap-2 px-5 py-3.5 items-center hover:bg-slate-50/60 transition-colors cursor-pointer"
-                  onClick={() => setSelected(a)}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-800 truncate">{a.trabajadorNombre}</p>
-                    <p className="text-xs text-slate-400 truncate">{a.capacitacionNombre}</p>
-                  </div>
-                  <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit", cfg.cls)}>
-                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dot)} />
-                    {cfg.label}
-                  </span>
-                  <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit",
-                    a.origen === "automatica" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-violet-50 text-violet-700 border-violet-200"
-                  )}>
-                    {a.origen === "automatica" ? <Bot className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
-                    {a.origen === "automatica" ? "Auto" : "Manual"}
-                  </span>
-                  <span className="text-xs text-slate-500">{fmt(a.fechaAsignacion)}</span>
-                  <span className={cn("text-xs", a.fechaVencimiento && a.fechaVencimiento < HOY ? "text-rose-600 font-medium" : "text-slate-500")}>
-                    {fmt(a.fechaVencimiento)}
-                  </span>
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <AccionesRow item={a} onAccion={handleAccion} />
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setSelected(a); }}
-                    className="flex items-center justify-center h-7 w-7 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
-                  >
-                    <Eye className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              );
-            })}
+
+          {/* Filters + action */}
+          <div className="flex flex-wrap gap-3 items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap gap-2 items-center flex-1">
+              <div className="relative min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+                <Input
+                  placeholder="Buscar trabajador o capacitación…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 h-9 rounded-xl border-slate-200 bg-slate-50 text-sm"
+                />
+              </div>
+              <Select value={filtroEstado} onValueChange={(v) => setFiltroEstado(v as EstadoUI | "todos")}>
+                <SelectTrigger className="w-[165px] h-9 rounded-xl border-slate-200 text-sm bg-white">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos los estados</SelectItem>
+                  {(Object.keys(ESTADO_ASIG_CFG) as EstadoUI[]).map((e) => (
+                    <SelectItem key={e} value={e}>{ESTADO_ASIG_CFG[e].label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filtroOrigen} onValueChange={(v) => setFiltroOrigen(v as typeof filtroOrigen)}>
+                <SelectTrigger className="w-[130px] h-9 rounded-xl border-slate-200 text-sm bg-white">
+                  <SelectValue placeholder="Origen" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="automatica">Automática</SelectItem>
+                  <SelectItem value="manual">Manual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={() => setModalNueva(true)} className="rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white shrink-0" size="sm">
+              <Plus className="h-4 w-4 mr-1.5" /> Asignación manual
+            </Button>
           </div>
-        )}
-      </div>
+
+          {/* Table */}
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="grid grid-cols-[1fr_155px_110px_95px_95px_185px_40px] gap-2 px-5 py-3 bg-slate-50 border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+              <span>Trabajador / Capacitación</span>
+              <span>Estado</span>
+              <span>Origen</span>
+              <span>Asignada</span>
+              <span>Vence</span>
+              <span>Acciones</span>
+              <span />
+            </div>
+            {filtered.length === 0 ? (
+              <div className="py-14 text-center">
+                <ClipboardList className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+                <p className="text-sm text-slate-400">Sin asignaciones para los filtros aplicados.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-50">
+                {filtered.map((a) => {
+                  const cfg = ESTADO_ASIG_CFG[a.estadoUi];
+                  return (
+                    <div
+                      key={a.id}
+                      className="grid grid-cols-[1fr_155px_110px_95px_95px_185px_40px] gap-2 px-5 py-3.5 items-center hover:bg-slate-50/60 transition-colors cursor-pointer"
+                      onClick={() => setSelected(a)}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">{a.trabajadorNombre}</p>
+                        <p className="text-xs text-slate-400 truncate">{a.capacitacionNombre}</p>
+                      </div>
+                      <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit", cfg.cls)}>
+                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dot)} />
+                        {cfg.label}
+                      </span>
+                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit",
+                        a.origen === "automatica" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-violet-50 text-violet-700 border-violet-200"
+                      )}>
+                        {a.origen === "automatica" ? <Bot className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+                        {a.origen === "automatica" ? "Auto" : "Manual"}
+                      </span>
+                      <span className="text-xs text-slate-500">{fmt(a.fechaAsignacion)}</span>
+                      <span className={cn("text-xs", a.fechaVencimiento && new Date(a.fechaVencimiento) < new Date() ? "text-rose-600 font-medium" : "text-slate-500")}>
+                        {fmt(a.fechaVencimiento)}
+                      </span>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <AccionesRow item={a} onAccion={handleAccion} />
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelected(a); }}
+                        className="flex items-center justify-center h-7 w-7 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* Drawer detalle */}
       <DetalleDrawer item={selected} onClose={() => setSelected(null)} onAccion={handleAccion} />
@@ -650,6 +772,9 @@ export default function TabAsignaciones() {
         <DialogContent className="max-w-sm rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Revisar resultado</DialogTitle>
+            <DialogDescription>
+              Define la nota y el resultado final de la asignación seleccionada.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-1">
             <p className="text-sm text-slate-600">
@@ -685,6 +810,9 @@ export default function TabAsignaciones() {
         <DialogContent className="max-w-sm rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Extender plazo</DialogTitle>
+            <DialogDescription>
+              Selecciona cuántos meses deseas extender el vencimiento de la asignación.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-1 pt-1">
             <p className="text-sm text-slate-600">
@@ -710,6 +838,9 @@ export default function TabAsignaciones() {
             <DialogTitle className="text-base font-semibold flex items-center gap-2">
               <Award className="h-5 w-5 text-emerald-600" /> Certificado generado
             </DialogTitle>
+            <DialogDescription>
+              Resumen del certificado asociado a la asignación aprobada.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 pt-1">
             <div className="bg-emerald-50 rounded-xl border border-emerald-100 p-4 text-center space-y-1">
@@ -732,6 +863,9 @@ export default function TabAsignaciones() {
         <DialogContent className="max-w-md rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">Nueva asignación manual</DialogTitle>
+            <DialogDescription>
+              Asigna una capacitación activa a un trabajador seleccionado.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCrearManual} className="space-y-4 pt-1">
             <div className="space-y-1">
@@ -741,7 +875,7 @@ export default function TabAsignaciones() {
                   <SelectValue placeholder="Seleccionar trabajador…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {MOCK_WORKERS.map((w) => (
+                  {trabajadores.map((w) => (
                     <SelectItem key={w.id} value={w.id}>{w.nombre} {w.apellido} — {w.cargo}</SelectItem>
                   ))}
                 </SelectContent>

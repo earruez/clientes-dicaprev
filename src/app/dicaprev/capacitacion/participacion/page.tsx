@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,167 +13,148 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-
-type EstadoAsistencia = "inscrito" | "confirmado" | "asistio" | "noAsistio";
-
-type Participante = {
-  id: number;
-  nombre: string;
-  rut: string;
-  cargo: string;
-  empresa: string;
-  estado: EstadoAsistencia;
-};
-
-type Sesion = {
-  id: number;
-  titulo: string;
-  fecha: string;
-  obra: string;
-  cupos: number;
-  participantes: Participante[];
-};
-
-const SESIONES_PARTICIPACION: Sesion[] = [
-  {
-    id: 1,
-    titulo: "Inducción General SST Obra Los Álamos",
-    fecha: "2025-11-20 09:00",
-    obra: "Condominio Los Álamos",
-    cupos: 25,
-    participantes: [
-      {
-        id: 1,
-        nombre: "Juan Pérez",
-        rut: "11.111.111-1",
-        cargo: "Operario",
-        empresa: "Contratista Andes",
-        estado: "confirmado",
-      },
-      {
-        id: 2,
-        nombre: "María López",
-        rut: "12.222.222-2",
-        cargo: "Maestra",
-        empresa: "Contratista Andes",
-        estado: "inscrito",
-      },
-      {
-        id: 3,
-        nombre: "Pedro González",
-        rut: "13.333.333-3",
-        cargo: "Supervisor",
-        empresa: "Constructora Principal",
-        estado: "asistio",
-      },
-      {
-        id: 4,
-        nombre: "Ana Rojas",
-        rut: "14.444.444-4",
-        cargo: "Prevencionista",
-        empresa: "Constructora Principal",
-        estado: "asistio",
-      },
-    ],
-  },
-  {
-    id: 2,
-    titulo: "Trabajo en Altura · Supervisores",
-    fecha: "2025-11-22 15:00",
-    obra: "Edificio Terra",
-    cupos: 15,
-    participantes: [],
-  },
-];
-
-const estadoConfig: Record<
+import { AlertCircle, Loader2, Users } from "lucide-react";
+import {
+  getCapacitacionSesiones,
+  getAsistenciasSesion,
+  bootstrapAsistenciasSesion,
+  registrarAsistenciaCapacitacion,
+} from "@/actions/capacitaciones";
+import type {
+  CapacitacionSesion,
+  AsistenciaCapacitacion,
   EstadoAsistencia,
-  { label: string; className: string }
-> = {
-  inscrito: {
-    label: "Inscrito",
-    className:
-      "bg-slate-50 text-slate-700 border border-slate-200 rounded-full",
+} from "@/actions/capacitaciones";
+
+const estadoConfig: Record<EstadoAsistencia, { label: string; className: string }> = {
+  presente: {
+    label: "Presente",
+    className: "bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full",
   },
-  confirmado: {
-    label: "Confirmado",
-    className:
-      "bg-sky-50 text-sky-700 border border-sky-200 rounded-full",
+  ausente: {
+    label: "Ausente",
+    className: "bg-rose-50 text-rose-700 border border-rose-200 rounded-full",
   },
-  asistio: {
-    label: "Asistió",
-    className:
-      "bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full",
+  justificado: {
+    label: "Justificado",
+    className: "bg-amber-50 text-amber-700 border border-amber-200 rounded-full",
   },
-  noAsistio: {
-    label: "No asistió",
-    className:
-      "bg-rose-50 text-rose-700 border border-rose-200 rounded-full",
+  parcial: {
+    label: "Parcial",
+    className: "bg-sky-50 text-sky-700 border border-sky-200 rounded-full",
   },
 };
 
 export default function ParticipacionCapacitacionPage() {
-  const [sesionId, setSesionId] = useState<number>(1);
-  const [sesiones, setSesiones] =
-    useState<Sesion[]>(SESIONES_PARTICIPACION);
+  const [sesiones, setSesiones] = useState<CapacitacionSesion[]>([]);
+  const [sesionId, setSesionId] = useState<string>("");
+  const [asistencias, setAsistencias] = useState<AsistenciaCapacitacion[]>([]);
+  const [loadingSesiones, setLoadingSesiones] = useState(true);
+  const [loadingAsistencias, setLoadingAsistencias] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [bootstrapInfo, setBootstrapInfo] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bootstrapAttemptedBySesion, setBootstrapAttemptedBySesion] = useState<Record<string, boolean>>({});
+
+  const cargarSesiones = useCallback(async () => {
+    setLoadingSesiones(true);
+    setError(null);
+    try {
+      const data = await getCapacitacionSesiones();
+      setSesiones(data);
+      if (data.length > 0 && !sesionId) {
+        setSesionId(data[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al cargar sesiones");
+    } finally {
+      setLoadingSesiones(false);
+    }
+  }, [sesionId]);
+
+  const cargarAsistencias = useCallback(async (id: string) => {
+    if (!id) return;
+    setLoadingAsistencias(true);
+    setSelectedIds([]);
+    setError(null);
+    setBootstrapInfo(null);
+    try {
+      let data = await getAsistenciasSesion(id);
+
+      if (data.length === 0 && !bootstrapAttemptedBySesion[id]) {
+        setBootstrapAttemptedBySesion((prev) => ({ ...prev, [id]: true }));
+        const bootstrapResult = await bootstrapAsistenciasSesion(id);
+
+        if (bootstrapResult.created > 0) {
+          data = await getAsistenciasSesion(id);
+          setBootstrapInfo(
+            `Se cargaron ${bootstrapResult.created} registros iniciales de asistencia desde asignaciones reales.`,
+          );
+        }
+      }
+
+      setAsistencias(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al cargar asistencias");
+    } finally {
+      setLoadingAsistencias(false);
+    }
+  }, [bootstrapAttemptedBySesion]);
+
+  useEffect(() => {
+    cargarSesiones();
+  }, [cargarSesiones]);
+
+  useEffect(() => {
+    if (sesionId) cargarAsistencias(sesionId);
+  }, [sesionId, cargarAsistencias]);
 
   const sesionActual = useMemo(
-    () => sesiones.find((s) => s.id === sesionId) || sesiones[0],
-    [sesionId, sesiones]
+    () => sesiones.find((s) => s.id === sesionId),
+    [sesiones, sesionId]
   );
 
   const filtrados = useMemo(() => {
-    if (!sesionActual) return [];
-    return sesionActual.participantes.filter((p) => {
-      if (
-        search.trim() &&
-        !(
-          p.nombre.toLowerCase().includes(search.toLowerCase()) ||
-          p.rut.toLowerCase().includes(search.toLowerCase())
-        )
-      ) {
-        return false;
-      }
-      return true;
-    });
-  }, [sesionActual, search]);
+    return asistencias.filter((a) =>
+      !search.trim() || a.trabajadorNombre.toLowerCase().includes(search.toLowerCase())
+    );
+  }, [asistencias, search]);
 
   const stats = useMemo(() => {
-    if (!sesionActual) return { inscritos: 0, asistio: 0, confirmados: 0 };
-    const inscritos = sesionActual.participantes.length;
-    const asistio = sesionActual.participantes.filter(
-      (p) => p.estado === "asistio"
-    ).length;
-    const confirmados = sesionActual.participantes.filter(
-      (p) => p.estado === "confirmado"
-    ).length;
-    const asistenciaPorcentaje =
-      inscritos === 0 ? 0 : Math.round((asistio / inscritos) * 100);
-    return { inscritos, asistio, confirmados, asistenciaPorcentaje };
-  }, [sesionActual]);
+    const total = asistencias.length;
+    const presentes = asistencias.filter((a) => a.estadoAsistencia === "presente").length;
+    const pct = total === 0 ? 0 : Math.round((presentes / total) * 100);
+    return { total, presentes, pct };
+  }, [asistencias]);
 
-  const toggleSelected = (id: number) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   };
 
-  const actualizarEstadoSeleccionados = (estado: EstadoAsistencia) => {
-    if (!sesionActual) return;
-    setSesiones((prev) =>
-      prev.map((s) => {
-        if (s.id !== sesionActual.id) return s;
-        return {
-          ...s,
-          participantes: s.participantes.map((p) =>
-            selectedIds.includes(p.id) ? { ...p, estado } : p
-          ),
-        };
-      })
-    );
-    setSelectedIds([]);
+  const actualizarEstadoSeleccionados = async (estado: EstadoAsistencia) => {
+    if (selectedIds.length === 0) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const targets = asistencias.filter((a) => selectedIds.includes(a.id));
+      await Promise.all(
+        targets.map((a) =>
+          registrarAsistenciaCapacitacion({
+            sesionId: a.sesionId,
+            trabajadorId: a.trabajadorId,
+            estadoAsistencia: estado,
+          })
+        )
+      );
+      setSelectedIds([]);
+      await cargarAsistencias(sesionId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al guardar asistencia");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -194,52 +175,71 @@ export default function ParticipacionCapacitacionPage() {
         </div>
       </div>
 
+      {/* ERROR BANNER */}
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+          <button className="ml-auto text-xs underline" onClick={() => setError(null)}>Cerrar</button>
+        </div>
+      )}
+
+      {bootstrapInfo && (
+        <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <span>{bootstrapInfo}</span>
+          <button className="ml-auto text-xs underline" onClick={() => setBootstrapInfo(null)}>Cerrar</button>
+        </div>
+      )}
+
       {/* RESUMEN SESIÓN */}
       <Card className="border-slate-200 shadow-sm rounded-2xl">
         <CardHeader className="pb-3">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div className="space-y-1">
               <p className="text-xs text-slate-500">Sesión seleccionada</p>
-              <Select
-                value={String(sesionId)}
-onValueChange={(value: string) => setSesionId(Number(value))}
-              >
-                <SelectTrigger className="w-[320px] h-8 bg-white rounded-xl text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {sesiones.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)}>
-                      {s.titulo} · {s.obra} · {s.fecha}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {loadingSesiones ? (
+                <div className="flex items-center gap-2 text-slate-400 text-xs">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Cargando sesiones…
+                </div>
+              ) : (
+                <Select
+                  value={sesionId}
+                  onValueChange={(value: string) => setSesionId(value)}
+                >
+                  <SelectTrigger className="w-[360px] h-8 bg-white rounded-xl text-xs">
+                    <SelectValue placeholder="Seleccionar sesión…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sesiones.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.titulo}
+                        {s.fecha ? ` · ${s.fecha.slice(0, 10)}` : ""}
+                        {s.horaInicio ? ` ${s.horaInicio}` : ""}
+                        {s.ubicacion ? ` · ${s.ubicacion}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             {sesionActual && (
               <div className="grid grid-cols-3 gap-3 text-xs w-full md:w-auto">
                 <div>
-                  <p className="text-slate-500">Cupos</p>
+                  <p className="text-slate-500">Registros</p>
                   <p className="text-slate-900 font-semibold">
-                    {stats.inscritos}/{sesionActual.cupos}
+                    {stats.total}{sesionActual.cupos != null ? `/${sesionActual.cupos}` : ""}
                   </p>
                 </div>
                 <div>
-                  <p className="text-slate-500">Confirmados</p>
-                  <p className="text-slate-900 font-semibold">
-                    {stats.confirmados}
-                  </p>
+                  <p className="text-slate-500">Presentes</p>
+                  <p className="text-slate-900 font-semibold">{stats.presentes}</p>
                 </div>
                 <div>
                   <p className="text-slate-500">Asistencia real</p>
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-900 font-semibold">
-                      {stats.asistenciaPorcentaje}%
-                    </span>
-                    <Progress
-                      value={stats.asistenciaPorcentaje}
-                      className="h-1.5 rounded-full flex-1"
-                    />
+                    <span className="text-slate-900 font-semibold">{stats.pct}%</span>
+                    <Progress value={stats.pct} className="h-1.5 rounded-full flex-1" />
                   </div>
                 </div>
               </div>
@@ -250,130 +250,127 @@ onValueChange={(value: string) => setSesionId(Number(value))}
         <CardContent className="space-y-3">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <Input
-              placeholder="Buscar por nombre o RUT…"
+              placeholder="Buscar por nombre del trabajador…"
               value={search}
-onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-  setSearch(e.target.value)
-}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
               className="h-8 text-xs bg-white rounded-xl md:w-80"
             />
             <div className="flex flex-wrap gap-2 text-xs">
               <Button
                 size="sm"
-                variant="outline"
                 className="rounded-xl"
-                disabled={selectedIds.length === 0}
-                onClick={() => actualizarEstadoSeleccionados("confirmado")}
+                disabled={selectedIds.length === 0 || saving}
+                onClick={() => actualizarEstadoSeleccionados("presente")}
               >
-                Marcar como confirmado
-              </Button>
-              <Button
-                size="sm"
-                className="rounded-xl"
-                disabled={selectedIds.length === 0}
-                onClick={() => actualizarEstadoSeleccionados("asistio")}
-              >
-                Marcar asistencia
+                {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                Marcar presente
               </Button>
               <Button
                 size="sm"
                 variant="outline"
                 className="rounded-xl"
-                disabled={selectedIds.length === 0}
-                onClick={() => actualizarEstadoSeleccionados("noAsistio")}
+                disabled={selectedIds.length === 0 || saving}
+                onClick={() => actualizarEstadoSeleccionados("ausente")}
               >
-                Marcar como no asistió
+                Marcar ausente
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl"
+                disabled={selectedIds.length === 0 || saving}
+                onClick={() => actualizarEstadoSeleccionados("justificado")}
+              >
+                Justificado
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-xl"
+                disabled={selectedIds.length === 0 || saving}
+                onClick={() => actualizarEstadoSeleccionados("parcial")}
+              >
+                Parcial
               </Button>
             </div>
           </div>
 
-          {/* TABLA PARTICIPANTES */}
+          {/* TABLA ASISTENCIAS */}
           <div className="w-full overflow-x-auto rounded-2xl border border-slate-100 bg-white">
             <table className="min-w-full text-xs">
               <thead className="bg-slate-50/80 border-b border-slate-100">
                 <tr>
                   <th className="text-left px-3 py-2 w-8">
                     <Checkbox
-                      checked={
-                        filtrados.length > 0 &&
-                        selectedIds.length === filtrados.length
-                      }
+                      checked={filtrados.length > 0 && selectedIds.length === filtrados.length}
                       onCheckedChange={(value: boolean | "indeterminate") =>
-  setSelectedIds(
-    value ? filtrados.map((p) => p.id) : []
-  )
-}
-
+                        setSelectedIds(value ? filtrados.map((a) => a.id) : [])
+                      }
                     />
                   </th>
-                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                    Trabajador
-                  </th>
-                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                    RUT
-                  </th>
-                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                    Cargo
-                  </th>
-                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                    Empresa / Contratista
-                  </th>
-                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                    Estado
-                  </th>
+                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">Trabajador</th>
+                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">Estado asistencia</th>
+                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">Observación</th>
+                  <th className="text-left px-3 py-2 text-[11px] text-slate-500">Registrado</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
-                {filtrados.length === 0 && (
+                {loadingAsistencias ? (
                   <tr>
-                    <td
-                      colSpan={7}
-                      className="text-center text-xs text-slate-500 py-4"
-                    >
-                      No hay participantes para esta sesión.
+                    <td colSpan={6} className="py-8 text-center">
+                      <div className="flex flex-col items-center gap-2 text-slate-400">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span className="text-xs">Cargando asistencias…</span>
+                      </div>
                     </td>
                   </tr>
+                ) : filtrados.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-10 text-center">
+                      <Users className="mx-auto h-8 w-8 text-slate-200 mb-2" />
+                      <p className="text-sm font-medium text-slate-500">Sin registros de asistencia</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {sesionId
+                          ? "No hay asistencias registradas para esta sesión."
+                          : "Selecciona una sesión para ver su asistencia."}
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  filtrados.map((a) => (
+                    <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
+                      <td className="px-3 py-2">
+                        <Checkbox
+                          checked={selectedIds.includes(a.id)}
+                          onCheckedChange={() => toggleSelected(a.id)}
+                        />
+                      </td>
+                      <td className="px-3 py-2 text-slate-800 font-medium">{a.trabajadorNombre}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-2 py-0.5 text-[11px] ${estadoConfig[a.estadoAsistencia].className}`}>
+                          {estadoConfig[a.estadoAsistencia].label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-slate-500">{a.observacion ?? "—"}</td>
+                      <td className="px-3 py-2 text-slate-400">
+                        {a.registradoEn ? new Date(a.registradoEn).toLocaleDateString("es-CL") : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <Button size="sm" variant="ghost" className="h-7 text-[11px] px-2">
+                          Ver historial
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
                 )}
-                {filtrados.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors"
-                  >
-                    <td className="px-3 py-2">
-                      <Checkbox
-                        checked={selectedIds.includes(p.id)}
-                        onCheckedChange={() => toggleSelected(p.id)}
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-slate-800">{p.nombre}</td>
-                    <td className="px-3 py-2 text-slate-600">{p.rut}</td>
-                    <td className="px-3 py-2 text-slate-600">{p.cargo}</td>
-                    <td className="px-3 py-2 text-slate-600">{p.empresa}</td>
-                    <td className="px-3 py-2">
-                      <span className={`px-2 py-0.5 text-[11px] ${estadoConfig[p.estado].className}`}>
-                        {estadoConfig[p.estado].label}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-[11px] px-2"
-                      >
-                        Ver historial
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
               </tbody>
             </table>
           </div>
 
           <p className="text-[11px] text-slate-400">
-            * Los cambios de asistencia se reflejarán automáticamente en{" "}
-            <span className="font-medium">Historial</span> y en los indicadores
-            del Dashboard DS44.
+            * Los cambios de asistencia se reflejan automáticamente en{" "}
+            <span className="font-medium">Historial</span> y en los indicadores del Dashboard DS44.
           </p>
         </CardContent>
       </Card>

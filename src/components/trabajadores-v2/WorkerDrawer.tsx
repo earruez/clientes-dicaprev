@@ -30,12 +30,15 @@ import { type Worker, ESTADO_CONFIG, getInitials, formatDate, antiguedad } from 
 import {
   TIPOS_DOCUMENTO,
   REGLAS_DOCUMENTALES,
-  MOCK_DOCUMENTOS,
   CATEGORIA_CONFIG,
   ESTADO_DOC_CONFIG,
   getWorkerDocs,
   getWorkerDocSummary,
 } from "./documental/types";
+import {
+  getControlDocumentalTrabajadores,
+  type ControlDocumentalTrabajadoresPayload,
+} from "@/actions/trabajadores/documentos";
 import {
   DocumentUploadDrawer,
   type DocumentUploadContext,
@@ -64,6 +67,7 @@ interface WorkerDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   onEdit: (w: Worker) => void;
+  controlDocumental?: ControlDocumentalTrabajadoresPayload | null;
 }
 
 // ── Sub-components ────────────────────────────────────────
@@ -171,19 +175,50 @@ function mockRiesgos(w: Worker): RiesgoItem[] {
 
 // ── Main component ────────────────────────────────────────
 
-export function WorkerDrawer({ worker, isOpen, onClose, onEdit }: WorkerDrawerProps) {
+export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumental = null }: WorkerDrawerProps) {
   const [activeTab, setActiveTab] = useState<TabId>("resumen");
   const [uploadCtx, setUploadCtx] = useState<DocumentUploadContext | undefined>(undefined);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [controlDocState, setControlDocState] = useState<ControlDocumentalTrabajadoresPayload | null>(controlDocumental);
+  const [loadingDocs, setLoadingDocs] = useState(false);
 
   function openUpload(ctx: DocumentUploadContext) {
     setUploadCtx(ctx);
     setUploadOpen(true);
   }
 
-  // Reset tab when a different worker is opened
+  // Keep local state aligned if parent provides prefetched data.
+  useEffect(() => {
+    if (controlDocumental) setControlDocState(controlDocumental);
+  }, [controlDocumental]);
+
+  // Reset tab when a different worker is opened.
   useEffect(() => {
     if (isOpen) setActiveTab("resumen");
+  }, [isOpen, worker?.id]);
+
+  // Fetch documental control from Prisma when the drawer opens.
+  // worker?.id intentional — re-fetch only when the selected person changes.
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadControlDocumental() {
+      if (!isOpen || !worker) return;
+      setLoadingDocs(true);
+      try {
+        const payload = await getControlDocumentalTrabajadores();
+        if (isMounted) setControlDocState(payload);
+      } finally {
+        if (isMounted) setLoadingDocs(false);
+      }
+    }
+
+    void loadControlDocumental();
+
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, worker?.id]);
 
   return (
@@ -193,7 +228,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit }: WorkerDrawerPr
         onClose={() => setUploadOpen(false)}
         context={uploadCtx}
         workers={worker ? [worker] : []}
-        tipos={TIPOS_DOCUMENTO}
+        tipos={controlDocState?.tipos ?? TIPOS_DOCUMENTO}
       />
       {/* Backdrop */}
       <div
@@ -217,7 +252,12 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit }: WorkerDrawerPr
           const dotacion: Posicion | undefined = worker.dotacionId ? getPosicionById(worker.dotacionId) : undefined;
           const asignaciones = mockAsignaciones(worker);
           const riesgos = mockRiesgos(worker);
-          const workerDocs = getWorkerDocs(worker, REGLAS_DOCUMENTALES, TIPOS_DOCUMENTO, MOCK_DOCUMENTOS);
+          const workerDocs = getWorkerDocs(
+            worker,
+            controlDocState?.reglas ?? REGLAS_DOCUMENTALES,
+            controlDocState?.tipos ?? TIPOS_DOCUMENTO,
+            controlDocState?.documentos ?? []
+          );
           const docSummary = getWorkerDocSummary(workerDocs);
           const ds44Critical = (docSummary.pendientes + docSummary.vencidos) + worker.capacitacionesPendientes > 2;
           const sstPct = docSummary.pct;
@@ -562,6 +602,12 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit }: WorkerDrawerPr
                 {/* ═══ DOCUMENTOS ═══ */}
                 {activeTab === "documentos" && (
                   <div className="space-y-4">
+                    {loadingDocs && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-500">
+                        Cargando documentos desde base de datos...
+                      </div>
+                    )}
+
                     {/* Compliance card */}
                     <div className="rounded-2xl bg-slate-900 p-4 text-white">
                       <div className="flex items-end justify-between">

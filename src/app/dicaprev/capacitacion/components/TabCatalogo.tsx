@@ -2,14 +2,12 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import {
-  getCatalogo,
+  getCapacitaciones,
   createCapacitacion,
   updateCapacitacion,
-  subscribe,
-  CATEGORIA_CFG,
-  MODALIDAD_CFG,
-  type Capacitacion,
-} from "@/lib/capacitacion/capacitacion-store";
+  deleteCapacitacion,
+  type CapacitacionCatalogo,
+} from "@/actions/capacitaciones";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +17,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -44,12 +43,33 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const CATEGORIA_CFG: Record<string, { label: string; cls: string }> = {
+  induccion:   { label: "Inducción", cls: "bg-blue-50 text-blue-700 border border-blue-200" },
+  sst:         { label: "SST", cls: "bg-emerald-50 text-emerald-700 border border-emerald-200" },
+  normativa:   { label: "Normativa", cls: "bg-violet-50 text-violet-700 border border-violet-200" },
+  evacuacion:  { label: "Evacuación", cls: "bg-orange-50 text-orange-700 border border-orange-200" },
+  altura:      { label: "Altura", cls: "bg-rose-50 text-rose-700 border border-rose-200" },
+  herramientas:{ label: "Herramientas", cls: "bg-amber-50 text-amber-700 border border-amber-200" },
+  ergonomia:   { label: "Ergonomía", cls: "bg-teal-50 text-teal-700 border border-teal-200" },
+  quimicos:    { label: "Químicos", cls: "bg-pink-50 text-pink-700 border border-pink-200" },
+  otro:        { label: "Otro", cls: "bg-slate-50 text-slate-600 border border-slate-200" },
+  emergencia:  { label: "Emergencia", cls: "bg-red-50 text-red-700 border border-red-200" },
+  psicosocial: { label: "Psicosocial", cls: "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200" },
+  salud_ocupacional: { label: "Salud Ocupacional", cls: "bg-cyan-50 text-cyan-700 border border-cyan-200" },
+};
+
+const MODALIDAD_CFG: Record<string, { label: string; cls: string }> = {
+  presencial: { label: "Presencial", cls: "bg-indigo-50 text-indigo-700 border border-indigo-200" },
+  online:     { label: "Online", cls: "bg-cyan-50 text-cyan-700 border border-cyan-200" },
+  mixta:      { label: "Mixta", cls: "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200" },
+};
+
 type FormCap = {
   nombre: string;
   codigo: string;
   descripcion: string;
-  categoria: Capacitacion["categoria"];
-  modalidad: Capacitacion["modalidad"];
+  categoria: string;
+  modalidad: string;
   duracionHoras: string;
   vigenciaMeses: string;
   requiereEvaluacion: boolean;
@@ -78,15 +98,15 @@ const EMPTY_FORM: FormCap = {
   documentoUrl: "",
 };
 
-function capToForm(c: Capacitacion): FormCap {
+function capToForm(c: CapacitacionCatalogo): FormCap {
   return {
     nombre: c.nombre,
     codigo: c.codigo,
     descripcion: c.descripcion ?? "",
     categoria: c.categoria,
     modalidad: c.modalidad,
-    duracionHoras: String(c.duracionHoras),
-    vigenciaMeses: String(c.vigenciaMeses),
+    duracionHoras: c.duracionHoras > 0 ? String(c.duracionHoras) : "",
+    vigenciaMeses: c.vigenciaMeses > 0 ? String(c.vigenciaMeses) : "",
     requiereEvaluacion: c.requiereEvaluacion,
     requiereFirma: c.requiereFirma,
     generaCertificado: c.generaCertificado,
@@ -112,14 +132,27 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 }
 
 export default function TabCatalogo() {
-  const [catalogo, setCatalogo] = useState(() => getCatalogo());
+  const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filtroCategoria, setFiltroCategoria] = useState<Capacitacion["categoria"] | "todos">("todos");
+  const [filtroCategoria, setFiltroCategoria] = useState<string | "todos">("todos");
   const [modal, setModal] = useState<"crear" | "editar" | null>(null);
-  const [editTarget, setEditTarget] = useState<Capacitacion | null>(null);
+  const [editTarget, setEditTarget] = useState<CapacitacionCatalogo | null>(null);
   const [form, setForm] = useState<FormCap>(EMPTY_FORM);
 
-  useEffect(() => subscribe(() => setCatalogo(getCatalogo())), []);
+  const reloadCatalogo = async () => {
+    setLoading(true);
+    try {
+      const rows = await getCapacitaciones();
+      setCatalogo(rows);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void reloadCatalogo();
+  }, []);
 
   function field(key: keyof FormCap) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
@@ -143,37 +176,32 @@ export default function TabCatalogo() {
     setModal("crear");
   }
 
-  function openEditar(c: Capacitacion) {
+  function openEditar(c: CapacitacionCatalogo) {
     setEditTarget(c);
     setForm(capToForm(c));
     setModal("editar");
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const payload: Omit<Capacitacion, "id" | "createdAt"> = {
+    const payload = {
       activa: modal === "crear" ? true : (editTarget?.activa ?? true),
       nombre: form.nombre.trim(),
       codigo: form.codigo.trim().toUpperCase(),
       descripcion: form.descripcion.trim() || "",
       categoria: form.categoria,
       modalidad: form.modalidad,
-      duracionHoras: Number(form.duracionHoras),
-      vigenciaMeses: Number(form.vigenciaMeses),
+      duracionHoras: form.duracionHoras.trim() ? Number(form.duracionHoras) : null,
+      vigenciaMeses: form.vigenciaMeses.trim() ? Number(form.vigenciaMeses) : null,
       requiereEvaluacion: form.requiereEvaluacion,
       requiereFirma: form.requiereFirma,
       generaCertificado: form.generaCertificado,
       esObligatoria: form.esObligatoria,
-      aplicaCargos: [],
-      aplicaAreas: [],
-      aplicaCentros: [],
-      materialUrl: form.materialUrl || undefined,
-      videoUrl: form.videoUrl || undefined,
-      documentoUrl: form.documentoUrl || undefined,
+      // TODO(Fase 16.6): persistir recursos (material/video/documento) en modelo Prisma.
     };
 
     if (modal === "crear") {
-      const nueva = createCapacitacion(payload);
+      const nueva = await createCapacitacion(payload);
       registrarAccion({
         accion: "crear",
         modulo: "capacitacion",
@@ -182,7 +210,7 @@ export default function TabCatalogo() {
         descripcion: `Creó capacitación '${nueva.nombre}' (${nueva.codigo})`,
       });
     } else if (editTarget) {
-      updateCapacitacion(editTarget.id, payload);
+      await updateCapacitacion(editTarget.id, payload);
       registrarAccion({
         accion: "editar",
         modulo: "capacitacion",
@@ -192,10 +220,13 @@ export default function TabCatalogo() {
       });
     }
     setModal(null);
+    await reloadCatalogo();
   }
 
-  function handleToggleActiva(c: Capacitacion) {
-    updateCapacitacion(c.id, { activa: !c.activa });
+  async function handleToggleActiva(c: CapacitacionCatalogo) {
+    if (c.activa) await deleteCapacitacion(c.id);
+    else await updateCapacitacion(c.id, { activa: true });
+
     registrarAccion({
       accion: "cambiar_estado",
       modulo: "capacitacion",
@@ -203,6 +234,7 @@ export default function TabCatalogo() {
       entidadId: c.id,
       descripcion: `${c.activa ? "Desactivó" : "Activó"} capacitación '${c.nombre}'`,
     });
+    await reloadCatalogo();
   }
 
   return (
@@ -219,14 +251,14 @@ export default function TabCatalogo() {
               className="pl-9 h-9 rounded-xl border-slate-200 bg-slate-50 text-sm"
             />
           </div>
-          <Select value={filtroCategoria} onValueChange={(v) => setFiltroCategoria(v as Capacitacion["categoria"] | "todos")}>
+          <Select value={filtroCategoria} onValueChange={(v) => setFiltroCategoria(v as string | "todos")}>
             <SelectTrigger className="w-[180px] h-9 rounded-xl border-slate-200 text-sm bg-white">
               <SelectValue placeholder="Categoría" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todas las categorías</SelectItem>
-              {(Object.keys(CATEGORIA_CFG) as Capacitacion["categoria"][]).map((k) => (
-                <SelectItem key={k} value={k}>{CATEGORIA_CFG[k].label}</SelectItem>
+              {Object.entries(CATEGORIA_CFG).map(([k, cfg]) => (
+                <SelectItem key={k} value={k}>{cfg.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -238,16 +270,28 @@ export default function TabCatalogo() {
       </div>
 
       {/* Grid */}
-      {filtered.length === 0 ? (
+      {loading ? (
         <div className="bg-white border border-slate-200 rounded-2xl py-14 text-center shadow-sm">
           <BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" />
-          <p className="text-sm text-slate-400">Sin capacitaciones en el catálogo.</p>
+          <p className="text-sm text-slate-400">Cargando catálogo de capacitaciones…</p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl py-14 text-center shadow-sm">
+          <BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+          <p className="text-sm text-slate-500">
+            {catalogo.length === 0
+              ? "No hay capacitaciones cargadas para esta empresa."
+              : "No hay resultados para los filtros aplicados."}
+          </p>
+          {catalogo.length === 0 && (
+            <p className="text-xs text-slate-400 mt-1">Crea la primera capacitación para iniciar el catálogo.</p>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((c) => {
-            const catCfg = CATEGORIA_CFG[c.categoria];
-            const modCfg = MODALIDAD_CFG[c.modalidad];
+            const catCfg = CATEGORIA_CFG[c.categoria] ?? CATEGORIA_CFG.otro;
+            const modCfg = MODALIDAD_CFG[c.modalidad] ?? MODALIDAD_CFG.presencial;
             return (
               <div key={c.id} className={cn("bg-white border rounded-2xl shadow-sm flex flex-col overflow-hidden transition-all", c.activa ? "border-slate-200" : "border-slate-100 opacity-60")}>
                 <div className="px-4 pt-4 pb-3 flex items-start justify-between gap-2">
@@ -279,8 +323,8 @@ export default function TabCatalogo() {
                   <p className="px-4 text-xs text-slate-500 line-clamp-2 mb-3">{c.descripcion}</p>
                 )}
                 <div className="px-4 pb-3 flex items-center gap-4 text-[11px] text-slate-500 flex-wrap">
-                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {c.duracionHoras}h</span>
-                  <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3" /> Vigencia {c.vigenciaMeses} meses</span>
+                  <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> {c.duracionHoras || 0}h</span>
+                  <span className="flex items-center gap-1"><CalendarClock className="h-3 w-3" /> Vigencia {c.vigenciaMeses || 0} meses</span>
                   {c.generaCertificado && <span className="flex items-center gap-1"><Award className="h-3 w-3 text-amber-500" /> Certificado</span>}
                   {c.requiereEvaluacion && <span className="flex items-center gap-1"><FileCheck2 className="h-3 w-3 text-blue-500" /> Evaluación</span>}
                 </div>
@@ -313,8 +357,11 @@ export default function TabCatalogo() {
             <DialogTitle className="text-base font-semibold">
               {modal === "crear" ? "Nueva capacitación" : "Editar capacitación"}
             </DialogTitle>
+            <DialogDescription>
+              Completa o actualiza la información base de la capacitación en el catálogo.
+            </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4 pt-1">
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 pt-1">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 space-y-1">
                 <Label className="text-xs font-medium text-slate-600">Nombre</Label>
@@ -326,18 +373,18 @@ export default function TabCatalogo() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium text-slate-600">Categoría</Label>
-                <Select value={form.categoria} onValueChange={(v) => setForm((p) => ({ ...p, categoria: v as FormCap["categoria"] }))}>
+                  <Select value={form.categoria} onValueChange={(v) => setForm((p) => ({ ...p, categoria: v as FormCap["categoria"] }))}>
                   <SelectTrigger className="rounded-xl border-slate-200 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(CATEGORIA_CFG) as Capacitacion["categoria"][]).map((k) => (
-                      <SelectItem key={k} value={k}>{CATEGORIA_CFG[k].label}</SelectItem>
-                    ))}
+                      {Object.entries(CATEGORIA_CFG).map(([k, cfg]) => (
+                        <SelectItem key={k} value={k}>{cfg.label}</SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium text-slate-600">Modalidad</Label>
-                <Select value={form.modalidad} onValueChange={(v) => setForm((p) => ({ ...p, modalidad: v as Capacitacion["modalidad"] }))}>
+                <Select value={form.modalidad} onValueChange={(v) => setForm((p) => ({ ...p, modalidad: v }))}>
                   <SelectTrigger className="rounded-xl border-slate-200 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="presencial">Presencial</SelectItem>

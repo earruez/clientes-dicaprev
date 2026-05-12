@@ -6,7 +6,7 @@ import {
   DOCS_REQUERIDOS,
   type TipoDocumento,
   type TipoVehiculo,
-} from "@/lib/vehiculos/vehiculos-store";
+} from "./domain";
 
 // ── Types ───────────────────────────────────────────────────────────────── //
 
@@ -192,6 +192,26 @@ export async function getVehiculos(): Promise<VehiculoDTO[]> {
   return rows.map(toDTO);
 }
 
+export async function getVehiculoById(id: string): Promise<VehiculoDTO | null> {
+  const { empresaId } = await requirePermission("canReadEmpresa");
+
+  const row = await prisma.vehiculo.findFirst({
+    where: { id, empresaId },
+    include: INCLUDE,
+  });
+
+  if (!row) return null;
+
+  await ensureRequiredDocs(row.id, row.tipo);
+
+  const refreshed = await prisma.vehiculo.findUniqueOrThrow({
+    where: { id: row.id },
+    include: INCLUDE,
+  });
+
+  return toDTO(refreshed);
+}
+
 export async function getCentrosList(): Promise<CentroItem[]> {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
@@ -354,6 +374,16 @@ export async function getVehiculoDetalle(id: string): Promise<{
       kilometraje: m.kilometraje,
     })),
   };
+}
+
+export async function getVehiculoDocumentos(id: string): Promise<VehiculoDocumentoDTO[]> {
+  const detalle = await getVehiculoDetalle(id);
+  return detalle.documentos;
+}
+
+export async function getVehiculoMantenciones(id: string): Promise<VehiculoMantencionDTO[]> {
+  const detalle = await getVehiculoDetalle(id);
+  return detalle.mantenciones;
 }
 
 export async function upsertVehiculoDocumento(

@@ -21,7 +21,7 @@ import {
   diasParaVencer,
   DOC_NOMBRE,
   DOCS_REQUERIDOS,
-} from "@/lib/vehiculos/vehiculos-store";
+} from "./domain";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 import {
   crearMantencionVehiculo,

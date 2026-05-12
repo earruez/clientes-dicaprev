@@ -1,18 +1,16 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  getSesiones,
-  getCatalogo,
-  createSesion,
-  updateSesion,
-  subscribe,
-  ESTADO_SESION_CFG,
-  MODALIDAD_CFG,
-  type SesionCapacitacion,
-  type EstadoSesion,
-} from "@/lib/capacitacion/capacitacion-store";
-import { MOCK_WORKERS } from "@/components/trabajadores-v2/types";
+  cambiarEstadoCapacitacionSesion,
+  createCapacitacionSesion,
+  getCapacitacionSesiones,
+  getCapacitaciones,
+  updateCapacitacionSesion,
+  type CapacitacionCatalogo,
+  type CapacitacionSesion,
+  type EstadoCapacitacionSesion,
+} from "@/actions/capacitaciones";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +19,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -34,6 +33,7 @@ import {
 import {
   Calendar,
   Clock,
+  Loader2,
   MapPin,
   User,
   Users,
@@ -45,6 +45,21 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const ESTADO_SESION_CFG: Record<EstadoCapacitacionSesion, { label: string; cls: string }> = {
+  programada: { label: "Programada", cls: "bg-slate-50 text-slate-700 border-slate-200" },
+  en_curso: { label: "En curso", cls: "bg-violet-50 text-violet-700 border-violet-200" },
+  finalizada: { label: "Finalizada", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  cancelada: { label: "Cancelada", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+};
+
+const MODALIDAD_CFG: Record<string, { label: string; cls: string }> = {
+  presencial: { label: "Presencial", cls: "bg-slate-50 text-slate-700 border-slate-200" },
+  online: { label: "Online", cls: "bg-cyan-50 text-cyan-700 border-cyan-200" },
+  mixta: { label: "Mixta", cls: "bg-violet-50 text-violet-700 border-violet-200" },
+  hibrido: { label: "Hibrido", cls: "bg-violet-50 text-violet-700 border-violet-200" },
+  elearning: { label: "E-learning", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+};
+
 interface FormSesion {
   capacitacionId: string;
   titulo: string;
@@ -55,8 +70,7 @@ interface FormSesion {
   ubicacion: string;
   relator: string;
   cupos: string;
-  estado: EstadoSesion;
-  trabajadoresIds: string[];
+  estado: EstadoCapacitacionSesion;
 }
 
 const EMPTY_FORM: FormSesion = {
@@ -70,7 +84,6 @@ const EMPTY_FORM: FormSesion = {
   relator: "",
   cupos: "",
   estado: "programada",
-  trabajadoresIds: [],
 };
 
 function iconModalidad(m: string) {
@@ -84,8 +97,8 @@ function fmt(iso?: string) {
   return new Date(iso).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function group(sesiones: SesionCapacitacion[]) {
-  const mapa: Record<string, SesionCapacitacion[]> = {};
+function group(sesiones: CapacitacionSesion[]) {
+  const mapa: Record<string, CapacitacionSesion[]> = {};
   for (const s of sesiones) {
     const key = s.fecha.slice(0, 7); // YYYY-MM
     if (!mapa[key]) mapa[key] = [];
@@ -100,14 +113,32 @@ function mesLabel(yyyyMm: string) {
 }
 
 export default function TabCalendario() {
-  const [sesiones, setSesiones] = useState(() => getSesiones());
-  const [catalogo] = useState(() => getCatalogo());
+  const [sesiones, setSesiones] = useState<CapacitacionSesion[]>([]);
+  const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<"crear" | "editar" | null>(null);
-  const [editTarget, setEditTarget] = useState<SesionCapacitacion | null>(null);
+  const [editTarget, setEditTarget] = useState<CapacitacionSesion | null>(null);
   const [form, setForm] = useState<FormSesion>(EMPTY_FORM);
-  const [searchWorker, setSearchWorker] = useState("");
 
-  useEffect(() => subscribe(() => setSesiones(getSesiones())), []);
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [ses, caps] = await Promise.all([getCapacitacionSesiones(), getCapacitaciones()]);
+      setSesiones(ses);
+      setCatalogo(caps);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No fue posible cargar sesiones");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const grouped = useMemo(() => group(sesiones), [sesiones]);
 
@@ -117,7 +148,7 @@ export default function TabCalendario() {
     setModal("crear");
   }
 
-  function openEditar(s: SesionCapacitacion) {
+  function openEditar(s: CapacitacionSesion) {
     setEditTarget(s);
     setForm({
       capacitacionId: s.capacitacionId,
@@ -130,21 +161,11 @@ export default function TabCalendario() {
       relator: s.relator ?? "",
       cupos: s.cupos ? String(s.cupos) : "",
       estado: s.estado,
-      trabajadoresIds: [...s.trabajadoresIds],
     });
     setModal("editar");
   }
 
-  function toggleWorker(id: string) {
-    setForm((p) => ({
-      ...p,
-      trabajadoresIds: p.trabajadoresIds.includes(id)
-        ? p.trabajadoresIds.filter((x) => x !== id)
-        : [...p.trabajadoresIds, id],
-    }));
-  }
-
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const cap = catalogo.find((c) => c.id === form.capacitacionId);
     const payload = {
@@ -157,48 +178,60 @@ export default function TabCalendario() {
       ubicacion: form.ubicacion || undefined,
       relator: form.relator || undefined,
       cupos: form.cupos ? Number(form.cupos) : undefined,
-      estado: form.estado,
-      trabajadoresIds: form.trabajadoresIds,
     };
 
-    if (modal === "crear") {
-      const nueva = createSesion(payload);
-      registrarAccion({
-        accion: "crear",
-        modulo: "capacitacion",
-        entidadTipo: "Sesión",
-        entidadId: nueva.id,
-        descripcion: `Creó sesión '${nueva.titulo}' para ${fmt(nueva.fecha)}`,
-      });
-    } else if (editTarget) {
-      updateSesion(editTarget.id, payload);
-      registrarAccion({
-        accion: "editar",
-        modulo: "capacitacion",
-        entidadTipo: "Sesión",
-        entidadId: editTarget.id,
-        descripcion: `Editó sesión '${payload.titulo}'`,
-      });
+    setSaving(true);
+    setError(null);
+    try {
+      if (modal === "crear") {
+        const nueva = await createCapacitacionSesion(payload);
+        if (form.estado !== "programada") {
+          await cambiarEstadoCapacitacionSesion(nueva.id, { estado: form.estado });
+        }
+        registrarAccion({
+          accion: "crear",
+          modulo: "capacitacion",
+          entidadTipo: "Sesión",
+          entidadId: nueva.id,
+          descripcion: `Creó sesión '${nueva.titulo}' para ${fmt(nueva.fecha)}`,
+        });
+      } else if (editTarget) {
+        await updateCapacitacionSesion(editTarget.id, payload);
+        if (form.estado !== editTarget.estado) {
+          await cambiarEstadoCapacitacionSesion(editTarget.id, { estado: form.estado });
+        }
+        registrarAccion({
+          accion: "editar",
+          modulo: "capacitacion",
+          entidadTipo: "Sesión",
+          entidadId: editTarget.id,
+          descripcion: `Editó sesión '${payload.titulo}'`,
+        });
+      }
+      setModal(null);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No fue posible guardar la sesión");
+    } finally {
+      setSaving(false);
     }
-    setModal(null);
   }
-
-  const filteredWorkers = useMemo(() =>
-    MOCK_WORKERS.filter((w) => {
-      if (!searchWorker) return true;
-      const q = searchWorker.toLowerCase();
-      return `${w.nombre} ${w.apellido}`.toLowerCase().includes(q) || w.cargo.toLowerCase().includes(q);
-    }),
-    [searchWorker]
-  );
 
   return (
     <div className="space-y-5">
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
       {/* Header bar */}
       <div className="flex items-center justify-between bg-white border border-slate-200 rounded-2xl px-5 py-3 shadow-sm">
-        <p className="text-sm font-medium text-slate-600">{sesiones.length} sesiones programadas</p>
-        <Button onClick={openCrear} className="rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white" size="sm">
-          <Plus className="h-4 w-4 mr-1.5" />
+        <p className="text-sm font-medium text-slate-600">
+          {loading ? "Cargando sesiones..." : `${sesiones.length} sesiones programadas`}
+        </p>
+        <Button onClick={openCrear} disabled={loading || saving} className="rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white" size="sm">
+          {saving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Plus className="h-4 w-4 mr-1.5" />}
           Nueva sesión
         </Button>
       </div>
@@ -218,7 +251,7 @@ export default function TabCalendario() {
             <div className="space-y-2">
               {items.map((s) => {
                 const cfg = ESTADO_SESION_CFG[s.estado];
-                const modCfg = MODALIDAD_CFG[s.modalidad];
+                const modCfg = MODALIDAD_CFG[s.modalidad] ?? MODALIDAD_CFG.presencial;
                 const cap = catalogo.find((c) => c.id === s.capacitacionId);
                 return (
                   <div
@@ -268,7 +301,7 @@ export default function TabCalendario() {
                         )}
                         <span className="flex items-center gap-1">
                           <Users className="h-3 w-3" />
-                          {s.trabajadoresIds.length}{s.cupos ? `/${s.cupos}` : ""} participantes
+                          {s.asistentesConfirmados ?? 0}{s.cupos ? `/${s.cupos}` : ""} participantes
                         </span>
                       </div>
                     </div>
@@ -293,6 +326,9 @@ export default function TabCalendario() {
             <DialogTitle className="text-base font-semibold">
               {modal === "crear" ? "Nueva sesión" : "Editar sesión"}
             </DialogTitle>
+            <DialogDescription>
+              Configura fecha, modalidad y participantes de la sesión seleccionada.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 pt-1">
             <div className="grid grid-cols-2 gap-3">
@@ -360,12 +396,12 @@ export default function TabCalendario() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium text-slate-600">Estado</Label>
-                <Select value={form.estado} onValueChange={(v) => setForm((p) => ({ ...p, estado: v as EstadoSesion }))}>
+                <Select value={form.estado} onValueChange={(v) => setForm((p) => ({ ...p, estado: v as EstadoCapacitacionSesion }))}>
                   <SelectTrigger className="rounded-xl border-slate-200 text-sm">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(ESTADO_SESION_CFG) as EstadoSesion[]).map((e) => (
+                    {(Object.keys(ESTADO_SESION_CFG) as EstadoCapacitacionSesion[]).map((e) => (
                       <SelectItem key={e} value={e}>{ESTADO_SESION_CFG[e].label}</SelectItem>
                     ))}
                   </SelectContent>
@@ -373,35 +409,10 @@ export default function TabCalendario() {
               </div>
             </div>
 
-            {/* Seleccionar participantes */}
-            <div className="space-y-2">
-              <Label className="text-xs font-medium text-slate-600">
-                Participantes ({form.trabajadoresIds.length} seleccionados)
-              </Label>
-              <Input
-                placeholder="Buscar trabajador…"
-                value={searchWorker}
-                onChange={(e) => setSearchWorker(e.target.value)}
-                className="rounded-xl border-slate-200 text-sm"
-              />
-              <div className="border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto divide-y divide-slate-50">
-                {filteredWorkers.map((w) => {
-                  const checked = form.trabajadoresIds.includes(w.id);
-                  return (
-                    <label key={w.id} className={cn("flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 transition-colors", checked && "bg-cyan-50/60")}>
-                      <input type="checkbox" checked={checked} onChange={() => toggleWorker(w.id)} className="accent-cyan-600 h-4 w-4" />
-                      <span className="text-sm text-slate-700">{w.nombre} {w.apellido}</span>
-                      <span className="text-xs text-slate-400 ml-auto">{w.cargo}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
             <DialogFooter>
               <Button type="button" variant="outline" className="rounded-xl" onClick={() => setModal(null)}>Cancelar</Button>
-              <Button type="submit" className="rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white">
-                {modal === "crear" ? "Crear sesión" : "Guardar cambios"}
+              <Button type="submit" disabled={saving} className="rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white">
+                {saving ? "Guardando..." : modal === "crear" ? "Crear sesión" : "Guardar cambios"}
               </Button>
             </DialogFooter>
           </form>

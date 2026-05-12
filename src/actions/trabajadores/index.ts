@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { Worker, WorkerContrato, WorkerEstado } from "@/components/trabajadores-v2/types";
 
+export type { Worker, WorkerContrato, WorkerEstado };
+
 type DbTrabajador = Awaited<ReturnType<typeof fetchTrabajadorById>>;
 
 async function fetchTrabajadorById(id: string, empresaId: string) {
@@ -62,7 +64,7 @@ function normalizeWorker(row: NonNullable<DbTrabajador>): Worker {
     telefono: row.telefono ?? "",
     estado: mapDbEstadoToUi(row.estado),
     fechaIngreso: row.fechaIngreso ? row.fechaIngreso.toISOString().slice(0, 10) : "",
-    fechaNacimiento: "",
+    fechaNacimiento: row.fechaNacimiento ? row.fechaNacimiento.toISOString().slice(0, 10) : "",
     tipoContrato: mapDbContratoToUi(row.tipoContrato),
     documentosPendientes,
     capacitacionesPendientes: 0,
@@ -127,6 +129,7 @@ async function toDbPayload(worker: Worker, empresaId: string) {
     telefono: worker.telefono.trim() || null,
     estado: mapUiEstadoToDb(worker.estado),
     fechaIngreso: parseDateOnly(worker.fechaIngreso),
+    fechaNacimiento: parseDateOnly(worker.fechaNacimiento),
     tipoContrato: worker.tipoContrato,
     centroTrabajoId,
     areaId,
@@ -139,7 +142,12 @@ export async function getTrabajadores(): Promise<Worker[]> {
   const { empresaId } = await requirePermission("canReadTrabajadores");
 
   const rows = await prisma.trabajador.findMany({
-    where: { empresaId },
+    where: {
+      empresaId,
+      estado: {
+        not: "inactivo",
+      },
+    },
     include: {
       centroTrabajo: { select: { id: true, nombre: true } },
       area: { select: { id: true, nombre: true } },
@@ -192,4 +200,42 @@ export async function deleteTrabajador(id: string): Promise<Worker> {
 
   const row = await fetchTrabajadorById(id, empresaId);
   return normalizeWorker(row);
+}
+
+export type OpcionesTrabajador = {
+  cargos: { id: string; nombre: string; areaNombre: string | null }[];
+  areas: { id: string; nombre: string }[];
+  centros: { id: string; nombre: string }[];
+};
+
+export async function getOpcionesTrabajador(): Promise<OpcionesTrabajador> {
+  const { empresaId } = await requirePermission("canReadTrabajadores");
+
+  const [cargos, areas, centros] = await Promise.all([
+    prisma.cargo.findMany({
+      where: { empresaId, estado: "activo" },
+      select: { id: true, nombre: true, areaId: true },
+      orderBy: { nombre: "asc" },
+    }),
+    prisma.area.findMany({
+      where: { empresaId },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: "asc" },
+    }),
+    prisma.centroTrabajo.findMany({
+      where: { empresaId },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: "asc" },
+    }),
+  ]);
+
+  return {
+    cargos: cargos.map((c) => ({
+      id: c.id,
+      nombre: c.nombre,
+      areaNombre: areas.find((a) => a.id === c.areaId)?.nombre ?? null,
+    })),
+    areas:  areas.map((a) => ({ id: a.id, nombre: a.nombre })),
+    centros: centros.map((c) => ({ id: c.id, nombre: c.nombre })),
+  };
 }

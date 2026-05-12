@@ -56,8 +56,8 @@ export function useTrabajadores(): UseTrabajadoresResult {
 
   const eliminarTrabajadorHandler = useCallback(async (id: string) => {
     setError(null);
-    const updated = await deleteTrabajador(id);
-    setTrabajadores((prev) => prev.map((item) => (item.id === id ? updated : item)));
+    await deleteTrabajador(id);
+    setTrabajadores((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
   return {

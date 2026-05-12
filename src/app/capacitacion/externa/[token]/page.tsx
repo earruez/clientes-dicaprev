@@ -3,12 +3,11 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import {
-  getAsignacionByToken,
-  getCapacitacionById,
-  updateAsignacion,
-} from "@/lib/capacitacion/capacitacion-store";
-import { registrarAccion } from "@/lib/auditoria/audit-store";
-import type { AsignacionCapacitacion, Capacitacion } from "@/lib/capacitacion/capacitacion-store";
+  avanzarCapacitacionAsignacionPublica,
+  getCapacitacionAsignacionPublica,
+  type AsignacionCapacitacion,
+  type CapacitacionCatalogo,
+} from "@/actions/capacitaciones";
 import { CheckCircle2, BookOpen, Video, FileText, Clock, AlertTriangle, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -65,26 +64,28 @@ export default function ExternaPage() {
   const token = typeof params?.token === "string" ? params.token : Array.isArray(params?.token) ? params.token[0] : "";
 
   const [asignacion, setAsignacion] = useState<AsignacionCapacitacion | null | undefined>(undefined);
-  const [capacitacion, setCapacitacion] = useState<Capacitacion | null>(null);
+  const [capacitacion, setCapacitacion] = useState<CapacitacionCatalogo | null>(null);
   const [paso, setPaso] = useState<Paso>("bienvenida");
   const [respuestas, setRespuestas] = useState<Record<number, number>>({});
   const [firma, setFirma] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [nota, setNota] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
-    const asig = getAsignacionByToken(token);
-    setAsignacion(asig ?? null);
-    if (asig) {
-      const cap = getCapacitacionById(asig.capacitacionId);
-      setCapacitacion(cap ?? null);
-      if (asig.estado === "en_proceso") {
-        // already opened
-      } else if (asig.estado === "enviada") {
-        updateAsignacion(asig.id, { estado: "en_proceso", fechaInicio: new Date().toISOString().slice(0, 10) });
+    void (async () => {
+      try {
+        setError(null);
+        const data = await getCapacitacionAsignacionPublica(token);
+        setAsignacion(data?.asignacion ?? null);
+        setCapacitacion(data?.capacitacion ?? null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Error al cargar capacitación");
+        setAsignacion(null);
+        setCapacitacion(null);
       }
-    }
+    })();
   }, [token]);
 
   function calcularNota() {
@@ -102,27 +103,25 @@ export default function ExternaPage() {
     e.preventDefault();
     if (!asignacion || !firma.trim()) return;
     setEnviando(true);
+    setError(null);
 
     const notaFinal = nota ?? calcularNota();
     const aprobado = notaFinal >= 4;
 
-    updateAsignacion(asignacion.id, {
-      estado: aprobado ? "aprobada" : "rechazada",
-      nota: notaFinal,
-      aprobado,
-      fechaRespuesta: new Date().toISOString().slice(0, 10),
-    });
-
-    registrarAccion({
-      accion: "cambiar_estado",
-      modulo: "capacitacion",
-      entidadTipo: "Asignación",
-      entidadId: asignacion.id,
-      descripcion: `Trabajador completó capacitación vía enlace externo. Nota: ${notaFinal.toFixed(1)} — ${aprobado ? "Aprobado" : "Reprobado"}`,
-    });
-
-    setPaso("completado");
-    setEnviando(false);
+    try {
+      const updated = await avanzarCapacitacionAsignacionPublica(token, {
+        estado: "completada",
+        nota: notaFinal,
+        aprobado,
+        observacion: `Firma electrónica registrada por ${firma.trim()}`,
+      });
+      setAsignacion(updated);
+      setPaso("completado");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al registrar la firma");
+    } finally {
+      setEnviando(false);
+    }
   }
 
   // ── Loading ──────────────────────────────────────────────────────────── //
@@ -143,14 +142,14 @@ export default function ExternaPage() {
             <AlertTriangle className="h-7 w-7 text-slate-400" />
           </div>
           <h1 className="text-lg font-semibold text-slate-800">Enlace no válido</h1>
-          <p className="text-sm text-slate-500">Este enlace de capacitación no existe o ya no está activo. Contacta a tu area de prevención.</p>
+          <p className="text-sm text-slate-500">{error ?? "Este enlace de capacitación no existe o ya no está activo. Contacta a tu area de prevención."}</p>
         </div>
       </div>
     );
   }
 
   // ── Already completed ────────────────────────────────────────────────── //
-  if (["aprobada", "rechazada"].includes(asignacion.estado) && paso !== "completado") {
+  if ((asignacion.estado === "completada" || ["aprobada", "rechazada"].includes(asignacion.estado)) && paso !== "completado") {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-sm w-full bg-white rounded-2xl shadow-sm border border-slate-200 p-8 text-center space-y-4">
@@ -201,13 +200,27 @@ export default function ExternaPage() {
             </div>
             <button
               onClick={() => {
-                updateAsignacion(asignacion.id, { estado: "en_proceso" });
-                setPaso("material");
+                void (async () => {
+                  try {
+                    setError(null);
+                    const updated = await avanzarCapacitacionAsignacionPublica(token, { estado: "en_progreso" });
+                    setAsignacion(updated);
+                    setPaso("material");
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Error al iniciar la capacitación");
+                  }
+                })();
               }}
               className="w-full rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-medium py-3 transition-colors"
             >
               Comenzar capacitación
             </button>
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
           </div>
         )}
 

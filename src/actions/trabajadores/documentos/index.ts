@@ -141,6 +141,7 @@ function mapWorkerRow(row: {
   telefono: string | null;
   estado: string;
   fechaIngreso: Date | null;
+  fechaNacimiento: Date | null;
   tipoContrato: string | null;
   cargo: { nombre: string } | null;
   area: { nombre: string } | null;
@@ -169,7 +170,7 @@ function mapWorkerRow(row: {
             ? "Vacaciones"
             : "Activo",
     fechaIngreso: row.fechaIngreso ? row.fechaIngreso.toISOString().slice(0, 10) : "",
-    fechaNacimiento: "",
+    fechaNacimiento: row.fechaNacimiento ? row.fechaNacimiento.toISOString().slice(0, 10) : "",
     tipoContrato:
       row.tipoContrato === "Plazo Fijo" || row.tipoContrato === "Por Obra" || row.tipoContrato === "Part Time"
         ? row.tipoContrato
@@ -377,12 +378,19 @@ export async function getReglasDocumentoTrabajador(): Promise<ReglaDocumental[]>
   }));
 }
 
-export async function getControlDocumentalTrabajadores(): Promise<ControlDocumentalTrabajadoresPayload> {
+export async function getControlDocumentalTrabajadores(includeInactivos = false): Promise<ControlDocumentalTrabajadoresPayload> {
   const { empresaId } = await requirePermission("canReadTrabajadores");
 
-  const [trabajadoresRows, tiposRows, reglasRows, docsRows] = await Promise.all([
+  const [trabajadoresRows, tiposRows, reglasRows] = await Promise.all([
     prisma.trabajador.findMany({
-      where: { empresaId },
+      where: includeInactivos
+        ? { empresaId }
+        : {
+            empresaId,
+            estado: {
+              not: "inactivo",
+            },
+          },
       include: {
         cargo: { select: { nombre: true } },
         area: { select: { nombre: true } },
@@ -405,21 +413,25 @@ export async function getControlDocumentalTrabajadores(): Promise<ControlDocumen
       },
       orderBy: [{ createdAt: "asc" }],
     }),
-    prisma.trabajadorDocumento.findMany({
-      where: { empresaId },
-      select: {
-        id: true,
-        trabajadorId: true,
-        tipo: true,
-        estado: true,
-        createdAt: true,
-        fechaVencimiento: true,
-        creadoPorEmail: true,
-        observaciones: true,
-      },
-      orderBy: [{ createdAt: "desc" }],
-    }),
   ]);
+
+  const workerIds = trabajadoresRows.map((w) => w.id);
+  const docsRows = workerIds.length
+    ? await prisma.trabajadorDocumento.findMany({
+        where: { empresaId, trabajadorId: { in: workerIds } },
+        select: {
+          id: true,
+          trabajadorId: true,
+          tipo: true,
+          estado: true,
+          createdAt: true,
+          fechaVencimiento: true,
+          creadoPorEmail: true,
+          observaciones: true,
+        },
+        orderBy: [{ createdAt: "desc" }],
+      })
+    : [];
 
   const tipos = tiposRows.map((row) => ({
     id: row.id,

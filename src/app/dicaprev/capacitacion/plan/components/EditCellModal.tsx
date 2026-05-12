@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Role, Course, Requirement, TrainingStatus } from "./utils";
 
 type Props = {
@@ -20,6 +21,7 @@ type Props = {
   roles: Role[];
   courses: Course[];
   onSave: (req: Requirement) => void;
+  saving?: boolean;
 };
 
 export default function EditCellModal({
@@ -29,6 +31,7 @@ export default function EditCellModal({
   roles,
   courses,
   onSave,
+  saving,
 }: Props) {
   const [local, setLocal] = React.useState<Requirement | null>(selectedCell);
 
@@ -86,6 +89,55 @@ export default function EditCellModal({
               </Select>
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">Periodicidad</Label>
+              <Select
+                value={local.periodicidad ?? "anual"}
+                onValueChange={(v) => setLocal((prev) => prev ? { ...prev, periodicidad: v } : prev)}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="anual">Anual</SelectItem>
+                  <SelectItem value="semestral">Semestral</SelectItem>
+                  <SelectItem value="trimestral">Trimestral</SelectItem>
+                  <SelectItem value="puntual">Puntual</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Mes programado (1–12)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                placeholder="ej. 3"
+                value={local.mesProgramado ?? ""}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  const v = e.target.value === "" ? null : Number(e.target.value);
+                  setLocal((prev) => prev ? { ...prev, mesProgramado: v } : prev);
+                }}
+                className="h-9 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Obligatorio</Label>
+              <Select
+                value={local.obligatorio !== false ? "si" : "no"}
+                onValueChange={(v) =>
+                  setLocal((prev) => prev ? { ...prev, obligatorio: v === "si" } : prev)
+                }
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="si">Sí</SelectItem>
+                  <SelectItem value="no">No</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Última capacitación</Label>
               <Input
                 placeholder="dd-mm-aaaa"
@@ -108,23 +160,38 @@ export default function EditCellModal({
               />
             </div>
           </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">Observaciones</Label>
+            <Textarea
+              placeholder="Notas u observaciones del ítem…"
+              value={local.observaciones ?? ""}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setLocal((prev) => prev ? { ...prev, observaciones: e.target.value } : prev)
+              }
+              className="text-xs resize-none"
+              rows={2}
+            />
+          </div>
         </div>
         <DialogFooter className="mt-4">
           <Button
             variant="outline"
             className="rounded-xl"
             onClick={() => onOpenChange(false)}
+            disabled={saving}
           >
             Cancelar
           </Button>
           <Button
             className="rounded-xl"
+            disabled={saving}
             onClick={() => {
               onSave(local);
               onOpenChange(false);
             }}
           >
-            Guardar cambios
+            {saving ? "Guardando…" : "Guardar cambios"}
           </Button>
         </DialogFooter>
       </DialogContent>

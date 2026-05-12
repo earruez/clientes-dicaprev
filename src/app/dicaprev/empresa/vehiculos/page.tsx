@@ -1,4 +1,4 @@
-import { getVehiculos, getCentrosList } from "./actions";
+import { getVehiculos, getCentrosList } from "@/actions/vehiculos";
 import VehiculosPrismaClient from "./VehiculosPrismaClient";
 
 export default async function VehiculosPage() {

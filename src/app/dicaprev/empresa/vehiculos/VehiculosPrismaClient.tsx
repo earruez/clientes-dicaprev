@@ -24,7 +24,7 @@ import {
   type TipoVehiculo,
   type EstadoVehiculo,
   type EstadoDocumental,
-} from "@/lib/vehiculos/vehiculos-store";
+} from "./domain";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {

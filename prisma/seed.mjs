@@ -228,8 +228,203 @@ const workerDocumentTypesBase = [
   },
 ];
 
+const capacitacionesBase = [
+  {
+    codigo: "CAP-ODI-001",
+    nombre: "Obligacion de Informar Riesgos ODI",
+    descripcion: "Capacitacion sobre ODI y riesgos especificos del puesto de trabajo.",
+    categoria: "sst",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-EPP-001",
+    nombre: "Uso correcto de EPP",
+    descripcion: "Uso, mantenimiento y reposicion de elementos de proteccion personal.",
+    categoria: "sst",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: false,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-MMC-001",
+    nombre: "Manejo manual de cargas",
+    descripcion: "Tecnicas seguras para manipulacion manual de cargas y prevencion de lesiones.",
+    categoria: "sst",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 24,
+    requiereEvaluacion: false,
+    requiereFirma: true,
+    generaCertificado: false,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-ALT-001",
+    nombre: "Prevencion de caidas",
+    descripcion: "Controles preventivos para trabajo en altura y prevencion de caidas a distinto nivel.",
+    categoria: "sst",
+    modalidad: "presencial",
+    duracionHoras: 4,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-EME-001",
+    nombre: "Emergencias y evacuacion",
+    descripcion: "Procedimientos de respuesta ante emergencia y rutas de evacuacion.",
+    categoria: "emergencia",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 12,
+    requiereEvaluacion: false,
+    requiereFirma: true,
+    generaCertificado: false,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-EXT-001",
+    nombre: "Uso de extintores",
+    descripcion: "Uso practico y seguro de extintores segun tipo de fuego.",
+    categoria: "emergencia",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-PAU-001",
+    nombre: "Primeros auxilios basicos",
+    descripcion: "Conceptos y tecnicas basicas de primeros auxilios en faena.",
+    categoria: "salud_ocupacional",
+    modalidad: "presencial",
+    duracionHoras: 4,
+    vigenciaMeses: 24,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: false,
+  },
+  {
+    codigo: "CAP-IND-001",
+    nombre: "Induccion trabajador nuevo",
+    descripcion: "Induccion inicial para nuevos ingresos sobre normas, riesgos y procedimientos.",
+    categoria: "induccion",
+    modalidad: "presencial",
+    duracionHoras: 4,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-RPS-001",
+    nombre: "Riesgos psicosociales",
+    descripcion: "Sensibilizacion sobre factores de riesgo psicosocial y medidas preventivas.",
+    categoria: "psicosocial",
+    modalidad: "online",
+    duracionHoras: 2,
+    vigenciaMeses: null,
+    requiereEvaluacion: false,
+    requiereFirma: false,
+    generaCertificado: false,
+    esObligatoria: false,
+  },
+  {
+    codigo: "CAP-OYA-001",
+    nombre: "Orden y aseo en el lugar de trabajo",
+    descripcion: "Buenas practicas de orden, limpieza y estandar 5S en areas de trabajo.",
+    categoria: "sst",
+    modalidad: "online",
+    duracionHoras: 1,
+    vigenciaMeses: null,
+    requiereEvaluacion: false,
+    requiereFirma: false,
+    generaCertificado: false,
+    esObligatoria: true,
+  },
+];
+
+const planCapacitacionBase = [
+  {
+    codigo: "CAP-ODI-001",
+    periodicidad: "anual",
+    mesProgramado: 1,
+    obligatorio: true,
+    target: "general",
+  },
+  {
+    codigo: "CAP-EPP-001",
+    periodicidad: "anual",
+    mesProgramado: 1,
+    obligatorio: true,
+    target: "area_terreno",
+  },
+  {
+    codigo: "CAP-MMC-001",
+    periodicidad: "anual",
+    mesProgramado: 2,
+    obligatorio: true,
+    target: "area_terreno",
+  },
+  {
+    codigo: "CAP-EME-001",
+    periodicidad: "anual",
+    mesProgramado: 3,
+    obligatorio: true,
+    target: "centro_principal",
+  },
+  {
+    codigo: "CAP-EXT-001",
+    periodicidad: "anual",
+    mesProgramado: 3,
+    obligatorio: true,
+    target: "centro_principal",
+  },
+  {
+    codigo: "CAP-PAU-001",
+    periodicidad: "anual",
+    mesProgramado: 4,
+    obligatorio: false,
+    target: "centro_principal",
+  },
+  {
+    codigo: "CAP-RPS-001",
+    periodicidad: "anual",
+    mesProgramado: 6,
+    obligatorio: false,
+    target: "general",
+  },
+  {
+    codigo: "CAP-OYA-001",
+    periodicidad: "trimestral",
+    mesProgramado: 1,
+    obligatorio: true,
+    target: "area_terreno",
+  },
+];
+
 async function main() {
   await normalizarRequerimientosPlantillas();
+
+  const capacitacionesSeed = await seedCapacitacionesBase();
+  const planSeed = await seedPlanCapacitacionBase();
 
   for (const doc of requiredDocs) {
     await prisma.documentoRequeridoEmpresa.upsert({
@@ -258,8 +453,73 @@ async function main() {
 
   console.log(`Seed completado: ${requiredDocs.length} documentos requeridos.`);
   console.log(
+    `Capacitaciones base: ${capacitacionesSeed.creadas} creadas, ${capacitacionesSeed.actualizadas} actualizadas.`,
+  );
+  console.log(
     `Control documental trabajadores: ${workerSeed.tiposCreados} tipos creados, ${workerSeed.tiposActualizados} tipos actualizados, ${workerSeed.reglasCreadas} reglas creadas, ${workerSeed.reglasActualizadas} reglas actualizadas.`
   );
+  console.log(
+    `Plan de capacitacion: ${planSeed.reglasCreadas} reglas creadas, ${planSeed.reglasActualizadas} reglas actualizadas, ${planSeed.plantillasCreadas} plantillas creadas, ${planSeed.plantillasActualizadas} plantillas actualizadas, ${planSeed.itemsCreados} items creados, ${planSeed.itemsActualizados} items actualizados.`
+  );
+}
+
+async function seedCapacitacionesBase() {
+  const empresas = await prisma.empresa.findMany({
+    select: { id: true },
+  });
+
+  if (empresas.length === 0) {
+    console.log("Capacitaciones base: sin empresas, se omite seeding.");
+    return { creadas: 0, actualizadas: 0 };
+  }
+
+  const counters = { creadas: 0, actualizadas: 0 };
+
+  for (const empresa of empresas) {
+    for (const cap of capacitacionesBase) {
+      const existing = await prisma.capacitacion.findUnique({
+        where: {
+          empresaId_codigo: {
+            empresaId: empresa.id,
+            codigo: cap.codigo,
+          },
+        },
+        select: { id: true },
+      });
+
+      await prisma.capacitacion.upsert({
+        where: {
+          empresaId_codigo: {
+            empresaId: empresa.id,
+            codigo: cap.codigo,
+          },
+        },
+        create: {
+          empresaId: empresa.id,
+          ...cap,
+          activa: true,
+        },
+        update: {
+          nombre: cap.nombre,
+          descripcion: cap.descripcion,
+          categoria: cap.categoria,
+          modalidad: cap.modalidad,
+          duracionHoras: cap.duracionHoras,
+          vigenciaMeses: cap.vigenciaMeses,
+          requiereEvaluacion: cap.requiereEvaluacion,
+          requiereFirma: cap.requiereFirma,
+          generaCertificado: cap.generaCertificado,
+          esObligatoria: cap.esObligatoria,
+          activa: true,
+        },
+      });
+
+      if (existing) counters.actualizadas += 1;
+      else counters.creadas += 1;
+    }
+  }
+
+  return counters;
 }
 
 async function seedWorkerDocumentControlBase() {
@@ -432,6 +692,260 @@ async function seedWorkerDocumentControlBase() {
   }
 
   return counters;
+}
+
+async function seedPlanCapacitacionBase() {
+  const empresas = await prisma.empresa.findMany({
+    select: { id: true },
+  });
+
+  if (empresas.length === 0) {
+    console.log("Plan de capacitacion: sin empresas, se omite seeding.");
+    return {
+      reglasCreadas: 0,
+      reglasActualizadas: 0,
+      plantillasCreadas: 0,
+      plantillasActualizadas: 0,
+      itemsCreados: 0,
+      itemsActualizados: 0,
+    };
+  }
+
+  const counters = {
+    reglasCreadas: 0,
+    reglasActualizadas: 0,
+    plantillasCreadas: 0,
+    plantillasActualizadas: 0,
+    itemsCreados: 0,
+    itemsActualizados: 0,
+  };
+
+  const capacitacionCodigos = planCapacitacionBase.map((item) => item.codigo);
+
+  for (const empresa of empresas) {
+    const [capacitaciones, cargos, areas, centros] = await Promise.all([
+      prisma.capacitacion.findMany({
+        where: {
+          empresaId: empresa.id,
+          codigo: { in: capacitacionCodigos },
+        },
+        select: { id: true, codigo: true },
+      }),
+      prisma.cargo.findMany({
+        where: { empresaId: empresa.id, estado: "activo" },
+        select: { id: true, nombre: true },
+      }),
+      prisma.area.findMany({
+        where: { empresaId: empresa.id, estado: "activa" },
+        select: { id: true, nombre: true },
+      }),
+      prisma.centroTrabajo.findMany({
+        where: { empresaId: empresa.id, estado: "activo" },
+        select: { id: true, nombre: true },
+      }),
+    ]);
+
+    const capacitacionByCode = new Map(capacitaciones.map((cap) => [cap.codigo, cap]));
+    const areaTerreno = areas.find((area) => /(produccion|operacion|instalacion|terreno|obra)/i.test(area.nombre));
+    const centroPrincipal = centros[0] ?? null;
+
+    const targetByKind = {
+      general: { cargoId: null, areaId: null, centroTrabajoId: null },
+      area_terreno: areaTerreno
+        ? { cargoId: null, areaId: areaTerreno.id, centroTrabajoId: null }
+        : { cargoId: null, areaId: null, centroTrabajoId: null },
+      centro_principal: centroPrincipal
+        ? { cargoId: null, areaId: null, centroTrabajoId: centroPrincipal.id }
+        : { cargoId: null, areaId: null, centroTrabajoId: null },
+    };
+
+    for (const planItem of planCapacitacionBase) {
+      const capacitacion = capacitacionByCode.get(planItem.codigo);
+      if (!capacitacion) {
+        continue;
+      }
+
+      const target = targetByKind[planItem.target] ?? targetByKind.general;
+
+      const result = await upsertReglaCapacitacionCargo({
+        empresaId: empresa.id,
+        capacitacionId: capacitacion.id,
+        cargoId: target.cargoId,
+        areaId: target.areaId,
+        centroTrabajoId: target.centroTrabajoId,
+        tipoContrato: null,
+        obligatorio: planItem.obligatorio,
+        periodicidad: planItem.periodicidad,
+        activo: true,
+      });
+
+      if (result === "created") counters.reglasCreadas += 1;
+      else counters.reglasActualizadas += 1;
+    }
+
+    const plantillaResult = await upsertPlantillaPlanCapacitacion({
+      empresaId: empresa.id,
+      nombre: "Plan anual estándar SST",
+      descripcion: "Plantilla base anual para el plan de capacitacion SST de la empresa.",
+      tipoEmpresa: null,
+      activa: true,
+    });
+
+    if (plantillaResult.status === "created") counters.plantillasCreadas += 1;
+    else counters.plantillasActualizadas += 1;
+
+    const plantilla = plantillaResult.record;
+    const desiredItems = planCapacitacionBase
+      .map((planItem) => {
+        const capacitacion = capacitacionByCode.get(planItem.codigo);
+        if (!capacitacion) return null;
+
+        const target = targetByKind[planItem.target] ?? targetByKind.general;
+
+        return {
+          key: `${capacitacion.id}|${target.cargoId ?? ""}|${target.areaId ?? ""}|${target.centroTrabajoId ?? ""}|${planItem.periodicidad}|${planItem.mesProgramado ?? ""}`,
+          data: {
+            plantillaId: plantilla.id,
+            capacitacionId: capacitacion.id,
+            cargoId: target.cargoId,
+            areaId: target.areaId,
+            centroTrabajoId: target.centroTrabajoId,
+            periodicidad: planItem.periodicidad,
+            mesProgramado: planItem.mesProgramado,
+            obligatorio: planItem.obligatorio,
+            activo: true,
+            observaciones: null,
+          },
+        };
+      })
+      .filter(Boolean);
+
+    const existingItems = await prisma.plantillaPlanCapacitacionItem.findMany({
+      where: { plantillaId: plantilla.id },
+      select: {
+        id: true,
+        capacitacionId: true,
+        cargoId: true,
+        areaId: true,
+        centroTrabajoId: true,
+        periodicidad: true,
+        mesProgramado: true,
+      },
+    });
+
+    const existingByKey = new Map(
+      existingItems.map((item) => [
+        `${item.capacitacionId}|${item.cargoId ?? ""}|${item.areaId ?? ""}|${item.centroTrabajoId ?? ""}|${item.periodicidad}|${item.mesProgramado ?? ""}`,
+        item,
+      ]),
+    );
+
+    const desiredKeys = new Set(desiredItems.map((item) => item.key));
+
+    for (const desired of desiredItems) {
+      const existing = existingByKey.get(desired.key);
+
+      if (existing) {
+        await prisma.plantillaPlanCapacitacionItem.update({
+          where: { id: existing.id },
+          data: {
+            obligatorio: desired.data.obligatorio,
+            activo: desired.data.activo,
+            observaciones: desired.data.observaciones,
+            plantillaId: desired.data.plantillaId,
+            capacitacionId: desired.data.capacitacionId,
+            cargoId: desired.data.cargoId,
+            areaId: desired.data.areaId,
+            centroTrabajoId: desired.data.centroTrabajoId,
+            periodicidad: desired.data.periodicidad,
+            mesProgramado: desired.data.mesProgramado,
+          },
+        });
+        counters.itemsActualizados += 1;
+      } else {
+        await prisma.plantillaPlanCapacitacionItem.create({
+          data: desired.data,
+        });
+        counters.itemsCreados += 1;
+      }
+    }
+
+    const itemsToDelete = existingItems.filter((item) => {
+      const key = `${item.capacitacionId}|${item.cargoId ?? ""}|${item.areaId ?? ""}|${item.centroTrabajoId ?? ""}|${item.periodicidad}|${item.mesProgramado ?? ""}`;
+      return !desiredKeys.has(key);
+    });
+
+    if (itemsToDelete.length > 0) {
+      await prisma.plantillaPlanCapacitacionItem.deleteMany({
+        where: { id: { in: itemsToDelete.map((item) => item.id) } },
+      });
+    }
+  }
+
+  return counters;
+}
+
+async function upsertReglaCapacitacionCargo(data) {
+  const whereRule = {
+    empresaId: data.empresaId,
+    capacitacionId: data.capacitacionId,
+    cargoId: data.cargoId,
+    areaId: data.areaId,
+    centroTrabajoId: data.centroTrabajoId,
+    tipoContrato: data.tipoContrato,
+  };
+
+  const existing = await prisma.reglaCapacitacionCargo.findFirst({
+    where: whereRule,
+    select: { id: true },
+  });
+
+  if (!existing) {
+    await prisma.reglaCapacitacionCargo.create({
+      data,
+    });
+    return "created";
+  }
+
+  await prisma.reglaCapacitacionCargo.update({
+    where: { id: existing.id },
+    data: {
+      obligatorio: data.obligatorio,
+      periodicidad: data.periodicidad,
+      activo: data.activo,
+    },
+  });
+  return "updated";
+}
+
+async function upsertPlantillaPlanCapacitacion(data) {
+  const existing = await prisma.plantillaPlanCapacitacion.findFirst({
+    where: {
+      empresaId: data.empresaId,
+      nombre: data.nombre,
+    },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    const created = await prisma.plantillaPlanCapacitacion.create({
+      data,
+      select: { id: true },
+    });
+    return { status: "created", record: created };
+  }
+
+  const updated = await prisma.plantillaPlanCapacitacion.update({
+    where: { id: existing.id },
+    data: {
+      descripcion: data.descripcion,
+      tipoEmpresa: data.tipoEmpresa,
+      activa: data.activa,
+    },
+    select: { id: true },
+  });
+
+  return { status: "updated", record: updated };
 }
 
 async function upsertWorkerDocumentRule(data) {

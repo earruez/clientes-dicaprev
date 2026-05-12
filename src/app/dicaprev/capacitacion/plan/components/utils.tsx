@@ -24,6 +24,13 @@ export type Requirement = {
   status: TrainingStatus;
   ultimaFecha?: string;
   proximaFecha?: string;
+  // Prisma item fields — present when the row comes from a real PlanCapacitacionItem
+  itemId?: string;
+  periodicidad?: string;
+  mesProgramado?: number | null;
+  obligatorio?: boolean;
+  estadoItem?: string;
+  observaciones?: string | null;
 };
 
 export type TemplatePlan = {

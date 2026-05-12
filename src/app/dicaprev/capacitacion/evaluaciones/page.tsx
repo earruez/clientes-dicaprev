@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   Dialog,
   DialogContent,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
@@ -23,117 +24,137 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { BarChart2 } from "lucide-react";
+import { AlertCircle, BarChart2, Loader2 } from "lucide-react";
+import {
+  getCapacitacionEvaluaciones,
+  createCapacitacionEvaluacion,
+  registrarResultadoEvaluacion,
+  getCapacitaciones,
+} from "@/actions/capacitaciones";
+import { getTrabajadores } from "@/actions/trabajadores";
+import type {
+  CapacitacionEvaluacion,
+  CapacitacionCatalogo,
+} from "@/actions/capacitaciones";
+import type { Worker } from "@/actions/trabajadores";
 
-type TipoEval = "teorica" | "practica" | "mixta";
-
-type ResultadoEval = {
-  id: number;
-  trabajador: string;
-  rut: string;
-  nota: number;
-  aprobado: boolean;
+type NuevaForm = {
+  trabajadorId: string;
+  capacitacionId: string;
+  nota: string;
+  aprobado: string;
+  fechaEvaluacion: string;
+  observacion: string;
 };
 
-type Evaluacion = {
-  id: number;
-  curso: string;
-  tipo: TipoEval;
-  notaMinima: number;
-  fecha: string;
-  total: number;
-  aprobados: number;
-  resultados: ResultadoEval[];
+const FORM_EMPTY: NuevaForm = {
+  trabajadorId: "",
+  capacitacionId: "",
+  nota: "",
+  aprobado: "",
+  fechaEvaluacion: "",
+  observacion: "",
 };
-
-const EVALUACIONES_MOCK: Evaluacion[] = [
-  {
-    id: 1,
-    curso: "Inducción General SST Obra Los Álamos",
-    tipo: "teorica",
-    notaMinima: 4,
-    fecha: "2025-11-05",
-    total: 22,
-    aprobados: 20,
-    resultados: [
-      {
-        id: 1,
-        trabajador: "Juan Pérez",
-        rut: "11.111.111-1",
-        nota: 5.5,
-        aprobado: true,
-      },
-      {
-        id: 2,
-        trabajador: "María López",
-        rut: "12.222.222-2",
-        nota: 4.3,
-        aprobado: true,
-      },
-      {
-        id: 3,
-        trabajador: "Pedro González",
-        rut: "13.333.333-3",
-        nota: 3.8,
-        aprobado: false,
-      },
-    ],
-  },
-  {
-    id: 2,
-    curso: "Trabajo en Altura · Supervisores",
-    tipo: "mixta",
-    notaMinima: 4,
-    fecha: "2025-11-10",
-    total: 12,
-    aprobados: 11,
-    resultados: [],
-  },
-];
 
 export default function EvaluacionesCapacitacionPage() {
-  const [evaluaciones, setEvaluaciones] =
-    useState<Evaluacion[]>(EVALUACIONES_MOCK);
-  const [search, setSearch] = useState<string>("");
-  const [selectedEval, setSelectedEval] = useState<Evaluacion | null>(null);
-  const [openDetalle, setOpenDetalle] = useState<boolean>(false);
-  const [openNueva, setOpenNueva] = useState<boolean>(false);
+  const [evaluaciones, setEvaluaciones] = useState<CapacitacionEvaluacion[]>([]);
+  const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
+  const [trabajadores, setTrabajadores] = useState<Worker[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [nueva, setNueva] = useState<Partial<Evaluacion>>({
-    curso: "",
-    tipo: "teorica",
-    notaMinima: 4,
-    fecha: "",
-  });
+  const [search, setSearch] = useState<string>("");
+  const [selectedEval, setSelectedEval] = useState<CapacitacionEvaluacion | null>(null);
+  const [openDetalle, setOpenDetalle] = useState(false);
+  const [openNueva, setOpenNueva] = useState(false);
+  const [form, setForm] = useState<NuevaForm>(FORM_EMPTY);
+
+  // Resultado inline por evaluación
+  const [editResultado, setEditResultado] = useState<{
+    id: string; nota: string; aprobado: string; observacion: string;
+  } | null>(null);
+
+  const cargarDatos = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [evals, cat, trab] = await Promise.all([
+        getCapacitacionEvaluaciones(),
+        getCapacitaciones(),
+        getTrabajadores(),
+      ]);
+      setEvaluaciones(evals);
+      setCatalogo(cat);
+      setTrabajadores(trab);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al cargar datos");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { cargarDatos(); }, [cargarDatos]);
+
+  // Agrupar por capacitación para mostrar resumen
+  const porCapacitacion = useMemo(() => {
+    const map = new Map<string, { nombre: string; lista: CapacitacionEvaluacion[] }>();
+    for (const ev of evaluaciones) {
+      if (!map.has(ev.capacitacionId)) {
+        map.set(ev.capacitacionId, { nombre: ev.capacitacionNombre, lista: [] });
+      }
+      map.get(ev.capacitacionId)!.lista.push(ev);
+    }
+    return Array.from(map.values());
+  }, [evaluaciones]);
 
   const filtradas = useMemo(() => {
-    return evaluaciones.filter((e) =>
-      e.curso.toLowerCase().includes(search.toLowerCase())
+    if (!search.trim()) return porCapacitacion;
+    return porCapacitacion.filter((g) =>
+      g.nombre.toLowerCase().includes(search.toLowerCase())
     );
-  }, [evaluaciones, search]);
+  }, [porCapacitacion, search]);
 
-  const handleAbrirDetalle = (ev: Evaluacion) => {
-    setSelectedEval(ev);
-    setOpenDetalle(true);
+  const handleCrearEval = async () => {
+    if (!form.trabajadorId || !form.capacitacionId || !form.fechaEvaluacion) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await createCapacitacionEvaluacion({
+        trabajadorId: form.trabajadorId,
+        capacitacionId: form.capacitacionId,
+        nota: form.nota ? Number(form.nota) : null,
+        aprobado: form.aprobado === "true" ? true : form.aprobado === "false" ? false : null,
+        fechaEvaluacion: form.fechaEvaluacion,
+        observacion: form.observacion || null,
+      });
+      setForm(FORM_EMPTY);
+      setOpenNueva(false);
+      await cargarDatos();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al crear evaluación");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleCrearEval = () => {
-    if (!nueva.curso || !nueva.fecha || !nueva.tipo || !nueva.notaMinima) {
-      return;
+  const handleGuardarResultado = async () => {
+    if (!editResultado) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await registrarResultadoEvaluacion(editResultado.id, {
+        nota: editResultado.nota ? Number(editResultado.nota) : 0,
+        aprobado: editResultado.aprobado === "true",
+        observacion: editResultado.observacion || null,
+      });
+      setEditResultado(null);
+      await cargarDatos();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al guardar resultado");
+    } finally {
+      setSaving(false);
     }
-    const nuevaEval: Evaluacion = {
-      id: evaluaciones.length + 1,
-      curso: nueva.curso,
-      tipo: nueva.tipo as TipoEval,
-      notaMinima: Number(nueva.notaMinima),
-      fecha: nueva.fecha,
-      total: 0,
-      aprobados: 0,
-      resultados: [],
-    };
-    setEvaluaciones((prev) => [...prev, nuevaEval]);
-    setNueva({ curso: "", tipo: "teorica", notaMinima: 4, fecha: "" });
-    setOpenNueva(false);
   };
 
   return (
@@ -155,28 +176,29 @@ export default function EvaluacionesCapacitacionPage() {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-900 tracking-tight">
-            Evaluaciones y Notas
-          </h1>
+          <h1 className="text-3xl font-semibold text-slate-900 tracking-tight">Evaluaciones y Notas</h1>
           <p className="text-slate-500 mt-1 max-w-2xl">
             Registra y sigue los resultados de evaluaciones teóricas y prácticas. Los porcentajes de aprobación quedan disponibles como evidencia.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            className="rounded-xl border-slate-200"
-          >
+          <Button variant="outline" className="rounded-xl border-slate-200">
             Descargar reporte consolidado
           </Button>
-          <Button
-            className="rounded-xl"
-            onClick={() => setOpenNueva(true)}
-          >
+          <Button className="rounded-xl" onClick={() => setOpenNueva(true)} disabled={loading}>
             Crear evaluación
           </Button>
         </div>
       </div>
+
+      {/* ERROR BANNER */}
+      {error && (
+        <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>{error}</span>
+          <button className="ml-auto text-xs underline" onClick={() => setError(null)}>Cerrar</button>
+        </div>
+      )}
 
       {/* LISTA EVALUACIONES */}
       <Card className="border-slate-200 shadow-sm rounded-2xl">
@@ -185,330 +207,342 @@ export default function EvaluacionesCapacitacionPage() {
             <Input
               placeholder="Buscar por nombre de curso…"
               value={search}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setSearch(e.target.value)
-              }
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearch(e.target.value)}
               className="h-8 text-xs bg-white rounded-xl md:w-72"
             />
-            <p className="text-[11px] text-slate-500">
-              * Próximo nivel: integrar cuestionarios en línea y feedback
-              inmediato al trabajador.
-            </p>
           </div>
         </CardHeader>
 
         <CardContent className="space-y-3">
-          {filtradas.length === 0 && (
+          {loading ? (
+            <div className="py-12 flex flex-col items-center gap-2 text-slate-400">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <p className="text-sm">Cargando evaluaciones…</p>
+            </div>
+          ) : filtradas.length === 0 ? (
             <div className="py-12 text-center">
               <BarChart2 className="mx-auto h-9 w-9 text-slate-200 mb-3" />
               <p className="text-sm font-medium text-slate-500">Sin evaluaciones que coincidan</p>
               <p className="text-xs text-slate-400 mt-1">Ajusta los filtros o crea una nueva evaluación.</p>
             </div>
-          )}
-
-          {filtradas.map((e) => {
-            const aprobPct =
-              e.total === 0 ? 0 : Math.round((e.aprobados / e.total) * 100);
-            return (
-              <div
-                key={e.id}
-                className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-xs"
-              >
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-slate-900">
-                    {e.curso}
-                  </p>
-                  <div className="flex flex-wrap gap-1 text-[10px]">
-                    <Badge className="bg-slate-50 text-slate-700 border border-slate-200 rounded-full">
-                      {e.tipo === "teorica"
-                        ? "Teórica"
-                        : e.tipo === "practica"
-                        ? "Práctica"
-                        : "Mixta"}
-                    </Badge>
-                    <Badge className="bg-slate-900 text-slate-50 rounded-full">
-                      Nota mínima {e.notaMinima.toFixed(1).replace(".0", "")}
-                    </Badge>
-                    <Badge className="bg-slate-50 text-slate-600 border border-slate-100 rounded-full">
-                      {e.fecha}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="flex flex-col md:flex-row gap-4 md:items-center">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500">
-                        Aprobación
-                      </span>
-                      <span className="text-sm font-semibold text-slate-900">
-                        {aprobPct}%
-                      </span>
+          ) : (
+            filtradas.map((grupo) => {
+              const total = grupo.lista.length;
+              const aprobados = grupo.lista.filter((e) => e.aprobado === true).length;
+              const aprobPct = total === 0 ? 0 : Math.round((aprobados / total) * 100);
+              return (
+                <div
+                  key={grupo.nombre}
+                  className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-xs"
+                >
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-slate-900">{grupo.nombre}</p>
+                    <div className="flex flex-wrap gap-1 text-[10px]">
+                      <Badge className="bg-slate-900 text-slate-50 rounded-full">
+                        {total} registros
+                      </Badge>
+                      <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 rounded-full">
+                        {aprobados} aprobados
+                      </Badge>
                     </div>
-                    <Progress
-                      value={aprobPct}
-                      className="h-1.5 rounded-full min-w-[120px]"
-                    />
-                    <p className="text-[11px] text-slate-500">
-                      {e.aprobados}/{e.total} trabajadores aprobados
-                    </p>
                   </div>
 
-                  <div className="flex gap-2 justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl text-[11px]"
-                      onClick={() => handleAbrirDetalle(e)}
-                    >
-                      Ver resultados
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="rounded-xl text-[11px]"
-                    >
-                      Exportar detalle
-                    </Button>
+                  <div className="flex flex-col md:flex-row gap-4 md:items-center">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">Aprobación</span>
+                        <span className="text-sm font-semibold text-slate-900">{aprobPct}%</span>
+                      </div>
+                      <Progress value={aprobPct} className="h-1.5 rounded-full min-w-[120px]" />
+                      <p className="text-[11px] text-slate-500">{aprobados}/{total} trabajadores aprobados</p>
+                    </div>
+
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="rounded-xl text-[11px]"
+                        onClick={() => {
+                          setSelectedEval(grupo.lista[0]);
+                          setOpenDetalle(true);
+                        }}
+                      >
+                        Ver resultados
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </CardContent>
       </Card>
 
       {/* MODAL DETALLE EVALUACION */}
-      <Dialog open={openDetalle} onOpenChange={setOpenDetalle}>
+      <Dialog open={openDetalle} onOpenChange={(open) => { if (!open) { setOpenDetalle(false); setEditResultado(null); } }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="text-base">
-              Resultados de evaluación
-            </DialogTitle>
+            <DialogTitle className="text-base">Resultados de evaluación</DialogTitle>
+            <DialogDescription>
+              Revisa el detalle de resultados por trabajador para la capacitación seleccionada.
+            </DialogDescription>
           </DialogHeader>
-          {selectedEval && (
-            <div className="space-y-3 mt-1">
-              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs">
-                <p className="text-slate-500 mb-1">Curso</p>
-                <p className="font-medium text-slate-900">
-                  {selectedEval.curso}
-                </p>
-                <div className="flex flex-wrap gap-2 mt-2">
-                  <Badge className="bg-slate-900 text-slate-50 rounded-full">
-                    Nota mínima {selectedEval.notaMinima}
-                  </Badge>
-                  <Badge className="bg-slate-50 text-slate-700 border border-slate-200 rounded-full">
-                    {selectedEval.tipo === "teorica"
-                      ? "Teórica"
-                      : selectedEval.tipo === "practica"
-                      ? "Práctica"
-                      : "Mixta"}
-                  </Badge>
-                  <Badge className="bg-slate-50 text-slate-600 border border-slate-100 rounded-full">
-                    {selectedEval.fecha}
-                  </Badge>
+          {selectedEval && (() => {
+            const capEvals = evaluaciones.filter(
+              (e) => e.capacitacionId === selectedEval.capacitacionId
+            );
+            const aprobados = capEvals.filter((e) => e.aprobado === true).length;
+            return (
+              <div className="space-y-3 mt-1">
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-xs">
+                  <p className="text-slate-500 mb-1">Curso</p>
+                  <p className="font-medium text-slate-900">{selectedEval.capacitacionNombre}</p>
                 </div>
-              </div>
 
-              <Tabs defaultValue="tabla" className="w-full">
-                <TabsList className="bg-transparent px-0 pb-2 justify-start">
-                  <TabsTrigger
-                    value="tabla"
-                    className="rounded-full text-xs px-4 py-1.5"
-                  >
-                    Tabla de resultados
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="resumen"
-                    className="rounded-full text-xs px-4 py-1.5"
-                  >
-                    Resumen
-                  </TabsTrigger>
-                </TabsList>
+                <Tabs defaultValue="tabla" className="w-full">
+                  <TabsList className="bg-transparent px-0 pb-2 justify-start">
+                    <TabsTrigger value="tabla" className="rounded-full text-xs px-4 py-1.5">
+                      Tabla de resultados
+                    </TabsTrigger>
+                    <TabsTrigger value="resumen" className="rounded-full text-xs px-4 py-1.5">
+                      Resumen
+                    </TabsTrigger>
+                  </TabsList>
 
-                <TabsContent value="tabla">
-                  <div className="w-full overflow-x-auto rounded-xl border border-slate-100 bg-white">
-                    <table className="min-w-full text-xs">
-                      <thead className="bg-slate-50/80 border-b border-slate-100">
-                        <tr>
-                          <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                            Trabajador
-                          </th>
-                          <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                            RUT
-                          </th>
-                          <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                            Nota
-                          </th>
-                          <th className="text-left px-3 py-2 text-[11px] text-slate-500">
-                            Estado
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedEval.resultados.length === 0 && (
+                  <TabsContent value="tabla">
+                    <div className="w-full overflow-x-auto rounded-xl border border-slate-100 bg-white">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-slate-50/80 border-b border-slate-100">
                           <tr>
-                            <td
-                              colSpan={4}
-                              className="text-center text-xs text-slate-500 py-4"
-                            >
-                              Aún no se han cargado resultados individuales
-                              para esta evaluación.
-                            </td>
+                            <th className="text-left px-3 py-2 text-[11px] text-slate-500">Trabajador</th>
+                            <th className="text-left px-3 py-2 text-[11px] text-slate-500">Fecha</th>
+                            <th className="text-left px-3 py-2 text-[11px] text-slate-500">Nota</th>
+                            <th className="text-left px-3 py-2 text-[11px] text-slate-500">Estado</th>
+                            <th className="px-3 py-2"></th>
                           </tr>
-                        )}
-                        {selectedEval.resultados.map((r) => (
-                          <tr
-                            key={r.id}
-                            className="border-b border-slate-50"
-                          >
-                            <td className="px-3 py-2 text-slate-800">
-                              {r.trabajador}
-                            </td>
-                            <td className="px-3 py-2 text-slate-600">
-                              {r.rut}
-                            </td>
-                            <td className="px-3 py-2 text-slate-800">
-                              {r.nota.toFixed(1)}
-                            </td>
-                            <td className="px-3 py-2">
-                              <Badge
-                                className={`rounded-full px-2 py-0.5 text-[11px] ${
-                                  r.aprobado
-                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                                    : "bg-rose-50 text-rose-700 border border-rose-200"
-                                }`}
-                              >
-                                {r.aprobado ? "Aprobado" : "Reprobado"}
-                              </Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </TabsContent>
+                        </thead>
+                        <tbody>
+                          {capEvals.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="text-center text-xs text-slate-500 py-4">
+                                Sin resultados registrados.
+                              </td>
+                            </tr>
+                          ) : (
+                            capEvals.map((r) => (
+                              <tr key={r.id} className="border-b border-slate-50">
+                                <td className="px-3 py-2 text-slate-800">{r.trabajadorNombre}</td>
+                                <td className="px-3 py-2 text-slate-600">{r.fechaEvaluacion}</td>
+                                <td className="px-3 py-2 text-slate-800">
+                                  {r.nota != null ? r.nota.toFixed(1) : "—"}
+                                </td>
+                                <td className="px-3 py-2">
+                                  {r.aprobado != null ? (
+                                    <Badge className={`rounded-full px-2 py-0.5 text-[11px] ${r.aprobado ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"}`}>
+                                      {r.aprobado ? "Aprobado" : "Reprobado"}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-slate-400 text-[11px]">Pendiente</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 text-[11px] px-2"
+                                    onClick={() => setEditResultado({
+                                      id: r.id,
+                                      nota: r.nota != null ? String(r.nota) : "",
+                                      aprobado: r.aprobado != null ? String(r.aprobado) : "",
+                                      observacion: r.observacion ?? "",
+                                    })}
+                                  >
+                                    Editar
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </TabsContent>
 
-                <TabsContent value="resumen">
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <Card className="border-slate-200 shadow-sm rounded-xl">
-                      <CardContent className="p-3 space-y-1">
-                        <p className="text-slate-500">Total evaluados</p>
-                        <p className="text-xl font-semibold text-slate-900">
-                          {selectedEval.total}
-                        </p>
-                      </CardContent>
-                    </Card>
-                    <Card className="border-slate-200 shadow-sm rounded-xl">
-                      <CardContent className="p-3 space-y-1">
-                        <p className="text-slate-500">Aprobados</p>
-                        <p className="text-xl font-semibold text-emerald-700">
-                          {selectedEval.aprobados}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-                  <p className="mt-3 text-[11px] text-slate-400">
-                    * Esta vista se conectará con la generación automática de
-                    certificados y el historial del trabajador.
-                  </p>
-                </TabsContent>
-              </Tabs>
-            </div>
-          )}
+                  <TabsContent value="resumen">
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <Card className="border-slate-200 shadow-sm rounded-xl">
+                        <CardContent className="p-3 space-y-1">
+                          <p className="text-slate-500">Total evaluados</p>
+                          <p className="text-xl font-semibold text-slate-900">{capEvals.length}</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-slate-200 shadow-sm rounded-xl">
+                        <CardContent className="p-3 space-y-1">
+                          <p className="text-slate-500">Aprobados</p>
+                          <p className="text-xl font-semibold text-emerald-700">{aprobados}</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                    <p className="mt-3 text-[11px] text-slate-400">
+                      * Esta vista se conectará con la generación automática de certificados y el historial del trabajador.
+                    </p>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            );
+          })()}
           <DialogFooter className="mt-4">
-            <Button
-              size="sm"
-              variant="outline"
-              className="rounded-xl"
-              onClick={() => setOpenDetalle(false)}
-            >
+            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => { setOpenDetalle(false); setEditResultado(null); }}>
               Cerrar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* MODAL NUEVA EVALUACION */}
-      <Dialog open={openNueva} onOpenChange={setOpenNueva}>
-        <DialogContent className="sm:max-w-md">
+      {/* MODAL EDITAR RESULTADO */}
+      <Dialog open={!!editResultado} onOpenChange={(open) => { if (!saving && !open) setEditResultado(null); }}>
+        <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-base">
-              Crear nueva evaluación
-            </DialogTitle>
+            <DialogTitle className="text-base">Registrar resultado</DialogTitle>
+            <DialogDescription>
+              Actualiza nota, estado y observación del resultado seleccionado.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 mt-1">
-            <div className="space-y-1">
-              <Label className="text-xs">Curso asociado</Label>
-              <Input
-                className="h-8 text-xs rounded-xl"
-                placeholder="Ej. Inducción general SST Obra Los Álamos"
-                value={nueva.curso || ""}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setNueva((prev) => ({ ...prev, curso: e.target.value }))
-                }
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {editResultado && (
+            <div className="space-y-3 mt-1">
               <div className="space-y-1">
-                <Label className="text-xs">Tipo</Label>
+                <Label className="text-xs">Nota</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  max="7"
+                  className="h-8 text-xs rounded-xl"
+                  value={editResultado.nota}
+                  onChange={(e) => setEditResultado((prev) => prev ? { ...prev, nota: e.target.value } : null)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Estado</Label>
                 <Select
-                  value={(nueva.tipo as TipoEval) || "teorica"}
-                  onValueChange={(value: string) =>
-                    setNueva((prev) => ({ ...prev, tipo: value as TipoEval }))
-                  }
+                  value={editResultado.aprobado}
+                  onValueChange={(value) => setEditResultado((prev) => prev ? { ...prev, aprobado: value } : null)}
                 >
-                  <SelectTrigger className="h-8 text-xs rounded-xl">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger className="h-8 text-xs rounded-xl"><SelectValue placeholder="Seleccionar…" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="teorica">Teórica</SelectItem>
-                    <SelectItem value="practica">Práctica</SelectItem>
-                    <SelectItem value="mixta">Mixta</SelectItem>
+                    <SelectItem value="true">Aprobado</SelectItem>
+                    <SelectItem value="false">Reprobado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Nota mínima</Label>
+                <Label className="text-xs">Observación</Label>
                 <Input
-                  type="number"
-                  step="0.1"
                   className="h-8 text-xs rounded-xl"
-                  value={nueva.notaMinima ?? 4}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                    setNueva((prev) => ({
-                      ...prev,
-                      notaMinima: Number(e.target.value),
-                    }))
-                  }
+                  value={editResultado.observacion}
+                  onChange={(e) => setEditResultado((prev) => prev ? { ...prev, observacion: e.target.value } : null)}
                 />
               </div>
             </div>
+          )}
+          <DialogFooter className="mt-4">
+            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setEditResultado(null)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button size="sm" className="rounded-xl" onClick={handleGuardarResultado} disabled={saving || !editResultado?.aprobado}>
+              {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Guardar resultado
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL NUEVA EVALUACION */}
+      <Dialog open={openNueva} onOpenChange={(open) => { if (!saving) setOpenNueva(open); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Crear nueva evaluación</DialogTitle>
+            <DialogDescription>
+              Registra una evaluación para trabajador y curso con sus datos iniciales.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 mt-1">
             <div className="space-y-1">
-              <Label className="text-xs">Fecha</Label>
+              <Label className="text-xs">Trabajador</Label>
+              <Select value={form.trabajadorId} onValueChange={(value) => setForm((prev) => ({ ...prev, trabajadorId: value }))}>
+                <SelectTrigger className="h-8 text-xs rounded-xl"><SelectValue placeholder="Seleccionar trabajador…" /></SelectTrigger>
+                <SelectContent>
+                  {trabajadores.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>{t.nombre} {t.apellido}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Curso (catálogo)</Label>
+              <Select value={form.capacitacionId} onValueChange={(value) => setForm((prev) => ({ ...prev, capacitacionId: value }))}>
+                <SelectTrigger className="h-8 text-xs rounded-xl"><SelectValue placeholder="Seleccionar curso…" /></SelectTrigger>
+                <SelectContent>
+                  {catalogo.filter((c) => c.activa).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Nota</Label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  min="1"
+                  max="7"
+                  className="h-8 text-xs rounded-xl"
+                  value={form.nota}
+                  onChange={(e) => setForm((prev) => ({ ...prev, nota: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Estado</Label>
+                <Select value={form.aprobado} onValueChange={(value) => setForm((prev) => ({ ...prev, aprobado: value }))}>
+                  <SelectTrigger className="h-8 text-xs rounded-xl"><SelectValue placeholder="Resultado…" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="true">Aprobado</SelectItem>
+                    <SelectItem value="false">Reprobado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Fecha evaluación</Label>
               <Input
                 type="date"
                 className="h-8 text-xs rounded-xl"
-                value={nueva.fecha || ""}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setNueva((prev) => ({ ...prev, fecha: e.target.value }))
-                }
+                value={form.fechaEvaluacion}
+                onChange={(e) => setForm((prev) => ({ ...prev, fechaEvaluacion: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Observación</Label>
+              <Input
+                className="h-8 text-xs rounded-xl"
+                placeholder="Opcional"
+                value={form.observacion}
+                onChange={(e) => setForm((prev) => ({ ...prev, observacion: e.target.value }))}
               />
             </div>
           </div>
           <DialogFooter className="mt-4">
-            <Button
-              size="sm"
-              variant="outline"
-              className="rounded-xl"
-              onClick={() => setOpenNueva(false)}
-            >
+            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setOpenNueva(false)} disabled={saving}>
               Cancelar
             </Button>
             <Button
               size="sm"
               className="rounded-xl"
               onClick={handleCrearEval}
+              disabled={saving || !form.trabajadorId || !form.capacitacionId || !form.fechaEvaluacion}
             >
+              {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
               Crear evaluación
             </Button>
           </DialogFooter>

@@ -199,7 +199,7 @@ export const MOCK_DOCUMENTOS: DocumentoTrabajador[] = [
 
 // ─── Utility functions ────────────────────────────────────────────────────────
 
-const REF_DATE = new Date("2026-04-07");
+const REF_DATE = new Date(); // use actual current date for expiration calculations
 
 function matchesCondicion(worker: Worker, cond: ReglaDocumental["condicion"]): boolean {
   const entries = Object.entries(cond).filter(([, v]) => v !== undefined && v !== "");
@@ -236,17 +236,22 @@ export function getWorkerDocs(
       let diasParaVencer: number | undefined;
 
       if (up) {
-        if (up.estado === "rechazado" || up.estado === "en_revision") {
-          // Respect explicit traceability states from stored document
-          estado = up.estado;
-        } else if (tipo.requiereVencimiento && up.fechaVencimiento) {
-          const diff = Math.floor(
-            (new Date(up.fechaVencimiento).getTime() - REF_DATE.getTime()) / 86400000
-          );
-          diasParaVencer = diff;
-          estado = diff < 0 ? "vencido" : "completo";
-        } else {
-          estado = "completo";
+        // Respect persisted workflow state first (pendiente, en_revision, rechazado, no_aplica, etc.)
+        estado = up.estado;
+
+        if (tipo.requiereVencimiento) {
+          if (up.fechaVencimiento) {
+            const diff = Math.floor(
+              (new Date(up.fechaVencimiento).getTime() - REF_DATE.getTime()) / 86400000
+            );
+            diasParaVencer = diff;
+            if (estado === "completo" || estado === "vencido") {
+              estado = diff < 0 ? "vencido" : "completo";
+            }
+          } else if (estado === "completo") {
+            // Required expiration without date is not truly compliant yet.
+            estado = "pendiente";
+          }
         }
       }
       return {

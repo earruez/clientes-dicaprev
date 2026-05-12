@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { UserPlus, FileStack, GraduationCap, Users } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
@@ -16,6 +16,7 @@ import {
   applyFilters,
 } from "@/components/trabajadores-v2/types";
 import { useTrabajadores } from "./hooks/useTrabajadores";
+import { getOpcionesTrabajador, type OpcionesTrabajador } from "@/actions/trabajadores";
 
 export default function TrabajadoresPage() {
   const {
@@ -23,6 +24,7 @@ export default function TrabajadoresPage() {
     guardarTrabajador,
     eliminarTrabajador,
   } = useTrabajadores();
+  const [opciones, setOpciones] = useState<OpcionesTrabajador | undefined>(undefined);
   const [filters, setFilters]       = useState<FilterConfig>(DEFAULT_FILTERS);
   const [activeKpiId, setActiveKpiId] = useState<KpiId | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -58,6 +60,11 @@ export default function TrabajadoresPage() {
   const openNewForm  = () => { setEditWorker(null); setIsFormOpen(true); };
   const openEditForm = (w: Worker) => { setEditWorker(w); setIsFormOpen(true); if (isDrawerOpen) closeDrawer(); };
   const closeForm    = () => setIsFormOpen(false);
+
+  // Load real cargo/area/centro options for the form
+  useEffect(() => {
+    void getOpcionesTrabajador().then(setOpciones).catch(() => undefined);
+  }, []);
 
   const handleSaveWorker = async (w: Worker) => {
     await guardarTrabajador(w);
@@ -138,6 +145,7 @@ export default function TrabajadoresPage() {
         isOpen={isFormOpen}
         onClose={closeForm}
         onSave={handleSaveWorker}
+        opciones={opciones}
       />
     </main>
   );

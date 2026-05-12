@@ -2,14 +2,15 @@
 
 import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
 import { X, User, Briefcase, AlertCircle } from "lucide-react";
-import { type Worker, AREAS, CARGOS, CENTROS, CONTRATOS, ESTADOS } from "./types";
-import { CARGO_TO_AREA } from "@/lib/empresa/domain";
+import { type Worker, CONTRATOS, ESTADOS } from "./types";
+import { getOpcionesTrabajador, type OpcionesTrabajador } from "@/actions/trabajadores";
 
 interface WorkerFormProps {
   worker: Worker | null;
   isOpen: boolean;
   onClose: () => void;
   onSave: (w: Worker) => void | Promise<void>;
+  opciones?: OpcionesTrabajador;
 }
 
 type FormData = Omit<Worker, "id">;
@@ -19,9 +20,9 @@ const EMPTY: FormData = {
   nombre: "",
   apellido: "",
   rut: "",
-  cargo: CARGOS[0],
-  area: CARGO_TO_AREA[CARGOS[0]] ?? AREAS[0],
-  centroTrabajo: CENTROS[0],
+  cargo: "",
+  area: "",
+  centroTrabajo: "",
   email: "",
   telefono: "",
   estado: "Activo",
@@ -30,10 +31,6 @@ const EMPTY: FormData = {
   tipoContrato: "Indefinido",
   documentosPendientes: 0,
   capacitacionesPendientes: 0,
-};
-
-const centroOptions = () => {
-  return CENTROS;
 };
 
 function formatRut(v: string): string {
@@ -104,9 +101,27 @@ const selectCls =
 
 // ─────────────────────────────────────────────────────────
 
-export function WorkerForm({ worker, isOpen, onClose, onSave }: WorkerFormProps) {
+export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opcionesProp }: WorkerFormProps) {
   const [form, setForm] = useState<FormData>(EMPTY);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [opciones, setOpciones] = useState<OpcionesTrabajador | undefined>(opcionesProp);
+
+  // Load opciones internally so form always has them when open, regardless of parent loading state
+  useEffect(() => {
+    if (!isOpen) return;
+    void getOpcionesTrabajador()
+      .then(setOpciones)
+      .catch(() => undefined);
+  }, [isOpen]);
+
+  // Keep in sync if parent passes updated opciones
+  useEffect(() => {
+    if (opcionesProp) setOpciones(opcionesProp);
+  }, [opcionesProp]);
+
+  // Derived option lists — fall back to current worker value if not in list
+  const cargoOptions = opciones?.cargos ?? [];
+  const centroOptions = opciones?.centros ?? [];
 
   useEffect(() => {
     if (!isOpen) return;
@@ -115,10 +130,17 @@ export function WorkerForm({ worker, isOpen, onClose, onSave }: WorkerFormProps)
       void id;
       setForm(rest);
     } else {
-      setForm(EMPTY);
+      // Set first values from real opciones if available
+      const firstCargo = opciones?.cargos[0];
+      setForm({
+        ...EMPTY,
+        cargo: firstCargo?.nombre ?? "",
+        area: firstCargo?.areaNombre ?? "",
+        centroTrabajo: opciones?.centros[0]?.nombre ?? "",
+      });
     }
     setErrors({});
-  }, [isOpen, worker]);
+  }, [isOpen, worker, opciones]);
 
   const set = (key: keyof FormData, value: string | number) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -285,16 +307,18 @@ export function WorkerForm({ worker, isOpen, onClose, onSave }: WorkerFormProps)
                       id="cargo"
                       value={form.cargo}
                       onChange={(e) => {
-                        const cargo = e.target.value;
-                        set("cargo", cargo);
-                        set("area", CARGO_TO_AREA[cargo] ?? form.area);
+                        const cargoNombre = e.target.value;
+                        const cargoObj = cargoOptions.find((c) => c.nombre === cargoNombre);
+                        set("cargo", cargoNombre);
+                        set("area", cargoObj?.areaNombre ?? form.area);
                       }}
                       className={selectCls}
                     >
-                      {CARGOS.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
+                      {form.cargo && !cargoOptions.some((c) => c.nombre === form.cargo) && (
+                        <option value={form.cargo}>{form.cargo}</option>
+                      )}
+                      {cargoOptions.map((c) => (
+                        <option key={c.id} value={c.nombre}>{c.nombre}</option>
                       ))}
                     </select>
                   </Field>
@@ -312,10 +336,11 @@ export function WorkerForm({ worker, isOpen, onClose, onSave }: WorkerFormProps)
                       onChange={(e) => set("centroTrabajo", e.target.value)}
                       className={selectCls}
                     >
-                      {centroOptions().map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
+                      {form.centroTrabajo && !centroOptions.some((c) => c.nombre === form.centroTrabajo) && (
+                        <option value={form.centroTrabajo}>{form.centroTrabajo}</option>
+                      )}
+                      {centroOptions.map((c) => (
+                        <option key={c.id} value={c.nombre}>{c.nombre}</option>
                       ))}
                     </select>
                   </Field>

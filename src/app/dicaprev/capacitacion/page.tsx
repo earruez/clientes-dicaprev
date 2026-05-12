@@ -6,11 +6,10 @@ import TabCalendario from "./components/TabCalendario";
 import TabCatalogo from "./components/TabCatalogo";
 import TabHistorial from "./components/TabHistorial";
 import {
-  getAsignaciones,
-  getSesiones,
-  getCatalogo,
-  subscribe,
-} from "@/lib/capacitacion/capacitacion-store";
+  getCapacitacionAsignaciones,
+  getCapacitacionSesiones,
+  getCapacitaciones,
+} from "@/actions/capacitaciones";
 import { cn } from "@/lib/utils";
 import {
   ClipboardList,
@@ -32,15 +31,38 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 
 export default function CapacitacionPage() {
   const [activeTab, setActiveTab] = useState<Tab>("asignaciones");
-  const [asignaciones, setAsignaciones] = useState(() => getAsignaciones());
-  const [sesiones, setSesiones] = useState(() => getSesiones());
-  const [catalogo, setCatalogo] = useState(() => getCatalogo());
+  const [asignaciones, setAsignaciones] = useState<{ estado: string }[]>([]);
+  const [sesiones, setSesiones] = useState<{ id: string }[]>([]);
+  const [catalogo, setCatalogo] = useState<{ activa: boolean }[]>([]);
 
-  useEffect(() => subscribe(() => {
-    setAsignaciones(getAsignaciones());
-    setSesiones(getSesiones());
-    setCatalogo(getCatalogo());
-  }), []);
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadResumen() {
+      try {
+        const [asignacionesData, sesionesData, catalogoData] = await Promise.all([
+          getCapacitacionAsignaciones(),
+          getCapacitacionSesiones(),
+          getCapacitaciones(),
+        ]);
+
+        if (!isMounted) return;
+        setAsignaciones(asignacionesData);
+        setSesiones(sesionesData);
+        setCatalogo(catalogoData);
+      } catch {
+        if (!isMounted) return;
+        setAsignaciones([]);
+        setSesiones([]);
+        setCatalogo([]);
+      }
+    }
+
+    void loadResumen();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const pendientes = useMemo(() =>
     asignaciones.filter((a) => a.estado === "pendiente").length,
