@@ -241,7 +241,9 @@ function ResumenPageContent() {
     try {
       const resultado = await generarDocumentosFaltantes({ empresaId });
       setGeneracionMensaje(
-        `Generados ${resultado.generados}, actualizados ${resultado.actualizados}, omitidos ${resultado.omitidos}`,
+        resultado.generados === 0 && resultado.actualizados === 0
+          ? "No se encontraron documentos nuevos para generar."
+          : `Se generaron ${resultado.generados} documento${resultado.generados !== 1 ? "s" : ""} y se actualizaron ${resultado.actualizados}.`,
       );
       await recargarResumen();
     } catch {
@@ -313,10 +315,14 @@ function ResumenPageContent() {
               <button
                 type="button"
                 onClick={onGenerarDocumentos}
-                disabled={generacionLoading || !empresaId}
+                disabled={generacionLoading || !empresaId || (cumplimiento?.totalFaltantes ?? 0) + (cumplimiento?.totalIncompletos ?? 0) === 0}
                 className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {generacionLoading ? "Generando..." : "Generar documentos faltantes"}
+                {generacionLoading
+                  ? "Generando documentos..."
+                  : (cumplimiento?.totalFaltantes ?? 0) + (cumplimiento?.totalIncompletos ?? 0) === 0
+                  ? "Todo al día ✅"
+                  : "Generar documentos faltantes"}
               </button>
             </div>
           )}

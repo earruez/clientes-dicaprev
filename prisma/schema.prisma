@@ -952,3 +952,22 @@ model VehiculoMantencion {
 
   @@index([vehiculoId])
 }
+
+// ─────────────────────────────────────────────
+// GENERACIÓN DE DOCUMENTOS CON IA — AUDITORÍA
+// ─────────────────────────────────────────────
+
+model GeneracionDocumentosLog {
+  id          String   @id @default(uuid())
+  empresaId   String
+  usuarioId   String
+  fecha       DateTime @default(now())
+  generados   Int      @default(0)
+  actualizados Int     @default(0)
+  omitidos    Int      @default(0)
+  duracionMs  Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([empresaId])
+  @@index([usuarioId])
+}

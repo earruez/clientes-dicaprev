@@ -18,6 +18,14 @@ type GenerarContenidoContexto = {
   riesgos: string[];
 };
 
+/** Salida estructurada del generador de contenido IA. */
+export type ContenidoGeneradoIA = {
+  contenido: string;
+  version: number;
+  generadoPor: "IA";
+  fecha: Date;
+};
+
 export type GeneracionDocumentoItem = {
   reglaId: string;
   codigo: string;
@@ -33,7 +41,26 @@ export type GenerarDocumentosFaltantesResultado = {
   actualizados: number;
   omitidos: number;
   items: GeneracionDocumentoItem[];
+  logId: string | null;
 };
+
+// ─────────────────────────────────────────────
+// CONTROL DE EJECUCIÓN – flag por empresa (singleton en proceso)
+// ─────────────────────────────────────────────
+
+const _ejecucionEnCurso = new Map<string, boolean>();
+
+function marcarEnCurso(empresaId: string): boolean {
+  if (_ejecucionEnCurso.get(empresaId)) return false;
+  _ejecucionEnCurso.set(empresaId, true);
+  return true;
+}
+
+function liberarEjecucion(empresaId: string): void {
+  _ejecucionEnCurso.delete(empresaId);
+}
+
+const MAX_CONTENIDO_CHARS = 4000;
 
 function normalizeToken(value: string | null | undefined) {
   return (value ?? "")
@@ -79,8 +106,14 @@ function inferRiesgos(input: {
   return Array.from(new Set([...fromRule, ...inferred]));
 }
 
-// TODO(Fase 26.6.x): reemplazar mock local por llamada real a proveedor IA (OpenAI / Azure OpenAI).
-export function generarContenidoDocumento(doc: ReglaDocumentalNextPrev, contexto: GenerarContenidoContexto) {
+// TODO: Integrar proveedor IA real (OpenAI / Azure OpenAI)
+// TODO: Manejar tokens y costos antes de activar en produccion
+// TODO: Agregar reintentos con backoff y control de errores de red
+// TODO: Definir workflow completo de estados documentales (pendiente → en_revision → firmado → aprobado)
+export function generarContenidoDocumento(
+  doc: ReglaDocumentalNextPrev,
+  contexto: GenerarContenidoContexto,
+): ContenidoGeneradoIA {
   const riesgos = contexto.riesgos.length > 0 ? contexto.riesgos.join(", ") : "sin riesgos especificos";
 
   const lines = [
@@ -102,9 +135,20 @@ export function generarContenidoDocumento(doc: ReglaDocumentalNextPrev, contexto
     "5. Firma y aprobacion.",
     "",
     `Base normativa: ${doc.cumplimiento.baseNormativa.join(", ")}`,
-  ].filter(Boolean);
+  ].filter(Boolean).join("\n");
 
-  return lines.join("\n");
+  // Proteccion: limitar tamano y asegurar contenido no vacio.
+  const contenido =
+    lines.length > 0
+      ? lines.slice(0, MAX_CONTENIDO_CHARS)
+      : `# ${doc.nombre}\n\nDocumento generado automaticamente.`;
+
+  return {
+    contenido,
+    version: 1,
+    generadoPor: "IA",
+    fecha: new Date(),
+  };
 }
 
 function isDocumentoValido(estado: string) {
@@ -117,6 +161,29 @@ export async function generarDocumentosFaltantesIA(params: {
   usuarioId: string;
   email: string;
 }): Promise<GenerarDocumentosFaltantesResultado> {
+  // Control de ejecucion concurrente: una sola ejecucion activa por empresa.
+  const adquirido = marcarEnCurso(params.empresaId);
+  if (!adquirido) {
+    throw new Error("Generacion en curso. Vuelve a intentarlo en unos segundos.");
+  }
+
+  const inicioMs = Date.now();
+
+  try {
+    return await _ejecutarGeneracion(params, inicioMs);
+  } finally {
+    liberarEjecucion(params.empresaId);
+    console.info("[documentacion][ia] ejecucion finalizada", {
+      empresaId: params.empresaId,
+      duracionMs: Date.now() - inicioMs,
+    });
+  }
+}
+
+async function _ejecutarGeneracion(
+  params: { empresaId: string; usuarioId: string; email: string },
+  inicioMs: number,
+): Promise<GenerarDocumentosFaltantesResultado> {
   const empresa = await prisma.empresa.findUnique({
     where: { id: params.empresaId },
     select: {
@@ -156,6 +223,12 @@ export async function generarDocumentosFaltantesIA(params: {
     .map((item) => REGLAS_DOCUMENTALES.find((regla) => regla.id === item.reglaId))
     .filter(Boolean) as ReglaDocumentalNextPrev[];
 
+  // Si no hay documentos faltantes ni incompletos, salir sin procesar.
+  if (reglasObjetivo.length === 0) {
+    const log = await _registrarLog({ ...params, generados: 0, actualizados: 0, omitidos: 0, duracionMs: Date.now() - inicioMs });
+    return { generados: 0, actualizados: 0, omitidos: 0, items: [], logId: log?.id ?? null };
+  }
+
   const industria = inferIndustria({ tipoEmpresa: empresa.tipoEmpresa, giro: empresa.giro });
   const items: GeneracionDocumentoItem[] = [];
   let generados = 0;
@@ -186,7 +259,7 @@ export async function generarDocumentosFaltantesIA(params: {
         riesgos: inferRiesgos({ empresa, regla }),
       };
 
-      const contenido = generarContenidoDocumento(regla, contexto);
+      const generado = generarContenidoDocumento(regla, contexto);
 
       if (existentes.length === 0) {
         const created = await prisma.documentoEmpresa.create({
@@ -195,9 +268,10 @@ export async function generarDocumentosFaltantesIA(params: {
             nombre: regla.nombre,
             categoria: regla.categoria,
             tipo: regla.codigo,
+            // faltante → pendiente (requiere revision humana)
             estado: "pendiente",
-            version: "1.0",
-            observaciones: contenido,
+            version: `${generado.version}.0`,
+            observaciones: generado.contenido,
             subidoPorId: params.usuarioId,
             creadoPorEmail: params.email,
             tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
@@ -210,8 +284,8 @@ export async function generarDocumentosFaltantesIA(params: {
             documentoId: created.id,
             usuarioId: params.usuarioId,
             accion: "DOCUMENTO_GENERADO_IA",
-            detalle: "Documento generado automáticamente con IA",
-            version: "1.0",
+            detalle: "Documento generado automaticamente con IA (pendiente de revision)",
+            version: `${generado.version}.0`,
           },
         });
 
@@ -237,12 +311,14 @@ export async function generarDocumentosFaltantesIA(params: {
           });
           omitidos += 1;
         } else {
+          // incompleto → en_revision (requiere aprobacion humana, no directamente vigente)
+          // TODO: Definir workflow completo: en_revision → pendiente_firma → firmado → aprobado
           const updated = await prisma.documentoEmpresa.update({
             where: { id: doc.id },
             data: {
-              estado: "vigente",
-              observaciones: contenido,
-              version: "1.1",
+              estado: "en_revision",
+              observaciones: generado.contenido,
+              version: `${generado.version}.1`,
             },
             select: { id: true },
           });
@@ -252,8 +328,8 @@ export async function generarDocumentosFaltantesIA(params: {
               documentoId: updated.id,
               usuarioId: params.usuarioId,
               accion: "DOCUMENTO_ACTUALIZADO_IA",
-              detalle: "Documento generado automáticamente con IA",
-              version: "1.1",
+              detalle: "Documento actualizado con IA (en revision pendiente de aprobacion)",
+              version: `${generado.version}.1`,
             },
           });
 
@@ -322,7 +398,7 @@ export async function generarDocumentosFaltantesIA(params: {
         }),
       };
 
-      const contenido = generarContenidoDocumento(regla, contexto);
+      const generado = generarContenidoDocumento(regla, contexto);
 
       if (!existente) {
         try {
@@ -333,9 +409,10 @@ export async function generarDocumentosFaltantesIA(params: {
               nombre: regla.nombre,
               tipo: regla.codigo,
               categoria: "trabajador",
+              // faltante → pendiente
               estado: "pendiente",
-              version: "1.0",
-              observaciones: contenido,
+              version: `${generado.version}.0`,
+              observaciones: generado.contenido,
               subidoPorId: params.usuarioId,
               creadoPorEmail: params.email,
               tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
@@ -348,8 +425,8 @@ export async function generarDocumentosFaltantesIA(params: {
               documentoId: created.id,
               usuarioId: params.usuarioId,
               accion: "DOCUMENTO_GENERADO_IA",
-              detalle: "Documento generado automáticamente con IA",
-              version: "1.0",
+              detalle: "Documento generado automaticamente con IA (pendiente de revision)",
+              version: `${generado.version}.0`,
             },
           });
 
@@ -388,12 +465,14 @@ export async function generarDocumentosFaltantesIA(params: {
         });
         omitidos += 1;
       } else {
+        // incompleto → en_revision
+        // TODO: Definir workflow completo de estados documentales
         const updated = await prisma.trabajadorDocumento.update({
           where: { id: existente.id },
           data: {
-            estado: "vigente",
-            observaciones: contenido,
-            version: "1.1",
+            estado: "en_revision",
+            observaciones: generado.contenido,
+            version: `${generado.version}.1`,
           },
           select: { id: true },
         });
@@ -403,8 +482,8 @@ export async function generarDocumentosFaltantesIA(params: {
             documentoId: updated.id,
             usuarioId: params.usuarioId,
             accion: "DOCUMENTO_ACTUALIZADO_IA",
-            detalle: "Documento generado automáticamente con IA",
-            version: "1.1",
+            detalle: "Documento actualizado con IA (en revision pendiente de aprobacion)",
+            version: `${generado.version}.1`,
           },
         });
 
@@ -427,12 +506,48 @@ export async function generarDocumentosFaltantesIA(params: {
     generados,
     actualizados,
     omitidos,
+    duracionMs: Date.now() - inicioMs,
   });
+
+  // Registro de auditoria en DB.
+  const log = await _registrarLog({ ...params, generados, actualizados, omitidos, duracionMs: Date.now() - inicioMs });
 
   return {
     generados,
     actualizados,
     omitidos,
     items,
+    logId: log?.id ?? null,
   };
+}
+
+// ─────────────────────────────────────────────
+// AUDITORÍA – guardar log de ejecucion
+// ─────────────────────────────────────────────
+
+async function _registrarLog(params: {
+  empresaId: string;
+  usuarioId: string;
+  generados: number;
+  actualizados: number;
+  omitidos: number;
+  duracionMs: number;
+}): Promise<{ id: string } | null> {
+  try {
+    return await prisma.generacionDocumentosLog.create({
+      data: {
+        empresaId: params.empresaId,
+        usuarioId: params.usuarioId,
+        generados: params.generados,
+        actualizados: params.actualizados,
+        omitidos: params.omitidos,
+        duracionMs: params.duracionMs,
+      },
+      select: { id: true },
+    });
+  } catch (err) {
+    // No bloquear la respuesta si el log falla.
+    console.error("[documentacion][ia] error al registrar log de auditoria", err);
+    return null;
+  }
 }
