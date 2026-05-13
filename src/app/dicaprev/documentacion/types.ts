@@ -14,6 +14,7 @@ export type EstadoDocumento =
   | "en_revision"
   | "reemplazado"
   | "no_aplica"
+  | "firmado"
   | "Vigente"
   | "Por vencer"
   | "Vencido"
@@ -58,6 +59,9 @@ export type DocumentoEmpresa = {
   actualizadoPor: string;
   fechaActualizacion: string;
   observaciones: string;
+  firmado: boolean;
+  firmadoPor: string | null;
+  firmadoEn: string | null;
   historial: HistorialDocumento[];
 };
 
@@ -92,6 +96,9 @@ export type DocumentoMatrizRow = {
   aplicaDesdeTrabajadores: number | null;
   aplicaHastaTrabajadores: number | null;
   esAplicable: boolean;
+  firmado: boolean;
+  firmadoPor: string | null;
+  firmadoEn: string | null;
 };
 
 export type TabDocumentacion = "todos" | CategoriaDocumento | "historial";

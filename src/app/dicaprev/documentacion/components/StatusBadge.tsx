@@ -16,6 +16,7 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
     "en_revision": "bg-sky-100 text-sky-800 border-sky-200",
     "reemplazado": "bg-violet-100 text-violet-800 border-violet-200",
     "no_aplica": "bg-zinc-100 text-zinc-700 border-zinc-200",
+    "firmado": "bg-emerald-100 text-emerald-800 border-emerald-300",
     "Vigente": "bg-emerald-100 text-emerald-800 border-emerald-200",
     "Por vencer": "bg-amber-100 text-amber-800 border-amber-200",
     "Vencido": "bg-rose-100 text-rose-800 border-rose-200",

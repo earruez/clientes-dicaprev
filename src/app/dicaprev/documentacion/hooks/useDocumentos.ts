@@ -5,9 +5,13 @@ import { calcularMetricasDocumentos, calcularVigenciaDocumento } from "@/lib/doc
 import {
   actualizarDocumentoEmpresa,
   crearDocumentoEmpresa,
+  firmarDocumentoEmpresa,
+  generarInformeDocumentalEmpresa,
+  getContextoFijoDocumentacion,
   registrarHistorialDocumento,
   restaurarDocumentoVersion as restaurarDocumentoVersionAction,
   type DocumentoEmpresaInput,
+  type InformeDocumentalEmpresa,
 } from "../actions";
 import {
   type CategoriaDocumento,
@@ -68,6 +72,8 @@ export type UseDocumentosResult = {
   marcarDocumentoNoAplica: (documentoId: string | null, documentoRequeridoId: string | null, base: DocumentoMatrizRow) => Promise<boolean>;
   marcarDocumentoAplica: (documentoId: string | null, documentoRequeridoId: string | null, base: DocumentoMatrizRow) => Promise<boolean>;
   restaurarDocumentoVersion: (documentoId: string, historialId: string) => Promise<boolean>;
+  firmarDocumento: (documentoId: string) => Promise<{ ok: boolean; error?: string }>;
+  descargarInformeDocumental: () => Promise<InformeDocumentalEmpresa>;
   recargarDocumentos: () => Promise<void>;
 };
 
@@ -404,6 +410,19 @@ export function useDocumentos(): UseDocumentosResult {
     return true;
   };
 
+  const firmarDocumento: UseDocumentosResult["firmarDocumento"] = async (documentoId) => {
+    const resultado = await firmarDocumentoEmpresa({ documentoId });
+    if (resultado.ok) {
+      await recargarDocumentos();
+    }
+    return resultado;
+  };
+
+  const descargarInformeDocumental: UseDocumentosResult["descargarInformeDocumental"] = async () => {
+    const contexto = await getContextoFijoDocumentacion();
+    return generarInformeDocumentalEmpresa({ empresaId: contexto.empresaId });
+  };
+
   return {
     usuarioActual,
     documentos,
@@ -420,6 +439,8 @@ export function useDocumentos(): UseDocumentosResult {
     marcarDocumentoNoAplica,
     marcarDocumentoAplica,
     restaurarDocumentoVersion,
+    firmarDocumento,
+    descargarInformeDocumental,
     recargarDocumentos,
   };
 }

@@ -167,6 +167,9 @@ model DocumentoEmpresa {
   subidoPorId           String
   documentoRequeridoId  String?
   creadoPorEmail        String?
+  firmado               Boolean   @default(false)
+  firmadoPor            String?   // nombre del usuario que firmó
+  firmadoEn             DateTime? // fecha/hora de la firma
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -451,6 +454,9 @@ model TrabajadorDocumento {
   observaciones         String?
   subidoPorId           String?
   creadoPorEmail        String?
+  firmado               Boolean   @default(false)
+  firmadoPor            String?   // nombre del usuario que firmó
+  firmadoEn             DateTime? // fecha/hora de la firma
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -966,6 +972,8 @@ model GeneracionDocumentosLog {
   actualizados Int     @default(0)
   omitidos    Int      @default(0)
   duracionMs  Int      @default(0)
+  usoIA       Boolean  @default(false)
+  errorIA     Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   @@index([empresaId])

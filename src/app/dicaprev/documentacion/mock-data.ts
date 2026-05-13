@@ -46,6 +46,9 @@ export const DOCUMENTOS_EMPRESA_MOCK: DocumentoEmpresa[] = [
     fechaActualizacion: "2026-03-01T11:30:00",
     observaciones: "Documento vigente para control corporativo.",
     historial: baseHistorial(USUARIO_LOGUEADO_MOCK.nombre, USUARIO_LOGUEADO_MOCK.email, "Documento base corporativo cargado"),
+    firmado: false,
+    firmadoPor: null,
+    firmadoEn: null,
   },
   {
     id: "doc-002",
@@ -68,6 +71,9 @@ export const DOCUMENTOS_EMPRESA_MOCK: DocumentoEmpresa[] = [
     fechaActualizacion: "2026-01-03T08:12:00",
     observaciones: "Afiliación activa al organismo administrador.",
     historial: baseHistorial(USUARIO_LOGUEADO_MOCK.nombre, USUARIO_LOGUEADO_MOCK.email, "Afiliación Ley 16.744 registrada"),
+    firmado: false,
+    firmadoPor: null,
+    firmadoEn: null,
   },
   {
     id: "doc-003",
@@ -90,6 +96,9 @@ export const DOCUMENTOS_EMPRESA_MOCK: DocumentoEmpresa[] = [
     fechaActualizacion: "2026-04-15T10:10:00",
     observaciones: "Revisar renovación antes de vencimiento.",
     historial: baseHistorial(USUARIO_LOGUEADO_MOCK.nombre, USUARIO_LOGUEADO_MOCK.email, "F30-1 cargado para control previsional"),
+    firmado: false,
+    firmadoPor: null,
+    firmadoEn: null,
   },
   {
     id: "doc-004",
@@ -112,6 +121,9 @@ export const DOCUMENTOS_EMPRESA_MOCK: DocumentoEmpresa[] = [
     fechaActualizacion: "2026-05-01T09:00:00",
     observaciones: "Pendiente de carga del archivo oficial.",
     historial: baseHistorial(USUARIO_LOGUEADO_MOCK.nombre, USUARIO_LOGUEADO_MOCK.email, "Documento creado como pendiente de carga"),
+    firmado: false,
+    firmadoPor: null,
+    firmadoEn: null,
   },
   {
     id: "doc-005",
@@ -134,6 +146,9 @@ export const DOCUMENTOS_EMPRESA_MOCK: DocumentoEmpresa[] = [
     fechaActualizacion: "2026-05-01T09:05:00",
     observaciones: "Pendiente de aprobación final para carga.",
     historial: baseHistorial(USUARIO_LOGUEADO_MOCK.nombre, USUARIO_LOGUEADO_MOCK.email, "Documento creado como pendiente de carga"),
+    firmado: false,
+    firmadoPor: null,
+    firmadoEn: null,
   },
   {
     id: "doc-006",
@@ -156,5 +171,8 @@ export const DOCUMENTOS_EMPRESA_MOCK: DocumentoEmpresa[] = [
     fechaActualizacion: "2026-04-01T10:00:00",
     observaciones: "No aplica por dotación actual de la empresa.",
     historial: baseHistorial(USUARIO_LOGUEADO_MOCK.nombre, USUARIO_LOGUEADO_MOCK.email, "Documento marcado inicialmente como no aplica"),
+    firmado: false,
+    firmadoPor: null,
+    firmadoEn: null,
   },
 ];

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, FileSearch, FileText, FolderKanban, ShieldCheck, Upload } from "lucide-react";
+import { CalendarClock, Download, FileSearch, FileText, FolderKanban, ShieldCheck, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,7 @@ import { useDocumentos } from "./hooks/useDocumentos";
 import TableView from "./components/TableView";
 import Filtros from "./components/Filtros";
 import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE, formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
+import { exportarInformeDocumentalPdf } from "@/lib/documentacion/export-informe-documental-pdf";
 import { usePermissions } from "@/lib/permissions";
 
 type ArchivoSubido = {
@@ -54,6 +55,8 @@ export default function DocumentacionPage() {
     marcarDocumentoNoAplica,
     marcarDocumentoAplica,
     restaurarDocumentoVersion,
+    firmarDocumento,
+    descargarInformeDocumental,
   } = useDocumentos();
   const { hasPermission } = usePermissions();
   const canManageDocumentacion = hasPermission("canManageDocumentacion");
@@ -95,6 +98,8 @@ export default function DocumentacionPage() {
   const [additionalFile, setAdditionalFile] = useState<File | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDownloadingInforme, setIsDownloadingInforme] = useState(false);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   const [replacePreviewUrl, setReplacePreviewUrl] = useState<string | null>(null);
   const [historyBusyId, setHistoryBusyId] = useState<string | null>(null);
@@ -448,6 +453,50 @@ export default function DocumentacionPage() {
     setOpenView(true);
   }
 
+  async function handleDownloadInformeDocumental() {
+    try {
+      setIsDownloadingInforme(true);
+      const informe = await descargarInformeDocumental();
+      const content = JSON.stringify(informe, null, 2);
+      const blob = new Blob([content], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const empresaSafe = (informe.empresa.nombre || "empresa").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const stamp = new Date().toISOString().slice(0, 10);
+      const filename = `informe-documental-${empresaSafe || "empresa"}-${stamp}.json`;
+
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+
+      showInfo("Informe documental descargado correctamente.", "success");
+    } catch {
+      showInfo("No se pudo generar el informe documental.", "error");
+    } finally {
+      setIsDownloadingInforme(false);
+    }
+  }
+
+  async function handleDownloadInformeDocumentalPdf() {
+    try {
+      setIsDownloadingPdf(true);
+      const informe = await descargarInformeDocumental();
+      const pdf = await exportarInformeDocumentalPdf(informe);
+      const empresaSafe = (informe.empresa.nombre || "empresa").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+      const stamp = new Date().toISOString().slice(0, 10);
+      const filename = `informe-documental-${empresaSafe || "empresa"}-${stamp}.pdf`;
+      pdf.save(filename);
+      showInfo("PDF del informe documental descargado correctamente.", "success");
+    } catch {
+      showInfo("No se pudo generar el PDF del informe documental.", "error");
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -464,13 +513,21 @@ export default function DocumentacionPage() {
               </p>
             </div>
           </div>
-          {canManageDocumentacion ? (
-            <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={handleDownloadInformeDocumentalPdf} disabled={isDownloadingPdf}>
+              <Download className="mr-1 h-4 w-4" />
+              {isDownloadingPdf ? "Generando PDF..." : "Descargar PDF"}
+            </Button>
+            <Button variant="outline" onClick={handleDownloadInformeDocumental} disabled={isDownloadingInforme}>
+              <Download className="mr-1 h-4 w-4" />
+              {isDownloadingInforme ? "Generando informe..." : "Descargar informe documental"}
+            </Button>
+            {canManageDocumentacion ? (
               <Button className="bg-slate-900 text-white hover:bg-slate-800 [&_svg]:text-white" onClick={() => setOpenAdditional(true)}>
                 <Upload className="mr-1 h-4 w-4" />Agregar documento adicional
               </Button>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[1.4fr_repeat(5,minmax(0,1fr))]">
@@ -588,6 +645,22 @@ export default function DocumentacionPage() {
             }
             await marcarDocumentoAplica(doc.documentoEmpresaId, doc.documentoRequeridoId, doc);
             showInfo("Documento reactivado correctamente.", "success");
+          }}
+          onFirmar={async (doc) => {
+            if (!canManageDocumentacion) {
+              showInfo("No tienes permisos para firmar documentos.", "error");
+              return;
+            }
+            if (!doc.documentoEmpresaId) {
+              showInfo("El documento no tiene un registro activo para firmar.", "error");
+              return;
+            }
+            const resultado = await firmarDocumento(doc.documentoEmpresaId);
+            if (resultado.ok) {
+              showInfo("Documento firmado correctamente.", "success");
+            } else {
+              showInfo(resultado.error ?? "No se pudo firmar el documento.", "error");
+            }
           }}
         />
       )}

@@ -605,6 +605,9 @@ function rowFromDocumentoRequerido(requerido: {
     observaciones: string | null;
     createdAt: Date;
     updatedAt: Date;
+    firmado: boolean;
+    firmadoPor: string | null;
+    firmadoEn: Date | null;
     subidoPor: { nombre: string; email: string };
     historial: Array<{
       id: string;
@@ -668,6 +671,9 @@ function rowFromDocumentoRequerido(requerido: {
       aplicaDesdeTrabajadores: requerido.aplicaDesdeTrabajadores,
       aplicaHastaTrabajadores: requerido.aplicaHastaTrabajadores,
       esAplicable,
+      firmado: false,
+      firmadoPor: null,
+      firmadoEn: null,
     };
   }
 
@@ -702,6 +708,9 @@ function rowFromDocumentoRequerido(requerido: {
     aplicaDesdeTrabajadores: requerido.aplicaDesdeTrabajadores,
     aplicaHastaTrabajadores: requerido.aplicaHastaTrabajadores,
     esAplicable,
+    firmado: doc.firmado,
+    firmadoPor: doc.firmadoPor ?? null,
+    firmadoEn: doc.firmadoEn ? doc.firmadoEn.toISOString() : null,
   };
 }
 
@@ -723,6 +732,9 @@ function rowFromDocumentoAdicional(doc: {
   observaciones: string | null;
   createdAt: Date;
   updatedAt: Date;
+  firmado: boolean;
+  firmadoPor: string | null;
+  firmadoEn: Date | null;
   subidoPor: { nombre: string; email: string };
   historial: Array<{
     id: string;
@@ -782,6 +794,9 @@ function rowFromDocumentoAdicional(doc: {
     aplicaDesdeTrabajadores: null,
     aplicaHastaTrabajadores: null,
     esAplicable: true,
+    firmado: doc.firmado,
+    firmadoPor: doc.firmadoPor ?? null,
+    firmadoEn: doc.firmadoEn ? doc.firmadoEn.toISOString() : null,
   };
 }
 
@@ -1123,6 +1138,355 @@ export async function getCumplimientoDocumentalEmpresa(): Promise<CumplimientoEm
   const context = await requirePermission("canReadDocumentacion");
   await asegurarContextoBase(context);
   return calcularCumplimientoEmpresa({ empresaId: context.empresaId });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIRMA DIGITAL SIMPLE — Fase 26.9
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Estados desde los que se permite firmar un documento de empresa. */
+const ESTADOS_FIRMABLES: string[] = ["pendiente", "en_revision", "Pendiente de carga", "En revisión"];
+
+export type FirmarDocumentoResultado =
+  | { ok: true; logId: string; firmadoEn: string; firmadoPor: string }
+  | { ok: false; error: string };
+
+type InformeDocumentoItem = {
+  id: string;
+  nombre: string;
+  tipo: string | null;
+  categoria: string;
+  estado: string;
+  firmado: boolean;
+  firmadoPor: string | null;
+  firmadoEn: string | null;
+  fechaEmision: string | null;
+  fechaVencimiento: string | null;
+  trabajadorId?: string;
+  trabajadorNombre?: string;
+};
+
+export type InformeDocumentalEmpresa = {
+  meta: {
+    version: "27.0-json";
+    generadoEn: string;
+  };
+  empresa: {
+    id: string;
+    nombre: string;
+    rut: string | null;
+    razonSocial: string | null;
+    giro: string | null;
+    cantidadTrabajadores: number | null;
+  };
+  cumplimiento: {
+    porcentajeCumplimiento: number;
+    totalAplicables: number;
+    totalCumple: number;
+    totalFaltantes: number;
+    totalIncompletos: number;
+  };
+  resumenDocumentos: {
+    totalEmpresa: number;
+    totalTrabajador: number;
+    totalFirmados: number;
+    totalPendientesFirma: number;
+    totalVencidos: number;
+  };
+  documentos: {
+    empresa: InformeDocumentoItem[];
+    trabajador: InformeDocumentoItem[];
+    firmados: InformeDocumentoItem[];
+    pendientesFirma: InformeDocumentoItem[];
+    vencidos: InformeDocumentoItem[];
+  };
+};
+
+function normalizeEstado(value: string | null | undefined) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function toInformeItem(params: {
+  id: string;
+  nombre: string;
+  tipo: string | null;
+  categoria: string;
+  estado: string;
+  firmado: boolean;
+  firmadoPor: string | null;
+  firmadoEn: Date | null;
+  fechaEmision: Date | null;
+  fechaVencimiento: Date | null;
+  trabajadorId?: string;
+  trabajadorNombre?: string;
+}): InformeDocumentoItem {
+  return {
+    id: params.id,
+    nombre: params.nombre,
+    tipo: params.tipo,
+    categoria: params.categoria,
+    estado: params.estado,
+    firmado: params.firmado,
+    firmadoPor: params.firmadoPor,
+    firmadoEn: params.firmadoEn ? params.firmadoEn.toISOString() : null,
+    fechaEmision: params.fechaEmision ? params.fechaEmision.toISOString() : null,
+    fechaVencimiento: params.fechaVencimiento ? params.fechaVencimiento.toISOString() : null,
+    trabajadorId: params.trabajadorId,
+    trabajadorNombre: params.trabajadorNombre,
+  };
+}
+
+export async function generarInformeDocumentalEmpresaData(params: {
+  empresaId: string;
+}): Promise<InformeDocumentalEmpresa> {
+  const [empresa, cumplimiento, docsEmpresaRaw, docsTrabajadorRaw] = await Promise.all([
+    prisma.empresa.findUnique({
+      where: { id: params.empresaId },
+      select: {
+        id: true,
+        nombre: true,
+        rut: true,
+        razonSocial: true,
+        giro: true,
+        cantidadTrabajadores: true,
+      },
+    }),
+    calcularCumplimientoEmpresa({ empresaId: params.empresaId }),
+    prisma.documentoEmpresa.findMany({
+      where: {
+        empresaId: params.empresaId,
+        estado: { notIn: [...ESTADOS_DOCUMENTO_EMPRESA_ARCHIVADOS] },
+      },
+      select: {
+        id: true,
+        nombre: true,
+        tipo: true,
+        categoria: true,
+        estado: true,
+        firmado: true,
+        firmadoPor: true,
+        firmadoEn: true,
+        fechaEmision: true,
+        fechaVencimiento: true,
+      },
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.trabajadorDocumento.findMany({
+      where: {
+        empresaId: params.empresaId,
+        estado: { not: "reemplazado" },
+      },
+      select: {
+        id: true,
+        nombre: true,
+        tipo: true,
+        categoria: true,
+        estado: true,
+        firmado: true,
+        firmadoPor: true,
+        firmadoEn: true,
+        fechaEmision: true,
+        fechaVencimiento: true,
+        trabajadorId: true,
+        trabajador: {
+          select: {
+            nombres: true,
+            apellidos: true,
+          },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    }),
+  ]);
+
+  if (!empresa) {
+    throw new Error("Empresa no encontrada para informe documental.");
+  }
+
+  const docsEmpresa = docsEmpresaRaw.map((doc) =>
+    toInformeItem({
+      id: doc.id,
+      nombre: doc.nombre,
+      tipo: doc.tipo,
+      categoria: doc.categoria,
+      estado: doc.estado,
+      firmado: doc.firmado,
+      firmadoPor: doc.firmadoPor,
+      firmadoEn: doc.firmadoEn,
+      fechaEmision: doc.fechaEmision,
+      fechaVencimiento: doc.fechaVencimiento,
+    }),
+  );
+
+  const docsTrabajador = docsTrabajadorRaw.map((doc) =>
+    toInformeItem({
+      id: doc.id,
+      nombre: doc.nombre,
+      tipo: doc.tipo,
+      categoria: doc.categoria,
+      estado: doc.estado,
+      firmado: doc.firmado,
+      firmadoPor: doc.firmadoPor,
+      firmadoEn: doc.firmadoEn,
+      fechaEmision: doc.fechaEmision,
+      fechaVencimiento: doc.fechaVencimiento,
+      trabajadorId: doc.trabajadorId,
+      trabajadorNombre: [doc.trabajador?.nombres ?? "", doc.trabajador?.apellidos ?? ""].join(" ").trim() || undefined,
+    }),
+  );
+
+  const allDocs = [...docsEmpresa, ...docsTrabajador];
+
+  const firmados = allDocs.filter((doc) => doc.firmado);
+  const pendientesFirma = allDocs.filter((doc) => {
+    const estado = normalizeEstado(doc.estado);
+    const firmable =
+      estado === "pendiente" ||
+      estado === "pendiente_firma" ||
+      estado === "en_revision" ||
+      estado === "vigente" ||
+      estado === "aprobado";
+    return !doc.firmado && firmable;
+  });
+  const vencidos = allDocs.filter((doc) => normalizeEstado(doc.estado) === "vencido");
+
+  return {
+    meta: {
+      version: "27.0-json",
+      generadoEn: new Date().toISOString(),
+    },
+    empresa: {
+      id: empresa.id,
+      nombre: empresa.nombre,
+      rut: empresa.rut,
+      razonSocial: empresa.razonSocial,
+      giro: empresa.giro,
+      cantidadTrabajadores: empresa.cantidadTrabajadores,
+    },
+    cumplimiento: {
+      porcentajeCumplimiento: cumplimiento.porcentajeCumplimiento,
+      totalAplicables: cumplimiento.totalAplicables,
+      totalCumple: cumplimiento.totalCumple,
+      totalFaltantes: cumplimiento.totalFaltantes,
+      totalIncompletos: cumplimiento.totalIncompletos,
+    },
+    resumenDocumentos: {
+      totalEmpresa: docsEmpresa.length,
+      totalTrabajador: docsTrabajador.length,
+      totalFirmados: firmados.length,
+      totalPendientesFirma: pendientesFirma.length,
+      totalVencidos: vencidos.length,
+    },
+    documentos: {
+      empresa: docsEmpresa,
+      trabajador: docsTrabajador,
+      firmados,
+      pendientesFirma,
+      vencidos,
+    },
+  };
+}
+
+export async function generarInformeDocumentalEmpresa(params: {
+  empresaId: string;
+}): Promise<InformeDocumentalEmpresa> {
+  const context = await requirePermission("canReadDocumentacion");
+  await asegurarContextoBase(context);
+
+  if (params.empresaId !== context.empresaId) {
+    throw new Error("No tienes permisos para generar el informe de otra empresa.");
+  }
+
+  return generarInformeDocumentalEmpresaData({ empresaId: params.empresaId });
+}
+
+/**
+ * Firma un documento de empresa de forma simple y trazable.
+ * - Valida permisos (canManageDocumentacion).
+ * - Valida que el documento exista y pertenezca a la empresa del usuario.
+ * - Impide firmar un documento ya firmado.
+ * - Valida que el estado sea uno de los permitidos (pendiente | en_revision).
+ * - Actualiza estado → "firmado", registra firmadoPor y firmadoEn.
+ * - Registra entrada en DocumentoEmpresaHistorial.
+ */
+export async function firmarDocumentoEmpresa(params: {
+  documentoId: string;
+}): Promise<FirmarDocumentoResultado> {
+  const context = await requirePermission("canManageDocumentacion");
+
+  const doc = await prisma.documentoEmpresa.findUnique({
+    where: { id: params.documentoId },
+    select: {
+      id: true,
+      nombre: true,
+      estado: true,
+      firmado: true,
+      empresaId: true,
+    },
+  });
+
+  if (!doc) {
+    return { ok: false, error: "Documento no encontrado." };
+  }
+
+  if (doc.empresaId !== context.empresaId) {
+    return { ok: false, error: "No tienes permiso para firmar este documento." };
+  }
+
+  if (doc.firmado) {
+    return { ok: false, error: "El documento ya fue firmado anteriormente." };
+  }
+
+  const estadoActual = (doc.estado ?? "").toLowerCase().replace(/\s/g, "_");
+  const firmable =
+    ESTADOS_FIRMABLES.map((e) => e.toLowerCase().replace(/\s/g, "_")).includes(estadoActual);
+
+  if (!firmable) {
+    return {
+      ok: false,
+      error: `El documento en estado "${doc.estado}" no puede ser firmado. Solo se permiten documentos en estado pendiente o en revisión.`,
+    };
+  }
+
+  const firmadoEn = new Date();
+
+  // Obtener nombre del usuario firmante
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: context.usuarioId },
+    select: { nombre: true, email: true },
+  });
+  const firmadoPor = usuario?.nombre ?? usuario?.email ?? context.usuarioId;
+
+  await prisma.documentoEmpresa.update({
+    where: { id: doc.id },
+    data: {
+      estado: "firmado",
+      firmado: true,
+      firmadoPor,
+      firmadoEn,
+    },
+  });
+
+  const historial = await prisma.documentoEmpresaHistorial.create({
+    data: {
+      documentoId: doc.id,
+      usuarioId: context.usuarioId,
+      accion: "firmado",
+      detalle: `Documento firmado por ${firmadoPor}`,
+      version: null,
+    },
+  });
+
+  return {
+    ok: true,
+    logId: historial.id,
+    firmadoEn: firmadoEn.toISOString(),
+    firmadoPor,
+  };
 }
 
 export type { DocumentoEmpresaInput };

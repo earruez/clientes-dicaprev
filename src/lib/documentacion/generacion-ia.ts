@@ -44,6 +44,12 @@ export type GenerarDocumentosFaltantesResultado = {
   logId: string | null;
 };
 
+type ResultadoGeneracionContenido = {
+  data: ContenidoGeneradoIA;
+  usoIA: boolean;
+  errorIA: boolean;
+};
+
 // ─────────────────────────────────────────────
 // CONTROL DE EJECUCIÓN – flag por empresa (singleton en proceso)
 // ─────────────────────────────────────────────
@@ -61,6 +67,12 @@ function liberarEjecucion(empresaId: string): void {
 }
 
 const MAX_CONTENIDO_CHARS = 4000;
+const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+const OPENAI_MAX_TOKENS = 900;
+
+// Cache de prompts para bajar costo y evitar llamadas redundantes en una misma ejecución.
+const _cacheContenido = new Map<string, ResultadoGeneracionContenido>();
 
 function normalizeToken(value: string | null | undefined) {
   return (value ?? "")
@@ -106,11 +118,10 @@ function inferRiesgos(input: {
   return Array.from(new Set([...fromRule, ...inferred]));
 }
 
-// TODO: Integrar proveedor IA real (OpenAI / Azure OpenAI)
 // TODO: Manejar tokens y costos antes de activar en produccion
 // TODO: Agregar reintentos con backoff y control de errores de red
 // TODO: Definir workflow completo de estados documentales (pendiente → en_revision → firmado → aprobado)
-export function generarContenidoDocumento(
+export function generarContenidoDocumentoMock(
   doc: ReglaDocumentalNextPrev,
   contexto: GenerarContenidoContexto,
 ): ContenidoGeneradoIA {
@@ -149,6 +160,130 @@ export function generarContenidoDocumento(
     generadoPor: "IA",
     fecha: new Date(),
   };
+}
+
+function sanitizeContenido(text: string, titulo: string) {
+  const cleaned = (text ?? "").trim();
+  if (!cleaned) return `# ${titulo}\n\nDocumento generado automaticamente.`;
+
+  const bounded = cleaned.slice(0, MAX_CONTENIDO_CHARS).trim();
+  if (!bounded.includes("##")) {
+    return [`# ${titulo}`, "", "## Contenido", bounded].join("\n").slice(0, MAX_CONTENIDO_CHARS);
+  }
+
+  return bounded;
+}
+
+function buildPrompt(doc: ReglaDocumentalNextPrev, contexto: GenerarContenidoContexto) {
+  const riesgos = contexto.riesgos.length > 0 ? contexto.riesgos.join(", ") : "sin riesgos especificos";
+  const perfilTrabajador = contexto.trabajador
+    ? `Trabajador: ${contexto.trabajador.nombreCompleto}.`
+    : "Documento de alcance empresa.";
+
+  return [
+    "Eres un especialista en SST en Chile y redactor tecnico normativo.",
+    `Genera un documento: ${doc.nombre} (${doc.codigo}).`,
+    "Escribe en espanol de Chile, claro y formal, enfocado en prevencion de riesgos.",
+    `Industria: ${contexto.industria}.`,
+    `Riesgos: ${riesgos}.`,
+    `Tamano empresa: ${contexto.empresa.tamanoEmpresa ?? "no informado"}.`,
+    `Giro empresa: ${contexto.empresa.giro ?? "no informado"}.`,
+    perfilTrabajador,
+    `Base normativa referencial: ${doc.cumplimiento.baseNormativa.join(", ")}.`,
+    "La salida debe tener esta estructura minima:",
+    `# ${doc.nombre}`,
+    "## Objetivo",
+    "## Alcance",
+    "## Responsabilidades",
+    "## Procedimiento",
+    "## Registros y Evidencias",
+    "## Referencias normativas",
+    "No incluyas texto fuera del documento.",
+  ].join("\n");
+}
+
+export async function generarContenidoDocumentoIA(
+  doc: ReglaDocumentalNextPrev,
+  contexto: GenerarContenidoContexto,
+): Promise<ResultadoGeneracionContenido> {
+  const cacheKey = [doc.id, contexto.industria, contexto.riesgos.join("|"), contexto.trabajador?.id ?? "empresa"].join("::");
+  const cached = _cacheContenido.get(cacheKey);
+  if (cached) return cached;
+
+  const fallback = (): ResultadoGeneracionContenido => ({
+    data: generarContenidoDocumentoMock(doc, contexto),
+    usoIA: false,
+    errorIA: true,
+  });
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    const result = {
+      data: generarContenidoDocumentoMock(doc, contexto),
+      usoIA: false,
+      errorIA: false,
+    };
+    _cacheContenido.set(cacheKey, result);
+    return result;
+  }
+
+  try {
+    const response = await fetch(OPENAI_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: OPENAI_MODEL,
+        temperature: 0.3,
+        max_tokens: OPENAI_MAX_TOKENS,
+        messages: [
+          {
+            role: "system",
+            content: "Eres un experto en documentos SST para Chile.",
+          },
+          {
+            role: "user",
+            content: buildPrompt(doc, contexto),
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`OpenAI HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+
+    const content = payload.choices?.[0]?.message?.content ?? "";
+    const sanitized = sanitizeContenido(content, doc.nombre);
+
+    const result: ResultadoGeneracionContenido = {
+      data: {
+        contenido: sanitized,
+        version: 1,
+        generadoPor: "IA",
+        fecha: new Date(),
+      },
+      usoIA: true,
+      errorIA: false,
+    };
+
+    _cacheContenido.set(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error("[documentacion][ia] fallo proveedor IA, aplicando fallback mock", {
+      docCodigo: doc.codigo,
+      error,
+    });
+    const result = fallback();
+    _cacheContenido.set(cacheKey, result);
+    return result;
+  }
 }
 
 function isDocumentoValido(estado: string) {
@@ -225,7 +360,15 @@ async function _ejecutarGeneracion(
 
   // Si no hay documentos faltantes ni incompletos, salir sin procesar.
   if (reglasObjetivo.length === 0) {
-    const log = await _registrarLog({ ...params, generados: 0, actualizados: 0, omitidos: 0, duracionMs: Date.now() - inicioMs });
+    const log = await _registrarLog({
+      ...params,
+      generados: 0,
+      actualizados: 0,
+      omitidos: 0,
+      usoIA: false,
+      errorIA: false,
+      duracionMs: Date.now() - inicioMs,
+    });
     return { generados: 0, actualizados: 0, omitidos: 0, items: [], logId: log?.id ?? null };
   }
 
@@ -234,6 +377,8 @@ async function _ejecutarGeneracion(
   let generados = 0;
   let actualizados = 0;
   let omitidos = 0;
+  let usoIA = false;
+  let errorIA = false;
 
   for (const regla of reglasObjetivo) {
     if (regla.entidadAplicable === "empresa") {
@@ -259,7 +404,9 @@ async function _ejecutarGeneracion(
         riesgos: inferRiesgos({ empresa, regla }),
       };
 
-      const generado = generarContenidoDocumento(regla, contexto);
+      const generado = await generarContenidoDocumentoIA(regla, contexto);
+      usoIA = usoIA || generado.usoIA;
+      errorIA = errorIA || generado.errorIA;
 
       if (existentes.length === 0) {
         const created = await prisma.documentoEmpresa.create({
@@ -270,8 +417,8 @@ async function _ejecutarGeneracion(
             tipo: regla.codigo,
             // faltante → pendiente (requiere revision humana)
             estado: "pendiente",
-            version: `${generado.version}.0`,
-            observaciones: generado.contenido,
+            version: `${generado.data.version}.0`,
+            observaciones: generado.data.contenido,
             subidoPorId: params.usuarioId,
             creadoPorEmail: params.email,
             tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
@@ -285,7 +432,7 @@ async function _ejecutarGeneracion(
             usuarioId: params.usuarioId,
             accion: "DOCUMENTO_GENERADO_IA",
             detalle: "Documento generado automaticamente con IA (pendiente de revision)",
-            version: `${generado.version}.0`,
+            version: `${generado.data.version}.0`,
           },
         });
 
@@ -317,8 +464,8 @@ async function _ejecutarGeneracion(
             where: { id: doc.id },
             data: {
               estado: "en_revision",
-              observaciones: generado.contenido,
-              version: `${generado.version}.1`,
+              observaciones: generado.data.contenido,
+              version: `${generado.data.version}.1`,
             },
             select: { id: true },
           });
@@ -329,7 +476,7 @@ async function _ejecutarGeneracion(
               usuarioId: params.usuarioId,
               accion: "DOCUMENTO_ACTUALIZADO_IA",
               detalle: "Documento actualizado con IA (en revision pendiente de aprobacion)",
-              version: `${generado.version}.1`,
+              version: `${generado.data.version}.1`,
             },
           });
 
@@ -398,7 +545,9 @@ async function _ejecutarGeneracion(
         }),
       };
 
-      const generado = generarContenidoDocumento(regla, contexto);
+      const generado = await generarContenidoDocumentoIA(regla, contexto);
+      usoIA = usoIA || generado.usoIA;
+      errorIA = errorIA || generado.errorIA;
 
       if (!existente) {
         try {
@@ -411,8 +560,8 @@ async function _ejecutarGeneracion(
               categoria: "trabajador",
               // faltante → pendiente
               estado: "pendiente",
-              version: `${generado.version}.0`,
-              observaciones: generado.contenido,
+              version: `${generado.data.version}.0`,
+              observaciones: generado.data.contenido,
               subidoPorId: params.usuarioId,
               creadoPorEmail: params.email,
               tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
@@ -426,7 +575,7 @@ async function _ejecutarGeneracion(
               usuarioId: params.usuarioId,
               accion: "DOCUMENTO_GENERADO_IA",
               detalle: "Documento generado automaticamente con IA (pendiente de revision)",
-              version: `${generado.version}.0`,
+              version: `${generado.data.version}.0`,
             },
           });
 
@@ -471,8 +620,8 @@ async function _ejecutarGeneracion(
           where: { id: existente.id },
           data: {
             estado: "en_revision",
-            observaciones: generado.contenido,
-            version: `${generado.version}.1`,
+            observaciones: generado.data.contenido,
+            version: `${generado.data.version}.1`,
           },
           select: { id: true },
         });
@@ -483,7 +632,7 @@ async function _ejecutarGeneracion(
             usuarioId: params.usuarioId,
             accion: "DOCUMENTO_ACTUALIZADO_IA",
             detalle: "Documento actualizado con IA (en revision pendiente de aprobacion)",
-            version: `${generado.version}.1`,
+            version: `${generado.data.version}.1`,
           },
         });
 
@@ -506,11 +655,21 @@ async function _ejecutarGeneracion(
     generados,
     actualizados,
     omitidos,
+    usoIA,
+    errorIA,
     duracionMs: Date.now() - inicioMs,
   });
 
   // Registro de auditoria en DB.
-  const log = await _registrarLog({ ...params, generados, actualizados, omitidos, duracionMs: Date.now() - inicioMs });
+  const log = await _registrarLog({
+    ...params,
+    generados,
+    actualizados,
+    omitidos,
+    usoIA,
+    errorIA,
+    duracionMs: Date.now() - inicioMs,
+  });
 
   return {
     generados,
@@ -531,6 +690,8 @@ async function _registrarLog(params: {
   generados: number;
   actualizados: number;
   omitidos: number;
+  usoIA: boolean;
+  errorIA: boolean;
   duracionMs: number;
 }): Promise<{ id: string } | null> {
   try {
@@ -541,6 +702,8 @@ async function _registrarLog(params: {
         generados: params.generados,
         actualizados: params.actualizados,
         omitidos: params.omitidos,
+        usoIA: params.usoIA,
+        errorIA: params.errorIA,
         duracionMs: params.duracionMs,
       },
       select: { id: true },

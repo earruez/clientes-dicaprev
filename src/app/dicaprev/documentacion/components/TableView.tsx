@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, Eye, File, FileEdit, FileImage, FileSpreadsheet, FileText, FileUp, History, MinusCircle, PlusCircle, Upload } from "lucide-react";
+import { Download, Eye, File, FileEdit, FileImage, FileSpreadsheet, FileSignature, FileText, FileUp, History, MinusCircle, PlusCircle, Upload } from "lucide-react";
 import { DocumentoMatrizRow } from "../types";
 import StatusBadge from "./StatusBadge";
 
@@ -15,6 +15,7 @@ type TableViewProps = {
   onEdit: (doc: DocumentoMatrizRow) => void;
   onNoAplica: (doc: DocumentoMatrizRow) => void;
   onAplica: (doc: DocumentoMatrizRow) => void;
+  onFirmar: (doc: DocumentoMatrizRow) => void;
   canManageDocumentacion: boolean;
 };
 
@@ -73,6 +74,7 @@ export default function TableView({
   onEdit,
   onNoAplica,
   onAplica,
+  onFirmar,
   canManageDocumentacion,
 }: TableViewProps) {
   return (
@@ -225,6 +227,16 @@ export default function TableView({
                         <Button variant="outline" size="sm" onClick={() => onEdit(doc)}>
                           <FileEdit className="mr-1 h-3.5 w-3.5" />Editar
                         </Button>
+                        {!doc.firmado && (["pendiente", "en_revision", "Pendiente de carga", "En revisión"].includes(doc.estado as string)) && (
+                          <Button variant="outline" size="sm" onClick={() => onFirmar(doc)} className="text-emerald-700 border-emerald-200 hover:bg-emerald-50">
+                            <FileSignature className="mr-1 h-3.5 w-3.5" />Firmar
+                          </Button>
+                        )}
+                        {doc.firmado && (
+                          <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-700">
+                            <FileSignature className="h-3 w-3" />Firmado
+                          </span>
+                        )}
                         {doc.estado === "No aplica" ? (
                           <Button variant="outline" size="sm" onClick={() => onAplica(doc)}>
                             <PlusCircle className="mr-1 h-3.5 w-3.5" />Aplica
