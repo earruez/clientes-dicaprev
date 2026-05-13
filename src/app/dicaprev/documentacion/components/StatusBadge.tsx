@@ -14,6 +14,8 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
     "vencido": "bg-rose-100 text-rose-800 border-rose-200",
     "pendiente_carga": "bg-slate-100 text-slate-700 border-slate-200",
     "en_revision": "bg-sky-100 text-sky-800 border-sky-200",
+    "validado": "bg-indigo-100 text-indigo-800 border-indigo-200",
+    "enviado_firma": "bg-teal-100 text-teal-800 border-teal-200",
     "reemplazado": "bg-violet-100 text-violet-800 border-violet-200",
     "no_aplica": "bg-zinc-100 text-zinc-700 border-zinc-200",
     "firmado": "bg-emerald-100 text-emerald-800 border-emerald-300",
@@ -22,6 +24,9 @@ export default function StatusBadge({ status }: StatusBadgeProps) {
     "Vencido": "bg-rose-100 text-rose-800 border-rose-200",
     "Pendiente de carga": "bg-slate-100 text-slate-700 border-slate-200",
     "En revisión": "bg-sky-100 text-sky-800 border-sky-200",
+    "Validado": "bg-indigo-100 text-indigo-800 border-indigo-200",
+    "Enviado a firma": "bg-teal-100 text-teal-800 border-teal-200",
+    "Firmado": "bg-emerald-100 text-emerald-800 border-emerald-300",
     "Reemplazado": "bg-violet-100 text-violet-800 border-violet-200",
     "No aplica": "bg-zinc-100 text-zinc-700 border-zinc-200",
   };

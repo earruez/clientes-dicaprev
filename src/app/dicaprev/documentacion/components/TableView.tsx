@@ -13,6 +13,8 @@ type TableViewProps = {
   onReplace: (doc: DocumentoMatrizRow) => void;
   onHistory: (doc: DocumentoMatrizRow) => void;
   onEdit: (doc: DocumentoMatrizRow) => void;
+  onValidar: (doc: DocumentoMatrizRow) => void;
+  onEnviarAFirma: (doc: DocumentoMatrizRow) => void;
   onNoAplica: (doc: DocumentoMatrizRow) => void;
   onAplica: (doc: DocumentoMatrizRow) => void;
   onFirmar: (doc: DocumentoMatrizRow) => void;
@@ -72,6 +74,8 @@ export default function TableView({
   onReplace,
   onHistory,
   onEdit,
+  onValidar,
+  onEnviarAFirma,
   onNoAplica,
   onAplica,
   onFirmar,
@@ -197,6 +201,12 @@ export default function TableView({
                   {formatDateTime(doc.fechaActualizacion)}
                 </td>
                 <td className="px-4 py-3">
+                  {(() => {
+                    const estadoNormalizado = (doc.estado ?? "").toLowerCase().replace(/\s+/g, "_");
+                    const enRevision = estadoNormalizado === "en_revision";
+                    const validado = estadoNormalizado === "validado";
+                    const enviadoFirma = estadoNormalizado === "enviado_a_firma" || estadoNormalizado === "enviado_firma";
+                    return (
                   <div className="flex flex-wrap gap-1">
                     <Button variant="outline" size="sm" onClick={() => onView(doc)} disabled={!doc.archivoUrl}>
                       <Eye className="mr-1 h-3.5 w-3.5" />Ver
@@ -225,9 +235,19 @@ export default function TableView({
                     {canManageDocumentacion ? (
                       <>
                         <Button variant="outline" size="sm" onClick={() => onEdit(doc)}>
-                          <FileEdit className="mr-1 h-3.5 w-3.5" />Editar
+                          <FileEdit className="mr-1 h-3.5 w-3.5" />Revisar/Editar
                         </Button>
-                        {!doc.firmado && (["pendiente", "en_revision", "Pendiente de carga", "En revisión"].includes(doc.estado as string)) && (
+                        {!doc.firmado && enRevision && (
+                          <Button variant="outline" size="sm" onClick={() => onValidar(doc)} className="text-indigo-700 border-indigo-200 hover:bg-indigo-50">
+                            <FileText className="mr-1 h-3.5 w-3.5" />Validar
+                          </Button>
+                        )}
+                        {!doc.firmado && validado && (
+                          <Button variant="outline" size="sm" onClick={() => onEnviarAFirma(doc)} className="text-teal-700 border-teal-200 hover:bg-teal-50">
+                            <FileUp className="mr-1 h-3.5 w-3.5" />Enviar a firma
+                          </Button>
+                        )}
+                        {!doc.firmado && enviadoFirma && (
                           <Button variant="outline" size="sm" onClick={() => onFirmar(doc)} className="text-emerald-700 border-emerald-200 hover:bg-emerald-50">
                             <FileSignature className="mr-1 h-3.5 w-3.5" />Firmar
                           </Button>
@@ -249,6 +269,8 @@ export default function TableView({
                       </>
                     ) : null}
                   </div>
+                    );
+                  })()}
                 </td>
               </tr>
             ))}

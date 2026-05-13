@@ -134,9 +134,9 @@ const MODULES: ModuleItem[] = [
     id: "alerts",
     label: "Alertas",
     icon: Bell,
-    defaultHref: "/dicaprev/notificaciones",
+    defaultHref: "/dicaprev/alertas",
     permission: "canReadAlertas",
-    items: [{ href: "/dicaprev/notificaciones", label: "Centro de alertas" }],
+    items: [{ href: "/dicaprev/alertas", label: "Centro de alertas" }],
   },
 ];
 

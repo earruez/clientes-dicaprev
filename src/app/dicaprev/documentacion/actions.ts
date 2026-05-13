@@ -9,6 +9,11 @@ import {
   ESTADOS_DOCUMENTO_EMPRESA_ARCHIVADOS,
   findDocumentoEmpresaCanonicoPorRequerido,
 } from "@/lib/documentacion/documento-empresa-duplicados";
+import {
+  generarAlertasDocumentalesEmpresa,
+  type AlertasDocumentalesEmpresaResultado,
+  type ResumenAlertasDocumentales,
+} from "@/lib/documentacion/alertas-documentales";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { AppContext } from "@/server/context";
@@ -26,6 +31,10 @@ const ESTADOS_VALIDOS: EstadoDocumento[] = [
   "Vencido",
   "Pendiente de carga",
   "En revisión",
+  "Validado",
+  "Enviado a firma",
+  "Firmado",
+  "firmado",
   "No aplica",
   "Reemplazado",
 ];
@@ -1140,12 +1149,37 @@ export async function getCumplimientoDocumentalEmpresa(): Promise<CumplimientoEm
   return calcularCumplimientoEmpresa({ empresaId: context.empresaId });
 }
 
+export async function getAlertasDocumentalesEmpresa(params: {
+  empresaId: string;
+  diasPorVencer?: number;
+}): Promise<AlertasDocumentalesEmpresaResultado> {
+  const context = await requirePermission("canReadDocumentacion");
+  await asegurarContextoBase(context);
+
+  if (params.empresaId !== context.empresaId) {
+    throw new Error("No tienes permisos para consultar alertas de otra empresa.");
+  }
+
+  return generarAlertasDocumentalesEmpresa({
+    empresaId: params.empresaId,
+    diasPorVencer: params.diasPorVencer,
+  });
+}
+
+export async function getResumenAlertasDocumentalesEmpresa(params: {
+  empresaId: string;
+  diasPorVencer?: number;
+}): Promise<ResumenAlertasDocumentales> {
+  const resultado = await getAlertasDocumentalesEmpresa(params);
+  return resultado.resumen;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FIRMA DIGITAL SIMPLE — Fase 26.9
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Estados desde los que se permite firmar un documento de empresa. */
-const ESTADOS_FIRMABLES: string[] = ["pendiente", "en_revision", "Pendiente de carga", "En revisión"];
+const ESTADOS_FIRMABLES: string[] = ["enviado_firma", "Enviado a firma"];
 
 export type FirmarDocumentoResultado =
   | { ok: true; logId: string; firmadoEn: string; firmadoPor: string }
@@ -1404,6 +1438,117 @@ export async function generarInformeDocumentalEmpresa(params: {
   return generarInformeDocumentalEmpresaData({ empresaId: params.empresaId });
 }
 
+export async function validarDocumentoEmpresa(params: {
+  documentoId: string;
+  contenidoEditable?: string | null;
+}): Promise<{ ok: boolean; error?: string }> {
+  const context = await requirePermission("canManageDocumentacion");
+
+  const doc = await prisma.documentoEmpresa.findUnique({
+    where: { id: params.documentoId },
+    select: {
+      id: true,
+      nombre: true,
+      empresaId: true,
+      estado: true,
+      firmado: true,
+      observaciones: true,
+    },
+  });
+
+  if (!doc) return { ok: false, error: "Documento no encontrado." };
+  if (doc.empresaId !== context.empresaId) {
+    return { ok: false, error: "No tienes permiso para validar este documento." };
+  }
+  if (doc.firmado) {
+    return { ok: false, error: "El documento ya está firmado." };
+  }
+
+  const estadoActual = (doc.estado ?? "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (estadoActual !== "en_revision") {
+    return { ok: false, error: "Solo se puede validar un documento en revisión." };
+  }
+
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: context.usuarioId },
+    select: { nombre: true, email: true },
+  });
+  const actor = usuario?.nombre ?? usuario?.email ?? context.usuarioId;
+
+  const contenido = params.contenidoEditable?.trim();
+
+  await prisma.documentoEmpresa.update({
+    where: { id: doc.id },
+    data: {
+      estado: "Validado",
+      observaciones: contenido ?? undefined,
+    },
+  });
+
+  await prisma.documentoEmpresaHistorial.create({
+    data: {
+      documentoId: doc.id,
+      usuarioId: context.usuarioId,
+      accion: "validado",
+      detalle: `Documento validado por ${actor}`,
+    },
+  });
+
+  return { ok: true };
+}
+
+export async function enviarDocumentoEmpresaAFirma(params: {
+  documentoId: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const context = await requirePermission("canManageDocumentacion");
+
+  const doc = await prisma.documentoEmpresa.findUnique({
+    where: { id: params.documentoId },
+    select: {
+      id: true,
+      nombre: true,
+      empresaId: true,
+      estado: true,
+      firmado: true,
+    },
+  });
+
+  if (!doc) return { ok: false, error: "Documento no encontrado." };
+  if (doc.empresaId !== context.empresaId) {
+    return { ok: false, error: "No tienes permiso para enviar este documento a firma." };
+  }
+  if (doc.firmado) {
+    return { ok: false, error: "El documento ya está firmado." };
+  }
+
+  const estadoActual = (doc.estado ?? "").trim().toLowerCase().replace(/\s+/g, "_");
+  if (estadoActual !== "validado") {
+    return { ok: false, error: "Solo se puede enviar a firma un documento validado." };
+  }
+
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: context.usuarioId },
+    select: { nombre: true, email: true },
+  });
+  const actor = usuario?.nombre ?? usuario?.email ?? context.usuarioId;
+
+  await prisma.documentoEmpresa.update({
+    where: { id: doc.id },
+    data: { estado: "Enviado a firma" },
+  });
+
+  await prisma.documentoEmpresaHistorial.create({
+    data: {
+      documentoId: doc.id,
+      usuarioId: context.usuarioId,
+      accion: "enviado_firma",
+      detalle: `Documento enviado a firma por ${actor}`,
+    },
+  });
+
+  return { ok: true };
+}
+
 /**
  * Firma un documento de empresa de forma simple y trazable.
  * - Valida permisos (canManageDocumentacion).
@@ -1448,7 +1593,7 @@ export async function firmarDocumentoEmpresa(params: {
   if (!firmable) {
     return {
       ok: false,
-      error: `El documento en estado "${doc.estado}" no puede ser firmado. Solo se permiten documentos en estado pendiente o en revisión.`,
+      error: `El documento en estado "${doc.estado}" no puede ser firmado. Solo se permiten documentos enviados a firma.`,
     };
   }
 
@@ -1464,7 +1609,7 @@ export async function firmarDocumentoEmpresa(params: {
   await prisma.documentoEmpresa.update({
     where: { id: doc.id },
     data: {
-      estado: "firmado",
+      estado: "Firmado",
       firmado: true,
       firmadoPor,
       firmadoEn,
@@ -1489,4 +1634,8 @@ export async function firmarDocumentoEmpresa(params: {
   };
 }
 
-export type { DocumentoEmpresaInput };
+export type {
+  DocumentoEmpresaInput,
+  AlertasDocumentalesEmpresaResultado,
+  ResumenAlertasDocumentales,
+};

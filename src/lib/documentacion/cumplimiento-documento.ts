@@ -50,6 +50,20 @@ export function calcularEstadoDocumento(
     return "No aplica";
   }
 
+  const estadoActual = documento.estado;
+  if (
+    estadoActual === "En revisión" ||
+    estadoActual === "en_revision" ||
+    estadoActual === "Validado" ||
+    estadoActual === "validado" ||
+    estadoActual === "Enviado a firma" ||
+    estadoActual === "enviado_firma" ||
+    estadoActual === "Firmado" ||
+    estadoActual === "firmado"
+  ) {
+    return estadoActual;
+  }
+
   const tieneArchivo = Boolean(documento.documentoEmpresaId && (documento.archivoUrl || documento.archivoNombre));
   if (!tieneArchivo) {
     return "Pendiente de carga";
@@ -94,7 +108,7 @@ export function calcularVigenciaDocumento(
 
 export function calcularMetricasDocumentos(documentos: DocumentoMatrizRow[]) {
   const aplicables = documentos.filter((doc) => doc.esAplicable);
-  const vigentes = aplicables.filter((doc) => doc.estado === "Vigente").length;
+  const vigentes = aplicables.filter((doc) => doc.estado === "Vigente" || doc.estado === "Firmado" || doc.estado === "firmado").length;
   const porVencer = aplicables.filter((doc) => doc.estado === "Por vencer").length;
   const vencidos = aplicables.filter((doc) => doc.estado === "Vencido").length;
   const pendientes = aplicables.filter((doc) => doc.estado === "Pendiente de carga").length;

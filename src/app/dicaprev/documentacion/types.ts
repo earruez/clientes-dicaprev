@@ -12,6 +12,8 @@ export type EstadoDocumento =
   | "vencido"
   | "pendiente_carga"
   | "en_revision"
+  | "validado"
+  | "enviado_firma"
   | "reemplazado"
   | "no_aplica"
   | "firmado"
@@ -20,6 +22,9 @@ export type EstadoDocumento =
   | "Vencido"
   | "Pendiente de carga"
   | "En revisión"
+  | "Validado"
+  | "Enviado a firma"
+  | "Firmado"
   | "Reemplazado"
   | "No aplica";
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarClock, Download, FileSearch, FileText, FolderKanban, ShieldCheck, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ type ArchivoSubido = {
 };
 
 export default function DocumentacionPage() {
+  const router = useRouter();
   const {
     usuarioActual,
     documentos,
@@ -49,12 +51,15 @@ export default function DocumentacionPage() {
     setFiltros,
     historialGlobal,
     kpis,
+    alertasResumen,
     addDocumento,
     replaceDocumentoArchivo,
     updateDocumentoMetadatos,
     marcarDocumentoNoAplica,
     marcarDocumentoAplica,
     restaurarDocumentoVersion,
+    validarDocumento,
+    enviarDocumentoAFirma,
     firmarDocumento,
     descargarInformeDocumental,
   } = useDocumentos();
@@ -588,6 +593,16 @@ export default function DocumentacionPage() {
         <Filtros filtros={filtros} onChangeFiltros={setFiltros} dotacion={5} />
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-slate-700">Resumen alertas documentales:</span>
+          <button onClick={() => router.push("/dicaprev/alertas?severidad=critica")} className="rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700 hover:bg-red-100">Críticas: {alertasResumen.critica}</button>
+          <button onClick={() => router.push("/dicaprev/alertas?severidad=alta")} className="rounded border border-orange-200 bg-orange-50 px-2 py-1 text-orange-700 hover:bg-orange-100">Altas: {alertasResumen.alta}</button>
+          <button onClick={() => router.push("/dicaprev/alertas?severidad=media")} className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 hover:bg-amber-100">Medias: {alertasResumen.media}</button>
+          <button onClick={() => router.push("/dicaprev/alertas?severidad=baja")} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700 hover:bg-slate-100">Bajas: {alertasResumen.baja}</button>
+        </div>
+      </div>
+
       {hasActiveFilters ? (
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
           Filtros activos aplicados sobre la matriz requerida.
@@ -629,6 +644,30 @@ export default function DocumentacionPage() {
           onReplace={openReplaceDialog}
           onHistory={openHistoryDialog}
           onEdit={openEditDialog}
+          onValidar={async (doc) => {
+            if (!canManageDocumentacion) {
+              showInfo("No tienes permisos para validar documentos.", "error");
+              return;
+            }
+            if (!doc.documentoEmpresaId) {
+              showInfo("El documento no tiene un registro activo para validar.", "error");
+              return;
+            }
+            const resultado = await validarDocumento(doc.documentoEmpresaId, doc.observaciones);
+            showInfo(resultado.ok ? "Documento validado correctamente." : (resultado.error ?? "No se pudo validar el documento."), resultado.ok ? "success" : "error");
+          }}
+          onEnviarAFirma={async (doc) => {
+            if (!canManageDocumentacion) {
+              showInfo("No tienes permisos para enviar documentos a firma.", "error");
+              return;
+            }
+            if (!doc.documentoEmpresaId) {
+              showInfo("El documento no tiene un registro activo para enviar a firma.", "error");
+              return;
+            }
+            const resultado = await enviarDocumentoAFirma(doc.documentoEmpresaId);
+            showInfo(resultado.ok ? "Documento enviado a firma correctamente." : (resultado.error ?? "No se pudo enviar el documento a firma."), resultado.ok ? "success" : "error");
+          }}
           canManageDocumentacion={canManageDocumentacion}
           onNoAplica={async (doc) => {
             if (!canManageDocumentacion) {

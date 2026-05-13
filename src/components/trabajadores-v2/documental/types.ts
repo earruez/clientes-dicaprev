@@ -3,7 +3,7 @@ import type { Worker } from "../types";
 // ─── Core types ──────────────────────────────────────────────────────────────
 
 export type DocCategoria = "Contratación" | "SST" | "Capacitación" | "Médico" | "Técnico";
-export type DocEstado    = "completo" | "pendiente" | "vencido" | "no_aplica" | "en_revision" | "rechazado";
+export type DocEstado    = "completo" | "pendiente" | "vencido" | "no_aplica" | "en_revision" | "validado" | "enviado_firma" | "firmado" | "rechazado";
 
 export interface TipoDocumento {
   id: string;
@@ -75,6 +75,9 @@ export const ESTADO_DOC_CONFIG: Record<DocEstado, { label: string; bg: string; t
   vencido:     { label: "Vencido",     bg: "bg-red-50",      text: "text-red-700",      ring: "ring-1 ring-red-200",      dot: "bg-red-500" },
   no_aplica:   { label: "No aplica",   bg: "bg-slate-100",   text: "text-slate-500",    ring: "ring-1 ring-slate-200",    dot: "bg-slate-300" },
   en_revision: { label: "En revisión", bg: "bg-blue-50",     text: "text-blue-700",     ring: "ring-1 ring-blue-200",     dot: "bg-blue-400" },
+  validado:    { label: "Validado",    bg: "bg-indigo-50",   text: "text-indigo-700",   ring: "ring-1 ring-indigo-200",   dot: "bg-indigo-500" },
+  enviado_firma: { label: "Enviado a firma", bg: "bg-teal-50", text: "text-teal-700", ring: "ring-1 ring-teal-200", dot: "bg-teal-500" },
+  firmado:     { label: "Firmado",     bg: "bg-emerald-50",  text: "text-emerald-700",  ring: "ring-1 ring-emerald-200",  dot: "bg-emerald-500" },
   rechazado:   { label: "Rechazado",   bg: "bg-rose-50",     text: "text-rose-700",     ring: "ring-1 ring-rose-200",     dot: "bg-rose-500" },
 };
 

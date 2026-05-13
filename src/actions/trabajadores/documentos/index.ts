@@ -43,7 +43,10 @@ export type ControlDocumentalTrabajadoresPayload = {
 export type EstadoDocumentoTrabajadorInput =
   | "pendiente"
   | "en_revision"
+  | "validado"
+  | "enviado_firma"
   | "aprobado"
+  | "firmado"
   | "rechazado"
   | "vencido"
   | "no_aplica"
@@ -129,6 +132,9 @@ function mapDocEstado(estado: string): DocEstado {
   const normalized = estado.toLowerCase();
   if (normalized === "aprobado") return "completo";
   if (normalized === "completo" || normalized === "vigente") return "completo";
+  if (normalized === "validado") return "validado";
+  if (normalized === "enviado_firma") return "enviado_firma";
+  if (normalized === "firmado") return "firmado";
   if (normalized === "vencido") return "vencido";
   if (normalized === "no_aplica") return "no_aplica";
   if (normalized === "en_revision") return "en_revision";
@@ -1177,6 +1183,121 @@ export async function cambiarEstadoTrabajadorDocumento(
       usuarioId,
       accion: "ESTADO_ACTUALIZADO",
       detalle: detalle?.trim() || `Estado ${documento.estado} -> ${normalizedEstado}`,
+      version: updated.version,
+    },
+  });
+
+  return { id: updated.id };
+}
+
+export async function validarTrabajadorDocumento(
+  documentoId: string,
+  detalle?: string,
+): Promise<{ id: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
+  await validateDocumentoReferencesInEmpresa(empresaId, documento);
+
+  const estadoActual = (documento.estado ?? "").trim().toLowerCase();
+  if (estadoActual !== "en_revision") {
+    throw new Error("Solo se puede validar un documento en revisión");
+  }
+
+  const updated = await prisma.trabajadorDocumento.update({
+    where: { id: documento.id },
+    data: {
+      estado: "validado",
+      subidoPorId: usuarioId,
+    },
+    select: { id: true, version: true },
+  });
+
+  await prisma.trabajadorDocumentoHistorial.create({
+    data: {
+      documentoId: updated.id,
+      usuarioId,
+      accion: "DOCUMENTO_VALIDADO",
+      detalle: detalle?.trim() || "Documento validado",
+      version: updated.version,
+    },
+  });
+
+  return { id: updated.id };
+}
+
+export async function enviarTrabajadorDocumentoAFirma(
+  documentoId: string,
+  detalle?: string,
+): Promise<{ id: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
+  await validateDocumentoReferencesInEmpresa(empresaId, documento);
+
+  const estadoActual = (documento.estado ?? "").trim().toLowerCase();
+  if (estadoActual !== "validado") {
+    throw new Error("Solo se puede enviar a firma un documento validado");
+  }
+
+  const updated = await prisma.trabajadorDocumento.update({
+    where: { id: documento.id },
+    data: {
+      estado: "enviado_firma",
+      subidoPorId: usuarioId,
+    },
+    select: { id: true, version: true },
+  });
+
+  await prisma.trabajadorDocumentoHistorial.create({
+    data: {
+      documentoId: updated.id,
+      usuarioId,
+      accion: "DOCUMENTO_ENVIADO_FIRMA",
+      detalle: detalle?.trim() || "Documento enviado a firma",
+      version: updated.version,
+    },
+  });
+
+  return { id: updated.id };
+}
+
+export async function firmarTrabajadorDocumento(
+  documentoId: string,
+): Promise<{ id: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
+  await validateDocumentoReferencesInEmpresa(empresaId, documento);
+
+  const estadoActual = (documento.estado ?? "").trim().toLowerCase();
+  if (estadoActual !== "enviado_firma") {
+    throw new Error("Solo se puede firmar un documento enviado a firma");
+  }
+
+  const usuario = await prisma.usuario.findUnique({
+    where: { id: usuarioId },
+    select: { nombre: true, email: true },
+  });
+
+  const firmadoEn = new Date();
+  const firmadoPor = usuario?.nombre ?? usuario?.email ?? usuarioId;
+
+  const updated = await prisma.trabajadorDocumento.update({
+    where: { id: documento.id },
+    data: {
+      estado: "firmado",
+      firmado: true,
+      firmadoPor,
+      firmadoEn,
+      subidoPorId: usuarioId,
+    },
+    select: { id: true, version: true },
+  });
+
+  await prisma.trabajadorDocumentoHistorial.create({
+    data: {
+      documentoId: updated.id,
+      usuarioId,
+      accion: "DOCUMENTO_FIRMADO",
+      detalle: `Documento firmado por ${firmadoPor}`,
       version: updated.version,
     },
   });

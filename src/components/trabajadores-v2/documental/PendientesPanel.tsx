@@ -35,7 +35,10 @@ import {
 import { formatDate, type Worker } from "../types";
 import {
   cambiarEstadoTrabajadorDocumento,
+  enviarTrabajadorDocumentoAFirma,
+  firmarTrabajadorDocumento,
   getHistorialDocumentoTrabajador,
+  validarTrabajadorDocumento,
   type EstadoDocumentoTrabajadorInput,
   type HistorialEntryView,
 } from "@/actions/trabajadores/documentos";
@@ -50,7 +53,7 @@ import { PorVencimientosView } from "./PorVencimientosView";
 type FilterEstado = "todos" | "criticos" | "pendientes" | "vencidos" | "rechazados" | "en_revision";
 type BulkModal    = null | "plantilla" | "revisado" | "exportar" | "recordar" | "estado";
 type MainView     = "trabajador" | "centro" | "cargo" | "vencimientos";
-type DocActionType = "aprobar" | "rechazar" | "no_aplica" | "en_revision";
+type DocActionType = "validar" | "rechazar" | "no_aplica" | "en_revision" | "enviar_firma" | "firmar";
 
 interface PendientesPanelProps {
   initialWorkerId?: string;
@@ -130,23 +133,32 @@ export function PendientesPanel({
     setActionLoading(true);
     setActionError(null);
     try {
-      const estadoMap: Record<DocActionType, EstadoDocumentoTrabajadorInput> = {
-        aprobar:    "aprobado",
-        rechazar:   "rechazado",
-        no_aplica:  "no_aplica",
-        en_revision: "en_revision",
-      };
       const labels: Record<DocActionType, string> = {
-        aprobar:    "aprobado",
+        validar:    "validado",
         rechazar:   "rechazado",
         no_aplica:  "marcado como no aplica",
         en_revision: "enviado a revisión",
+        enviar_firma: "enviado a firma",
+        firmar: "firmado",
       };
-      await cambiarEstadoTrabajadorDocumento(
-        actionModal.documentoId,
-        estadoMap[actionModal.accion],
-        actionMotivo.trim() || undefined,
-      );
+      if (actionModal.accion === "validar") {
+        await validarTrabajadorDocumento(actionModal.documentoId, actionMotivo.trim() || undefined);
+      } else if (actionModal.accion === "enviar_firma") {
+        await enviarTrabajadorDocumentoAFirma(actionModal.documentoId, actionMotivo.trim() || undefined);
+      } else if (actionModal.accion === "firmar") {
+        await firmarTrabajadorDocumento(actionModal.documentoId);
+      } else {
+        const estadoMap: Record<"rechazar" | "no_aplica" | "en_revision", EstadoDocumentoTrabajadorInput> = {
+          rechazar: "rechazado",
+          no_aplica: "no_aplica",
+          en_revision: "en_revision",
+        };
+        await cambiarEstadoTrabajadorDocumento(
+          actionModal.documentoId,
+          estadoMap[actionModal.accion],
+          actionMotivo.trim() || undefined,
+        );
+      }
       const msg = `Documento "${actionModal.tipoNombre}" ${labels[actionModal.accion]}`;
       setActionDone(msg);
       setTimeout(() => setActionDone(null), 3500);
@@ -402,25 +414,33 @@ export function PendientesPanel({
           <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
-                actionModal.accion === "aprobar"    ? "bg-emerald-100" :
+                actionModal.accion === "validar"    ? "bg-indigo-100" :
+                actionModal.accion === "enviar_firma" ? "bg-teal-100" :
+                actionModal.accion === "firmar"     ? "bg-emerald-100" :
                 actionModal.accion === "rechazar"   ? "bg-red-100"     :
                 actionModal.accion === "no_aplica"  ? "bg-slate-100"   :
                 "bg-blue-100"
               }`}>
-                {actionModal.accion === "aprobar"    && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+                {actionModal.accion === "validar"    && <CheckCircle2 className="h-5 w-5 text-indigo-600" />}
+                {actionModal.accion === "enviar_firma" && <UploadCloud className="h-5 w-5 text-teal-600" />}
+                {actionModal.accion === "firmar"     && <CheckCheck className="h-5 w-5 text-emerald-600" />}
                 {actionModal.accion === "rechazar"   && <XCircle      className="h-5 w-5 text-red-600" />}
                 {actionModal.accion === "no_aplica"  && <X            className="h-5 w-5 text-slate-500" />}
                 {actionModal.accion === "en_revision" && <Clock       className="h-5 w-5 text-blue-600" />}
               </div>
               <h3 className="mt-4 text-sm font-bold text-slate-900">
-                {actionModal.accion === "aprobar"    && "Aprobar documento"}
+                {actionModal.accion === "validar"    && "Validar documento"}
+                {actionModal.accion === "enviar_firma" && "Enviar a firma"}
+                {actionModal.accion === "firmar"     && "Firmar documento"}
                 {actionModal.accion === "rechazar"   && "Rechazar documento"}
                 {actionModal.accion === "no_aplica"  && "Marcar como No aplica"}
                 {actionModal.accion === "en_revision" && "Enviar a revisión"}
               </h3>
               <p className="mt-1.5 text-xs text-slate-500">
                 <span className="font-semibold text-slate-700">{actionModal.tipoNombre}</span>
-                {actionModal.accion === "aprobar"    && " — Se marcará como aprobado/completo."}
+                {actionModal.accion === "validar"    && " — Se marcará como validado."}
+                {actionModal.accion === "enviar_firma" && " — Se enviará a firma."}
+                {actionModal.accion === "firmar"     && " — Se firmará de forma definitiva."}
                 {actionModal.accion === "rechazar"   && " — Se marcará como rechazado y se solicitará corrección."}
                 {actionModal.accion === "no_aplica"  && " — Se marcará como no requerido para este trabajador."}
                 {actionModal.accion === "en_revision" && " — Se enviará a revisión."}
@@ -458,14 +478,18 @@ export function PendientesPanel({
                   onClick={handleDocAction}
                   disabled={actionLoading || (actionModal.accion === "rechazar" && !actionMotivo.trim())}
                   className={`flex-1 rounded-xl py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                    actionModal.accion === "aprobar"    ? "bg-emerald-600 hover:bg-emerald-700" :
+                    actionModal.accion === "validar"    ? "bg-indigo-600 hover:bg-indigo-700" :
+                    actionModal.accion === "enviar_firma" ? "bg-teal-600 hover:bg-teal-700" :
+                    actionModal.accion === "firmar"     ? "bg-emerald-600 hover:bg-emerald-700" :
                     actionModal.accion === "rechazar"   ? "bg-red-600 hover:bg-red-700" :
                     actionModal.accion === "no_aplica"  ? "bg-slate-700 hover:bg-slate-800" :
                     "bg-blue-600 hover:bg-blue-700"
                   }`}
                 >
                   {actionLoading ? "Guardando..." : (
-                    actionModal.accion === "aprobar"    ? "Aprobar" :
+                    actionModal.accion === "validar"    ? "Validar" :
+                    actionModal.accion === "enviar_firma" ? "Enviar" :
+                    actionModal.accion === "firmar"     ? "Firmar" :
                     actionModal.accion === "rechazar"   ? "Rechazar" :
                     actionModal.accion === "no_aplica"  ? "Confirmar" :
                     "Enviar a revisión"
@@ -911,7 +935,7 @@ export function PendientesPanel({
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                           {[...docs]
                             .sort((a, b) => {
-                              const order: Record<string, number> = { vencido: 0, rechazado: 1, pendiente: 2, en_revision: 3, completo: 4, no_aplica: 5 };
+                              const order: Record<string, number> = { vencido: 0, rechazado: 1, pendiente: 2, en_revision: 3, validado: 4, enviado_firma: 5, firmado: 6, completo: 7, no_aplica: 8 };
                               return (order[a.estado] ?? 9) - (order[b.estado] ?? 9);
                             })
                             .map((doc) => {
@@ -923,11 +947,17 @@ export function PendientesPanel({
                                 : doc.estado === "rechazado" ? "border-rose-200 bg-rose-50"
                                 : doc.estado === "pendiente" ? "border-amber-200 bg-amber-50"
                                 : doc.estado === "en_revision" ? "border-blue-200 bg-blue-50"
+                                : doc.estado === "validado" ? "border-indigo-200 bg-indigo-50"
+                                : doc.estado === "enviado_firma" ? "border-teal-200 bg-teal-50"
+                                : doc.estado === "firmado" ? "border-emerald-200 bg-emerald-50"
                                 : "border-slate-200 bg-white";
                               const nameColor =
                                 doc.estado === "vencido" || doc.estado === "rechazado" ? "text-red-900"
                                 : doc.estado === "pendiente" ? "text-amber-900"
                                 : doc.estado === "en_revision" ? "text-blue-900"
+                                : doc.estado === "validado" ? "text-indigo-900"
+                                : doc.estado === "enviado_firma" ? "text-teal-900"
+                                : doc.estado === "firmado" ? "text-emerald-900"
                                 : "text-slate-900";
                               return (
                                 <div key={doc.tipo.id} className={`flex flex-col gap-1.5 rounded-xl border px-3.5 py-3 ${cardBg}`}>
@@ -998,15 +1028,45 @@ export function PendientesPanel({
                                       </button>
                                     )}
 
-                                    {/* Aprobar — for en_revision docs with real DB record */}
+                                    {/* Validar — for en_revision docs with real DB record */}
                                     {doc.estado === "en_revision" && doc.documentoId && (
                                       <button
-                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "aprobar")}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-emerald-700"
+                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "validar")}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-indigo-700"
                                       >
                                         <CheckCircle2 className="h-2.5 w-2.5" />
-                                        Aprobar
+                                        Validar
                                       </button>
+                                    )}
+
+                                    {/* Enviar a firma — for validado docs */}
+                                    {doc.estado === "validado" && doc.documentoId && (
+                                      <button
+                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "enviar_firma")}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-teal-700"
+                                      >
+                                        <UploadCloud className="h-2.5 w-2.5" />
+                                        Enviar firma
+                                      </button>
+                                    )}
+
+                                    {/* Firmar — only for enviado_firma docs */}
+                                    {doc.estado === "enviado_firma" && doc.documentoId && (
+                                      <button
+                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "firmar")}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-emerald-700"
+                                      >
+                                        <CheckCheck className="h-2.5 w-2.5" />
+                                        Firmar
+                                      </button>
+                                    )}
+
+                                    {/* Badge firmado */}
+                                    {doc.estado === "firmado" && (
+                                      <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                                        <CheckCircle2 className="h-2.5 w-2.5" />
+                                        Firmado
+                                      </span>
                                     )}
 
                                     {/* Rechazar — for en_revision docs with real DB record */}

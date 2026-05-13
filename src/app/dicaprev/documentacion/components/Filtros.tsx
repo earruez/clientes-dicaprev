@@ -66,6 +66,9 @@ export default function Filtros({ filtros, onChangeFiltros, dotacion }: FiltrosP
               <SelectItem value="Vencido">Vencido</SelectItem>
               <SelectItem value="Pendiente de carga">Pendiente de carga</SelectItem>
               <SelectItem value="En revisión">En revisión</SelectItem>
+              <SelectItem value="Validado">Validado</SelectItem>
+              <SelectItem value="Enviado a firma">Enviado a firma</SelectItem>
+              <SelectItem value="Firmado">Firmado</SelectItem>
               <SelectItem value="Reemplazado">Reemplazado</SelectItem>
               <SelectItem value="No aplica">No aplica</SelectItem>
             </SelectContent>

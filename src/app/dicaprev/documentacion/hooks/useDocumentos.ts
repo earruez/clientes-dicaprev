@@ -5,13 +5,17 @@ import { calcularMetricasDocumentos, calcularVigenciaDocumento } from "@/lib/doc
 import {
   actualizarDocumentoEmpresa,
   crearDocumentoEmpresa,
+  enviarDocumentoEmpresaAFirma,
   firmarDocumentoEmpresa,
   generarInformeDocumentalEmpresa,
   getContextoFijoDocumentacion,
+  getResumenAlertasDocumentalesEmpresa,
   registrarHistorialDocumento,
   restaurarDocumentoVersion as restaurarDocumentoVersionAction,
+  validarDocumentoEmpresa,
   type DocumentoEmpresaInput,
   type InformeDocumentalEmpresa,
+  type ResumenAlertasDocumentales,
 } from "../actions";
 import {
   type CategoriaDocumento,
@@ -43,6 +47,7 @@ export type UseDocumentosResult = {
     cumplimientoPct: number;
     actualizadosMes: number;
   };
+  alertasResumen: ResumenAlertasDocumentales;
   addDocumento: (input: DocumentoEmpresaInput) => Promise<boolean>;
   replaceDocumentoArchivo: (input: {
     documentoId: string | null;
@@ -72,6 +77,8 @@ export type UseDocumentosResult = {
   marcarDocumentoNoAplica: (documentoId: string | null, documentoRequeridoId: string | null, base: DocumentoMatrizRow) => Promise<boolean>;
   marcarDocumentoAplica: (documentoId: string | null, documentoRequeridoId: string | null, base: DocumentoMatrizRow) => Promise<boolean>;
   restaurarDocumentoVersion: (documentoId: string, historialId: string) => Promise<boolean>;
+  validarDocumento: (documentoId: string, contenidoEditable?: string) => Promise<{ ok: boolean; error?: string }>;
+  enviarDocumentoAFirma: (documentoId: string) => Promise<{ ok: boolean; error?: string }>;
   firmarDocumento: (documentoId: string) => Promise<{ ok: boolean; error?: string }>;
   descargarInformeDocumental: () => Promise<InformeDocumentalEmpresa>;
   recargarDocumentos: () => Promise<void>;
@@ -91,6 +98,14 @@ const USUARIO_POR_DEFECTO = {
   email: "usuario.base@nextprev.local",
 };
 
+const RESUMEN_ALERTAS_POR_DEFECTO: ResumenAlertasDocumentales = {
+  critica: 0,
+  alta: 0,
+  media: 0,
+  baja: 0,
+  total: 0,
+};
+
 function vigenciaDocumento(doc: DocumentoMatrizRow) {
   if (doc.estado === "No aplica") return "no_aplica" as const;
   if (doc.estado === "Pendiente de carga") return "pendiente" as const;
@@ -102,6 +117,7 @@ export function useDocumentos(): UseDocumentosResult {
   const [tabActiva, setTabActiva] = useState<TabDocumentacion>("todos");
   const [filtros, setFiltros] = useState<DocumentosFiltros>(FILTROS_POR_DEFECTO);
   const [usuarioActual, setUsuarioActual] = useState(USUARIO_POR_DEFECTO);
+  const [alertasResumen, setAlertasResumen] = useState<ResumenAlertasDocumentales>(RESUMEN_ALERTAS_POR_DEFECTO);
 
   const cargarMatriz = async () => {
     const response = await fetch("/api/dicaprev/documentacion/matriz", {
@@ -122,17 +138,24 @@ export function useDocumentos(): UseDocumentosResult {
     setDocumentos(payload.documentos);
   };
 
+  const cargarAlertasResumen = async () => {
+    const contexto = await getContextoFijoDocumentacion();
+    const resumen = await getResumenAlertasDocumentalesEmpresa({ empresaId: contexto.empresaId });
+    setAlertasResumen(resumen);
+  };
+
   const recargarDocumentos = async () => {
-    await cargarMatriz();
+    await Promise.all([cargarMatriz(), cargarAlertasResumen()]);
   };
 
   useEffect(() => {
     void (async () => {
       try {
-        await cargarMatriz();
+        await Promise.all([cargarMatriz(), cargarAlertasResumen()]);
       } catch {
         setUsuarioActual(USUARIO_POR_DEFECTO);
         setDocumentos([]);
+        setAlertasResumen(RESUMEN_ALERTAS_POR_DEFECTO);
       }
     })();
   }, []);
@@ -410,6 +433,22 @@ export function useDocumentos(): UseDocumentosResult {
     return true;
   };
 
+  const validarDocumento: UseDocumentosResult["validarDocumento"] = async (documentoId, contenidoEditable) => {
+    const resultado = await validarDocumentoEmpresa({ documentoId, contenidoEditable });
+    if (resultado.ok) {
+      await recargarDocumentos();
+    }
+    return resultado;
+  };
+
+  const enviarDocumentoAFirma: UseDocumentosResult["enviarDocumentoAFirma"] = async (documentoId) => {
+    const resultado = await enviarDocumentoEmpresaAFirma({ documentoId });
+    if (resultado.ok) {
+      await recargarDocumentos();
+    }
+    return resultado;
+  };
+
   const firmarDocumento: UseDocumentosResult["firmarDocumento"] = async (documentoId) => {
     const resultado = await firmarDocumentoEmpresa({ documentoId });
     if (resultado.ok) {
@@ -433,12 +472,15 @@ export function useDocumentos(): UseDocumentosResult {
     filtrados,
     historialGlobal,
     kpis,
+    alertasResumen,
     addDocumento,
     replaceDocumentoArchivo,
     updateDocumentoMetadatos,
     marcarDocumentoNoAplica,
     marcarDocumentoAplica,
     restaurarDocumentoVersion,
+    validarDocumento,
+    enviarDocumentoAFirma,
     firmarDocumento,
     descargarInformeDocumental,
     recargarDocumentos,
