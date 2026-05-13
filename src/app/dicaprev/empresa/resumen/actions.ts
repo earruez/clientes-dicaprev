@@ -1,5 +1,10 @@
 "use server";
 
+import { calcularCumplimientoEmpresa } from "@/lib/documentacion/cumplimiento-empresa";
+import {
+  generarDocumentosFaltantesIA,
+  type GenerarDocumentosFaltantesResultado,
+} from "@/lib/documentacion/generacion-ia";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -49,10 +54,19 @@ export type ResumenEmpresaResponse = {
     region: string;
   };
   kpis: ResumenEmpresaKpis;
+  cumplimiento: {
+    porcentaje: number;
+    totalAplicables: number;
+    totalCumple: number;
+    totalFaltantes: number;
+    totalIncompletos: number;
+  };
 };
 
 export async function getResumenEmpresa(): Promise<ResumenEmpresaResponse> {
   const { empresaId } = await requirePermission("canReadCumplimiento");
+
+  const cumplimiento = await calcularCumplimientoEmpresa({ empresaId });
 
   const empresa = await prisma.empresa.findUnique({
     where: { id: empresaId },
@@ -194,5 +208,26 @@ export async function getResumenEmpresa(): Promise<ResumenEmpresaResponse> {
       documentosVencidos,
       documentosPorVencer,
     },
+    cumplimiento: {
+      porcentaje: cumplimiento.porcentajeCumplimiento,
+      totalAplicables: cumplimiento.totalAplicables,
+      totalCumple: cumplimiento.totalCumple,
+      totalFaltantes: cumplimiento.totalFaltantes,
+      totalIncompletos: cumplimiento.totalIncompletos,
+    },
   };
+}
+
+export async function generarDocumentosFaltantes(input: { empresaId: string }): Promise<GenerarDocumentosFaltantesResultado> {
+  const context = await requirePermission("canManageDocumentacion");
+
+  if (input.empresaId !== context.empresaId) {
+    throw new Error("Empresa invalida para generacion");
+  }
+
+  return generarDocumentosFaltantesIA({
+    empresaId: context.empresaId,
+    usuarioId: context.usuarioId,
+    email: context.email,
+  });
 }

@@ -1,5 +1,8 @@
 "use server";
 
+import { findDocumentoEmpresaCanonicoPorRequerido } from "@/lib/documentacion/documento-empresa-duplicados";
+import { cumpleCondicionesDocumento } from "@/lib/documentacion/cumplimiento-documento";
+import { REGLAS_DOCUMENTALES, type ReglaDocumentalNextPrev } from "@/lib/documentacion/reglas-documentales";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { Worker } from "@/components/trabajadores-v2/types";
@@ -99,6 +102,29 @@ export type EvaluacionReglasEmpresaResult = {
   detalles: EvaluacionReglasTrabajadorResult[];
 };
 
+export type EventoDocumental =
+  | "trabajador_creado"
+  | "trabajador_actualizado"
+  | "empresa_actualizada"
+  | "estructura_empresa_actualizada"
+  | "reglas_documentales_actualizadas";
+
+export type EvaluacionDocumentosPorEventoInput = {
+  empresaId: string;
+  evento: EventoDocumental;
+  trabajadorId?: string;
+  usuarioId?: string;
+  email?: string;
+};
+
+export type EvaluacionDocumentosPorEventoResult = {
+  evento: EventoDocumental;
+  trabajadorId?: string;
+  trabajadoresEvaluados: number;
+  documentosTrabajadorGenerados: number;
+  documentosEmpresaGenerados: number;
+};
+
 function mapDocEstado(estado: string): DocEstado {
   const normalized = estado.toLowerCase();
   if (normalized === "aprobado") return "completo";
@@ -113,6 +139,32 @@ function mapDocEstado(estado: string): DocEstado {
 function normalizeEstadoForStorage(estado: EstadoDocumentoTrabajadorInput): string {
   if (estado === "aprobado") return "completo";
   return estado;
+}
+
+function mapPendingWorkflowEstado(estado?: string): "pendiente" | "en_revision" {
+  const value = (estado ?? "").trim().toLowerCase();
+  if (value === "pendiente_validacion") return "en_revision";
+  if (value === "pendiente_firma") return "pendiente";
+  if (value === "pendiente_completar") return "pendiente";
+  if (value === "pendiente_asignacion") return "pendiente";
+  return "pendiente";
+}
+
+function mapEstadoInicialDocumentoTrabajador(estado?: string): string {
+  const value = (estado ?? "").trim().toLowerCase();
+  if (value === "no_aplica") return "no_aplica";
+  if (value === "en_revision") return "en_revision";
+  if (value === "vigente") return "completo";
+  return mapPendingWorkflowEstado(value);
+}
+
+function mapEstadoInicialDocumentoEmpresa(estado?: string): string {
+  const value = (estado ?? "").trim().toLowerCase();
+  if (!value || value === "borrador") return "pendiente_configuracion";
+  if (value === "no_aplica") return "No aplica";
+  if (value === "vigente") return "Vigente";
+  if (value === "en_revision") return "Pendiente de carga";
+  return "Pendiente de carga";
 }
 
 function parseOptionalDate(value?: string | null): Date | null | undefined {
@@ -197,40 +249,108 @@ function buildReglaNombre(rule: {
   return tags.join(" · ");
 }
 
-type ReglaEvaluable = {
-  id: string;
-  cargoId: string | null;
-  areaId: string | null;
-  centroTrabajoId: string | null;
-  tipoContrato: string | null;
-  tipoDocumento: {
-    id: string;
-    nombre: string;
-    codigo: string;
-    requiereVencimiento: boolean;
-  };
-};
-
 type TrabajadorEvaluable = {
   id: string;
+  estado?: string | null;
+  nombreCompleto?: string | null;
   cargoId: string | null;
   areaId: string | null;
   centroTrabajoId: string | null;
   tipoContrato: string | null;
+  cargo?: {
+    perfilSST: string | null;
+    descripcion: string | null;
+  } | null;
 };
 
-function reglaAplicaATrabajador(regla: ReglaEvaluable, trabajador: TrabajadorEvaluable): boolean {
-  if (regla.cargoId && regla.cargoId !== trabajador.cargoId) return false;
-  if (regla.areaId && regla.areaId !== trabajador.areaId) return false;
-  if (regla.centroTrabajoId && regla.centroTrabajoId !== trabajador.centroTrabajoId) return false;
-  if (regla.tipoContrato && regla.tipoContrato !== trabajador.tipoContrato) return false;
-  return true;
+type EmpresaEvaluable = {
+  id: string;
+  tipoEmpresa: string | null;
+  giro: string | null;
+  tamanoEmpresa: string | null;
+  cantidadTrabajadores: number;
+};
+
+const DEBUG_REGLAS_DOCUMENTALES =
+  process.env.NODE_ENV !== "production" && process.env.DEBUG_REGLAS_DOCUMENTALES === "1";
+
+function normalizeDocName(value: string) {
+  return value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function detectarRiesgosDesdeContexto(
+  empresa: EmpresaEvaluable,
+  trabajador?: TrabajadorEvaluable,
+): string[] {
+  const source = normalizeDocName(
+    `${empresa.tipoEmpresa ?? ""} ${empresa.giro ?? ""} ${trabajador?.cargo?.perfilSST ?? ""} ${trabajador?.cargo?.descripcion ?? ""}`,
+  );
+
+  const riesgos: string[] = [];
+  if (source.includes("ruido")) riesgos.push("ruido");
+  if (source.includes("silice") || source.includes("silica")) riesgos.push("silice");
+  if (source.includes("uv") || source.includes("radiacion")) riesgos.push("uv");
+  if (source.includes("psicosocial")) riesgos.push("psicosocial");
+  if (source.includes("tmert")) riesgos.push("tmert");
+  if (source.includes("mmc") || source.includes("manual de carga")) riesgos.push("mmc");
+
+  return Array.from(new Set(riesgos));
+}
+
+function getIndustriaDebug(empresa: EmpresaEvaluable): string {
+  const source = normalizeDocName(`${empresa.tipoEmpresa ?? ""} ${empresa.giro ?? ""}`);
+  if (source.includes("constru")) return "construccion";
+  if (source.includes("manufact")) return "manufactura";
+  if (source.includes("miner")) return "mineria";
+  if (source.includes("logist") || source.includes("transport")) return "logistica_transporte";
+  if (source.includes("agro")) return "agroindustria";
+  if (source.includes("alimento")) return "alimentos";
+  if (source.includes("salud")) return "salud";
+  if (source.includes("comerc")) return "comercio";
+  return "servicios";
+}
+
+function filtrarReglasAplicables(
+  empresa: EmpresaEvaluable,
+  trabajador?: TrabajadorEvaluable,
+): ReglaDocumentalNextPrev[] {
+  const industriaEmpresa = getIndustriaDebug(empresa);
+  const riesgosDetectados = detectarRiesgosDesdeContexto(empresa, trabajador);
+
+  return REGLAS_DOCUMENTALES.filter((doc) => {
+    const aplica = cumpleCondicionesDocumento(
+      doc,
+      {
+        tipoEmpresa: empresa.tipoEmpresa,
+        giro: empresa.giro,
+        tamanoEmpresa: empresa.tamanoEmpresa,
+        cantidadTrabajadores: empresa.cantidadTrabajadores,
+      },
+      trabajador
+        ? {
+            cargo: trabajador.cargo,
+          }
+        : undefined,
+    );
+
+    if (DEBUG_REGLAS_DOCUMENTALES) {
+      console.debug("[documentacion][reglas]", {
+        documento: doc.codigo,
+        industriaEmpresa,
+        riesgosDetectados,
+        resultado: aplica,
+        trabajadorId: trabajador?.id ?? null,
+      });
+    }
+
+    return aplica;
+  });
 }
 
 async function evaluarReglasDocumentalesTrabajadorInternal(
   context: { empresaId: string; usuarioId: string; email: string },
   trabajador: TrabajadorEvaluable,
-  reglas: ReglaEvaluable[],
+  reglas: ReglaDocumentalNextPrev[],
 ): Promise<EvaluacionReglasTrabajadorResult> {
   const existentes = await prisma.trabajadorDocumento.findMany({
     where: { empresaId: context.empresaId, trabajadorId: trabajador.id },
@@ -243,54 +363,33 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
     existentesKeys.add(doc.nombre.toLowerCase());
   });
 
-  const reglasAplicables = reglas.filter((regla) => reglaAplicaATrabajador(regla, trabajador));
+  const reglasAplicables = reglas.filter((regla) => normalizeDocName(regla.entidadAplicable) === "trabajador");
 
-  const tiposPendientes = new Map<
-    string,
-    {
-      tipoDocumentoId: string;
-      nombre: string;
-      codigo: string;
-      requiereVencimiento: boolean;
-      reglas: string[];
-    }
-  >();
+  const tiposPendientes = new Map<string, ReglaDocumentalNextPrev>();
 
   for (const regla of reglasAplicables) {
-    const codigoKey = regla.tipoDocumento.codigo.toLowerCase();
-    const nombreKey = regla.tipoDocumento.nombre.toLowerCase();
+    const codigoKey = regla.codigo.toLowerCase();
+    const nombreKey = regla.nombre.toLowerCase();
     if (existentesKeys.has(codigoKey) || existentesKeys.has(nombreKey)) continue;
 
-    const current = tiposPendientes.get(codigoKey);
-    if (current) {
-      current.reglas.push(regla.id);
-      continue;
-    }
-
-    tiposPendientes.set(codigoKey, {
-      tipoDocumentoId: regla.tipoDocumento.id,
-      nombre: regla.tipoDocumento.nombre,
-      codigo: regla.tipoDocumento.codigo,
-      requiereVencimiento: regla.tipoDocumento.requiereVencimiento,
-      reglas: [regla.id],
-    });
+    tiposPendientes.set(codigoKey, regla);
   }
 
   const documentosGeneradosIds: string[] = [];
 
-  for (const pendiente of tiposPendientes.values()) {
+  for (const regla of tiposPendientes.values()) {
     try {
       const created = await prisma.$transaction(async (tx) => {
         const documento = await tx.trabajadorDocumento.create({
           data: {
             trabajadorId: trabajador.id,
             empresaId: context.empresaId,
-            nombre: pendiente.nombre,
-            tipo: pendiente.codigo,
+            nombre: regla.nombre,
+            tipo: regla.codigo,
             categoria: "trabajador",
-            estado: "pendiente",
+            estado: mapEstadoInicialDocumentoTrabajador(regla.workflow.estadoInicialSugerido),
             version: "1.0",
-            tieneVencimiento: pendiente.requiereVencimiento,
+            tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
             observaciones: "Generado automáticamente por regla documental.",
             subidoPorId: context.usuarioId,
             creadoPorEmail: context.email,
@@ -303,7 +402,7 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
             documentoId: documento.id,
             usuarioId: context.usuarioId,
             accion: "DOCUMENTO_GENERADO_POR_REGLA",
-            detalle: `Generado por evaluación automática de reglas documentales (${pendiente.reglas.join(", ")})`,
+            detalle: "Documento generado automáticamente por regla documental",
             version: documento.version,
           },
         });
@@ -312,8 +411,8 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
       });
 
       documentosGeneradosIds.push(created.id);
-      existentesKeys.add(pendiente.codigo.toLowerCase());
-      existentesKeys.add(pendiente.nombre.toLowerCase());
+      existentesKeys.add(regla.codigo.toLowerCase());
+      existentesKeys.add(regla.nombre.toLowerCase());
     } catch {
       // Evita fallar toda la evaluación si otra ejecución creó el mismo documento en paralelo.
     }
@@ -321,11 +420,252 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
 
   return {
     trabajadorId: trabajador.id,
-    reglasEvaluadas: reglas.length,
+    reglasEvaluadas: REGLAS_DOCUMENTALES.length,
     reglasAplicables: reglasAplicables.length,
     pendientesGenerados: documentosGeneradosIds.length,
     documentosGeneradosIds,
   };
+}
+
+async function generarDocumentosBaseEmpresa(context: {
+  empresaId: string;
+  usuarioId: string;
+  email: string;
+  reglasAplicables: ReglaDocumentalNextPrev[];
+}): Promise<number> {
+  const [requeridos, existentes] = await Promise.all([
+    prisma.documentoRequeridoEmpresa.findMany({
+      where: { obligatorio: true, activo: true },
+      orderBy: [{ orden: "asc" }, { nombre: "asc" }],
+      select: {
+        id: true,
+        nombre: true,
+        categoria: true,
+        requiereVencimiento: true,
+      },
+    }),
+    prisma.documentoEmpresa.findMany({
+      where: { empresaId: context.empresaId },
+      select: { id: true, nombre: true, documentoRequeridoId: true },
+    }),
+  ]);
+
+  const existentesPorRequerido = new Set<string>(
+    existentes.map((doc) => doc.documentoRequeridoId).filter(Boolean) as string[],
+  );
+  const existentesPorNombre = new Set<string>(existentes.map((doc) => normalizeDocName(doc.nombre)));
+
+  const requeridoPorNombre = new Map(requeridos.map((item) => [normalizeDocName(item.nombre), item]));
+
+  const reglasEmpresa = context.reglasAplicables.filter(
+    (regla) => normalizeDocName(regla.entidadAplicable) === "empresa",
+  );
+
+  let generated = 0;
+
+  for (const regla of reglasEmpresa) {
+    const requerido = requeridoPorNombre.get(normalizeDocName(regla.nombre));
+    const target = {
+      documentoRequeridoId: requerido?.id ?? null,
+      nombre: requerido?.nombre ?? regla.nombre,
+      categoria: requerido?.categoria ?? regla.categoria,
+      requiereVencimiento: requerido?.requiereVencimiento ?? Boolean(regla.workflow.frecuenciaVigencia),
+      estadoInicial: mapEstadoInicialDocumentoEmpresa(regla.workflow.estadoInicialSugerido),
+      tipo: regla.codigo,
+    };
+
+    const duplicateByReq = Boolean(target.documentoRequeridoId && existentesPorRequerido.has(target.documentoRequeridoId));
+    const duplicateByName = existentesPorNombre.has(normalizeDocName(target.nombre));
+    if (duplicateByReq || duplicateByName) continue;
+
+    if (target.documentoRequeridoId) {
+      const existenteEnBd = await findDocumentoEmpresaCanonicoPorRequerido({
+        empresaId: context.empresaId,
+        documentoRequeridoId: target.documentoRequeridoId,
+      });
+
+      if (existenteEnBd) {
+        existentesPorRequerido.add(target.documentoRequeridoId);
+        existentesPorNombre.add(normalizeDocName(existenteEnBd.nombre));
+        continue;
+      }
+    }
+
+    try {
+      const created = await prisma.documentoEmpresa.create({
+        data: {
+          empresaId: context.empresaId,
+          nombre: target.nombre,
+          categoria: target.categoria,
+          tipo: target.tipo,
+          estado: target.estadoInicial,
+          version: "1.0",
+          tieneVencimiento: target.requiereVencimiento,
+          observaciones: "Generado automáticamente por regla documental.",
+          subidoPorId: context.usuarioId,
+          creadoPorEmail: context.email,
+          documentoRequeridoId: target.documentoRequeridoId,
+        },
+        select: { id: true, version: true },
+      });
+
+      await prisma.documentoEmpresaHistorial.create({
+        data: {
+          documentoId: created.id,
+          usuarioId: context.usuarioId,
+          accion: "DOCUMENTO_GENERADO_POR_REGLA",
+          detalle: "Documento generado automáticamente por regla documental",
+          version: created.version,
+        },
+      });
+
+      generated += 1;
+      if (target.documentoRequeridoId) existentesPorRequerido.add(target.documentoRequeridoId);
+      existentesPorNombre.add(normalizeDocName(target.nombre));
+    } catch {
+      // Evita colisión por concurrencia.
+    }
+  }
+
+  return generated;
+}
+
+export async function evaluarDocumentosPendientesPorEvento(
+  input: EvaluacionDocumentosPorEventoInput,
+): Promise<EvaluacionDocumentosPorEventoResult> {
+  const context = {
+    empresaId: input.empresaId,
+    usuarioId: input.usuarioId,
+    email: input.email,
+  };
+
+  if (!context.usuarioId || !context.email) {
+    const fallbackUsuario = await prisma.usuario.findFirst({
+      where: { empresaId: input.empresaId },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, email: true },
+    });
+    if (!fallbackUsuario) {
+      return {
+        evento: input.evento,
+        trabajadorId: input.trabajadorId,
+        trabajadoresEvaluados: 0,
+        documentosTrabajadorGenerados: 0,
+        documentosEmpresaGenerados: 0,
+      };
+    }
+    context.usuarioId = fallbackUsuario.id;
+    context.email = fallbackUsuario.email;
+  }
+
+  const runtimeContext = {
+    empresaId: context.empresaId,
+    usuarioId: context.usuarioId,
+    email: context.email,
+  } as { empresaId: string; usuarioId: string; email: string };
+
+  const result: EvaluacionDocumentosPorEventoResult = {
+    evento: input.evento,
+    trabajadorId: input.trabajadorId,
+    trabajadoresEvaluados: 0,
+    documentosTrabajadorGenerados: 0,
+    documentosEmpresaGenerados: 0,
+  };
+
+  const empresa = await prisma.empresa.findFirst({
+    where: { id: input.empresaId },
+    select: {
+      id: true,
+      tipoEmpresa: true,
+      giro: true,
+      tamanoEmpresa: true,
+      cantidadTrabajadores: true,
+    },
+  });
+
+  if (!empresa) {
+    return result;
+  }
+
+  if (input.evento === "empresa_actualizada") {
+    const reglasAplicables = filtrarReglasAplicables(empresa);
+    result.documentosEmpresaGenerados = await generarDocumentosBaseEmpresa({
+      ...runtimeContext,
+      reglasAplicables,
+    });
+    return result;
+  }
+
+  if (input.evento === "trabajador_creado" || input.evento === "trabajador_actualizado") {
+    if (!input.trabajadorId) return result;
+
+    const trabajador = await prisma.trabajador.findFirst({
+      where: {
+        id: input.trabajadorId,
+        empresaId: input.empresaId,
+        estado: { not: "inactivo" },
+      },
+      select: {
+        id: true,
+        cargoId: true,
+        areaId: true,
+        centroTrabajoId: true,
+        tipoContrato: true,
+        cargo: {
+          select: {
+            perfilSST: true,
+            descripcion: true,
+          },
+        },
+      },
+    });
+
+    if (!trabajador) return result;
+
+    const reglasAplicables = filtrarReglasAplicables(empresa, trabajador);
+    const evalResult = await evaluarReglasDocumentalesTrabajadorInternal(runtimeContext, trabajador, reglasAplicables);
+    result.trabajadoresEvaluados = 1;
+    result.documentosTrabajadorGenerados = evalResult.pendientesGenerados;
+    return result;
+  }
+
+  const trabajadores = await prisma.trabajador.findMany({
+    where: { empresaId: input.empresaId, estado: { not: "inactivo" } },
+    select: {
+      id: true,
+      cargoId: true,
+      areaId: true,
+      centroTrabajoId: true,
+      tipoContrato: true,
+      cargo: {
+        select: {
+          perfilSST: true,
+          descripcion: true,
+        },
+      },
+    },
+    orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
+  });
+
+  for (const trabajador of trabajadores) {
+    const reglasAplicables = filtrarReglasAplicables(empresa, trabajador);
+    const evalResult = await evaluarReglasDocumentalesTrabajadorInternal(runtimeContext, trabajador, reglasAplicables);
+    result.documentosTrabajadorGenerados += evalResult.pendientesGenerados;
+  }
+  result.trabajadoresEvaluados = trabajadores.length;
+
+  if (
+    input.evento === "estructura_empresa_actualizada" ||
+    input.evento === "reglas_documentales_actualizadas"
+  ) {
+    const reglasAplicables = filtrarReglasAplicables(empresa);
+    result.documentosEmpresaGenerados = await generarDocumentosBaseEmpresa({
+      ...runtimeContext,
+      reglasAplicables,
+    });
+  }
+
+  return result;
 }
 
 export async function getTiposDocumentoTrabajador(): Promise<TipoDocumento[]> {
@@ -849,92 +1189,108 @@ export async function evaluarReglasDocumentalesTrabajador(
 ): Promise<EvaluacionReglasTrabajadorResult> {
   const { empresaId, usuarioId, email } = await requirePermission("canManageDocumentacion");
 
-  const [trabajador, reglas] = await Promise.all([
+  const [empresa, trabajador] = await Promise.all([
+    prisma.empresa.findFirst({
+      where: { id: empresaId },
+      select: {
+        id: true,
+        tipoEmpresa: true,
+        giro: true,
+        tamanoEmpresa: true,
+        cantidadTrabajadores: true,
+      },
+    }),
     prisma.trabajador.findFirst({
       where: { id: trabajadorId, empresaId },
       select: {
         id: true,
+        estado: true,
         cargoId: true,
         areaId: true,
         centroTrabajoId: true,
         tipoContrato: true,
-      },
-    }),
-    prisma.reglaDocumentoTrabajador.findMany({
-      where: {
-        empresaId,
-        activo: true,
-        obligatorio: true,
-        tipoDocumento: { activo: true },
-      },
-      include: {
-        tipoDocumento: {
+        cargo: {
           select: {
-            id: true,
-            nombre: true,
-            codigo: true,
-            requiereVencimiento: true,
+            perfilSST: true,
+            descripcion: true,
           },
         },
       },
-      orderBy: [{ createdAt: "asc" }],
     }),
   ]);
+
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
+  }
 
   if (!trabajador) {
     throw new Error("Trabajador no encontrado en la empresa actual");
   }
 
+  if (trabajador.estado === "inactivo") {
+    return {
+      trabajadorId,
+      reglasEvaluadas: REGLAS_DOCUMENTALES.length,
+      reglasAplicables: 0,
+      pendientesGenerados: 0,
+      documentosGeneradosIds: [],
+    };
+  }
+
+  const reglasAplicables = filtrarReglasAplicables(empresa, trabajador);
+
   return evaluarReglasDocumentalesTrabajadorInternal(
     { empresaId, usuarioId, email },
     trabajador,
-    reglas,
+    reglasAplicables,
   );
 }
 
 export async function evaluarReglasDocumentalesEmpresa(): Promise<EvaluacionReglasEmpresaResult> {
   const { empresaId, usuarioId, email } = await requirePermission("canManageDocumentacion");
 
-  const [trabajadores, reglas] = await Promise.all([
+  const [empresa, trabajadores] = await Promise.all([
+    prisma.empresa.findFirst({
+      where: { id: empresaId },
+      select: {
+        id: true,
+        tipoEmpresa: true,
+        giro: true,
+        tamanoEmpresa: true,
+        cantidadTrabajadores: true,
+      },
+    }),
     prisma.trabajador.findMany({
-      where: { empresaId },
+      where: { empresaId, estado: { not: "inactivo" } },
       select: {
         id: true,
         cargoId: true,
         areaId: true,
         centroTrabajoId: true,
         tipoContrato: true,
-      },
-      orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
-    }),
-    prisma.reglaDocumentoTrabajador.findMany({
-      where: {
-        empresaId,
-        activo: true,
-        obligatorio: true,
-        tipoDocumento: { activo: true },
-      },
-      include: {
-        tipoDocumento: {
+        cargo: {
           select: {
-            id: true,
-            nombre: true,
-            codigo: true,
-            requiereVencimiento: true,
+            perfilSST: true,
+            descripcion: true,
           },
         },
       },
-      orderBy: [{ createdAt: "asc" }],
+      orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
     }),
   ]);
+
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
+  }
 
   const detalles: EvaluacionReglasTrabajadorResult[] = [];
 
   for (const trabajador of trabajadores) {
+    const reglasAplicables = filtrarReglasAplicables(empresa, trabajador);
     const result = await evaluarReglasDocumentalesTrabajadorInternal(
       { empresaId, usuarioId, email },
       trabajador,
-      reglas,
+      reglasAplicables,
     );
     detalles.push(result);
   }

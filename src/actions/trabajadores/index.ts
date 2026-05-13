@@ -1,5 +1,6 @@
 "use server";
 
+import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { Worker, WorkerContrato, WorkerEstado } from "@/components/trabajadores-v2/types";
@@ -162,7 +163,7 @@ export async function getTrabajadores(): Promise<Worker[]> {
 }
 
 export async function createTrabajador(worker: Worker): Promise<Worker> {
-  const { empresaId } = await requirePermission("canCreateTrabajador");
+  const { empresaId, usuarioId, email } = await requirePermission("canCreateTrabajador");
   const payload = await toDbPayload(worker, empresaId);
 
   const created = await prisma.trabajador.create({
@@ -174,11 +175,20 @@ export async function createTrabajador(worker: Worker): Promise<Worker> {
   });
 
   const row = await fetchTrabajadorById(created.id, empresaId);
+
+  await evaluarDocumentosPendientesPorEvento({
+    empresaId,
+    evento: "trabajador_creado",
+    trabajadorId: created.id,
+    usuarioId,
+    email,
+  });
+
   return normalizeWorker(row);
 }
 
 export async function updateTrabajador(worker: Worker): Promise<Worker> {
-  const { empresaId } = await requirePermission("canUpdateTrabajador");
+  const { empresaId, usuarioId, email } = await requirePermission("canUpdateTrabajador");
   const payload = await toDbPayload(worker, empresaId);
 
   await prisma.trabajador.updateMany({
@@ -187,6 +197,15 @@ export async function updateTrabajador(worker: Worker): Promise<Worker> {
   });
 
   const row = await fetchTrabajadorById(worker.id, empresaId);
+
+  await evaluarDocumentosPendientesPorEvento({
+    empresaId,
+    evento: "trabajador_actualizado",
+    trabajadorId: worker.id,
+    usuarioId,
+    email,
+  });
+
   return normalizeWorker(row);
 }
 

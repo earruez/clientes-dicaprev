@@ -1,6 +1,14 @@
 "use server";
 
 import { calcularEstadoDocumento, esDocumentoAplicable } from "@/lib/documentacion/cumplimiento-documento";
+import {
+  calcularCumplimientoEmpresa,
+  type CumplimientoEmpresaResultado,
+} from "@/lib/documentacion/cumplimiento-empresa";
+import {
+  ESTADOS_DOCUMENTO_EMPRESA_ARCHIVADOS,
+  findDocumentoEmpresaCanonicoPorRequerido,
+} from "@/lib/documentacion/documento-empresa-duplicados";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { AppContext } from "@/server/context";
@@ -918,7 +926,10 @@ export async function getDocumentosEmpresa(): Promise<DocumentoMatrizRow[]> {
     orderBy: { orden: "asc" },
     include: {
       documentos: {
-        where: { empresaId: context.empresaId },
+        where: {
+          empresaId: context.empresaId,
+          estado: { notIn: [...ESTADOS_DOCUMENTO_EMPRESA_ARCHIVADOS] },
+        },
         orderBy: { updatedAt: "desc" },
         take: 1,
         include: {
@@ -942,6 +953,7 @@ export async function getDocumentosEmpresa(): Promise<DocumentoMatrizRow[]> {
     where: {
       empresaId: context.empresaId,
       documentoRequeridoId: null,
+      estado: { notIn: [...ESTADOS_DOCUMENTO_EMPRESA_ARCHIVADOS] },
     },
     include: {
       subidoPor: {
@@ -977,24 +989,57 @@ export async function crearDocumentoEmpresa(data: DocumentoEmpresaInput) {
     throw new Error("Estado de documento no válido");
   }
 
+  const payload = {
+    nombre: data.nombre.trim(),
+    categoria: data.categoria,
+    tipo: data.tipo?.trim() || null,
+    estado: data.estado,
+    version: data.version?.trim() || "1.0",
+    archivoNombre: normalizarStringOpcional(data.archivoNombre, true),
+    archivoNombreOriginal: normalizarStringOpcional(data.archivoNombreOriginal, true),
+    archivoUrl: data.archivoUrl ?? null,
+    archivoTipo: data.archivoTipo ?? null,
+    archivoPeso: data.archivoPeso ?? null,
+    tieneVencimiento: data.tieneVencimiento,
+    fechaEmision: data.fechaEmision ? new Date(data.fechaEmision) : null,
+    fechaVencimiento: data.tieneVencimiento && data.fechaVencimiento ? new Date(data.fechaVencimiento) : null,
+    observaciones: data.observaciones?.trim() || null,
+    creadoPorEmail: data.creadoPorEmail?.trim() || context.email,
+    documentoRequeridoId: data.documentoRequeridoId ?? null,
+  };
+
+  // Blindaje anti-duplicado para documentos requeridos: actualizar canónico en vez de crear uno nuevo.
+  if (data.documentoRequeridoId) {
+    const canonico = await findDocumentoEmpresaCanonicoPorRequerido({
+      empresaId: context.empresaId,
+      documentoRequeridoId: data.documentoRequeridoId,
+    });
+
+    if (canonico) {
+      const updated = await prisma.documentoEmpresa.update({
+        where: { id: canonico.id },
+        data: payload,
+      });
+
+      await registrarHistorialDocumento({
+        documentoId: updated.id,
+        accion: "Documento actualizado por protección anti-duplicado",
+        detalle: `Se reutilizó documento canónico para ${data.nombre.trim()}`,
+        version: updated.version,
+        archivoNombre: updated.archivoNombre,
+        archivoNombreOriginal: updated.archivoNombreOriginal,
+        archivoUrl: updated.archivoUrl,
+        archivoTipo: updated.archivoTipo,
+        archivoPeso: updated.archivoPeso,
+      });
+
+      return updated.id;
+    }
+  }
+
   const created = await prisma.documentoEmpresa.create({
     data: {
-      nombre: data.nombre.trim(),
-      categoria: data.categoria,
-      tipo: data.tipo?.trim() || null,
-      estado: data.estado,
-      version: data.version?.trim() || "1.0",
-      archivoNombre: normalizarStringOpcional(data.archivoNombre, true),
-      archivoNombreOriginal: normalizarStringOpcional(data.archivoNombreOriginal, true),
-      archivoUrl: data.archivoUrl ?? null,
-      archivoTipo: data.archivoTipo ?? null,
-      archivoPeso: data.archivoPeso ?? null,
-      tieneVencimiento: data.tieneVencimiento,
-      fechaEmision: data.fechaEmision ? new Date(data.fechaEmision) : null,
-      fechaVencimiento: data.tieneVencimiento && data.fechaVencimiento ? new Date(data.fechaVencimiento) : null,
-      observaciones: data.observaciones?.trim() || null,
-      creadoPorEmail: data.creadoPorEmail?.trim() || context.email,
-      documentoRequeridoId: data.documentoRequeridoId ?? null,
+      ...payload,
       empresaId: context.empresaId,
       subidoPorId: context.usuarioId,
     },
@@ -1072,6 +1117,12 @@ export async function getContextoFijoDocumentacion() {
     usuarioId: context.usuarioId,
     usuario,
   };
+}
+
+export async function getCumplimientoDocumentalEmpresa(): Promise<CumplimientoEmpresaResultado> {
+  const context = await requirePermission("canReadDocumentacion");
+  await asegurarContextoBase(context);
+  return calcularCumplimientoEmpresa({ empresaId: context.empresaId });
 }
 
 export type { DocumentoEmpresaInput };

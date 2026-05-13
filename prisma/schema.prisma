@@ -174,6 +174,8 @@ model DocumentoEmpresa {
   subidoPor          Usuario                     @relation("UsuarioDocumentosSubidos", fields: [subidoPorId], references: [id])
   documentoRequerido DocumentoRequeridoEmpresa?  @relation(fields: [documentoRequeridoId], references: [id])
   historial          DocumentoEmpresaHistorial[]
+
+  @@unique([empresaId, documentoRequeridoId])
 }
 
 model DocumentoRequeridoEmpresa {
