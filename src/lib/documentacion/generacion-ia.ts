@@ -408,22 +408,22 @@ function buildPrompt(
 
   const estructuraMinima = plantillaEfectiva
     ? [
-        "La salida debe respetar EXACTAMENTE la siguiente estructura editable de plantilla:",
+        "ESTRUCTURA OBLIGATORIA: La salida debe respetar EXACTAMENTE esta estructura (no elimines ni renombres secciones):",
         "```markdown",
         plantillaEfectiva.contenidoBase,
         "```",
-        "No elimines ni renombres titulos seccionados (## ...).",
       ]
     : plantilla
     ? [
-        "La salida debe respetar EXACTAMENTE esta estructura de secciones:",
+        "ESTRUCTURA OBLIGATORIA: Incluye TODAS estas secciones en este orden:",
         `# ${doc.nombre}`,
         ...plantilla.secciones.map((s) => s.titulo),
         "",
+        "INSTRUCCIÓN ESPECÍFICA PARA ESTE DOCUMENTO:",
         plantilla.instruccionIA,
       ]
     : [
-        "La salida debe tener esta estructura minima:",
+        "ESTRUCTURA MÍNIMA: Incluye estas secciones:",
         `# ${doc.nombre}`,
         "## Objetivo",
         "## Alcance",
@@ -433,18 +433,36 @@ function buildPrompt(
         "## Referencias normativas",
       ];
 
+  const instruccionesCalidadChilena = [
+    "CRITERIOS DE CALIDAD OBLIGATORIOS:",
+    "1. LENGUAJE: Español técnico de Chile (usar terminología conforme a SUSESO, DS44, normas NCh). Evita vaguedades.",
+    "2. NO GENÉRICO: Adapta contenido al giro específico (minería, construcción, salud, manufactura, etc.). Nombres concretos, situaciones reales del sector.",
+    "3. RIESGOS ESPECÍFICOS: Para cada riesgo identificado, explicita: (a) fuente generadora, (b) vía de exposición, (c) daño potencial, (d) medida de control.",
+    "4. NORMAS TÉCNICAS: Cita normas chilenas e ISO exactas (ej: 'conforme a NCh 1318 para protector ocular'; 'según DS44 Art. 6'). NO uses normas genéricas.",
+    "5. TONO: Formal, serio, orientado a prevención. Dirigido a trabajadores chilenos con educación media completa.",
+    "6. OPERACIONALIDAD: Secciones prácticas con tablas, listas de chequeo, criterios de decisión. Evita párrafos solo descriptivos.",
+    "7. TABLAS MARKDOWN: Cuando corresponda, usa tablas con columnas claras. Especialmente para EPP, riesgos, medidas de control.",
+  ];
+
   return [
-    "Eres un especialista en SST en Chile y redactor tecnico normativo.",
-    `Genera un documento: ${doc.nombre} (${doc.codigo}).`,
-    "Escribe en espanol de Chile, claro y formal, enfocado en prevencion de riesgos.",
-    `Industria: ${contexto.industria}.`,
-    `Riesgos: ${riesgos}.`,
-    `Tamano empresa: ${contexto.empresa.tamanoEmpresa ?? "no informado"}.`,
-    `Giro empresa: ${contexto.empresa.giro ?? "no informado"}.`,
-    perfilTrabajador,
-    `Base normativa referencial: ${baseNormativa}.`,
+    "OBJETIVO: Eres un especialista en SST (Seguridad y Salud en el Trabajo) chileno, con experiencia en regulaciones conforme a Ley 16.744, DS44 y estándares de prevención de riesgos.",
+    "",
+    `DOCUMENTO A GENERAR: ${doc.nombre} (Código: ${doc.codigo})`,
+    `INDUSTRIA: ${contexto.industria}`,
+    `RIESGOS PRESENTES: ${riesgos}`,
+    `TAMAÑO DE EMPRESA: ${contexto.empresa.tamanoEmpresa ?? "no informado"}`,
+    `GIRO O ACTIVIDAD: ${contexto.empresa.giro ?? "no informado"}`,
+    `CONTEXTO: ${perfilTrabajador}`,
+    `BASE NORMATIVA: ${baseNormativa}`,
+    "",
     ...estructuraMinima,
-    "No incluyas texto fuera del documento.",
+    "",
+    ...instruccionesCalidadChilena,
+    "",
+    "SALIDA:",
+    "- Genera SOLO el contenido del documento. Sin explicaciones adicionales.",
+    "- Respeta EXACTAMENTE la estructura especificada.",
+    "- Asegura completitud: todas las secciones requeridas deben estar presentes y bien desarrolladas.",
   ].join("\n");
 }
 

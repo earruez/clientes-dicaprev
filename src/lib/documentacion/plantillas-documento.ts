@@ -149,11 +149,16 @@ const PLANTILLAS_DOCUMENTO: PlantillaDocumento[] = [
     ],
     baseNormativa: ["Ley 16.744", "DS44", "DS54", "Ley 21.643 (Ley Karin)"],
     instruccionIA:
-      "Este es un documento legal de obligacion de informar (IRL). " +
-      "Debe ser preciso, claro y en lenguaje accesible para el trabajador. " +
-      "Los riesgos deben ser específicos al cargo y la industria. " +
-      "Incluir referencias normativas al pie de cada sección. " +
-      "El formato de firma debe tener espacios en blanco para nombre, RUT y fecha.",
+      "DOCUMENTO LEGAL: Identificación de Riesgos Laborales (IRL). " +
+      "CRITERIOS TÉCNICOS CHILENOS: " +
+      "1. Usar terminología de prevención de riesgos estándar en Chile (según SUSESO, DS44, NCh). " +
+      "2. Especificar riesgos REALES del puesto (NO genéricos). Incluir tipo (ergonómico, químico, biológico, psicosocial, físico). " +
+      "3. Para CADA riesgo: fuente generadora, vía de exposición (inhalación, contacto, ingesta), consecuencia potencial (daño específico). " +
+      "4. Jerarquía de controles: Eliminación → Sustitución → Ingeniería → Administrativos → EPP. NO usar solo EPP. " +
+      "5. EPP: especificar norma técnica (NCh, ISO) que cumple (ej: 'Protector ocular NCh1318'). " +
+      "6. Capacitaciones: incluir protocolos MINSAL si aplica, inducción específica del riesgo. " +
+      "7. Lenguaje: técnico pero accesible. Evitar vaguedades ('ambiente seguro'). Ser concreto. " +
+      "8. Firmas: espacios para Trabajador (nombre, RUT, fecha), Prevencionista, Gerente/Empleador.",
     activa: true,
   },
 
@@ -232,11 +237,16 @@ const PLANTILLAS_DOCUMENTO: PlantillaDocumento[] = [
     ],
     baseNormativa: ["DS44", "NCh 461", "Ley 16.744 Art. 68", "Circular 3244 SUSESO"],
     instruccionIA:
-      "Este es un acta legal de entrega de EPP. " +
-      "La tabla de EPP entregado debe ser detallada y estar estructurada como tabla Markdown. " +
-      "Las instrucciones de uso deben ser específicas para el tipo de EPP y la industria. " +
-      "Usar lenguaje simple y directo. " +
-      "El bloque de firmas debe incluir tres filas: Trabajador, Encargado SST y Representante Empresa.",
+      "DOCUMENTO LEGAL: Acta de Entrega y Recepción de EPP (Equipos de Protección Personal). " +
+      "CRITERIOS TÉCNICOS CHILENOS: " +
+      "1. Usar lenguaje formal y técnico según estándares ds44 SUSESO y normas NCh. " +
+      "2. TABLA EPP OBLIGATORIA: Debe incluir columnas separadas: Elemento EPP | Marca | Modelo | Talla | Cantidad | Norma Técnica | Fecha Entrega | Firma. " +
+      "3. Para cada EPP: especificar norma técnica exacta (ej: 'Protector ocular NCh1318', 'Respirador N95 ISO8573'). " +
+      "4. Instrucciones: ser específicas para el tipo de EPP (cómo ponerse, inspección diaria, limpieza, almacenamiento, indicadores de reposición). " +
+      "5. Responsabilidades: usar obligatorio en área de riesgo, reporte inmediato de daños/defectos, prohibición de compartir, devolución al término. " +
+      "6. Reposición: especificar criterios (desgaste normal, daño, cambio de sector, término de contrato). " +
+      "7. Formato: 3 espacios para firma (Trabajador con RUT, Prevencionista, Empleador/Gerente) con fechas. " +
+      "8. Tono: serio e instructivo. NO genérico.",
     activa: true,
   },
 ];
@@ -360,12 +370,231 @@ export function normalizarCodigoPlantilla(codigo: string): string {
 
 /**
  * Genera un contenido base editable en markdown para una plantilla.
+ * Proporciona contenido profesional tipo-Baker listo para edición empresarial.
  */
 export function construirContenidoBasePlantilla(plantilla: PlantillaDocumento): string {
+  const codigoNormalizado = normalizarCodigoPlantilla(plantilla.codigo);
+
+  // Generar contenido específico por tipo de plantilla
+  if (codigoNormalizado === "IRL") {
+    return generarContenidoBaseIRL();
+  } else if (codigoNormalizado === "EPP") {
+    return generarContenidoBaseEPP();
+  }
+
+  // Fallback genérico para otras plantillas
   const encabezado = [`# ${plantilla.nombre}`, ""];
   const cuerpo = plantilla.secciones.flatMap((s) => [s.titulo, "", `*${s.descripcion}*`, ""]);
   const pie = ["## Referencias normativas", "", plantilla.baseNormativa.map((item) => `- ${item}`).join("\n"), ""];
   return [...encabezado, ...cuerpo, ...pie].join("\n").trim();
+}
+
+/**
+ * Genera contenido base profesional para plantilla IRL (Identificación de Riesgos Laborales).
+ */
+function generarContenidoBaseIRL(): string {
+  return `# IDENTIFICACIÓN DE RIESGOS LABORALES (IRL)
+
+## Bases Legales y Referencias Normativas
+
+Esta identificación de riesgos se realiza conforme a lo dispuesto en:
+
+- **Ley Nº 16.744**: Sobre Accidentes del Trabajo y Enfermedades Profesionales (Art. 21)
+- **Decreto Supremo Nº 44**: Reglamento sobre Condiciones Sanitarias Mínimas en el Trabajo
+- **Decreto Supremo Nº 54**: Reglamento de Condiciones Sanitarias y Ambientales básicas
+- **Ley Nº 21.643**: Ley Contra el Acoso Laboral (Ley Karin)
+- **Circular SUSESO Nº 3244**: Obligaciones en Materia de Seguridad y Salud en el Trabajo
+
+## Identificación del Trabajador y Empresa
+
+| Campo | Valor |
+|-------|-------|
+| **Nombre del Trabajador** | |
+| **RUT** | |
+| **Cargo/Puesto** | |
+| **Área/Sección** | |
+| **Centro de Trabajo** | |
+| **Fecha de Ingreso** | |
+| **Nombre de la Empresa** | |
+| **RUT Empresa** | |
+
+## Descripción del Puesto de Trabajo
+
+_Describa las funciones principales, el ambiente físico de trabajo, horarios, línea de supervisión y condiciones habituales de la tarea._
+
+[Espacio para descripción del puesto específico]
+
+## Condiciones Ambientales del Lugar de Trabajo
+
+- **Temperatura**: [Rango normal de °C]
+- **Ruido**: [Nivel de dB aproximado]
+- **Iluminación**: [Natural/Artificial - intensidad]
+- **Ventilación**: [Tipo y suficiencia]
+- **Espacios**: [Dimensiones, movilidad, orden general]
+
+## Riesgos Identificados
+
+| Tipo de Riesgo | Fuente Generadora | Vía de Exposición | Daño Potencial | Probabilidad | Severidad |
+|---|---|---|---|---|---|
+| Ergonómico | [Descripción] | [Inhalación/Contacto/Ingesta/Otro] | [Daño específico] | [Alta/Media/Baja] | [Alta/Media/Baja] |
+| Físico | [Descripción] | [Inhalación/Contacto/Ingesta/Otro] | [Daño específico] | [Alta/Media/Baja] | [Alta/Media/Baja] |
+| Químico | [Descripción] | [Inhalación/Contacto/Ingesta/Otro] | [Daño específico] | [Alta/Media/Baja] | [Alta/Media/Baja] |
+| Biológico | [Descripción] | [Inhalación/Contacto/Ingesta/Otro] | [Daño específico] | [Alta/Media/Baja] | [Alta/Media/Baja] |
+| Psicosocial | [Descripción] | [Inhalación/Contacto/Ingesta/Otro] | [Daño específico] | [Alta/Media/Baja] | [Alta/Media/Baja] |
+
+## Medidas de Control Establecidas
+
+Conforme a la jerarquía de control (Eliminación → Sustitución → Controles de Ingeniería → Administrativos → EPP):
+
+| Control | Descripción | Responsable | Periodicidad |
+|---------|-------------|-------------|--------------|
+| Eliminación | [Medida específica] | [Cargo] | [Semanal/Mensual/Otro] |
+| Sustitución | [Medida específica] | [Cargo] | [Semanal/Mensual/Otro] |
+| Ingeniería | [Medida específica] | [Cargo] | [Semanal/Mensual/Otro] |
+| Administrativa | [Medida específica] | [Cargo] | [Semanal/Mensual/Otro] |
+| EPP | [Ver sección siguiente] | [Cargo] | [Semanal/Mensual/Otro] |
+
+## Equipos de Protección Personal (EPP) Asignado
+
+| Elemento EPP | Especificación Técnica | Norma | Condición de Uso | Stock |
+|---|---|---|---|---|
+| [Tipo] | [Marca/Modelo] | NCh / ISO | [Cuándo usar] | [Cantidad] |
+
+## Capacitación Requerida
+
+- **Inducción General**: Procedimientos generales de seguridad de la empresa
+- **Inducción Específica**: Riesgos del puesto y medidas de control
+- **Uso de EPP**: Selección, colocación, inspección, limpieza y mantención
+- **Protocolos Aplicables**: [MINSAL/Específicos del sector]
+- **Primeros Auxilios**: Procedimiento de reporte en caso de accidente
+
+## Declaración y Firmas
+
+Declaro que he recibido copia de esta Identificación de Riesgos Laborales, comprendo los riesgos propios de mi cargo y las medidas de control establecidas para prevenirlos.
+
+| Signatario | Nombre (Letra Imprenta) | RUT | Firma | Fecha |
+|---|---|---|---|---|
+| **Trabajador** | | | | |
+| **Prevencionista/SST** | | | | |
+| **Empleador/Gerente** | | | | |
+
+---
+
+*Documento generado conforme a regulaciones de Seguridad y Salud en el Trabajo en Chile. A conservar en poder del trabajador y una copia en archivo de empresa.*`;
+}
+
+/**
+ * Genera contenido base profesional para plantilla EPP (Acta de Entrega de Equipos de Protección Personal).
+ */
+function generarContenidoBaseEPP(): string {
+  return `# ACTA DE ENTREGA Y RECEPCIÓN DE EQUIPOS DE PROTECCIÓN PERSONAL (EPP)
+
+## Bases Legales
+
+La entrega de Equipos de Protección Personal (EPP) se realiza conforme a:
+
+- **Decreto Supremo Nº 44**: Reglamento sobre Condiciones Sanitarias Mínimas en el Trabajo
+- **Norma Chilena NCh 461**: Elementos de Protección Personal
+- **Ley Nº 16.744**: Sobre Accidentes del Trabajo y Enfermedades Profesionales (Art. 68)
+- **Circular SUSESO Nº 3244**: Obligaciones en Materia de Seguridad y Salud en el Trabajo
+
+## Identificación del Trabajador y Empresa
+
+| Campo | Valor |
+|-------|-------|
+| **Nombre del Trabajador** | |
+| **RUT** | |
+| **Cargo/Puesto** | |
+| **Área/Sección** | |
+| **Centro de Trabajo** | |
+| **Nombre de la Empresa** | |
+
+## EPP Entregado y Recibido
+
+El trabajador recibe los siguientes equipos de protección personal:
+
+| Elemento EPP | Marca | Modelo | Talla | Cantidad | Norma Técnica | Fecha Entrega | Firma Recibido |
+|---|---|---|---|---|---|---|---|
+| Casco de Seguridad | | | Única | 1 | NCh 1373 | | |
+| Protector Ocular | | | Única | 1 | NCh 1318 | | |
+| Protector Auditivo | | | Única | 1 | NCh 397 | | |
+| Respirador/Mascarilla | | | | | ISO 8573-1 | | |
+| Guantes de Trabajo | | | | 2 pares | NCh 2536 | | |
+| Chaleco Reflectante | | | M/L/XL | 1 | NCh 1334 | | |
+| Calzado de Seguridad | | | | 1 par | NCh 1344 | | |
+| Arnés de Seguridad | | | Única | 1 | NCh 1258 | | |
+| Protector contra Caídas | | | | | ISO 23601 | | |
+
+## Instrucciones de Uso y Mantenimiento
+
+### Casco de Seguridad
+- **Cómo usar**: Colocar firmemente sobre la cabeza, ajustar la correa
+- **Cuándo usar**: Obligatoriamente en área de obra/planta/almacén
+- **Limpieza**: Agua y jabón neutro, secar con paño suave
+- **Almacenamiento**: Lugar fresco y seco, evitar luz solar directa
+- **Indicador de reposición**: Cuando presente grietas, deformaciones o más de 5 años de uso
+
+### Protector Ocular
+- **Cómo usar**: Ajustar bien sobre ojos antes de iniciar la actividad
+- **Cuándo usar**: En áreas con riesgo de proyección de partículas
+- **Limpieza**: Con paño suave y solución limpiadora especial
+- **Almacenamiento**: En estuche protector
+- **Indicador de reposición**: Cuando esté rayado, roto o nublado
+
+### Respirador
+- **Cómo usar**: Ajustar correctamente, realizar prueba de sello
+- **Cuándo usar**: Cuando se requiera según protocolo de riesgos químicos/biológicos
+- **Limpieza**: Cambiar filtro según frecuencia de uso, máscara con agua y jabón
+- **Almacenamiento**: Bolsa hermética en lugar limpio
+- **Indicador de reposición**: Cuando sea difícil respirar o filtro esté vencido
+
+### Guantes de Trabajo
+- **Cómo usar**: Certificar ajuste correcto en muñeca y dedo
+- **Cuándo usar**: En todas las actividades de manipuleo/montaje
+- **Limpieza**: Enjuague con agua, secar completamente
+- **Almacenamiento**: Lugar seco, evitar humedad
+- **Indicador de reposición**: Cuando presenten roturas, comillas o signos de permeabilidad
+
+### Calzado de Seguridad
+- **Cómo usar**: Abrocharse completamente, verificar puntera y plantilla
+- **Cuándo usar**: Durante toda jornada laboral en área de riesgo
+- **Limpieza**: Limpiar con cepillo, secar, neutralizar olores
+- **Almacenamiento**: Lugar ventilado
+- **Indicador de reposición**: Cuando suela esté desgastada o puntera no brinde protección
+
+## Responsabilidades del Trabajador
+
+El trabajador acepta las siguientes responsabilidades:
+
+1. **Uso Obligatorio**: Utilizar el EPP completo en todas las áreas de riesgo conforme a indicaciones
+2. **Reporte Inmediato**: Comunicar de inmediato daños, defectos o necesidad de reposición
+3. **Prohibición de Compartir**: No usar EPP de otro trabajador, evitar daño a terceros
+4. **No Modificación**: No alterar, retirar piezas ni cambiar funcionalidad del EPP
+5. **Custodia**: Mantener en buen estado, guardando correctamente después de su uso
+6. **Devolución**: Entregar el EPP al término del contrato, cambio de cargo o cuando se ordene
+7. **Capacitación**: Confirmar haber recibido instrucciones de uso correcto
+
+## Condiciones de Devolución o Reposición
+
+- **Desgaste Normal**: EPP deteriorado por uso correcto será reemplazado sin costo
+- **Daño Accidental**: Daño por uso inadecuado será evaluado para determinación de reposición
+- **Cambio de Cargo/Sector**: EPP será adaptado según nuevos riesgos
+- **Término de Contrato**: Obligación de devolución íntegra según estado de uso normal
+- **Solicitud de Reposición**: Presentar elemento dañado para autorización de cambio
+
+## Declaración y Firmas
+
+Declaro bajo juramento que he recibido los Equipos de Protección Personal indicados en buen estado, comprendo cómo usarlos correctamente y conozco las instrucciones de mantenimiento y cuidado. Me comprometo a utilizarlos según las indicaciones y a reportar cualquier defecto o daño inmediatamente.
+
+| Signatario | Nombre (Letra Imprenta) | RUT | Firma | Fecha |
+|---|---|---|---|---|
+| **Trabajador** | | | | |
+| **Encargado SST / Prevencionista** | | | | |
+| **Empleador / Representante Empresa** | | | | |
+
+---
+
+*Este acta debe ser conservada por el trabajador y una copia en archivo de la empresa. Constituto prueba de entrega del EPP según DS44.*`;
 }
 
 export function getPlantillaBasePorCodigo(codigo: string): PlantillaDocumento | null {
