@@ -1,5 +1,12 @@
 import { calcularCumplimientoEmpresa } from "@/lib/documentacion/cumplimiento-empresa";
 import { cumpleCondicionesDocumento } from "@/lib/documentacion/cumplimiento-documento";
+import {
+  construirContenidoBasePlantilla,
+  getPlantilla,
+  normalizarCodigoPlantilla,
+  validarContenidoContraPlantilla,
+  type PlantillaDocumento,
+} from "@/lib/documentacion/plantillas-documento";
 import { REGLAS_DOCUMENTALES, type ReglaDocumentalNextPrev } from "@/lib/documentacion/reglas-documentales";
 import { prisma } from "@/lib/prisma";
 
@@ -48,6 +55,27 @@ type ResultadoGeneracionContenido = {
   data: ContenidoGeneradoIA;
   usoIA: boolean;
   errorIA: boolean;
+};
+
+type PlantillaMetadata = {
+  plantillaCodigo: string;
+  plantillaVersion: string | null;
+  completitudPlantilla: number;
+  seccionesFaltantes: string[];
+};
+
+type ResultadoValidacionPlantillaInterna = {
+  plantilla: PlantillaDocumento | null;
+  metadata: PlantillaMetadata | null;
+  requiereRevisionBajaCompletitud: boolean;
+};
+
+type PlantillaDocumentoEfectiva = {
+  codigo: string;
+  version: string | null;
+  fuente: "empresa" | "base";
+  contenidoBase: string;
+  plantillaBase: PlantillaDocumento | null;
 };
 
 // ─────────────────────────────────────────────
@@ -118,40 +146,138 @@ function inferRiesgos(input: {
   return Array.from(new Set([...fromRule, ...inferred]));
 }
 
+function extractHeadingsFromContenidoBase(contenidoBase: string): string[] {
+  return contenidoBase
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => /^##\s+/.test(line))
+    .map((line) => line.replace(/^##\s+/, "").trim())
+    .filter(Boolean);
+}
+
+async function resolverPlantillaDocumentoEfectiva(
+  empresaId: string,
+  doc: ReglaDocumentalNextPrev,
+): Promise<PlantillaDocumentoEfectiva | null> {
+  const plantillaBase = getPlantilla(doc.codigo, doc.nombre);
+  if (!plantillaBase) return null;
+
+  const codigoCanonico = normalizarCodigoPlantilla(plantillaBase.codigo);
+
+  if (codigoCanonico !== "IRL" && codigoCanonico !== "EPP") {
+    return {
+      codigo: plantillaBase.codigo,
+      version: plantillaBase.version ?? null,
+      fuente: "base",
+      contenidoBase: construirContenidoBasePlantilla(plantillaBase),
+      plantillaBase,
+    };
+  }
+
+  const plantillaEmpresa = await prisma.plantillaDocumentoEmpresa.findUnique({
+    where: {
+      empresaId_codigo: {
+        empresaId,
+        codigo: codigoCanonico,
+      },
+    },
+    select: {
+      codigo: true,
+      version: true,
+      contenidoBase: true,
+      activa: true,
+    },
+  });
+
+  if (plantillaEmpresa && plantillaEmpresa.activa) {
+    return {
+      codigo: plantillaEmpresa.codigo,
+      version: plantillaEmpresa.version,
+      fuente: "empresa",
+      contenidoBase: plantillaEmpresa.contenidoBase,
+      plantillaBase,
+    };
+  }
+
+  return {
+    codigo: codigoCanonico,
+    version: plantillaBase.version ?? null,
+    fuente: "base",
+    contenidoBase: construirContenidoBasePlantilla(plantillaBase),
+    plantillaBase,
+  };
+}
+
 // TODO: Manejar tokens y costos antes de activar en produccion
 // TODO: Agregar reintentos con backoff y control de errores de red
-// TODO: Definir workflow completo de estados documentales (pendiente → en_revision → firmado → aprobado)
 export function generarContenidoDocumentoMock(
   doc: ReglaDocumentalNextPrev,
   contexto: GenerarContenidoContexto,
+  plantillaEfectiva?: PlantillaDocumentoEfectiva | null,
 ): ContenidoGeneradoIA {
   const riesgos = contexto.riesgos.length > 0 ? contexto.riesgos.join(", ") : "sin riesgos especificos";
 
-  const lines = [
-    `# ${doc.nombre}`,
-    "",
-    "## Contexto",
-    `- Empresa: ${contexto.empresa.nombre}`,
-    `- Industria: ${contexto.industria}`,
-    `- Tamano empresa: ${contexto.empresa.tamanoEmpresa ?? "no informado"}`,
-    `- Giro: ${contexto.empresa.giro ?? "no informado"}`,
-    `- Riesgos detectados: ${riesgos}`,
-    contexto.trabajador ? `- Trabajador: ${contexto.trabajador.nombreCompleto}` : null,
-    "",
-    "## Contenido sugerido (IA mock)",
-    "1. Objetivo del documento.",
-    "2. Alcance y responsables.",
-    "3. Procedimiento / evidencia requerida.",
-    "4. Frecuencia de actualizacion.",
-    "5. Firma y aprobacion.",
-    "",
-    `Base normativa: ${doc.cumplimiento.baseNormativa.join(", ")}`,
-  ].filter(Boolean).join("\n");
+  // Si existe plantilla efectiva (empresa/base), priorizar su contenido editable.
+  const plantilla = plantillaEfectiva?.plantillaBase ?? getPlantilla(doc.codigo, doc.nombre);
+
+  let lines: (string | null)[];
+
+  if (plantillaEfectiva) {
+    lines = [
+      `# ${doc.nombre}`,
+      "",
+      `<!-- Generado con plantilla ${plantillaEfectiva.codigo} (${plantillaEfectiva.fuente}) -->`,
+      "",
+      plantillaEfectiva.contenidoBase,
+    ];
+  } else if (plantilla) {
+    lines = [
+      `# ${doc.nombre}`,
+      "",
+      "<!-- Generado con plantilla: " + plantilla.codigo + " -->",
+      "",
+      "## Contexto",
+      `- Empresa: ${contexto.empresa.nombre}`,
+      `- Industria: ${contexto.industria}`,
+      `- Riesgos detectados: ${riesgos}`,
+      contexto.trabajador ? `- Trabajador: ${contexto.trabajador.nombreCompleto}` : null,
+      "",
+      ...plantilla.secciones.flatMap((s) => [
+        s.titulo,
+        "",
+        `*${s.descripcion}*`,
+        "",
+      ]),
+      `**Base normativa:** ${plantilla.baseNormativa.join(" | ")}`,
+    ];
+  } else {
+    lines = [
+      `# ${doc.nombre}`,
+      "",
+      "## Contexto",
+      `- Empresa: ${contexto.empresa.nombre}`,
+      `- Industria: ${contexto.industria}`,
+      `- Tamano empresa: ${contexto.empresa.tamanoEmpresa ?? "no informado"}`,
+      `- Giro: ${contexto.empresa.giro ?? "no informado"}`,
+      `- Riesgos detectados: ${riesgos}`,
+      contexto.trabajador ? `- Trabajador: ${contexto.trabajador.nombreCompleto}` : null,
+      "",
+      "## Contenido sugerido (IA mock)",
+      "1. Objetivo del documento.",
+      "2. Alcance y responsables.",
+      "3. Procedimiento / evidencia requerida.",
+      "4. Frecuencia de actualizacion.",
+      "5. Firma y aprobacion.",
+      "",
+      `Base normativa: ${doc.cumplimiento.baseNormativa.join(", ")}`,
+    ];
+  }
 
   // Proteccion: limitar tamano y asegurar contenido no vacio.
+  const joined = lines.filter(Boolean).join("\n");
   const contenido =
-    lines.length > 0
-      ? lines.slice(0, MAX_CONTENIDO_CHARS)
+    joined.length > 0
+      ? joined.slice(0, MAX_CONTENIDO_CHARS)
       : `# ${doc.nombre}\n\nDocumento generado automaticamente.`;
 
   return {
@@ -174,11 +300,138 @@ function sanitizeContenido(text: string, titulo: string) {
   return bounded;
 }
 
-function buildPrompt(doc: ReglaDocumentalNextPrev, contexto: GenerarContenidoContexto) {
+function validarPlantillaGenerada(
+  doc: ReglaDocumentalNextPrev,
+  contenido: string,
+  plantillaEfectiva?: PlantillaDocumentoEfectiva | null,
+): ResultadoValidacionPlantillaInterna {
+  const plantilla = plantillaEfectiva?.plantillaBase ?? getPlantilla(doc.codigo, doc.nombre);
+  if (!plantilla && !plantillaEfectiva) {
+    return {
+      plantilla: null,
+      metadata: null,
+      requiereRevisionBajaCompletitud: false,
+    };
+  }
+
+  const contenidoNorm = normalizeToken(contenido);
+
+  let seccionesFaltantes: string[] = [];
+  let completitudPlantilla = 100;
+
+  if (plantillaEfectiva?.fuente === "empresa") {
+    const headings = extractHeadingsFromContenidoBase(plantillaEfectiva.contenidoBase);
+    if (headings.length > 0) {
+      seccionesFaltantes = headings.filter((heading) => !contenidoNorm.includes(normalizeToken(heading)));
+      completitudPlantilla = Math.max(0, Math.round(((headings.length - seccionesFaltantes.length) / headings.length) * 100));
+    } else if (plantilla) {
+      const validacionBase = validarContenidoContraPlantilla(contenido, plantilla);
+      seccionesFaltantes = [...validacionBase.seccionesFaltantes];
+      completitudPlantilla = validacionBase.completitudPct;
+    }
+  } else if (plantilla) {
+    const validacion = validarContenidoContraPlantilla(contenido, plantilla);
+    seccionesFaltantes = [...validacion.seccionesFaltantes];
+    completitudPlantilla = validacion.completitudPct;
+  }
+
+  // Validación adicional estricta para PLT-EPP:
+  // además de secciones, exigir presencia de tabla markdown en bloque EPP entregado.
+  const esEpp = (plantillaEfectiva?.codigo ?? plantilla?.codigo ?? "").toUpperCase().includes("EPP");
+  if (esEpp) {
+    const hasMarkdownTable = /\|.+\|.+\|/.test(contenido);
+    if (!hasMarkdownTable && !seccionesFaltantes.includes("tabla_epp")) {
+      seccionesFaltantes.push("tabla_epp");
+    }
+  }
+
+  if (seccionesFaltantes.includes("tabla_epp")) {
+    completitudPlantilla = Math.max(0, completitudPlantilla - 20);
+  }
+
+  return {
+    plantilla: plantilla ?? null,
+    metadata: {
+      plantillaCodigo: plantillaEfectiva?.codigo ?? plantilla?.codigo ?? doc.codigo,
+      plantillaVersion: plantillaEfectiva?.version ?? plantilla?.version ?? null,
+      completitudPlantilla,
+      seccionesFaltantes,
+    },
+    requiereRevisionBajaCompletitud: completitudPlantilla < 80,
+  };
+}
+
+function serializarContenidoConMetadata(contenido: string, metadata: PlantillaMetadata | null): string {
+  if (!metadata) return contenido;
+  const header = `<!-- plantilla_metadata: ${JSON.stringify(metadata)} -->`;
+  return [header, "", contenido].join("\n");
+}
+
+function construirDetalleValidacionPlantilla(
+  metadata: PlantillaMetadata | null,
+  requiereRevisionBajaCompletitud: boolean,
+): string | null {
+  if (!metadata) return null;
+
+  const faltantesLabel =
+    metadata.seccionesFaltantes.length > 0 ? metadata.seccionesFaltantes.join(", ") : "ninguna";
+
+  const mensajes = [
+    `Plantilla ${metadata.plantillaCodigo}${metadata.plantillaVersion ? ` v${metadata.plantillaVersion}` : ""}.`,
+    `Completitud: ${metadata.completitudPlantilla}%.`,
+    `Secciones faltantes: ${faltantesLabel}.`,
+  ];
+
+  if (requiereRevisionBajaCompletitud) {
+    mensajes.push("Contenido generado requiere revision por baja completitud de plantilla.");
+  }
+
+  return mensajes.join(" ");
+}
+
+function buildPrompt(
+  doc: ReglaDocumentalNextPrev,
+  contexto: GenerarContenidoContexto,
+  plantillaEfectiva?: PlantillaDocumentoEfectiva | null,
+) {
   const riesgos = contexto.riesgos.length > 0 ? contexto.riesgos.join(", ") : "sin riesgos especificos";
   const perfilTrabajador = contexto.trabajador
     ? `Trabajador: ${contexto.trabajador.nombreCompleto}.`
     : "Documento de alcance empresa.";
+
+  // Intentar obtener plantilla específica para este documento.
+  const plantilla = plantillaEfectiva?.plantillaBase ?? getPlantilla(doc.codigo, doc.nombre);
+
+  const baseNormativa = plantilla
+    ? plantilla.baseNormativa.join(", ")
+    : doc.cumplimiento.baseNormativa.join(", ");
+
+  const estructuraMinima = plantillaEfectiva
+    ? [
+        "La salida debe respetar EXACTAMENTE la siguiente estructura editable de plantilla:",
+        "```markdown",
+        plantillaEfectiva.contenidoBase,
+        "```",
+        "No elimines ni renombres titulos seccionados (## ...).",
+      ]
+    : plantilla
+    ? [
+        "La salida debe respetar EXACTAMENTE esta estructura de secciones:",
+        `# ${doc.nombre}`,
+        ...plantilla.secciones.map((s) => s.titulo),
+        "",
+        plantilla.instruccionIA,
+      ]
+    : [
+        "La salida debe tener esta estructura minima:",
+        `# ${doc.nombre}`,
+        "## Objetivo",
+        "## Alcance",
+        "## Responsabilidades",
+        "## Procedimiento",
+        "## Registros y Evidencias",
+        "## Referencias normativas",
+      ];
 
   return [
     "Eres un especialista en SST en Chile y redactor tecnico normativo.",
@@ -189,15 +442,8 @@ function buildPrompt(doc: ReglaDocumentalNextPrev, contexto: GenerarContenidoCon
     `Tamano empresa: ${contexto.empresa.tamanoEmpresa ?? "no informado"}.`,
     `Giro empresa: ${contexto.empresa.giro ?? "no informado"}.`,
     perfilTrabajador,
-    `Base normativa referencial: ${doc.cumplimiento.baseNormativa.join(", ")}.`,
-    "La salida debe tener esta estructura minima:",
-    `# ${doc.nombre}`,
-    "## Objetivo",
-    "## Alcance",
-    "## Responsabilidades",
-    "## Procedimiento",
-    "## Registros y Evidencias",
-    "## Referencias normativas",
+    `Base normativa referencial: ${baseNormativa}.`,
+    ...estructuraMinima,
     "No incluyas texto fuera del documento.",
   ].join("\n");
 }
@@ -205,13 +451,22 @@ function buildPrompt(doc: ReglaDocumentalNextPrev, contexto: GenerarContenidoCon
 export async function generarContenidoDocumentoIA(
   doc: ReglaDocumentalNextPrev,
   contexto: GenerarContenidoContexto,
+  plantillaEfectiva?: PlantillaDocumentoEfectiva | null,
 ): Promise<ResultadoGeneracionContenido> {
-  const cacheKey = [doc.id, contexto.industria, contexto.riesgos.join("|"), contexto.trabajador?.id ?? "empresa"].join("::");
+  const cacheKey = [
+    doc.id,
+    contexto.industria,
+    contexto.riesgos.join("|"),
+    contexto.trabajador?.id ?? "empresa",
+    plantillaEfectiva?.codigo ?? "sin_plantilla",
+    plantillaEfectiva?.version ?? "sin_version",
+    plantillaEfectiva?.fuente ?? "base",
+  ].join("::");
   const cached = _cacheContenido.get(cacheKey);
   if (cached) return cached;
 
   const fallback = (): ResultadoGeneracionContenido => ({
-    data: generarContenidoDocumentoMock(doc, contexto),
+    data: generarContenidoDocumentoMock(doc, contexto, plantillaEfectiva),
     usoIA: false,
     errorIA: true,
   });
@@ -219,7 +474,7 @@ export async function generarContenidoDocumentoIA(
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     const result = {
-      data: generarContenidoDocumentoMock(doc, contexto),
+      data: generarContenidoDocumentoMock(doc, contexto, plantillaEfectiva),
       usoIA: false,
       errorIA: false,
     };
@@ -245,7 +500,7 @@ export async function generarContenidoDocumentoIA(
           },
           {
             role: "user",
-            content: buildPrompt(doc, contexto),
+            content: buildPrompt(doc, contexto, plantillaEfectiva),
           },
         ],
       }),
@@ -381,6 +636,8 @@ async function _ejecutarGeneracion(
   let errorIA = false;
 
   for (const regla of reglasObjetivo) {
+    const plantillaEfectiva = await resolverPlantillaDocumentoEfectiva(params.empresaId, regla);
+
     if (regla.entidadAplicable === "empresa") {
       const existentes = await prisma.documentoEmpresa.findMany({
         where: {
@@ -404,9 +661,20 @@ async function _ejecutarGeneracion(
         riesgos: inferRiesgos({ empresa, regla }),
       };
 
-      const generado = await generarContenidoDocumentoIA(regla, contexto);
+      const generado = await generarContenidoDocumentoIA(regla, contexto, plantillaEfectiva);
+      const validacionPlantilla = validarPlantillaGenerada(regla, generado.data.contenido, plantillaEfectiva);
       usoIA = usoIA || generado.usoIA;
       errorIA = errorIA || generado.errorIA;
+
+      const estadoGenerado = validacionPlantilla.requiereRevisionBajaCompletitud ? "en_revision" : "pendiente";
+      const observacionesGeneradas = serializarContenidoConMetadata(
+        generado.data.contenido,
+        validacionPlantilla.metadata,
+      );
+      const detalleValidacion = construirDetalleValidacionPlantilla(
+        validacionPlantilla.metadata,
+        validacionPlantilla.requiereRevisionBajaCompletitud,
+      );
 
       if (existentes.length === 0) {
         const created = await prisma.documentoEmpresa.create({
@@ -415,10 +683,10 @@ async function _ejecutarGeneracion(
             nombre: regla.nombre,
             categoria: regla.categoria,
             tipo: regla.codigo,
-            // faltante → pendiente (requiere revision humana)
-            estado: "pendiente",
+            // No bloquea generación: si plantilla queda bajo 80%, inicia en revisión.
+            estado: estadoGenerado,
             version: `${generado.data.version}.0`,
-            observaciones: generado.data.contenido,
+            observaciones: observacionesGeneradas,
             subidoPorId: params.usuarioId,
             creadoPorEmail: params.email,
             tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
@@ -431,10 +699,36 @@ async function _ejecutarGeneracion(
             documentoId: created.id,
             usuarioId: params.usuarioId,
             accion: "DOCUMENTO_GENERADO_IA",
-            detalle: "Documento generado automaticamente con IA (pendiente de revision)",
+            detalle:
+              `Documento generado automaticamente con IA (${estadoGenerado === "en_revision" ? "en revision" : "pendiente"} de revision).` +
+              (detalleValidacion ? ` ${detalleValidacion}` : ""),
             version: `${generado.data.version}.0`,
           },
         });
+
+        if (validacionPlantilla.requiereRevisionBajaCompletitud) {
+          await prisma.documentoEmpresaHistorial.create({
+            data: {
+              documentoId: created.id,
+              usuarioId: params.usuarioId,
+              accion: "VALIDACION_PLANTILLA_BAJA_COMPLETITUD",
+              detalle: "Contenido generado requiere revision por baja completitud de plantilla",
+              version: `${generado.data.version}.0`,
+            },
+          });
+        }
+
+        if ((validacionPlantilla.metadata?.seccionesFaltantes.length ?? 0) > 0) {
+          await prisma.documentoEmpresaHistorial.create({
+            data: {
+              documentoId: created.id,
+              usuarioId: params.usuarioId,
+              accion: "VALIDACION_PLANTILLA_SECCIONES_FALTANTES",
+              detalle: `Secciones faltantes detectadas: ${validacionPlantilla.metadata?.seccionesFaltantes.join(", ")}`,
+              version: `${generado.data.version}.0`,
+            },
+          });
+        }
 
         items.push({
           reglaId: regla.id,
@@ -464,7 +758,7 @@ async function _ejecutarGeneracion(
             where: { id: doc.id },
             data: {
               estado: "en_revision",
-              observaciones: generado.data.contenido,
+              observaciones: observacionesGeneradas,
               version: `${generado.data.version}.1`,
             },
             select: { id: true },
@@ -475,10 +769,36 @@ async function _ejecutarGeneracion(
               documentoId: updated.id,
               usuarioId: params.usuarioId,
               accion: "DOCUMENTO_ACTUALIZADO_IA",
-              detalle: "Documento actualizado con IA (en revision pendiente de aprobacion)",
+              detalle:
+                "Documento actualizado con IA (en revision pendiente de aprobacion)." +
+                (detalleValidacion ? ` ${detalleValidacion}` : ""),
               version: `${generado.data.version}.1`,
             },
           });
+
+          if (validacionPlantilla.requiereRevisionBajaCompletitud) {
+            await prisma.documentoEmpresaHistorial.create({
+              data: {
+                documentoId: updated.id,
+                usuarioId: params.usuarioId,
+                accion: "VALIDACION_PLANTILLA_BAJA_COMPLETITUD",
+                detalle: "Contenido generado requiere revision por baja completitud de plantilla",
+                version: `${generado.data.version}.1`,
+              },
+            });
+          }
+
+          if ((validacionPlantilla.metadata?.seccionesFaltantes.length ?? 0) > 0) {
+            await prisma.documentoEmpresaHistorial.create({
+              data: {
+                documentoId: updated.id,
+                usuarioId: params.usuarioId,
+                accion: "VALIDACION_PLANTILLA_SECCIONES_FALTANTES",
+                detalle: `Secciones faltantes detectadas: ${validacionPlantilla.metadata?.seccionesFaltantes.join(", ")}`,
+                version: `${generado.data.version}.1`,
+              },
+            });
+          }
 
           items.push({
             reglaId: regla.id,
@@ -545,9 +865,20 @@ async function _ejecutarGeneracion(
         }),
       };
 
-      const generado = await generarContenidoDocumentoIA(regla, contexto);
+      const generado = await generarContenidoDocumentoIA(regla, contexto, plantillaEfectiva);
+      const validacionPlantilla = validarPlantillaGenerada(regla, generado.data.contenido, plantillaEfectiva);
       usoIA = usoIA || generado.usoIA;
       errorIA = errorIA || generado.errorIA;
+
+      const estadoGenerado = validacionPlantilla.requiereRevisionBajaCompletitud ? "en_revision" : "pendiente";
+      const observacionesGeneradas = serializarContenidoConMetadata(
+        generado.data.contenido,
+        validacionPlantilla.metadata,
+      );
+      const detalleValidacion = construirDetalleValidacionPlantilla(
+        validacionPlantilla.metadata,
+        validacionPlantilla.requiereRevisionBajaCompletitud,
+      );
 
       if (!existente) {
         try {
@@ -558,10 +889,10 @@ async function _ejecutarGeneracion(
               nombre: regla.nombre,
               tipo: regla.codigo,
               categoria: "trabajador",
-              // faltante → pendiente
-              estado: "pendiente",
+              // No bloquea generación: si plantilla queda bajo 80%, inicia en revisión.
+              estado: estadoGenerado,
               version: `${generado.data.version}.0`,
-              observaciones: generado.data.contenido,
+              observaciones: observacionesGeneradas,
               subidoPorId: params.usuarioId,
               creadoPorEmail: params.email,
               tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
@@ -574,10 +905,36 @@ async function _ejecutarGeneracion(
               documentoId: created.id,
               usuarioId: params.usuarioId,
               accion: "DOCUMENTO_GENERADO_IA",
-              detalle: "Documento generado automaticamente con IA (pendiente de revision)",
+              detalle:
+                `Documento generado automaticamente con IA (${estadoGenerado === "en_revision" ? "en revision" : "pendiente"} de revision).` +
+                (detalleValidacion ? ` ${detalleValidacion}` : ""),
               version: `${generado.data.version}.0`,
             },
           });
+
+          if (validacionPlantilla.requiereRevisionBajaCompletitud) {
+            await prisma.trabajadorDocumentoHistorial.create({
+              data: {
+                documentoId: created.id,
+                usuarioId: params.usuarioId,
+                accion: "VALIDACION_PLANTILLA_BAJA_COMPLETITUD",
+                detalle: "Contenido generado requiere revision por baja completitud de plantilla",
+                version: `${generado.data.version}.0`,
+              },
+            });
+          }
+
+          if ((validacionPlantilla.metadata?.seccionesFaltantes.length ?? 0) > 0) {
+            await prisma.trabajadorDocumentoHistorial.create({
+              data: {
+                documentoId: created.id,
+                usuarioId: params.usuarioId,
+                accion: "VALIDACION_PLANTILLA_SECCIONES_FALTANTES",
+                detalle: `Secciones faltantes detectadas: ${validacionPlantilla.metadata?.seccionesFaltantes.join(", ")}`,
+                version: `${generado.data.version}.0`,
+              },
+            });
+          }
 
           items.push({
             reglaId: regla.id,
@@ -620,7 +977,7 @@ async function _ejecutarGeneracion(
           where: { id: existente.id },
           data: {
             estado: "en_revision",
-            observaciones: generado.data.contenido,
+            observaciones: observacionesGeneradas,
             version: `${generado.data.version}.1`,
           },
           select: { id: true },
@@ -631,10 +988,36 @@ async function _ejecutarGeneracion(
             documentoId: updated.id,
             usuarioId: params.usuarioId,
             accion: "DOCUMENTO_ACTUALIZADO_IA",
-            detalle: "Documento actualizado con IA (en revision pendiente de aprobacion)",
+            detalle:
+              "Documento actualizado con IA (en revision pendiente de aprobacion)." +
+              (detalleValidacion ? ` ${detalleValidacion}` : ""),
             version: `${generado.data.version}.1`,
           },
         });
+
+        if (validacionPlantilla.requiereRevisionBajaCompletitud) {
+          await prisma.trabajadorDocumentoHistorial.create({
+            data: {
+              documentoId: updated.id,
+              usuarioId: params.usuarioId,
+              accion: "VALIDACION_PLANTILLA_BAJA_COMPLETITUD",
+              detalle: "Contenido generado requiere revision por baja completitud de plantilla",
+              version: `${generado.data.version}.1`,
+            },
+          });
+        }
+
+        if ((validacionPlantilla.metadata?.seccionesFaltantes.length ?? 0) > 0) {
+          await prisma.trabajadorDocumentoHistorial.create({
+            data: {
+              documentoId: updated.id,
+              usuarioId: params.usuarioId,
+              accion: "VALIDACION_PLANTILLA_SECCIONES_FALTANTES",
+              detalle: `Secciones faltantes detectadas: ${validacionPlantilla.metadata?.seccionesFaltantes.join(", ")}`,
+              version: `${generado.data.version}.1`,
+            },
+          });
+        }
 
         items.push({
           reglaId: regla.id,

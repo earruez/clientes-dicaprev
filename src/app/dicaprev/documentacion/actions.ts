@@ -14,6 +14,11 @@ import {
   type AlertasDocumentalesEmpresaResultado,
   type ResumenAlertasDocumentales,
 } from "@/lib/documentacion/alertas-documentales";
+import {
+  construirContenidoBasePlantilla,
+  getPlantillaBasePorCodigo,
+  normalizarCodigoPlantilla,
+} from "@/lib/documentacion/plantillas-documento";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { AppContext } from "@/server/context";
@@ -1632,6 +1637,195 @@ export async function firmarDocumentoEmpresa(params: {
     firmadoEn: firmadoEn.toISOString(),
     firmadoPor,
   };
+}
+
+type PlantillaDocumentoEmpresaPayload = {
+  codigo: string;
+  contenidoBase: string;
+  activa?: boolean;
+  version?: string;
+};
+
+export type PlantillaDocumentoEmpresaDTO = {
+  id: string | null;
+  empresaId: string;
+  codigo: string;
+  contenidoBase: string;
+  activa: boolean;
+  version: string;
+  fuente: "empresa" | "base";
+  createdAt: string | null;
+};
+
+function validarCodigoPlantillaEditable(codigoRaw: string): "IRL" | "EPP" {
+  const codigo = normalizarCodigoPlantilla(codigoRaw);
+  if (codigo !== "IRL" && codigo !== "EPP") {
+    throw new Error("Codigo de plantilla no soportado. Solo se permite IRL o EPP.");
+  }
+  return codigo;
+}
+
+export async function obtenerPlantillaEmpresa(codigoRaw: string): Promise<PlantillaDocumentoEmpresaDTO> {
+  const context = await requirePermission("canReadDocumentacion");
+  const codigo = validarCodigoPlantillaEditable(codigoRaw);
+
+  const existente = await prisma.plantillaDocumentoEmpresa.findUnique({
+    where: {
+      empresaId_codigo: {
+        empresaId: context.empresaId,
+        codigo,
+      },
+    },
+    select: {
+      id: true,
+      empresaId: true,
+      codigo: true,
+      contenidoBase: true,
+      activa: true,
+      version: true,
+      createdAt: true,
+    },
+  });
+
+  if (existente) {
+    return {
+      id: existente.id,
+      empresaId: existente.empresaId,
+      codigo: existente.codigo,
+      contenidoBase: existente.contenidoBase,
+      activa: existente.activa,
+      version: existente.version,
+      fuente: "empresa",
+      createdAt: existente.createdAt.toISOString(),
+    };
+  }
+
+  const plantillaBase = getPlantillaBasePorCodigo(codigo);
+  if (!plantillaBase) {
+    throw new Error("No existe plantilla base para el codigo solicitado.");
+  }
+
+  return {
+    id: null,
+    empresaId: context.empresaId,
+    codigo,
+    contenidoBase: construirContenidoBasePlantilla(plantillaBase),
+    activa: true,
+    version: plantillaBase.version ?? "1.0",
+    fuente: "base",
+    createdAt: null,
+  };
+}
+
+export async function crearPlantillaEmpresa(
+  payload: PlantillaDocumentoEmpresaPayload,
+): Promise<{ ok: boolean; plantilla?: PlantillaDocumentoEmpresaDTO; error?: string }> {
+  try {
+    const context = await requirePermission("canManageDocumentacion");
+    const codigo = validarCodigoPlantillaEditable(payload.codigo);
+    const contenidoBase = payload.contenidoBase?.trim();
+
+    if (!contenidoBase) {
+      return { ok: false, error: "El contenido base es obligatorio." };
+    }
+
+    const created = await prisma.plantillaDocumentoEmpresa.create({
+      data: {
+        empresaId: context.empresaId,
+        codigo,
+        contenidoBase,
+        activa: payload.activa ?? true,
+        version: payload.version?.trim() || "1.0",
+      },
+      select: {
+        id: true,
+        empresaId: true,
+        codigo: true,
+        contenidoBase: true,
+        activa: true,
+        version: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      ok: true,
+      plantilla: {
+        id: created.id,
+        empresaId: created.empresaId,
+        codigo: created.codigo,
+        contenidoBase: created.contenidoBase,
+        activa: created.activa,
+        version: created.version,
+        fuente: "empresa",
+        createdAt: created.createdAt.toISOString(),
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No fue posible crear la plantilla.";
+    return { ok: false, error: message };
+  }
+}
+
+export async function actualizarPlantillaEmpresa(
+  payload: PlantillaDocumentoEmpresaPayload,
+): Promise<{ ok: boolean; plantilla?: PlantillaDocumentoEmpresaDTO; error?: string }> {
+  try {
+    const context = await requirePermission("canManageDocumentacion");
+    const codigo = validarCodigoPlantillaEditable(payload.codigo);
+    const contenidoBase = payload.contenidoBase?.trim();
+
+    if (!contenidoBase) {
+      return { ok: false, error: "El contenido base es obligatorio." };
+    }
+
+    const updated = await prisma.plantillaDocumentoEmpresa.upsert({
+      where: {
+        empresaId_codigo: {
+          empresaId: context.empresaId,
+          codigo,
+        },
+      },
+      create: {
+        empresaId: context.empresaId,
+        codigo,
+        contenidoBase,
+        activa: payload.activa ?? true,
+        version: payload.version?.trim() || "1.0",
+      },
+      update: {
+        contenidoBase,
+        activa: payload.activa ?? true,
+        version: payload.version?.trim() || "1.0",
+      },
+      select: {
+        id: true,
+        empresaId: true,
+        codigo: true,
+        contenidoBase: true,
+        activa: true,
+        version: true,
+        createdAt: true,
+      },
+    });
+
+    return {
+      ok: true,
+      plantilla: {
+        id: updated.id,
+        empresaId: updated.empresaId,
+        codigo: updated.codigo,
+        contenidoBase: updated.contenidoBase,
+        activa: updated.activa,
+        version: updated.version,
+        fuente: "empresa",
+        createdAt: updated.createdAt.toISOString(),
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No fue posible actualizar la plantilla.";
+    return { ok: false, error: message };
+  }
 }
 
 export type {

@@ -121,6 +121,7 @@ model Empresa {
   planCapacitaciones        PlanCapacitacion[]
   reglasCapacitacionCargo    ReglaCapacitacionCargo[]
   plantillasPlanCapacitacion PlantillaPlanCapacitacion[]
+  plantillasDocumentoEmpresa  PlantillaDocumentoEmpresa[]
 }
 
 model Usuario {
@@ -179,6 +180,22 @@ model DocumentoEmpresa {
   historial          DocumentoEmpresaHistorial[]
 
   @@unique([empresaId, documentoRequeridoId])
+}
+
+model PlantillaDocumentoEmpresa {
+  id            String   @id @default(uuid())
+  empresaId     String
+  codigo        String
+  contenidoBase String
+  activa        Boolean  @default(true)
+  version       String   @default("1.0")
+  createdAt     DateTime @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, codigo])
+  @@index([empresaId])
+  @@index([codigo])
 }
 
 model DocumentoRequeridoEmpresa {
