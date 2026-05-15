@@ -365,7 +365,30 @@ export function normalizarCodigoPlantilla(codigo: string): string {
   const norm = normalizar(codigo);
   if (norm === "irl" || norm === "plt irl" || norm === "plt-irl") return "IRL";
   if (norm === "epp" || norm === "plt epp" || norm === "plt-epp") return "EPP";
+  // Compatibilidad legacy: ODI se mapea a IRL
+  if (norm === "odi" || norm === "odi_riesgos" || norm === "doc-odi") return "IRL";
   return codigo.trim().toUpperCase();
+}
+
+/**
+ * Normaliza el nombre visible de un documento para la UI.
+ * Mapea nombres legacy ODI → IRL para compatibilidad con registros anteriores.
+ */
+export function normalizarNombreDocumentoDisplay(nombre: string): string {
+  const norm = normalizar(nombre);
+  if (
+    norm.includes("obligacion de informar") ||
+    norm === "odi firmada" ||
+    norm === "odi" ||
+    norm.startsWith("odi ") ||
+    norm.includes(" odi")
+  ) {
+    return nombre
+      .replace(/\bODI\b/g, "IRL")
+      .replace(/[Oo]bligaci[oó]n de [Ii]nformar( [Rr]iesgos)?( ODI)?/g, "Información de Riesgos Laborales")
+      .replace(/\bodi\b/gi, "IRL");
+  }
+  return nombre;
 }
 
 /**

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -21,7 +21,9 @@ import {
   Clock,
   ShieldAlert,
   Users,
+  Sparkles,
 } from "lucide-react";
+import { puedeGenerarseConIA } from "@/lib/documentacion/ia-generacion-helper";
 import {
   CATEGORIA_CONFIG,
   ESTADO_DOC_CONFIG,
@@ -46,6 +48,12 @@ import {
   DocumentUploadDrawer,
   type DocumentUploadContext,
 } from "./DocumentUploadDrawer";
+import {
+  DocumentoReviewDrawer,
+  type DocumentoReviewContext,
+} from "./DocumentoReviewDrawer";
+import { generarPlantillaContenidoIA } from "@/lib/documentacion/ia-generacion-helper";
+import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
 import { PorVencimientosView } from "./PorVencimientosView";
@@ -81,6 +89,25 @@ export function PendientesPanel({
   const [filterEstado, setFilterEstado]         = useState<FilterEstado>("todos");
   const [uploadCtx, setUploadCtx]               = useState<DocumentUploadContext | undefined>(undefined);
   const [uploadOpen, setUploadOpen]             = useState(false);
+
+  // ── Review drawer (IA documents) ───────────────────────────
+  const [reviewCtx, setReviewCtx]               = useState<DocumentoReviewContext | null>(null);
+  const [reviewOpen, setReviewOpen]             = useState(false);
+
+  function openReview(ctx: DocumentoReviewContext) {
+    setReviewCtx(ctx);
+    setReviewOpen(true);
+  }
+
+  function openGenerar(doc: import("./types").DocTrabajadorView, worker: Worker) {
+    const contenidoGenerado = generarPlantillaContenidoIA({
+      tipoNombre: doc.tipo.nombre,
+      trabajadorNombre: `${worker.nombre} ${worker.apellido}`,
+      trabajadorRut: worker.rut,
+      cargo: worker.cargo,
+    });
+    openReview({ doc, worker, contenidoGenerado });
+  }
 
   function openUpload(ctx: DocumentUploadContext) {
     setUploadCtx(ctx);
@@ -306,6 +333,14 @@ export function PendientesPanel({
         workers={workers}
         tipos={tipos}
         onSaved={onSaved}
+      />
+
+      {/* ── Documento Review Drawer (IA) ── */}
+      <DocumentoReviewDrawer
+        isOpen={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        context={reviewCtx}
+        onUpdated={onSaved}
       />
 
       {/* ── Doc action confirmation toast ── */}
@@ -801,7 +836,7 @@ export function PendientesPanel({
               const initials   = `${worker.nombre[0]}${worker.apellido[0]}`;
 
               return (
-                <>
+                <Fragment key={worker.id}>
                   <tr
                     key={worker.id}
                     onClick={() => toggleSelect(worker.id)}
@@ -968,7 +1003,7 @@ export function PendientesPanel({
                                         {doc.tipo.categoria}
                                       </span>
                                       <p className={`text-xs font-semibold leading-tight ${nameColor}`}>
-                                        {doc.tipo.nombre}
+                                        {normalizarNombreDocumentoDisplay(doc.tipo.nombre)}
                                         {doc.tipo.esCritico && <span className="ml-1 text-[10px] font-bold text-red-600">●</span>}
                                       </p>
                                     </div>
@@ -1005,8 +1040,8 @@ export function PendientesPanel({
 
                                   {/* Row 5: actions */}
                                   <div className="mt-0.5 flex flex-wrap gap-1.5">
-                                    {/* Upload/reenviar — for pendiente, vencido, rechazado */}
-                                    {needsAction && (
+                                    {/* Upload/reenviar — solo para docs no automatizables con IA */}
+                                    {needsAction && !puedeGenerarseConIA(doc.tipo) && (
                                       <button
                                         onClick={() =>
                                           openUpload({
@@ -1028,10 +1063,38 @@ export function PendientesPanel({
                                       </button>
                                     )}
 
-                                    {/* Validar — for en_revision docs with real DB record */}
-                                    {doc.estado === "en_revision" && doc.documentoId && (
+                                    {/* Generar con IA — automatizables sin contenido aún */}
+                                    {needsAction && puedeGenerarseConIA(doc.tipo) && !doc.observacion?.trim() && !doc.documentoId && (
                                       <button
-                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "validar")}
+                                        onClick={() => openGenerar(doc, worker)}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-violet-700"
+                                      >
+                                        <Sparkles className="h-2.5 w-2.5" />
+                                        Generar con IA
+                                      </button>
+                                    )}
+
+                                    {/* Revisar — IA con contenido o en estados del flujo */}
+                                    {puedeGenerarseConIA(doc.tipo) && (
+                                      !!doc.observacion?.trim() ||
+                                      doc.estado === "en_revision" ||
+                                      doc.estado === "validado" ||
+                                      doc.estado === "enviado_firma" ||
+                                      doc.estado === "firmado"
+                                    ) && (
+                                      <button
+                                        onClick={() => openReview({ doc, worker })}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-violet-100 px-2.5 py-1 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200 transition hover:bg-violet-200"
+                                      >
+                                        <Sparkles className="h-2.5 w-2.5" />
+                                        Revisar
+                                      </button>
+                                    )}
+
+                                    {/* Validar — for en_revision docs with real DB record */}
+                                    {doc.estado === "en_revision" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
+                                      <button
+                                        onClick={() => openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "validar")}
                                         className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-indigo-700"
                                       >
                                         <CheckCircle2 className="h-2.5 w-2.5" />
@@ -1040,9 +1103,9 @@ export function PendientesPanel({
                                     )}
 
                                     {/* Enviar a firma — for validado docs */}
-                                    {doc.estado === "validado" && doc.documentoId && (
+                                    {doc.estado === "validado" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
                                       <button
-                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "enviar_firma")}
+                                        onClick={() => openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "enviar_firma")}
                                         className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-teal-700"
                                       >
                                         <UploadCloud className="h-2.5 w-2.5" />
@@ -1051,9 +1114,9 @@ export function PendientesPanel({
                                     )}
 
                                     {/* Firmar — only for enviado_firma docs */}
-                                    {doc.estado === "enviado_firma" && doc.documentoId && (
+                                    {doc.estado === "enviado_firma" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
                                       <button
-                                        onClick={() => openActionModal(doc.documentoId!, doc.tipo.nombre, "firmar")}
+                                        onClick={() => openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "firmar")}
                                         className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-emerald-700"
                                       >
                                         <CheckCheck className="h-2.5 w-2.5" />
@@ -1120,7 +1183,7 @@ export function PendientesPanel({
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </tbody>
