@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { calcularCumplimientoEmpresa } from "@/lib/documentacion/cumplimiento-empresa";
 import {
   generarDocumentosFaltantesIA,
@@ -53,6 +54,11 @@ export type ResumenEmpresaResponse = {
     comuna: string;
     region: string;
   };
+  activacion: {
+    completada: boolean;
+    pasoActual: number | null;
+    completadaEn: string | null;
+  };
   kpis: ResumenEmpresaKpis;
   cumplimiento: {
     porcentaje: number;
@@ -77,6 +83,9 @@ export async function getResumenEmpresa(): Promise<ResumenEmpresaResponse> {
       razonSocial: true,
       direccion: true,
       giro: true,
+      activacionCompletada: true,
+      activacionPasoActual: true,
+      activacionCompletadaEn: true,
     },
   });
 
@@ -194,6 +203,11 @@ export async function getResumenEmpresa(): Promise<ResumenEmpresaResponse> {
       comuna: "",
       region: "",
     },
+    activacion: {
+      completada: empresa.activacionCompletada,
+      pasoActual: empresa.activacionPasoActual,
+      completadaEn: empresa.activacionCompletadaEn?.toISOString() ?? null,
+    },
     kpis: {
       totalCentros,
       totalAreas,
@@ -230,4 +244,226 @@ export async function generarDocumentosFaltantes(input: { empresaId: string }): 
     usuarioId: context.usuarioId,
     email: context.email,
   });
+}
+
+export type EventoActivacion =
+  | "activacion_inicio"
+  | "activacion_generar_docs"
+  | "activacion_firma"
+  | "activacion_completa";
+
+export type PasoFunnelActivacion =
+  | "inicio"
+  | "generacion"
+  | "firma"
+  | "completado";
+
+export type AnaliticaActivacionEmpresa = {
+  totalUsuarios: number;
+  porcentajeActivacionCompleta: number;
+  tiempoPromedioActivacionMinutos: number;
+  pasosDondeSeDetienen: Array<{
+    paso: Exclude<PasoFunnelActivacion, "completado">;
+    usuarios: number;
+    porcentajeSobreInicio: number;
+  }>;
+  funnel: Record<PasoFunnelActivacion, number>;
+};
+
+export async function guardarEstadoActivacionEmpresa(input: {
+  empresaId: string;
+  pasoActual: number;
+  evento?: EventoActivacion;
+  completada?: boolean;
+  metadata?: unknown;
+}): Promise<{ ok: true; pasoActual: number; completada: boolean } | { ok: false; error: string }> {
+  const context = await requirePermission("canManageDocumentacion");
+
+  if (input.empresaId !== context.empresaId) {
+    return { ok: false, error: "Empresa invalida para actualizar activacion" };
+  }
+
+  const now = new Date();
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const empresa = await tx.empresa.findUnique({
+        where: { id: context.empresaId },
+        select: {
+          activacionPasoActual: true,
+          activacionCompletada: true,
+          activacionCompletadaEn: true,
+        },
+      });
+
+      if (!empresa) {
+        throw new Error("No existe empresa para actualizar activacion");
+      }
+
+      const pasoActual = empresa.activacionPasoActual == null
+        ? input.pasoActual
+        : Math.max(empresa.activacionPasoActual, input.pasoActual);
+
+      const completada = input.completada ?? empresa.activacionCompletada;
+      const completadaEn = completada && !empresa.activacionCompletadaEn
+        ? now
+        : empresa.activacionCompletadaEn;
+
+      await tx.empresa.update({
+        where: { id: context.empresaId },
+        data: {
+          activacionPasoActual: pasoActual,
+          activacionCompletada: completada,
+          activacionCompletadaEn: completadaEn,
+        },
+      });
+
+      const eventoExistente = input.evento
+        ? await tx.activacionEvento.findFirst({
+            where: {
+              empresaId: context.empresaId,
+              evento: input.evento,
+            },
+            select: { id: true },
+          })
+        : null;
+
+      const debeRegistrarEvento = Boolean(input.evento) && !eventoExistente;
+
+      if (debeRegistrarEvento && input.evento) {
+        await tx.activacionEvento.create({
+          data: {
+            empresaId: context.empresaId,
+            usuarioId: context.usuarioId,
+            evento: input.evento,
+            pasoActual,
+            metadata: input.metadata as Prisma.InputJsonValue | undefined,
+          },
+        });
+      }
+
+      return {
+        pasoActual,
+        completada,
+      };
+    });
+
+    return { ok: true, pasoActual: result.pasoActual, completada: result.completada };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo actualizar la activacion";
+    return { ok: false, error: message };
+  }
+}
+
+export async function getAnaliticaActivacionEmpresa(): Promise<AnaliticaActivacionEmpresa> {
+  const { empresaId } = await requirePermission("canReadCumplimiento");
+
+  const [totalUsuarios, eventos] = await Promise.all([
+    prisma.usuario.count({ where: { empresaId } }),
+    prisma.activacionEvento.findMany({
+      where: { empresaId },
+      select: {
+        evento: true,
+        usuarioId: true,
+        createdAt: true,
+      },
+    }),
+  ]);
+
+  const usuariosInicio = new Set<string>();
+  const usuariosGeneracion = new Set<string>();
+  const usuariosFirma = new Set<string>();
+  const usuariosCompletado = new Set<string>();
+
+  const primerInicioPorUsuario = new Map<string, Date>();
+  const primeraCompletacionPorUsuario = new Map<string, Date>();
+
+  for (const evento of eventos) {
+    if (!evento.usuarioId) continue;
+
+    if (evento.evento === "activacion_inicio") {
+      usuariosInicio.add(evento.usuarioId);
+      if (!primerInicioPorUsuario.has(evento.usuarioId)) {
+        primerInicioPorUsuario.set(evento.usuarioId, evento.createdAt);
+      }
+      continue;
+    }
+
+    if (evento.evento === "activacion_generar_docs") {
+      usuariosGeneracion.add(evento.usuarioId);
+      continue;
+    }
+
+    if (evento.evento === "activacion_firma") {
+      usuariosFirma.add(evento.usuarioId);
+      continue;
+    }
+
+    if (evento.evento === "activacion_completa") {
+      usuariosCompletado.add(evento.usuarioId);
+      if (!primeraCompletacionPorUsuario.has(evento.usuarioId)) {
+        primeraCompletacionPorUsuario.set(evento.usuarioId, evento.createdAt);
+      }
+    }
+  }
+
+  const totalInicio = usuariosInicio.size;
+  const totalGeneracion = usuariosGeneracion.size;
+  const totalFirma = usuariosFirma.size;
+  const totalCompletado = usuariosCompletado.size;
+
+  const porcentajeActivacionCompleta = totalUsuarios > 0
+    ? Number(((totalCompletado / totalUsuarios) * 100).toFixed(2))
+    : 0;
+
+  const duracionesMinutos = Array.from(usuariosCompletado)
+    .map((usuarioId) => {
+      const inicio = primerInicioPorUsuario.get(usuarioId);
+      const completado = primeraCompletacionPorUsuario.get(usuarioId);
+      if (!inicio || !completado) return null;
+      return Math.max(completado.getTime() - inicio.getTime(), 0) / 60000;
+    })
+    .filter((item): item is number => item !== null);
+
+  const tiempoPromedioActivacionMinutos = duracionesMinutos.length > 0
+    ? Number((duracionesMinutos.reduce((sum, item) => sum + item, 0) / duracionesMinutos.length).toFixed(2))
+    : 0;
+
+  const abandonoEnInicio = Math.max(totalInicio - totalGeneracion, 0);
+  const abandonoEnGeneracion = Math.max(totalGeneracion - totalFirma, 0);
+  const abandonoEnFirma = Math.max(totalFirma - totalCompletado, 0);
+
+  const porcentajeSobreInicio = (usuarios: number) => {
+    if (totalInicio === 0) return 0;
+    return Number(((usuarios / totalInicio) * 100).toFixed(2));
+  };
+
+  return {
+    totalUsuarios,
+    porcentajeActivacionCompleta,
+    tiempoPromedioActivacionMinutos,
+    pasosDondeSeDetienen: [
+      {
+        paso: "inicio",
+        usuarios: abandonoEnInicio,
+        porcentajeSobreInicio: porcentajeSobreInicio(abandonoEnInicio),
+      },
+      {
+        paso: "generacion",
+        usuarios: abandonoEnGeneracion,
+        porcentajeSobreInicio: porcentajeSobreInicio(abandonoEnGeneracion),
+      },
+      {
+        paso: "firma",
+        usuarios: abandonoEnFirma,
+        porcentajeSobreInicio: porcentajeSobreInicio(abandonoEnFirma),
+      },
+    ],
+    funnel: {
+      inicio: totalInicio,
+      generacion: totalGeneracion,
+      firma: totalFirma,
+      completado: totalCompletado,
+    },
+  };
 }

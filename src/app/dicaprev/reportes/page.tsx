@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
-import { FileBarChart2, Clock, AlertTriangle, Building2, BarChart3 } from "lucide-react";
+import { FileBarChart2, Clock, AlertTriangle, Building2, BarChart3, UserCheck } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 const REPORTES = [
@@ -35,6 +35,14 @@ const REPORTES = [
     bg: "bg-indigo-50",
     title: "Cumplimiento por Área",
     description: "Estado de cumplimiento DS44 desglosado por área organizacional.",
+  },
+  {
+    href: "/dicaprev/reportes/activacion",
+    icon: UserCheck,
+    color: "text-violet-600",
+    bg: "bg-violet-50",
+    title: "Activación",
+    description: "Métricas de conversión del flujo de activación por etapas.",
   },
 ];
 
