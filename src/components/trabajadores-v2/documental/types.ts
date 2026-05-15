@@ -46,6 +46,8 @@ export interface DocumentoTrabajador {
   fechaVencimiento?: string;
   cargadoPor?: string;
   observacion?: string;
+  firmadoPor?: string;
+  firmadoEn?: string;
 }
 
 export interface DocTrabajadorView {
@@ -57,6 +59,8 @@ export interface DocTrabajadorView {
   diasParaVencer?: number;
   cargadoPor?: string;
   observacion?: string;
+  firmadoPor?: string;
+  firmadoEn?: string;
 }
 
 // ─── Visual config ───────────────────────────────────────────────────────────
@@ -86,7 +90,7 @@ export const ESTADO_DOC_CONFIG: Record<DocEstado, { label: string; bg: string; t
 export const TIPOS_DOCUMENTO: TipoDocumento[] = [
   { id: "td-01", nombre: "Contrato de trabajo",        categoria: "Contratación", descripcion: "Contrato firmado por ambas partes",                requiereVencimiento: false, vencimientoMeses: null, esCritico: true  },
   { id: "td-02", nombre: "Reglamento Interno (RIOHS)", categoria: "Contratación", descripcion: "Reglamento interno firmado por el trabajador",      requiereVencimiento: false, vencimientoMeses: null, esCritico: false },
-  { id: "td-03", nombre: "ODI firmada",                categoria: "SST",          descripcion: "Obligación de informar sobre riesgos del puesto",  requiereVencimiento: false, vencimientoMeses: null, esCritico: true  },
+  { id: "td-03", nombre: "IRL / Información de Riesgos Laborales", categoria: "SST",          descripcion: "Acta de información sobre riesgos del puesto (IRL) firmada",  requiereVencimiento: false, vencimientoMeses: null, esCritico: true  },
   { id: "td-04", nombre: "Política de prevención",     categoria: "SST",          descripcion: "Política SST firmada por trabajador",               requiereVencimiento: false, vencimientoMeses: null, esCritico: false },
   { id: "td-05", nombre: "Inducción SST",              categoria: "Capacitación", descripcion: "Capacitación de inducción en seguridad y salud",    requiereVencimiento: true,  vencimientoMeses: 12,   esCritico: true  },
   { id: "td-06", nombre: "Examen preocupacional",      categoria: "Médico",       descripcion: "Examen médico previo al inicio de actividades",     requiereVencimiento: false, vencimientoMeses: null, esCritico: true  },
@@ -169,10 +173,10 @@ export const MOCK_DOCUMENTOS: DocumentoTrabajador[] = [
   { id: "d-002-08", workerId: "w-002", tipoDocumentoId: "td-08", estado: "completo", fechaCarga: "2023-01-16", cargadoPor: "Área SST" },
   { id: "d-002-12", workerId: "w-002", tipoDocumentoId: "td-12", estado: "completo", fechaCarga: "2023-01-16", cargadoPor: "RRHH" },
 
-  // ── w-003: Ricardo Flores (Maestro PVC/Aluminio) — ODI rechazada + examen periódico vencido → sinDocCompleta ──
+  // ── w-003: Ricardo Flores (Maestro PVC/Aluminio) — IRL rechazada + examen periódico vencido → sinDocCompleta ──
   { id: "d-003-01", workerId: "w-003", tipoDocumentoId: "td-01", estado: "completo",  fechaCarga: "2023-08-01", cargadoPor: "RRHH" },
   { id: "d-003-02", workerId: "w-003", tipoDocumentoId: "td-02", estado: "completo",  fechaCarga: "2023-08-01", cargadoPor: "RRHH" },
-  { id: "d-003-03", workerId: "w-003", tipoDocumentoId: "td-03", estado: "rechazado", fechaCarga: "2024-08-01", cargadoPor: "Ricardo Flores Pavez", observacion: "Firma digital inválida — documento debe ser reenviado" },
+  { id: "d-003-03", workerId: "w-003", tipoDocumentoId: "td-03", estado: "rechazado", fechaCarga: "2024-08-01", cargadoPor: "Ricardo Flores Pavez", observacion: "Firma digital inválida — documento IRL debe ser reenviado" },
   { id: "d-003-04", workerId: "w-003", tipoDocumentoId: "td-04", estado: "completo",  fechaCarga: "2023-08-01", cargadoPor: "Ricardo Flores Pavez" },
   { id: "d-003-05", workerId: "w-003", tipoDocumentoId: "td-05", estado: "completo",  fechaCarga: "2024-08-01", fechaVencimiento: "2025-08-01", cargadoPor: "Área SST", observacion: "Inducción SST vencida — programar renovación" },
   { id: "d-003-06", workerId: "w-003", tipoDocumentoId: "td-06", estado: "completo",  fechaCarga: "2023-07-28", cargadoPor: "Mutualidad" },
@@ -266,6 +270,8 @@ export function getWorkerDocs(
         diasParaVencer,
         cargadoPor:  up?.cargadoPor,
         observacion: up?.observacion,
+        firmadoPor: up?.firmadoPor,
+        firmadoEn: up?.firmadoEn,
       } satisfies DocTrabajadorView;
     })
     .filter(Boolean) as DocTrabajadorView[];

@@ -774,6 +774,8 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
           fechaVencimiento: true,
           creadoPorEmail: true,
           observaciones: true,
+          firmadoPor: true,
+          firmadoEn: true,
         },
         orderBy: [{ createdAt: "desc" }],
       })
@@ -824,6 +826,8 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
         fechaVencimiento: row.fechaVencimiento ? row.fechaVencimiento.toISOString().slice(0, 10) : undefined,
         cargadoPor: row.creadoPorEmail ?? undefined,
         observacion: row.observaciones ?? undefined,
+        firmadoPor: row.firmadoPor ?? undefined,
+        firmadoEn: row.firmadoEn ? row.firmadoEn.toISOString() : undefined,
       } satisfies DocumentoTrabajador;
     })
     .filter(Boolean) as DocumentoTrabajador[];
@@ -1113,6 +1117,41 @@ export async function createTrabajadorDocumento(
   return { id: created.id };
 }
 
+/**
+ * Guarda el contenido textual (generado o editado por el usuario) de un documento.
+ * Usa el campo `observaciones` como almacén del contenido IA hasta que exista
+ * una columna dedicada. Registra historial "CONTENIDO_EDITADO".
+ */
+export async function guardarContenidoIADocumento(
+  documentoId: string,
+  contenido: string,
+): Promise<{ id: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
+  await validateDocumentoReferencesInEmpresa(empresaId, documento);
+
+  const updated = await prisma.trabajadorDocumento.update({
+    where: { id: documento.id },
+    data: {
+      observaciones: contenido.trim() || null,
+      subidoPorId: usuarioId,
+    },
+    select: { id: true, version: true },
+  });
+
+  await prisma.trabajadorDocumentoHistorial.create({
+    data: {
+      documentoId: updated.id,
+      usuarioId,
+      accion: "CONTENIDO_EDITADO",
+      detalle: "Documento editado por usuario",
+      version: updated.version,
+    },
+  });
+
+  return { id: updated.id };
+}
+
 export async function updateTrabajadorDocumento(
   data: UpdateTrabajadorDocumentoInput,
 ): Promise<{ id: string }> {
@@ -1262,7 +1301,7 @@ export async function enviarTrabajadorDocumentoAFirma(
 
 export async function firmarTrabajadorDocumento(
   documentoId: string,
-): Promise<{ id: string }> {
+): Promise<{ id: string; firmadoPor: string; firmadoEn: Date }> {
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
   const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
   await validateDocumentoReferencesInEmpresa(empresaId, documento);
@@ -1302,7 +1341,7 @@ export async function firmarTrabajadorDocumento(
     },
   });
 
-  return { id: updated.id };
+  return { id: updated.id, firmadoPor, firmadoEn };
 }
 
 export async function evaluarReglasDocumentalesTrabajador(

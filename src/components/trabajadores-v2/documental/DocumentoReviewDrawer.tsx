@@ -168,7 +168,7 @@ export function DocumentoReviewDrawer({
   const puedeMostrarSinContenido = pdfEstadosPermitidos.has(efectoEstado) && !contenido.trim();
 
   async function handleDescargarPdf() {
-    if (!puedeDescargarPdf) return;
+    if (!puedeDescargarPdf || isLoading) return;
 
     const documentoParaPdf = doc ?? originalDoc;
     if (!documentoParaPdf) return;
@@ -480,7 +480,7 @@ export function DocumentoReviewDrawer({
                 {puedeDescargarPdf && (
                   <button
                     onClick={handleDescargarPdf}
-                    disabled={exportingPdf}
+                    disabled={exportingPdf || isLoading}
                     className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {exportingPdf ? (
