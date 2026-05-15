@@ -1,5 +1,8 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -18,6 +21,7 @@ export type EmpresaGeneralData = {
   telefono: string | null;
   correo: string | null;
   web: string | null;
+  logoUrl: string | null;
   representanteLegal: string | null;
   rutRepresentanteLegal: string | null;
   mutualidad: string | null;
@@ -45,6 +49,7 @@ export async function getEmpresaActual(): Promise<EmpresaGeneralData> {
       telefono: true,
       correo: true,
       web: true,
+      logoUrl: true,
       representanteLegal: true,
       rutRepresentanteLegal: true,
       mutualidad: true,
@@ -80,6 +85,7 @@ export async function actualizarEmpresaActual(data: EmpresaGeneralData): Promise
       telefono: data.telefono,
       correo: data.correo,
       web: data.web,
+      logoUrl: data.logoUrl,
       representanteLegal: data.representanteLegal,
       rutRepresentanteLegal: data.rutRepresentanteLegal,
       mutualidad: data.mutualidad,
@@ -87,4 +93,59 @@ export async function actualizarEmpresaActual(data: EmpresaGeneralData): Promise
       cantidadTrabajadores: data.cantidadTrabajadores,
     },
   });
+}
+
+const LOGO_MIME_TO_EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
+
+export async function subirLogoEmpresa(formData: FormData): Promise<string> {
+  const { empresaId } = await requirePermission("canManageEmpresa");
+
+  const logo = formData.get("logo");
+  if (!(logo instanceof File)) {
+    throw new Error("No se recibió archivo de logo");
+  }
+
+  if (logo.size <= 0) {
+    throw new Error("El archivo de logo está vacío");
+  }
+
+  if (logo.size > 4 * 1024 * 1024) {
+    throw new Error("El logo no debe superar 4MB");
+  }
+
+  const ext = LOGO_MIME_TO_EXT[logo.type];
+  if (!ext) {
+    throw new Error("Formato inválido. Usa PNG, JPG o WEBP");
+  }
+
+  const current = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { logoUrl: true },
+  });
+
+  const targetDir = path.join(process.cwd(), "public", "uploads", "empresa-logos");
+  await mkdir(targetDir, { recursive: true });
+
+  const fileName = `${empresaId}-${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
+  const absolutePath = path.join(targetDir, fileName);
+  const logoUrl = `/uploads/empresa-logos/${fileName}`;
+
+  const bytes = new Uint8Array(await logo.arrayBuffer());
+  await writeFile(absolutePath, bytes);
+
+  await prisma.empresa.update({
+    where: { id: empresaId },
+    data: { logoUrl },
+  });
+
+  if (current?.logoUrl?.startsWith("/uploads/empresa-logos/")) {
+    const oldAbsolute = path.join(process.cwd(), "public", current.logoUrl.replace(/^\//, ""));
+    await unlink(oldAbsolute).catch(() => undefined);
+  }
+
+  return logoUrl;
 }

@@ -90,11 +90,15 @@ model Empresa {
   telefono              String?
   correo                String?
   web                   String?
+  logoUrl               String?
   representanteLegal    String?
   rutRepresentanteLegal String?
   mutualidad            String?
   cotizacionAdicional   String?
   cantidadTrabajadores  Int      @default(0)
+  activacionPasoActual   Int?
+  activacionCompletada   Boolean  @default(false)
+  activacionCompletadaEn DateTime?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -122,6 +126,7 @@ model Empresa {
   reglasCapacitacionCargo    ReglaCapacitacionCargo[]
   plantillasPlanCapacitacion PlantillaPlanCapacitacion[]
   plantillasDocumentoEmpresa  PlantillaDocumentoEmpresa[]
+  activacionEventos          ActivacionEvento[]
 }
 
 model Usuario {
@@ -146,6 +151,23 @@ model Usuario {
   capacitacionHistorialEventos   CapacitacionHistorial[]
   planesCapacitacionAprobadas    PlanCapacitacion[]             @relation("UsuarioPlanCapacitacionAprobada")
   planesCapacitacionItemsResponsables PlanCapacitacionItem[]     @relation("UsuarioPlanCapacitacionItemResponsable")
+  activacionEventosCreados       ActivacionEvento[]             @relation("UsuarioActivacionEvento")
+}
+
+model ActivacionEvento {
+  id         String   @id @default(uuid())
+  empresaId  String
+  usuarioId  String?
+  evento     String
+  pasoActual Int?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  empresa Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario? @relation("UsuarioActivacionEvento", fields: [usuarioId], references: [id])
+
+  @@index([empresaId, evento])
+  @@index([createdAt])
 }
 
 model DocumentoEmpresa {

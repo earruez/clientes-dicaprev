@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import { Building2, MapPin, Users, FileText, Pencil, Info } from "lucide-react";
+import Image from "next/image";
+import { Building2, MapPin, Users, FileText, Pencil, Info, ImageUp } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   actualizarEmpresaActual,
+  subirLogoEmpresa,
   type EmpresaGeneralData,
 } from "./actions";
 
@@ -201,6 +203,7 @@ export default function InformacionGeneralClient({
   const [form, setForm] = useState<EmpresaGeneralData>(initialEmpresa);
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
 
@@ -274,6 +277,28 @@ export default function InformacionGeneralClient({
     });
   }
 
+  async function handleLogoUpload(file?: File | null) {
+    if (!file || !canManageEmpresa) return;
+
+    setIsUploadingLogo(true);
+    setFeedback(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("logo", file);
+      const logoUrl = await subirLogoEmpresa(formData);
+
+      setEmpresa((prev) => ({ ...prev, logoUrl }));
+      setForm((prev) => ({ ...prev, logoUrl }));
+      setFeedback({ type: "success", message: "Logo corporativo actualizado correctamente." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "No se pudo subir el logo corporativo.";
+      setFeedback({ type: "error", message });
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  }
+
   return (
     <div className="space-y-6 p-6">
       <StandardPageHeader
@@ -342,6 +367,52 @@ export default function InformacionGeneralClient({
           <Field label="RUT representante" value={empresa.rutRepresentanteLegal ?? ""} />
           <Field label="Mutualidad" value={empresa.mutualidad ?? ""} />
           <Field label="Cotización adicional" value={empresa.cotizacionAdicional ?? ""} />
+        </SectionCard>
+
+        <SectionCard
+          title="Identidad visual"
+          icon={<ImageUp className="h-5 w-5" />}
+        >
+          <div className="flex flex-col gap-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              {empresa.logoUrl ? (
+                <Image
+                  src={empresa.logoUrl}
+                  alt="Logo corporativo"
+                  width={128}
+                  height={64}
+                  className="h-16 w-32 rounded-lg border border-slate-200 bg-white object-contain p-2"
+                />
+              ) : (
+                <div className="flex h-16 w-32 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-xs font-medium text-slate-400">
+                  Sin logo
+                </div>
+              )}
+
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Logo corporativo para documentos PDF</p>
+                <p className="text-xs text-slate-500">PNG, JPG o WEBP. Máximo 4MB.</p>
+              </div>
+            </div>
+
+            {canManageEmpresa && (
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50">
+                <ImageUp className="h-3.5 w-3.5" />
+                {isUploadingLogo ? "Subiendo..." : "Subir logo"}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  disabled={isUploadingLogo}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    void handleLogoUpload(file);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            )}
+          </div>
         </SectionCard>
       </div>
 

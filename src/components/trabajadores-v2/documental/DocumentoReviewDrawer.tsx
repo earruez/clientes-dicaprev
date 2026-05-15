@@ -28,7 +28,9 @@ import {
   firmarTrabajadorDocumento,
   getHistorialDocumentoTrabajador,
   createTrabajadorDocumento,
+  getEmpresaDocumentoMeta,
   type HistorialEntryView,
+  type EmpresaDocumentoMeta,
 } from "@/actions/trabajadores/documentos";
 import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
 
@@ -114,6 +116,7 @@ export function DocumentoReviewDrawer({
   const [localDoc, setLocalDoc]     = useState<DocTrabajadorView | null>(null);
   const [showHistorial, setShowHistorial] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [empresaMeta, setEmpresaMeta] = useState<EmpresaDocumentoMeta | null>(null);
 
   // ── Init when drawer opens ─────────────────────────────────────────────────
   useEffect(() => {
@@ -123,6 +126,7 @@ export function DocumentoReviewDrawer({
     setErrorMsg(null);
     setShowHistorial(false);
     setExportingPdf(false);
+    setEmpresaMeta(null);
 
     const d = context.doc;
     setLocalDoc(d);
@@ -144,6 +148,10 @@ export function DocumentoReviewDrawer({
     } else {
       setHistorial([]);
     }
+
+    getEmpresaDocumentoMeta()
+      .then(setEmpresaMeta)
+      .catch(() => setEmpresaMeta(null));
   }, [isOpen, context]);
 
   // Escape key
@@ -184,6 +192,7 @@ export function DocumentoReviewDrawer({
         estado: efectoEstado,
         firmadoPor: doc?.firmadoPor ?? originalDoc?.firmadoPor ?? null,
         firmadoEn: doc?.firmadoEn ?? originalDoc?.firmadoEn ?? null,
+        empresa: empresaMeta,
       });
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "No fue posible exportar el PDF");

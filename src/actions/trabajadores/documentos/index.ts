@@ -40,6 +40,14 @@ export type ControlDocumentalTrabajadoresPayload = {
   documentos: DocumentoTrabajador[];
 };
 
+export type EmpresaDocumentoMeta = {
+  nombre: string;
+  razonSocial: string | null;
+  rut: string | null;
+  direccion: string | null;
+  logoUrl: string | null;
+};
+
 export type EstadoDocumentoTrabajadorInput =
   | "pendiente"
   | "en_revision"
@@ -838,6 +846,27 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
     reglas,
     documentos,
   };
+}
+
+export async function getEmpresaDocumentoMeta(): Promise<EmpresaDocumentoMeta> {
+  const { empresaId } = await requirePermission("canReadTrabajadores");
+
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: {
+      nombre: true,
+      razonSocial: true,
+      rut: true,
+      direccion: true,
+      logoUrl: true,
+    },
+  });
+
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
+  }
+
+  return empresa;
 }
 
 export async function createTipoDocumentoTrabajador(
