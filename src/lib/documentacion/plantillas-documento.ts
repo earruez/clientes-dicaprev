@@ -393,7 +393,7 @@ export function normalizarNombreDocumentoDisplay(nombre: string): string {
 
 /**
  * Genera un contenido base editable en markdown para una plantilla.
- * Proporciona contenido profesional tipo-Baker listo para edición empresarial.
+ * Proporciona contenido profesional tipo-NextPrev Template listo para edición empresarial.
  */
 export function construirContenidoBasePlantilla(plantilla: PlantillaDocumento): string {
   const codigoNormalizado = normalizarCodigoPlantilla(plantilla.codigo);

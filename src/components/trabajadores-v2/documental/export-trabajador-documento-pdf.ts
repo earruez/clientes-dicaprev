@@ -282,7 +282,7 @@ export async function renderEppPdf(doc: jsPDF, params: ExportTrabajadorDocumento
     doc,
     params.empresa,
     "REGISTRO DE ENTREGA DE ELEMENTOS DE PROTECCION PERSONAL",
-    "DS BAKER-02",
+    "NEXTPREV TEMPLATE-02",
     formatDate(new Date()).split(" ")[0],
   );
 
@@ -401,7 +401,7 @@ export async function renderIRLPdf(doc: jsPDF, params: ExportTrabajadorDocumento
     doc,
     params.empresa,
     "ACTA DE INFORMACION DE RIESGOS LABORALES",
-    "DS BAKER-01",
+    "NEXTPREV TEMPLATE-01",
     formatDate(new Date()).split(" ")[0],
   );
 
