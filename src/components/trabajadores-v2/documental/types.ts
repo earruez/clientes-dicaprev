@@ -51,6 +51,13 @@ export interface DocumentoTrabajador {
   archivoUrl?: string;
   firmadoPor?: string;
   firmadoEn?: string;
+  // Versionado
+  esVigente?: boolean;
+  versionNumero?: number;
+  origen?: "ia" | "manual" | "sistema";
+  reemplazadoPorId?: string;
+  motivoReemplazo?: string;
+  totalVersiones?: number; // calculado: cuántas versiones existen para este trabajador+tipo
 }
 
 export interface DocTrabajadorView {
@@ -67,6 +74,10 @@ export interface DocTrabajadorView {
   archivoUrl?: string;
   firmadoPor?: string;
   firmadoEn?: string;
+  // Versionado
+  versionNumero?: number;
+  origen?: "ia" | "manual" | "sistema";
+  totalVersiones?: number;  // cuántas versiones (vigente + históricas) existen para este tipo
 }
 
 // ─── Visual config ───────────────────────────────────────────────────────────
@@ -281,6 +292,9 @@ export function getWorkerDocs(
         archivoUrl: up?.archivoUrl,
         firmadoPor: up?.firmadoPor,
         firmadoEn: up?.firmadoEn,
+        versionNumero: up?.versionNumero,
+        origen: up?.origen,
+        totalVersiones: up?.totalVersiones,
       } satisfies DocTrabajadorView;
     })
     .filter(Boolean) as DocTrabajadorView[];

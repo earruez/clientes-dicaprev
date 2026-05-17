@@ -482,6 +482,12 @@ model TrabajadorDocumento {
   categoria             String    @default("trabajador")
   estado                String    @default("pendiente_carga")
   version               String    @default("1.0")
+  // Versionado e historial
+  esVigente             Boolean   @default(true)
+  versionNumero         Int       @default(1)
+  origen                String    @default("manual") // "ia" | "manual" | "sistema"
+  reemplazadoPorId      String?   // ID del documento más nuevo que reemplazó a este
+  motivoReemplazo       String?   // Razón del reemplazo
   archivoNombre         String?
   archivoNombreOriginal String?
   archivoUrl            String?
@@ -507,7 +513,7 @@ model TrabajadorDocumento {
   capacitacionAsignacionesCertificado CapacitacionAsignacion[]       @relation("CapAsignacionCertificadoDocumento")
   capacitacionEvaluacionesEvidencia   CapacitacionEvaluacion[]       @relation("CapEvaluacionEvidenciaDocumento")
 
-  @@unique([trabajadorId, tipo])
+  @@index([trabajadorId, tipo, esVigente])
   @@index([trabajadorId])
   @@index([empresaId])
   @@index([subidoPorId])
@@ -520,6 +526,8 @@ model TrabajadorDocumentoHistorial {
   accion                String
   detalle               String?
   version               String?
+  origen                String?  // "ia" | "manual" | "sistema"
+  contenidoSnapshot     String?  // Snapshot del contenido en el momento del evento
   archivoNombre         String?
   archivoNombreOriginal String?
   archivoUrl            String?

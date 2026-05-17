@@ -22,6 +22,7 @@ import {
   ShieldAlert,
   Users,
   Sparkles,
+  History,
 } from "lucide-react";
 import { puedeGenerarseConIA, esContenidoPlaceholder } from "@/lib/documentacion/ia-generacion-helper";
 import {
@@ -42,10 +43,12 @@ import {
   generarContenidoIATrabajadorDocumento,
   getHistorialDocumentoTrabajador,
   getEmpresaDocumentoMeta,
+  getVersionesTrabajadorDocumento,
   validarTrabajadorDocumento,
   type EstadoDocumentoTrabajadorInput,
   type EmpresaDocumentoMeta,
   type HistorialEntryView,
+  type VersionDocumentoView,
 } from "@/actions/trabajadores/documentos";
 import {
   DocumentUploadDrawer,
@@ -55,6 +58,7 @@ import {
   DocumentoReviewDrawer,
   type DocumentoReviewContext,
 } from "./DocumentoReviewDrawer";
+import { VersionesHistorialDrawer } from "./VersionesHistorialDrawer";
 import { generarPlantillaContenidoIA } from "@/lib/documentacion/ia-generacion-helper";
 import {
   construirContenidoBasePlantilla,
@@ -111,6 +115,16 @@ export function PendientesPanel({
   const [descargandoDocId, setDescargandoDocId] = useState<string | null>(null);
   const [empresaMeta, setEmpresaMeta] = useState<EmpresaDocumentoMeta | null>(null);
 
+  // ── Historial de versiones ───────────────────────────────────
+  const [versionesDrawerOpen, setVersionesDrawerOpen] = useState(false);
+  const [versionesDoc, setVersionesDoc] = useState<{
+    tipoNombre: string;
+    tipiCodigo: string;
+    trabajador: Worker;
+    versiones: VersionDocumentoView[];
+  } | null>(null);
+  const [cargandoVersiones, setCargandoVersiones] = useState(false);
+
   useEffect(() => {
     let isActive = true;
     getEmpresaDocumentoMeta()
@@ -124,6 +138,27 @@ export function PendientesPanel({
       isActive = false;
     };
   }, []);
+
+  async function handleVerHistorial(doc: import("./types").DocTrabajadorView, worker: Worker) {
+    if (!doc.documentoId) return;
+    setCargandoVersiones(true);
+    try {
+      // El tipo de Prisma es el campo `tipo` del documento (código del tipo documental)
+      // Para obtener versiones necesitamos el código del tipo, que está en doc.tipo
+      const versiones = await getVersionesTrabajadorDocumento(worker.id, doc.tipo.nombre);
+      setVersionesDoc({
+        tipoNombre: doc.tipo.nombre,
+        tipiCodigo: doc.tipo.nombre,
+        trabajador: worker,
+        versiones,
+      });
+      setVersionesDrawerOpen(true);
+    } catch (error) {
+      console.error("Error cargando versiones:", error);
+    } finally {
+      setCargandoVersiones(false);
+    }
+  }
 
   async function handleDescargarPdf(doc: import("./types").DocTrabajadorView, worker: Worker) {
     const id = doc.documentoId ?? `${worker.id}-${doc.tipo.id}`;
@@ -418,6 +453,18 @@ export function PendientesPanel({
         context={reviewCtx}
         onUpdated={onSaved}
       />
+
+      {/* ── Versiones históricas drawer ── */}
+      {versionesDoc && (
+        <VersionesHistorialDrawer
+          open={versionesDrawerOpen}
+          onClose={() => setVersionesDrawerOpen(false)}
+          tipoNombre={versionesDoc.tipoNombre}
+          trabajador={versionesDoc.trabajador}
+          versiones={versionesDoc.versiones}
+          empresaMeta={empresaMeta}
+        />
+      )}
 
       {/* ── Doc action confirmation toast ── */}
       {actionDone && (
@@ -1162,7 +1209,7 @@ export function PendientesPanel({
                                         className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-amber-700"
                                       >
                                         <UploadCloud className="h-2.5 w-2.5" />
-                                        {hasAnyRecord || hasCarga || hasStructuredIaContent ? "Subir/Reemplazar" : "Subir documento"}
+                                        {hasAnyRecord || hasCarga || hasStructuredIaContent ? "Reemplazar" : "Subir documento"}
                                       </button>
                                     )}
 
@@ -1309,6 +1356,20 @@ export function PendientesPanel({
                                       >
                                         <Clock className="h-2.5 w-2.5" />
                                         Historial
+                                      </button>
+                                    )}
+
+                                    {/* Versiones históricas — botón con badge de cantidad */}
+                                    {doc.documentoId && (
+                                      <button
+                                        onClick={() => handleVerHistorial(doc, worker)}
+                                        disabled={cargandoVersiones}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[10px] font-semibold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50"
+                                      >
+                                        <History className="h-2.5 w-2.5" />
+                                        {(doc.totalVersiones ?? 1) > 1
+                                          ? `Versiones (${doc.totalVersiones})`
+                                          : "Versiones"}
                                       </button>
                                     )}
                                   </div>

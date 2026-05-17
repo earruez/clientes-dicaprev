@@ -83,6 +83,7 @@ export type CreateTrabajadorDocumentoInput = {
   archivoNombreOriginal?: string;
   archivoTipo?: string;
   archivoPeso?: number;
+  motivoReemplazo?: string;
 };
 
 export type UpdateTrabajadorDocumentoInput = {
@@ -711,6 +712,9 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
             categoria: "trabajador",
             estado: mapEstadoInicialDocumentoTrabajador(regla.workflow.estadoInicialSugerido),
             version: "1.0",
+            esVigente: true,
+            versionNumero: 1,
+            origen: "sistema",
             tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
             observaciones: "Generado automáticamente por regla documental.",
             subidoPorId: context.usuarioId,
@@ -1080,7 +1084,7 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
   const workerIds = trabajadoresRows.map((w) => w.id);
   const docsRows = workerIds.length
     ? await prisma.trabajadorDocumento.findMany({
-        where: { empresaId, trabajadorId: { in: workerIds } },
+        where: { empresaId, trabajadorId: { in: workerIds }, esVigente: true },
         select: {
           id: true,
           trabajadorId: true,
@@ -1095,10 +1099,28 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
           archivoUrl: true,
           firmadoPor: true,
           firmadoEn: true,
+          esVigente: true,
+          versionNumero: true,
+          origen: true,
+          reemplazadoPorId: true,
         },
         orderBy: [{ createdAt: "desc" }],
       })
     : [];
+
+  // Contar versiones históricas por trabajadorId+tipo para mostrar el badge "Historial N versiones"
+  const versionCountRows = workerIds.length
+    ? await prisma.trabajadorDocumento.groupBy({
+        by: ["trabajadorId", "tipo"],
+        where: { empresaId, trabajadorId: { in: workerIds } },
+        _count: { id: true },
+      })
+    : [];
+
+  const versionCountMap = new Map<string, number>();
+  for (const row of versionCountRows) {
+    versionCountMap.set(`${row.trabajadorId}::${row.tipo}`, row._count.id);
+  }
 
   const tipos = tiposRows.map((row) => ({
     id: row.id,
@@ -1136,6 +1158,8 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
         return null;
       }
 
+      const totalVersiones = versionCountMap.get(`${row.trabajadorId}::${row.tipo}`) ?? 1;
+
       return {
         id: row.id,
         workerId: row.trabajadorId,
@@ -1150,6 +1174,11 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
         archivoUrl: row.archivoUrl ?? undefined,
         firmadoPor: row.firmadoPor ?? undefined,
         firmadoEn: row.firmadoEn ? row.firmadoEn.toISOString() : undefined,
+        esVigente: row.esVigente,
+        versionNumero: row.versionNumero,
+        origen: (row.origen as "ia" | "manual" | "sistema") ?? "manual",
+        reemplazadoPorId: row.reemplazadoPorId ?? undefined,
+        totalVersiones,
       } satisfies DocumentoTrabajador;
     })
     .filter(Boolean) as DocumentoTrabajador[];
@@ -1392,6 +1421,109 @@ export async function getHistorialDocumentoTrabajador(
   }));
 }
 
+// ─── Versionado: tipos y acciones ────────────────────────────────────────────
+
+export type VersionDocumentoView = {
+  id: string;
+  versionNumero: number;
+  esVigente: boolean;
+  estado: string;
+  origen: string;
+  fechaCarga: string;
+  fechaVencimiento: string | null;
+  cargadoPor: string | null;
+  motivoReemplazo: string | null;
+  observacion: string | null;
+  archivoNombre: string | null;
+  archivoNombreOriginal: string | null;
+  archivoUrl: string | null;
+  firmadoPor: string | null;
+  firmadoEn: string | null;
+  historial: HistorialEntryView[];
+};
+
+/**
+ * Devuelve todas las versiones (vigente + históricas) de un tipo de documento
+ * para un trabajador específico, ordenadas de la más reciente a la más antigua.
+ */
+export async function getVersionesTrabajadorDocumento(
+  trabajadorId: string,
+  tipoDocumentoCodigo: string,
+): Promise<VersionDocumentoView[]> {
+  const { empresaId } = await requirePermission("canReadTrabajadores");
+
+  const rows = await prisma.trabajadorDocumento.findMany({
+    where: { trabajadorId, empresaId, tipo: tipoDocumentoCodigo },
+    orderBy: [{ versionNumero: "desc" }],
+    select: {
+      id: true,
+      versionNumero: true,
+      esVigente: true,
+      estado: true,
+      origen: true,
+      createdAt: true,
+      fechaVencimiento: true,
+      creadoPorEmail: true,
+      motivoReemplazo: true,
+      observaciones: true,
+      archivoNombre: true,
+      archivoNombreOriginal: true,
+      archivoUrl: true,
+      firmadoPor: true,
+      firmadoEn: true,
+      historial: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          accion: true,
+          detalle: true,
+          version: true,
+          origen: true,
+          archivoNombre: true,
+          archivoNombreOriginal: true,
+          archivoUrl: true,
+          archivoTipo: true,
+          archivoPeso: true,
+          createdAt: true,
+          usuario: { select: { nombre: true, email: true } },
+        },
+      },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    versionNumero: row.versionNumero,
+    esVigente: row.esVigente,
+    estado: mapDocEstado(row.estado),
+    origen: row.origen ?? "manual",
+    fechaCarga: row.createdAt.toISOString().slice(0, 10),
+    fechaVencimiento: row.fechaVencimiento ? row.fechaVencimiento.toISOString().slice(0, 10) : null,
+    cargadoPor: row.creadoPorEmail ?? null,
+    motivoReemplazo: row.motivoReemplazo ?? null,
+    observacion: row.observaciones ?? null,
+    archivoNombre: row.archivoNombre ?? null,
+    archivoNombreOriginal: row.archivoNombreOriginal ?? null,
+    archivoUrl: row.archivoUrl ?? null,
+    firmadoPor: row.firmadoPor ?? null,
+    firmadoEn: row.firmadoEn ? row.firmadoEn.toISOString() : null,
+    historial: row.historial.map((e) => ({
+      id: e.id,
+      accion: e.accion,
+      detalle: e.detalle,
+      version: e.version,
+      archivoNombre: e.archivoNombre,
+      archivoNombreOriginal: e.archivoNombreOriginal,
+      archivoUrl: e.archivoUrl,
+      archivoTipo: e.archivoTipo,
+      archivoPeso: e.archivoPeso,
+      usuarioNombre: e.usuario?.nombre ?? null,
+      usuarioEmail: e.usuario?.email ?? null,
+      createdAt: e.createdAt.toISOString(),
+    })),
+  }));
+}
+
 export async function createTrabajadorDocumento(
   data: CreateTrabajadorDocumentoInput,
 ): Promise<{ id: string }> {
@@ -1404,60 +1536,84 @@ export async function createTrabajadorDocumento(
     data.tipoDocumentoId,
   );
 
-  const exists = await prisma.trabajadorDocumento.findUnique({
+  // Buscar documento vigente previo para el mismo trabajador+tipo
+  const vigente = await prisma.trabajadorDocumento.findFirst({
     where: {
-      trabajadorId_tipo: {
-        trabajadorId: data.trabajadorId,
-        tipo: tipoDocumento.codigo,
-      },
-    },
-    select: { id: true },
-  });
-
-  if (exists) {
-    throw new Error("Ya existe un documento de este tipo para el trabajador");
-  }
-
-  const created = await prisma.trabajadorDocumento.create({
-    data: {
       trabajadorId: data.trabajadorId,
-      empresaId,
-      nombre: tipoDocumento.nombre,
       tipo: tipoDocumento.codigo,
-      categoria: "trabajador",
-      estado,
-      version: "1.0",
-      archivoNombre: data.archivoNombre?.trim() || null,
-      archivoNombreOriginal: data.archivoNombreOriginal?.trim() || null,
-      // TODO(Fase 15.8): persistir archivoUrl real cuando se implemente storage de archivos.
-      archivoUrl: null,
-      archivoTipo: data.archivoTipo?.trim() || null,
-      archivoPeso: data.archivoPeso ?? null,
-      tieneVencimiento: tipoDocumento.requiereVencimiento,
-      fechaEmision: parseOptionalDate(data.fechaEmision) ?? null,
-      fechaVencimiento: parseOptionalDate(data.fechaVencimiento) ?? null,
-      observaciones: data.observaciones?.trim() || null,
-      subidoPorId: usuarioId,
-      creadoPorEmail: data.cargadoPor?.trim() || email,
+      esVigente: true,
     },
-    select: { id: true, version: true },
+    select: { id: true, versionNumero: true, observaciones: true },
   });
 
-  await prisma.trabajadorDocumentoHistorial.create({
-    data: {
-      documentoId: created.id,
-      usuarioId,
-      accion: "DOCUMENTO_CREADO",
-      detalle: `Documento creado con estado ${estado}`,
-      version: created.version,
-      archivoNombre: data.archivoNombre?.trim() || null,
-      archivoNombreOriginal: data.archivoNombreOriginal?.trim() || null,
-      archivoTipo: data.archivoTipo?.trim() || null,
-      archivoPeso: data.archivoPeso ?? null,
-    },
-  });
+  const nuevaVersion = (vigente?.versionNumero ?? 0) + 1;
 
-  return { id: created.id };
+  return prisma.$transaction(async (tx) => {
+    // Archivar versión vigente si existe
+    if (vigente) {
+      await tx.trabajadorDocumento.update({
+        where: { id: vigente.id },
+        data: { esVigente: false, motivoReemplazo: data.motivoReemplazo?.trim() || "Reemplazado por nueva versión" },
+      });
+      await tx.trabajadorDocumentoHistorial.create({
+        data: {
+          documentoId: vigente.id,
+          usuarioId,
+          accion: "DOCUMENTO_ARCHIVADO",
+          detalle: `Versión ${vigente.versionNumero ?? 1} archivada — reemplazada por versión ${nuevaVersion}`,
+          version: String(vigente.versionNumero ?? 1),
+          contenidoSnapshot: vigente.observaciones,
+          origen: "sistema",
+        },
+      });
+    }
+
+    const created = await tx.trabajadorDocumento.create({
+      data: {
+        trabajadorId: data.trabajadorId,
+        empresaId,
+        nombre: tipoDocumento.nombre,
+        tipo: tipoDocumento.codigo,
+        categoria: "trabajador",
+        estado,
+        version: `${nuevaVersion}.0`,
+        esVigente: true,
+        versionNumero: nuevaVersion,
+        origen: "manual",
+        archivoNombre: data.archivoNombre?.trim() || null,
+        archivoNombreOriginal: data.archivoNombreOriginal?.trim() || null,
+        archivoUrl: null,
+        archivoTipo: data.archivoTipo?.trim() || null,
+        archivoPeso: data.archivoPeso ?? null,
+        tieneVencimiento: tipoDocumento.requiereVencimiento,
+        fechaEmision: parseOptionalDate(data.fechaEmision) ?? null,
+        fechaVencimiento: parseOptionalDate(data.fechaVencimiento) ?? null,
+        observaciones: data.observaciones?.trim() || null,
+        subidoPorId: usuarioId,
+        creadoPorEmail: data.cargadoPor?.trim() || email,
+      },
+      select: { id: true, version: true },
+    });
+
+    await tx.trabajadorDocumentoHistorial.create({
+      data: {
+        documentoId: created.id,
+        usuarioId,
+        accion: vigente ? "DOCUMENTO_REEMPLAZADO" : "DOCUMENTO_CREADO",
+        detalle: vigente
+          ? `Documento reemplazado por nueva carga manual (versión ${nuevaVersion})`
+          : `Documento creado con estado ${estado}`,
+        version: created.version,
+        origen: "manual",
+        archivoNombre: data.archivoNombre?.trim() || null,
+        archivoNombreOriginal: data.archivoNombreOriginal?.trim() || null,
+        archivoTipo: data.archivoTipo?.trim() || null,
+        archivoPeso: data.archivoPeso ?? null,
+      },
+    });
+
+    return { id: created.id };
+  });
 }
 
 /**
@@ -1516,80 +1672,222 @@ export async function generarContenidoIATrabajadorDocumento(
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
 
   if (documentoId) {
-    // Actualizar documento existente con contenido placeholder
     const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
     await validateDocumentoReferencesInEmpresa(empresaId, documento);
 
-    // Actualizar contenido e ir a en_revision
+    // Si el documento ya tiene contenido real (no es placeholder/pendiente inicial),
+    // verificar si debe crear nueva versión o actualizar en lugar
+    const docActual = await prisma.trabajadorDocumento.findUnique({
+      where: { id: documento.id },
+      select: {
+        id: true,
+        version: true,
+        versionNumero: true,
+        observaciones: true,
+        estado: true,
+        esVigente: true,
+        origen: true,
+      },
+    });
+
+    if (!docActual) throw new Error("Documento no encontrado");
+
+    const tieneContenidoReal = Boolean(
+      docActual.observaciones && docActual.observaciones.trim().length > 50,
+    );
+    const estadoActual = docActual.estado ?? "";
+    const esEstadoFinal = ["validado", "enviado_firma", "firmado"].includes(estadoActual);
+
+    if (tieneContenidoReal && esEstadoFinal) {
+      // Crear nueva versión IA — documento previo queda archivado
+      const nuevaVersion = (docActual.versionNumero ?? 1) + 1;
+
+      return prisma.$transaction(async (tx) => {
+        await tx.trabajadorDocumento.update({
+          where: { id: docActual.id },
+          data: {
+            esVigente: false,
+            motivoReemplazo: "Nueva versión generada con IA",
+          },
+        });
+        await tx.trabajadorDocumentoHistorial.create({
+          data: {
+            documentoId: docActual.id,
+            usuarioId,
+            accion: "DOCUMENTO_ARCHIVADO",
+            detalle: `Versión ${docActual.versionNumero ?? 1} archivada — nueva versión IA creada`,
+            version: docActual.version,
+            contenidoSnapshot: docActual.observaciones,
+            origen: "sistema",
+          },
+        });
+
+        const newDoc = await tx.trabajadorDocumento.create({
+          data: {
+            trabajadorId: documento.trabajadorId,
+            empresaId,
+            nombre: documento.nombre,
+            tipo: documento.tipo,
+            categoria: "trabajador",
+            estado: "en_revision",
+            version: `${nuevaVersion}.0`,
+            esVigente: true,
+            versionNumero: nuevaVersion,
+            origen: "ia",
+            observaciones: generatedContent.trim() || null,
+            subidoPorId: usuarioId,
+            tieneVencimiento: false,
+          },
+          select: { id: true, version: true },
+        });
+
+        await tx.trabajadorDocumentoHistorial.create({
+          data: {
+            documentoId: newDoc.id,
+            usuarioId,
+            accion: "CONTENIDO_GENERADO_IA",
+            detalle: `Nueva versión ${nuevaVersion} generada con IA`,
+            version: newDoc.version,
+            contenidoSnapshot: generatedContent.trim() || null,
+            origen: "ia",
+          },
+        });
+
+        return { id: newDoc.id };
+      });
+    }
+
+    // Actualizar en lugar (doc en borrador o primera generación)
     const updated = await prisma.trabajadorDocumento.update({
       where: { id: documento.id },
       data: {
         observaciones: generatedContent.trim() || null,
         estado: "en_revision",
+        origen: "ia",
         subidoPorId: usuarioId,
       },
-      select: { id: true, version: true },
+      select: { id: true, version: true, versionNumero: true },
     });
 
-    // Registrar historial de generación
     await prisma.trabajadorDocumentoHistorial.create({
       data: {
         documentoId: updated.id,
         usuarioId,
-        accion: "CONTENIDO_EDITADO",
-        detalle: "Contenido generado automáticamente con IA",
+        accion: "CONTENIDO_GENERADO_IA",
+        detalle: `Contenido generado/actualizado con IA (versión ${updated.versionNumero ?? 1})`,
         version: updated.version,
-      },
-    });
-
-    // Registrar cambio de estado
-    await prisma.trabajadorDocumentoHistorial.create({
-      data: {
-        documentoId: updated.id,
-        usuarioId,
-        accion: "ESTADO_ACTUALIZADO",
-        detalle: `Estado pendiente -> en_revision (generación IA)`,
-        version: updated.version,
+        contenidoSnapshot: generatedContent.trim() || null,
+        origen: "ia",
       },
     });
 
     return { id: updated.id };
   }
 
-  // Crear nuevo documento
+  // Crear nuevo documento con contenido IA
   if (!trabajadorId || !tipoDocumentoId) {
     throw new Error(
       "Para crear nuevo documento se requieren trabajadorId y tipoDocumentoId",
     );
   }
 
-  const created = await createTrabajadorDocumento({
-    trabajadorId,
-    tipoDocumentoId,
-    estado: "en_revision",
-    observaciones: generatedContent,
+  const { tipoDocumento: tipo } = await getTrabajadorAndTipoInEmpresa(empresaId, trabajadorId, tipoDocumentoId);
+
+  // Verificar si ya existe vigente para este tipo
+  const vigenteExistente = await prisma.trabajadorDocumento.findFirst({
+    where: { trabajadorId, tipo: tipo.codigo, esVigente: true },
+    select: { id: true, versionNumero: true, observaciones: true, version: true },
   });
 
-  const createdDoc = await prisma.trabajadorDocumento.findUnique({
-    where: { id: created.id },
-    select: { id: true, version: true },
-  });
-
-  if (!createdDoc) {
-    throw new Error("No fue posible obtener el documento generado");
+  if (vigenteExistente) {
+    // Archivar vigente y crear nueva versión IA
+    const nuevaVersion = (vigenteExistente.versionNumero ?? 1) + 1;
+    return prisma.$transaction(async (tx) => {
+      await tx.trabajadorDocumento.update({
+        where: { id: vigenteExistente.id },
+        data: { esVigente: false, motivoReemplazo: "Nueva versión generada con IA" },
+      });
+      await tx.trabajadorDocumentoHistorial.create({
+        data: {
+          documentoId: vigenteExistente.id,
+          usuarioId,
+          accion: "DOCUMENTO_ARCHIVADO",
+          detalle: `Versión ${vigenteExistente.versionNumero ?? 1} archivada — nueva versión IA`,
+          version: vigenteExistente.version,
+          contenidoSnapshot: vigenteExistente.observaciones,
+          origen: "sistema",
+        },
+      });
+      const newDoc = await tx.trabajadorDocumento.create({
+        data: {
+          trabajadorId,
+          empresaId,
+          nombre: tipo.nombre,
+          tipo: tipo.codigo,
+          categoria: "trabajador",
+          estado: "en_revision",
+          version: `${nuevaVersion}.0`,
+          esVigente: true,
+          versionNumero: nuevaVersion,
+          origen: "ia",
+          observaciones: generatedContent,
+          subidoPorId: usuarioId,
+          tieneVencimiento: tipo.requiereVencimiento,
+        },
+        select: { id: true, version: true },
+      });
+      await tx.trabajadorDocumentoHistorial.create({
+        data: {
+          documentoId: newDoc.id,
+          usuarioId,
+          accion: "CONTENIDO_GENERADO_IA",
+          detalle: `Nueva versión ${nuevaVersion} generada con IA`,
+          version: newDoc.version,
+          contenidoSnapshot: generatedContent,
+          origen: "ia",
+        },
+      });
+      return { id: newDoc.id };
+    });
   }
 
-  await prisma.trabajadorDocumentoHistorial.create({
-    data: {
-      documentoId: createdDoc.id,
-      usuarioId,
-      accion: "CONTENIDO_EDITADO",
-      detalle: "Contenido generado automáticamente con IA",
-      version: createdDoc.version,
-    },
+  // Primer documento: crear directo con origen IA
+  const { email } = await requirePermission("canManageDocumentacion");
+  const created = await prisma.$transaction(async (tx) => {
+    const doc = await tx.trabajadorDocumento.create({
+      data: {
+        trabajadorId,
+        empresaId,
+        nombre: tipo.nombre,
+        tipo: tipo.codigo,
+        categoria: "trabajador",
+        estado: "en_revision",
+        version: "1.0",
+        esVigente: true,
+        versionNumero: 1,
+        origen: "ia",
+        observaciones: generatedContent,
+        subidoPorId: usuarioId,
+        creadoPorEmail: email,
+        tieneVencimiento: tipo.requiereVencimiento,
+      },
+      select: { id: true, version: true },
+    });
+    await tx.trabajadorDocumentoHistorial.create({
+      data: {
+        documentoId: doc.id,
+        usuarioId,
+        accion: "CONTENIDO_GENERADO_IA",
+        detalle: "Contenido generado automáticamente con IA (versión 1)",
+        version: doc.version,
+        contenidoSnapshot: generatedContent,
+        origen: "ia",
+      },
+    });
+    return doc;
   });
 
-  return { id: createdDoc.id };
+  return { id: created.id };
 }
 
 export async function generarCampoIATrabajadorDocumento(
