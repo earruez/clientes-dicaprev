@@ -177,12 +177,12 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900">{title}</h3>
+    <section className="overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-sm">
+      <div className="mb-3 flex items-center justify-between gap-2 bg-gradient-to-r from-blue-700 to-blue-600 px-4 py-2.5">
+        <h3 className="text-[12px] font-bold uppercase tracking-[0.08em] text-white">{title}</h3>
         {action}
       </div>
-      {children}
+      <div className="p-4">{children}</div>
     </section>
   );
 }
@@ -253,7 +253,7 @@ function EppTableEditor({
         <table className="min-w-[900px] w-full border-collapse text-left text-sm">
           <thead>
             <tr className="bg-slate-100 text-[11px] uppercase tracking-[0.08em] text-slate-600">
-              <th className="border border-slate-200 px-3 py-2">Descripción</th>
+              <th className="border border-slate-200 px-3 py-2">Descripción artículo</th>
               <th className="border border-slate-200 px-3 py-2">Marca</th>
               <th className="border border-slate-200 px-3 py-2">Modelo</th>
               <th className="border border-slate-200 px-3 py-2">Color/Talla</th>
@@ -496,7 +496,7 @@ export function DocumentoReviewDrawer({
     const c = data.campos;
     return (
       <div className="space-y-4">
-        <SectionCard title="Encabezado" action={renderSectionIABtn("encabezado")}>
+        <SectionCard title="Identificación y tipo de inducción" action={renderSectionIABtn("encabezado")}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field label="Empresa" value={c.empresa_nombre} onChange={(value) => actualizarCampoIrl("empresa_nombre", value)} disabled={isReadOnly} />
             <Field label="Código documento" value={c.codigo_documento} onChange={(value) => actualizarCampoIrl("codigo_documento", value)} disabled={isReadOnly} />
@@ -515,7 +515,7 @@ export function DocumentoReviewDrawer({
           </div>
         </SectionCard>
 
-        <SectionCard title="Lugar y condiciones" action={renderSectionIABtn("lugar_trabajo")}>
+        <SectionCard title="Características del lugar de trabajo" action={renderSectionIABtn("lugar_trabajo")}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field label="Lugar de trabajo" value={c.lugar_trabajo} onChange={(value) => actualizarCampoIrl("lugar_trabajo", value)} disabled={isReadOnly} />
             <Field label="Espacio de trabajo" value={c.espacio_trabajo} rows={3} onChange={(value) => actualizarCampoIrl("espacio_trabajo", value)} disabled={isReadOnly} />
@@ -532,7 +532,7 @@ export function DocumentoReviewDrawer({
           <RiskTableEditor rows={c.riesgos_especificos_tabla} onChange={(next) => actualizarCampoIrl("riesgos_especificos_tabla", next)} disabled={isReadOnly} />
         </SectionCard>
 
-        <SectionCard title="Normativa y documentos" action={renderSectionIABtn("normativa")}>
+        <SectionCard title="Normas, protocolos y documentos asociados" action={renderSectionIABtn("normativa")}>
           <div className="space-y-3">
             <Field label="Normas generales" value={c.normas_generales} rows={4} onChange={(value) => actualizarCampoIrl("normas_generales", value)} disabled={isReadOnly} />
             <Field label="Protocolos MINSAL" value={c.protocolos_minsal} rows={4} onChange={(value) => actualizarCampoIrl("protocolos_minsal", value)} disabled={isReadOnly} />

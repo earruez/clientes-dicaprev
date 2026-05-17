@@ -46,6 +46,9 @@ export interface DocumentoTrabajador {
   fechaVencimiento?: string;
   cargadoPor?: string;
   observacion?: string;
+  archivoNombre?: string;
+  archivoNombreOriginal?: string;
+  archivoUrl?: string;
   firmadoPor?: string;
   firmadoEn?: string;
 }
@@ -59,6 +62,9 @@ export interface DocTrabajadorView {
   diasParaVencer?: number;
   cargadoPor?: string;
   observacion?: string;
+  archivoNombre?: string;
+  archivoNombreOriginal?: string;
+  archivoUrl?: string;
   firmadoPor?: string;
   firmadoEn?: string;
 }
@@ -270,6 +276,9 @@ export function getWorkerDocs(
         diasParaVencer,
         cargadoPor:  up?.cargadoPor,
         observacion: up?.observacion,
+        archivoNombre: up?.archivoNombre,
+        archivoNombreOriginal: up?.archivoNombreOriginal,
+        archivoUrl: up?.archivoUrl,
         firmadoPor: up?.firmadoPor,
         firmadoEn: up?.firmadoEn,
       } satisfies DocTrabajadorView;

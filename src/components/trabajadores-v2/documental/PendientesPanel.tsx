@@ -22,7 +22,6 @@ import {
   ShieldAlert,
   Users,
   Sparkles,
-  PenLine,
 } from "lucide-react";
 import { puedeGenerarseConIA, esContenidoPlaceholder } from "@/lib/documentacion/ia-generacion-helper";
 import {
@@ -42,8 +41,10 @@ import {
   firmarTrabajadorDocumento,
   generarContenidoIATrabajadorDocumento,
   getHistorialDocumentoTrabajador,
+  getEmpresaDocumentoMeta,
   validarTrabajadorDocumento,
   type EstadoDocumentoTrabajadorInput,
+  type EmpresaDocumentoMeta,
   type HistorialEntryView,
 } from "@/actions/trabajadores/documentos";
 import {
@@ -60,6 +61,7 @@ import {
   getPlantilla,
   normalizarNombreDocumentoDisplay,
 } from "@/lib/documentacion/plantillas-documento";
+import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
 import { PorVencimientosView } from "./PorVencimientosView";
@@ -106,6 +108,42 @@ export function PendientesPanel({
   }
 
   const [generandoDocId, setGenerandoDocId] = useState<string | null>(null);
+  const [descargandoDocId, setDescargandoDocId] = useState<string | null>(null);
+  const [empresaMeta, setEmpresaMeta] = useState<EmpresaDocumentoMeta | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+    getEmpresaDocumentoMeta()
+      .then((meta) => {
+        if (isActive) setEmpresaMeta(meta);
+      })
+      .catch(() => {
+        if (isActive) setEmpresaMeta(null);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  async function handleDescargarPdf(doc: import("./types").DocTrabajadorView, worker: Worker) {
+    const id = doc.documentoId ?? `${worker.id}-${doc.tipo.id}`;
+    try {
+      setDescargandoDocId(id);
+      await exportTrabajadorDocumentoPdf({
+        documento: doc,
+        trabajador: worker,
+        contenido: doc.observacion ?? "",
+        estado: doc.estado,
+        firmadoPor: doc.firmadoPor,
+        firmadoEn: doc.firmadoEn,
+        empresa: empresaMeta,
+      });
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+    } finally {
+      setDescargandoDocId(null);
+    }
+  }
 
   async function handleGenerarConIA(doc: import("./types").DocTrabajadorView, worker: Worker) {
     try {
@@ -1014,7 +1052,33 @@ export function PendientesPanel({
                             .map((doc) => {
                               const catCfg    = CATEGORIA_CONFIG[doc.tipo.categoria];
                               const estCfg    = ESTADO_DOC_CONFIG[doc.estado];
-                              const needsAction = doc.estado === "vencido" || doc.estado === "pendiente" || doc.estado === "rechazado";
+                              const isAutomatizable = puedeGenerarseConIA(doc.tipo);
+                              const hasStructuredIaContent = !!doc.observacion?.trim() && !esContenidoPlaceholder(doc.observacion);
+                              const hasUploadedFile = Boolean(doc.archivoUrl || doc.archivoNombre || doc.archivoNombreOriginal);
+                              const hasAnyRecord = Boolean(doc.documentoId);
+                              const hasCarga = Boolean(doc.fechaCarga || doc.cargadoPor || hasUploadedFile);
+                              const isSigned = doc.estado === "firmado";
+                              const origen = hasStructuredIaContent && isAutomatizable
+                                ? "IA"
+                                : hasCarga
+                                  ? "Subido"
+                                  : "Pendiente";
+                              const puedeRevisarIa = isAutomatizable && (
+                                hasStructuredIaContent ||
+                                doc.estado === "en_revision" ||
+                                doc.estado === "validado" ||
+                                doc.estado === "enviado_firma" ||
+                                doc.estado === "firmado" ||
+                                doc.estado === "rechazado"
+                              );
+                              const puedeGenerarIa = isAutomatizable && (
+                                !hasStructuredIaContent ||
+                                doc.estado === "pendiente" ||
+                                doc.estado === "rechazado" ||
+                                doc.estado === "vencido"
+                              );
+                              const puedeDescargarPdf = Boolean(doc.observacion?.trim()) && ["en_revision", "validado", "enviado_firma", "firmado"].includes(doc.estado);
+                              const uploadMode: "subir" | "reenviar" = hasAnyRecord ? "reenviar" : "subir";
                               const cardBg =
                                 doc.estado === "vencido"     ? "border-red-200 bg-red-50"
                                 : doc.estado === "rechazado" ? "border-rose-200 bg-rose-50"
@@ -1060,6 +1124,18 @@ export function PendientesPanel({
                                     </p>
                                   )}
 
+                                  <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-700">
+                                      Origen: {origen}
+                                    </span>
+                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-700">
+                                      Fecha: {doc.fechaCarga ? formatDate(doc.fechaCarga) : "-"}
+                                    </span>
+                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-700">
+                                      Responsable: {doc.cargadoPor ?? "-"}
+                                    </span>
+                                  </div>
+
                                   {/* Row 3: vencimiento */}
                                   {doc.fechaVencimiento && doc.diasParaVencer !== undefined && (
                                     <p className={`text-[11px] font-medium ${doc.diasParaVencer < 0 ? "text-red-600" : doc.diasParaVencer <= 30 ? "text-amber-600" : "text-slate-400"}`}>
@@ -1069,42 +1145,29 @@ export function PendientesPanel({
                                     </p>
                                   )}
 
-                                  {/* Row 4: observación */}
-                                  {doc.observacion && (
-                                    <p className="rounded-lg bg-white/70 px-2.5 py-1.5 text-[11px] italic text-slate-600">
-                                      &quot;{doc.observacion}&quot;
-                                    </p>
-                                  )}
-
-                                  {/* Row 5: actions */}
+                                  {/* Row 4: actions */}
                                   <div className="mt-0.5 flex flex-wrap gap-1.5">
-                                    {/* Upload/reenviar — solo para docs no automatizables con IA */}
-                                    {needsAction && !puedeGenerarseConIA(doc.tipo) && (
+                                    {/* Siempre permitir subida/reemplazo (excepto firmados) */}
+                                    {!isSigned && (
                                       <button
                                         onClick={() =>
                                           openUpload({
                                             documentoId:           doc.documentoId,
                                             workerId:              worker.id,
                                             tipoDocumentoId:       doc.tipo.id,
-                                            mode:                  doc.estado === "rechazado" ? "reenviar" : "subir",
+                                            mode:                  uploadMode,
                                             rejectionObservation:  doc.estado === "rechazado" ? doc.observacion : undefined,
                                           })
                                         }
-                                        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold text-white transition ${
-                                          doc.estado === "rechazado"
-                                            ? "bg-rose-600 hover:bg-rose-700"
-                                            : "bg-amber-600 hover:bg-amber-700"
-                                        }`}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-amber-700"
                                       >
                                         <UploadCloud className="h-2.5 w-2.5" />
-                                        {doc.estado === "rechazado" ? "Reenviar" : "Subir"}
+                                        {hasAnyRecord || hasCarga || hasStructuredIaContent ? "Subir/Reemplazar" : "Subir documento"}
                                       </button>
                                     )}
 
-                                    {/* Generar con IA — si contenido vacío o es solo placeholder */}
-                                    {needsAction && puedeGenerarseConIA(doc.tipo) && (
-                                      !doc.observacion?.trim() || esContenidoPlaceholder(doc.observacion)
-                                    ) && (
+                                    {/* IA siempre disponible en automatizables cuando falta contenido real */}
+                                    {puedeGenerarIa && !isSigned && (
                                       <button
                                         onClick={() => handleGenerarConIA(doc, worker)}
                                         disabled={generandoDocId === doc.tipo.id}
@@ -1124,14 +1187,8 @@ export function PendientesPanel({
                                       </button>
                                     )}
 
-                                    {/* Revisar — IA con contenido REAL o en estados del flujo */}
-                                    {puedeGenerarseConIA(doc.tipo) && (
-                                      (!!doc.observacion?.trim() && !esContenidoPlaceholder(doc.observacion)) ||
-                                      doc.estado === "en_revision" ||
-                                      doc.estado === "validado" ||
-                                      doc.estado === "enviado_firma" ||
-                                      doc.estado === "firmado"
-                                    ) && doc.estado !== "rechazado" && (
+                                    {/* Revisar: solo para automatizables dentro del drawer estructurado */}
+                                    {puedeRevisarIa && (
                                       <button
                                         onClick={() => openReview({ doc, worker })}
                                         className="inline-flex items-center gap-1 rounded-lg bg-violet-100 px-2.5 py-1 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200 transition hover:bg-violet-200"
@@ -1141,35 +1198,32 @@ export function PendientesPanel({
                                       </button>
                                     )}
 
-                                    {/* Rechazado — acción de corrección */}
-                                    {doc.estado === "rechazado" && doc.documentoId && (
-                                      <button
-                                        onClick={() => openReview({ doc, worker })}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200 transition hover:bg-amber-200"
+                                    {/* No automatizable: ver archivo solo si hay URL persistida */}
+                                    {!isAutomatizable && doc.archivoUrl && (
+                                      <a
+                                        href={doc.archivoUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-200"
                                       >
-                                        <PenLine className="h-2.5 w-2.5" />
-                                        Corregir
-                                      </button>
+                                        <ExternalLink className="h-2.5 w-2.5" />
+                                        Ver archivo
+                                      </a>
                                     )}
 
-                                    {/* Rechazado generable — regeneración IA */}
-                                    {doc.estado === "rechazado" && doc.documentoId && puedeGenerarseConIA(doc.tipo) && (
+                                    {/* PDF desde campos estructurados */}
+                                    {puedeDescargarPdf && (
                                       <button
-                                        onClick={() => handleGenerarConIA(doc, worker)}
-                                        disabled={generandoDocId === doc.tipo.id}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        onClick={() => handleDescargarPdf(doc, worker)}
+                                        disabled={descargandoDocId === (doc.documentoId ?? `${worker.id}-${doc.tipo.id}`)}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
                                       >
-                                        {generandoDocId === doc.tipo.id ? (
-                                          <>
-                                            <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                            Regenerando...
-                                          </>
+                                        {descargandoDocId === (doc.documentoId ?? `${worker.id}-${doc.tipo.id}`) ? (
+                                          <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
                                         ) : (
-                                          <>
-                                            <Sparkles className="h-2.5 w-2.5" />
-                                            Regenerar con IA
-                                          </>
+                                          <Download className="h-2.5 w-2.5" />
                                         )}
+                                        Descargar PDF
                                       </button>
                                     )}
 
