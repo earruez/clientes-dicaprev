@@ -94,7 +94,7 @@ export const TIPO_CAPACITACIONES: TipoCapacitacion[] = [
   },
   {
     id: "cap-02",
-    nombre: "Obligación de Informar (ODI)",
+    nombre: "Información de Riesgos Laborales (IRL)",
     categoria: "DS44",
     requiereVigencia: false,
     vigenciaMeses: null,

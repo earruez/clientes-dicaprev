@@ -262,10 +262,21 @@ export type AnaliticaActivacionEmpresa = {
   totalUsuarios: number;
   porcentajeActivacionCompleta: number;
   tiempoPromedioActivacionMinutos: number;
+  conversionEntreEtapas: {
+    inicioAGeneracion: number;
+    generacionAFirma: number;
+    firmaACompletado: number;
+  };
+  tiempoPromedioPorEtapaMinutos: {
+    inicioAGeneracion: number;
+    generacionAFirma: number;
+    firmaACompletado: number;
+  };
   pasosDondeSeDetienen: Array<{
     paso: Exclude<PasoFunnelActivacion, "completado">;
     usuarios: number;
     porcentajeSobreInicio: number;
+    porcentajeSobreEtapa: number;
   }>;
   funnel: Record<PasoFunnelActivacion, number>;
 };
@@ -322,6 +333,7 @@ export async function guardarEstadoActivacionEmpresa(input: {
         ? await tx.activacionEvento.findFirst({
             where: {
               empresaId: context.empresaId,
+              usuarioId: context.usuarioId,
               evento: input.evento,
             },
             select: { id: true },
@@ -367,44 +379,59 @@ export async function getAnaliticaActivacionEmpresa(): Promise<AnaliticaActivaci
         usuarioId: true,
         createdAt: true,
       },
+      orderBy: { createdAt: "asc" },
     }),
   ]);
+
+  const etapasPorUsuario = new Map<
+    string,
+    {
+      inicio?: Date;
+      generacion?: Date;
+      firma?: Date;
+      completado?: Date;
+    }
+  >();
+
+  for (const evento of eventos) {
+    if (!evento.usuarioId) continue;
+
+    const registro = etapasPorUsuario.get(evento.usuarioId) ?? {};
+
+    if (evento.evento === "activacion_inicio") {
+      if (!registro.inicio) registro.inicio = evento.createdAt;
+      etapasPorUsuario.set(evento.usuarioId, registro);
+      continue;
+    }
+
+    if (evento.evento === "activacion_generar_docs") {
+      if (!registro.generacion) registro.generacion = evento.createdAt;
+      etapasPorUsuario.set(evento.usuarioId, registro);
+      continue;
+    }
+
+    if (evento.evento === "activacion_firma") {
+      if (!registro.firma) registro.firma = evento.createdAt;
+      etapasPorUsuario.set(evento.usuarioId, registro);
+      continue;
+    }
+
+    if (evento.evento === "activacion_completa") {
+      if (!registro.completado) registro.completado = evento.createdAt;
+      etapasPorUsuario.set(evento.usuarioId, registro);
+    }
+  }
 
   const usuariosInicio = new Set<string>();
   const usuariosGeneracion = new Set<string>();
   const usuariosFirma = new Set<string>();
   const usuariosCompletado = new Set<string>();
 
-  const primerInicioPorUsuario = new Map<string, Date>();
-  const primeraCompletacionPorUsuario = new Map<string, Date>();
-
-  for (const evento of eventos) {
-    if (!evento.usuarioId) continue;
-
-    if (evento.evento === "activacion_inicio") {
-      usuariosInicio.add(evento.usuarioId);
-      if (!primerInicioPorUsuario.has(evento.usuarioId)) {
-        primerInicioPorUsuario.set(evento.usuarioId, evento.createdAt);
-      }
-      continue;
-    }
-
-    if (evento.evento === "activacion_generar_docs") {
-      usuariosGeneracion.add(evento.usuarioId);
-      continue;
-    }
-
-    if (evento.evento === "activacion_firma") {
-      usuariosFirma.add(evento.usuarioId);
-      continue;
-    }
-
-    if (evento.evento === "activacion_completa") {
-      usuariosCompletado.add(evento.usuarioId);
-      if (!primeraCompletacionPorUsuario.has(evento.usuarioId)) {
-        primeraCompletacionPorUsuario.set(evento.usuarioId, evento.createdAt);
-      }
-    }
+  for (const [usuarioId, etapas] of etapasPorUsuario) {
+    if (etapas.inicio) usuariosInicio.add(usuarioId);
+    if (etapas.generacion) usuariosGeneracion.add(usuarioId);
+    if (etapas.firma) usuariosFirma.add(usuarioId);
+    if (etapas.completado) usuariosCompletado.add(usuarioId);
   }
 
   const totalInicio = usuariosInicio.size;
@@ -416,18 +443,42 @@ export async function getAnaliticaActivacionEmpresa(): Promise<AnaliticaActivaci
     ? Number(((totalCompletado / totalUsuarios) * 100).toFixed(2))
     : 0;
 
-  const duracionesMinutos = Array.from(usuariosCompletado)
-    .map((usuarioId) => {
-      const inicio = primerInicioPorUsuario.get(usuarioId);
-      const completado = primeraCompletacionPorUsuario.get(usuarioId);
+  const obtenerPromedioMinutos = (valores: number[]) => {
+    if (valores.length === 0) return 0;
+    return Number((valores.reduce((sum, item) => sum + item, 0) / valores.length).toFixed(2));
+  };
+
+  const tiemposInicioAGeneracion = Array.from(etapasPorUsuario.values())
+    .map((etapas) => {
+      if (!etapas.inicio || !etapas.generacion) return null;
+      return Math.max(etapas.generacion.getTime() - etapas.inicio.getTime(), 0) / 60000;
+    })
+    .filter((item): item is number => item !== null);
+
+  const tiemposGeneracionAFirma = Array.from(etapasPorUsuario.values())
+    .map((etapas) => {
+      if (!etapas.generacion || !etapas.firma) return null;
+      return Math.max(etapas.firma.getTime() - etapas.generacion.getTime(), 0) / 60000;
+    })
+    .filter((item): item is number => item !== null);
+
+  const tiemposFirmaACompletado = Array.from(etapasPorUsuario.values())
+    .map((etapas) => {
+      if (!etapas.firma || !etapas.completado) return null;
+      return Math.max(etapas.completado.getTime() - etapas.firma.getTime(), 0) / 60000;
+    })
+    .filter((item): item is number => item !== null);
+
+  const duracionesMinutos = Array.from(etapasPorUsuario.values())
+    .map((etapas) => {
+      const inicio = etapas.inicio;
+      const completado = etapas.completado;
       if (!inicio || !completado) return null;
       return Math.max(completado.getTime() - inicio.getTime(), 0) / 60000;
     })
     .filter((item): item is number => item !== null);
 
-  const tiempoPromedioActivacionMinutos = duracionesMinutos.length > 0
-    ? Number((duracionesMinutos.reduce((sum, item) => sum + item, 0) / duracionesMinutos.length).toFixed(2))
-    : 0;
+  const tiempoPromedioActivacionMinutos = obtenerPromedioMinutos(duracionesMinutos);
 
   const abandonoEnInicio = Math.max(totalInicio - totalGeneracion, 0);
   const abandonoEnGeneracion = Math.max(totalGeneracion - totalFirma, 0);
@@ -438,25 +489,48 @@ export async function getAnaliticaActivacionEmpresa(): Promise<AnaliticaActivaci
     return Number(((usuarios / totalInicio) * 100).toFixed(2));
   };
 
+  const porcentajeSobreEtapa = (usuarios: number, totalEtapa: number) => {
+    if (totalEtapa === 0) return 0;
+    return Number(((usuarios / totalEtapa) * 100).toFixed(2));
+  };
+
+  const conversion = (siguiente: number, actual: number) => {
+    if (actual === 0) return 0;
+    return Number(((siguiente / actual) * 100).toFixed(2));
+  };
+
   return {
     totalUsuarios,
     porcentajeActivacionCompleta,
     tiempoPromedioActivacionMinutos,
+    conversionEntreEtapas: {
+      inicioAGeneracion: conversion(totalGeneracion, totalInicio),
+      generacionAFirma: conversion(totalFirma, totalGeneracion),
+      firmaACompletado: conversion(totalCompletado, totalFirma),
+    },
+    tiempoPromedioPorEtapaMinutos: {
+      inicioAGeneracion: obtenerPromedioMinutos(tiemposInicioAGeneracion),
+      generacionAFirma: obtenerPromedioMinutos(tiemposGeneracionAFirma),
+      firmaACompletado: obtenerPromedioMinutos(tiemposFirmaACompletado),
+    },
     pasosDondeSeDetienen: [
       {
         paso: "inicio",
         usuarios: abandonoEnInicio,
         porcentajeSobreInicio: porcentajeSobreInicio(abandonoEnInicio),
+        porcentajeSobreEtapa: porcentajeSobreEtapa(abandonoEnInicio, totalInicio),
       },
       {
         paso: "generacion",
         usuarios: abandonoEnGeneracion,
         porcentajeSobreInicio: porcentajeSobreInicio(abandonoEnGeneracion),
+        porcentajeSobreEtapa: porcentajeSobreEtapa(abandonoEnGeneracion, totalGeneracion),
       },
       {
         paso: "firma",
         usuarios: abandonoEnFirma,
         porcentajeSobreInicio: porcentajeSobreInicio(abandonoEnFirma),
+        porcentajeSobreEtapa: porcentajeSobreEtapa(abandonoEnFirma, totalFirma),
       },
     ],
     funnel: {

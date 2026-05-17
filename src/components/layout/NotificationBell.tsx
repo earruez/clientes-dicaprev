@@ -54,7 +54,7 @@ export default function NotificationBell() {
             id: alerta.id,
             documento: alerta.documento,
             mensaje: alerta.mensaje,
-            href: "/dicaprev/empresa/resumen?tab=gobierno",
+            href: "/dicaprev/cumplimiento/resumen",
             prioridad: alerta.prioridad,
             leida: false,
           })),

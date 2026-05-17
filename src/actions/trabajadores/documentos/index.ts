@@ -2,6 +2,17 @@
 
 import { findDocumentoEmpresaCanonicoPorRequerido } from "@/lib/documentacion/documento-empresa-duplicados";
 import { cumpleCondicionesDocumento } from "@/lib/documentacion/cumplimiento-documento";
+import {
+  crearDocumentoEppEstructurado,
+  crearDocumentoIrlEstructurado,
+  parseDocumentoEstructurado,
+  serializarDocumentoEstructurado,
+  type DocumentoEppCampos,
+  type DocumentoEstructurado,
+  type DocumentoIrlCampos,
+  type EppItem,
+  type IrlRiesgoFila,
+} from "@/lib/documentacion/documento-estructurado";
 import { REGLAS_DOCUMENTALES, type ReglaDocumentalNextPrev } from "@/lib/documentacion/reglas-documentales";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
@@ -135,6 +146,303 @@ export type EvaluacionDocumentosPorEventoResult = {
   documentosTrabajadorGenerados: number;
   documentosEmpresaGenerados: number;
 };
+
+type ContextoGeneracionCampoIA = {
+  documentoId: string;
+  empresaNombre: string;
+  trabajadorNombre: string;
+  trabajadorRut: string;
+  cargo: string;
+  area: string;
+  riesgos: string[];
+  estructura: DocumentoEstructurado;
+};
+
+function plantillaDesdeTipoDocumento(tipo: string, nombre: string): "IRL" | "EPP" {
+  const source = `${tipo} ${nombre}`.toLowerCase();
+  if (source.includes("epp") || source.includes("entrega")) return "EPP";
+  return "IRL";
+}
+
+function detectarRiesgosContextuales(cargo: string, area: string): string[] {
+  const source = `${cargo} ${area}`.toLowerCase();
+  const riesgos: string[] = [];
+
+  if (source.includes("bodega") || source.includes("logist")) {
+    riesgos.push("Manipulación manual de cargas");
+  }
+  if (source.includes("obra") || source.includes("terreno") || source.includes("instal")) {
+    riesgos.push("Caídas a distinto nivel");
+  }
+  if (source.includes("sold") || source.includes("metal")) {
+    riesgos.push("Proyección de partículas");
+  }
+  if (source.includes("admin") || source.includes("oficina")) {
+    riesgos.push("Sobrecarga postural");
+  }
+  if (source.includes("elect")) {
+    riesgos.push("Contacto eléctrico");
+  }
+
+  if (!riesgos.length) {
+    riesgos.push("Golpes por objetos", "Sobreesfuerzo", "Caídas al mismo nivel");
+  }
+
+  return Array.from(new Set(riesgos));
+}
+
+function construirFilaRiesgoDesdeNombre(nombre: string): IrlRiesgoFila {
+  const riesgo = nombre.toLowerCase();
+  if (riesgo.includes("caida")) {
+    return {
+      peligro: nombre,
+      consecuencia: "Contusiones, esguinces o fracturas",
+      medida: "Uso de calzado de seguridad y control de superficies de tránsito",
+    };
+  }
+  if (riesgo.includes("elect")) {
+    return {
+      peligro: nombre,
+      consecuencia: "Quemaduras y lesiones graves",
+      medida: "Bloqueo y verificación de energías antes de intervenir equipos",
+    };
+  }
+  if (riesgo.includes("sobrecarga") || riesgo.includes("esfuerzo")) {
+    return {
+      peligro: nombre,
+      consecuencia: "Lesiones musculoesqueléticas",
+      medida: "Pausas activas, técnica de levantamiento y rediseño de tarea",
+    };
+  }
+  return {
+    peligro: nombre,
+    consecuencia: "Accidente laboral",
+    medida: "Aplicar procedimiento seguro y supervisión permanente",
+  };
+}
+
+function generarTablaRiesgosDesdeContexto(ctx: ContextoGeneracionCampoIA): IrlRiesgoFila[] {
+  return ctx.riesgos.map(construirFilaRiesgoDesdeNombre);
+}
+
+function generarTablaEppDesdeContexto(ctx: ContextoGeneracionCampoIA): EppItem[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const defaults = [
+    "Casco de seguridad",
+    "Lentes de seguridad",
+    "Guantes de protección",
+    "Zapatos de seguridad",
+  ];
+
+  const extra = ctx.riesgos.some((riesgo) => riesgo.toLowerCase().includes("elect"))
+    ? ["Guantes dieléctricos"]
+    : [];
+
+  return [...defaults, ...extra].map((descripcion) => ({
+    descripcion,
+    marca: "",
+    modelo: "",
+    color_talla: "",
+    fecha_entrega: today,
+    si: true,
+    no: false,
+    observaciones: "",
+  }));
+}
+
+function generarValorCampoIrl(campoId: keyof DocumentoIrlCampos, ctx: ContextoGeneracionCampoIA): DocumentoIrlCampos[keyof DocumentoIrlCampos] {
+  const workerFirstName = ctx.trabajadorNombre.split(" ")[0] ?? ctx.trabajadorNombre;
+  const today = new Date().toISOString().slice(0, 10);
+
+  switch (campoId) {
+    case "empresa_nombre":
+      return ctx.empresaNombre;
+    case "codigo_documento":
+      return "NEXTPREV TEMPLATE-01";
+    case "version":
+      return "1.0";
+    case "cargo":
+    case "trabajador_cargo":
+      return ctx.cargo;
+    case "anio":
+      return String(new Date().getFullYear());
+    case "tipo_induccion":
+      return "Información de Riesgos Laborales";
+    case "modalidad":
+      return "Presencial";
+    case "tipo_actividad":
+      return `Funciones de ${ctx.cargo || "cargo asignado"}`;
+    case "trabajador_nombre":
+      return ctx.trabajadorNombre;
+    case "trabajador_rut":
+      return ctx.trabajadorRut;
+    case "trabajador_area":
+      return ctx.area;
+    case "fecha":
+      return today;
+    case "telefono_emergencia":
+      return "";
+    case "lugar_trabajo":
+      return `Dependencias operativas de ${ctx.empresaNombre}`;
+    case "espacio_trabajo":
+      return "Zona de trabajo con desplazamiento frecuente, interacción con herramientas y tránsito de personal.";
+    case "condiciones_ambientales":
+      return "Condiciones variables de iluminación, ruido y temperatura según jornada y tarea.";
+    case "orden_aseo":
+      return "Mantener pasillos despejados, retiro de residuos y almacenamiento seguro de materiales.";
+    case "riesgos_generales_tabla":
+    case "riesgos_especificos_tabla":
+      return generarTablaRiesgosDesdeContexto(ctx);
+    case "normas_generales":
+      return "Cumplir procedimientos, usar EPP obligatorio y reportar incidentes o condiciones inseguras.";
+    case "protocolos_minsal":
+      return "Aplicar protocolos MINSAL vigentes según exposición (TMERT, MMC, Psicosocial, PREXOR, entre otros).";
+    case "documentos_asociados":
+      return "AST diario, PTS del cargo, matriz de riesgos, reglamento interno y registros de capacitación.";
+    case "declaracion":
+      return `Yo, ${ctx.trabajadorNombre}, declaro haber recibido y comprendido la información de riesgos laborales del cargo ${ctx.cargo}.`;
+    case "firma_trabajador":
+      return ctx.trabajadorNombre;
+    case "firma_relator":
+      return `Relator SST ${workerFirstName}`;
+    default:
+      return "";
+  }
+}
+
+function generarValorCampoEpp(campoId: keyof DocumentoEppCampos, ctx: ContextoGeneracionCampoIA): DocumentoEppCampos[keyof DocumentoEppCampos] {
+  const today = new Date().toISOString().slice(0, 10);
+
+  switch (campoId) {
+    case "trabajador_nombre":
+      return ctx.trabajadorNombre;
+    case "trabajador_rut":
+      return ctx.trabajadorRut;
+    case "area":
+      return ctx.area;
+    case "fecha":
+      return today;
+    case "epp_tabla":
+      return generarTablaEppDesdeContexto(ctx);
+    case "observaciones_generales":
+      return "Entrega realizada con instrucción de uso, cuidado, reposición y almacenamiento de los elementos.";
+    case "declaracion":
+      return "Declaro haber recibido los EPP en buen estado y conocer su uso obligatorio durante la jornada laboral.";
+    case "firma_trabajador":
+      return ctx.trabajadorNombre;
+    case "entregado_por":
+      return "Encargado SST";
+    default:
+      return "";
+  }
+}
+
+async function getContextoGeneracionCampoIA(
+  empresaId: string,
+  documentoId: string,
+): Promise<ContextoGeneracionCampoIA> {
+  const doc = await prisma.trabajadorDocumento.findFirst({
+    where: { id: documentoId, empresaId },
+    select: {
+      id: true,
+      tipo: true,
+      nombre: true,
+      observaciones: true,
+      trabajador: {
+        select: {
+          nombres: true,
+          apellidos: true,
+          rut: true,
+          cargo: { select: { nombre: true } },
+          area: { select: { nombre: true } },
+        },
+      },
+      empresa: {
+        select: { nombre: true, razonSocial: true },
+      },
+    },
+  });
+
+  if (!doc) {
+    throw new Error("Documento de trabajador no encontrado");
+  }
+
+  const trabajadorNombre = `${doc.trabajador?.nombres ?? ""} ${doc.trabajador?.apellidos ?? ""}`.trim() || "Trabajador";
+  const trabajadorRut = doc.trabajador?.rut ?? "";
+  const cargo = doc.trabajador?.cargo?.nombre ?? "";
+  const area = doc.trabajador?.area?.nombre ?? "";
+  const empresaNombre = doc.empresa?.razonSocial ?? doc.empresa?.nombre ?? "DICAPREV";
+
+  const estructuraActual = parseDocumentoEstructurado(doc.observaciones ?? "");
+  const plantilla = estructuraActual?.plantillaCodigo ?? plantillaDesdeTipoDocumento(doc.tipo, doc.nombre);
+  const estructura = estructuraActual ?? (
+    plantilla === "EPP"
+      ? crearDocumentoEppEstructurado({
+          tipoNombre: doc.nombre,
+          trabajadorNombre,
+          trabajadorRut,
+          cargo,
+          area,
+          empresa: empresaNombre,
+        })
+      : crearDocumentoIrlEstructurado({
+          tipoNombre: doc.nombre,
+          trabajadorNombre,
+          trabajadorRut,
+          cargo,
+          area,
+          empresa: empresaNombre,
+        })
+  );
+
+  const riesgos = detectarRiesgosContextuales(cargo, area);
+  return {
+    documentoId: doc.id,
+    empresaNombre,
+    trabajadorNombre,
+    trabajadorRut,
+    cargo,
+    area,
+    riesgos,
+    estructura,
+  };
+}
+
+function fieldsBySection(estructura: DocumentoEstructurado, seccionId: string): string[] {
+  if (estructura.plantillaCodigo === "IRL") {
+    const map: Record<string, Array<keyof DocumentoIrlCampos>> = {
+      encabezado: [
+        "empresa_nombre",
+        "codigo_documento",
+        "version",
+        "cargo",
+        "anio",
+        "tipo_induccion",
+        "modalidad",
+        "tipo_actividad",
+        "trabajador_nombre",
+        "trabajador_rut",
+        "trabajador_cargo",
+        "trabajador_area",
+        "fecha",
+        "telefono_emergencia",
+      ],
+      lugar_trabajo: ["lugar_trabajo", "espacio_trabajo", "condiciones_ambientales", "orden_aseo"],
+      riesgos_generales: ["riesgos_generales_tabla"],
+      riesgos_especificos: ["riesgos_especificos_tabla"],
+      normativa: ["normas_generales", "protocolos_minsal", "documentos_asociados"],
+      cierre: ["declaracion", "firma_trabajador", "firma_relator"],
+    };
+    return (map[seccionId] ?? []).map(String);
+  }
+
+  const map: Record<string, Array<keyof DocumentoEppCampos>> = {
+    encabezado: ["trabajador_nombre", "trabajador_rut", "area", "fecha"],
+    tabla_epp: ["epp_tabla"],
+    cierre: ["observaciones_generales", "declaracion", "firma_trabajador", "entregado_por"],
+  };
+  return (map[seccionId] ?? []).map(String);
+}
 
 function mapDocEstado(estado: string): DocEstado {
   const normalized = estado.toLowerCase();
@@ -1179,6 +1487,217 @@ export async function guardarContenidoIADocumento(
   });
 
   return { id: updated.id };
+}
+
+/**
+ * Genera contenido IA para un documento y persiste el contenido + cambio de estado.
+ * Usado cuando el usuario hace click en "Generar con IA":
+ * - Si el documento existe con placeholder, actualiza contenido y cambia estado a en_revision
+ * - Si el documento es nuevo, crea el documento con contenido real
+ *
+ * @param documentoId - ID del documento a generar (puede ser null para crear nuevo)
+ * @param generatedContent - Contenido generado por la plantilla IA
+ * @param trabajadorId - ID del trabajador (para crear nuevo documento)
+ * @param tipoDocumentoId - ID del tipo de documento (para crear nuevo)
+ * @returns ID del documento generado
+ */
+export async function generarContenidoIATrabajadorDocumento(
+  documentoId: string | null,
+  generatedContent: string,
+  trabajadorId?: string,
+  tipoDocumentoId?: string,
+): Promise<{ id: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+
+  if (documentoId) {
+    // Actualizar documento existente con contenido placeholder
+    const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
+    await validateDocumentoReferencesInEmpresa(empresaId, documento);
+
+    // Actualizar contenido e ir a en_revision
+    const updated = await prisma.trabajadorDocumento.update({
+      where: { id: documento.id },
+      data: {
+        observaciones: generatedContent.trim() || null,
+        estado: "en_revision",
+        subidoPorId: usuarioId,
+      },
+      select: { id: true, version: true },
+    });
+
+    // Registrar historial de generación
+    await prisma.trabajadorDocumentoHistorial.create({
+      data: {
+        documentoId: updated.id,
+        usuarioId,
+        accion: "CONTENIDO_EDITADO",
+        detalle: "Contenido generado automáticamente con IA",
+        version: updated.version,
+      },
+    });
+
+    // Registrar cambio de estado
+    await prisma.trabajadorDocumentoHistorial.create({
+      data: {
+        documentoId: updated.id,
+        usuarioId,
+        accion: "ESTADO_ACTUALIZADO",
+        detalle: `Estado pendiente -> en_revision (generación IA)`,
+        version: updated.version,
+      },
+    });
+
+    return { id: updated.id };
+  }
+
+  // Crear nuevo documento
+  if (!trabajadorId || !tipoDocumentoId) {
+    throw new Error(
+      "Para crear nuevo documento se requieren trabajadorId y tipoDocumentoId",
+    );
+  }
+
+  const created = await createTrabajadorDocumento({
+    trabajadorId,
+    tipoDocumentoId,
+    estado: "en_revision",
+    observaciones: generatedContent,
+  });
+
+  const createdDoc = await prisma.trabajadorDocumento.findUnique({
+    where: { id: created.id },
+    select: { id: true, version: true },
+  });
+
+  if (!createdDoc) {
+    throw new Error("No fue posible obtener el documento generado");
+  }
+
+  await prisma.trabajadorDocumentoHistorial.create({
+    data: {
+      documentoId: createdDoc.id,
+      usuarioId,
+      accion: "CONTENIDO_EDITADO",
+      detalle: "Contenido generado automáticamente con IA",
+      version: createdDoc.version,
+    },
+  });
+
+  return { id: createdDoc.id };
+}
+
+export async function generarCampoIATrabajadorDocumento(
+  documentoId: string,
+  campoId: string,
+): Promise<{ id: string; campoId: string; contenido: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  const contexto = await getContextoGeneracionCampoIA(empresaId, documentoId);
+  let contenido = "";
+
+  if (contexto.estructura.plantillaCodigo === "IRL") {
+    const estructura = {
+      ...contexto.estructura,
+      campos: { ...contexto.estructura.campos },
+    } as Extract<DocumentoEstructurado, { plantillaCodigo: "IRL" }>;
+    const key = campoId as keyof DocumentoIrlCampos;
+    if (!(key in estructura.campos)) {
+      throw new Error(`Campo IRL no soportado: ${campoId}`);
+    }
+    (estructura.campos as Record<string, unknown>)[key] = generarValorCampoIrl(key, contexto);
+    contenido = serializarDocumentoEstructurado(estructura);
+  } else {
+    const estructura = {
+      ...contexto.estructura,
+      campos: { ...contexto.estructura.campos },
+    } as Extract<DocumentoEstructurado, { plantillaCodigo: "EPP" }>;
+    const key = campoId as keyof DocumentoEppCampos;
+    if (!(key in estructura.campos)) {
+      throw new Error(`Campo EPP no soportado: ${campoId}`);
+    }
+    (estructura.campos as Record<string, unknown>)[key] = generarValorCampoEpp(key, contexto);
+    contenido = serializarDocumentoEstructurado(estructura);
+  }
+
+  const updated = await prisma.trabajadorDocumento.update({
+    where: { id: contexto.documentoId },
+    data: {
+      observaciones: contenido,
+      estado: "en_revision",
+      subidoPorId: usuarioId,
+    },
+    select: { id: true, version: true },
+  });
+
+  await prisma.trabajadorDocumentoHistorial.create({
+    data: {
+      documentoId: updated.id,
+      usuarioId,
+      accion: "CONTENIDO_EDITADO",
+      detalle: `Campo ${campoId} generado con IA por contexto`,
+      version: updated.version,
+    },
+  });
+
+  return { id: updated.id, campoId, contenido };
+}
+
+export async function regenerarSeccionIATrabajadorDocumento(
+  documentoId: string,
+  seccionId: string,
+): Promise<{ id: string; seccionId: string; contenido: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  const contexto = await getContextoGeneracionCampoIA(empresaId, documentoId);
+
+  const fields = fieldsBySection(contexto.estructura, seccionId);
+  if (!fields.length) {
+    throw new Error(`Sección no soportada: ${seccionId}`);
+  }
+
+  let contenido = "";
+
+  if (contexto.estructura.plantillaCodigo === "IRL") {
+    const estructura = {
+      ...contexto.estructura,
+      campos: { ...contexto.estructura.campos },
+    } as Extract<DocumentoEstructurado, { plantillaCodigo: "IRL" }>;
+    for (const field of fields) {
+      const key = field as keyof DocumentoIrlCampos;
+      (estructura.campos as Record<string, unknown>)[key] = generarValorCampoIrl(key, contexto);
+    }
+    contenido = serializarDocumentoEstructurado(estructura);
+  } else {
+    const estructura = {
+      ...contexto.estructura,
+      campos: { ...contexto.estructura.campos },
+    } as Extract<DocumentoEstructurado, { plantillaCodigo: "EPP" }>;
+    for (const field of fields) {
+      const key = field as keyof DocumentoEppCampos;
+      (estructura.campos as Record<string, unknown>)[key] = generarValorCampoEpp(key, contexto);
+    }
+    contenido = serializarDocumentoEstructurado(estructura);
+  }
+
+  const updated = await prisma.trabajadorDocumento.update({
+    where: { id: contexto.documentoId },
+    data: {
+      observaciones: contenido,
+      estado: "en_revision",
+      subidoPorId: usuarioId,
+    },
+    select: { id: true, version: true },
+  });
+
+  await prisma.trabajadorDocumentoHistorial.create({
+    data: {
+      documentoId: updated.id,
+      usuarioId,
+      accion: "CONTENIDO_EDITADO",
+      detalle: `Sección ${seccionId} regenerada con IA por contexto`,
+      version: updated.version,
+    },
+  });
+
+  return { id: updated.id, seccionId, contenido };
 }
 
 export async function updateTrabajadorDocumento(

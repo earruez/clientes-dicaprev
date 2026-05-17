@@ -22,8 +22,9 @@ import {
   ShieldAlert,
   Users,
   Sparkles,
+  PenLine,
 } from "lucide-react";
-import { puedeGenerarseConIA } from "@/lib/documentacion/ia-generacion-helper";
+import { puedeGenerarseConIA, esContenidoPlaceholder } from "@/lib/documentacion/ia-generacion-helper";
 import {
   CATEGORIA_CONFIG,
   ESTADO_DOC_CONFIG,
@@ -39,6 +40,7 @@ import {
   cambiarEstadoTrabajadorDocumento,
   enviarTrabajadorDocumentoAFirma,
   firmarTrabajadorDocumento,
+  generarContenidoIATrabajadorDocumento,
   getHistorialDocumentoTrabajador,
   validarTrabajadorDocumento,
   type EstadoDocumentoTrabajadorInput,
@@ -53,7 +55,11 @@ import {
   type DocumentoReviewContext,
 } from "./DocumentoReviewDrawer";
 import { generarPlantillaContenidoIA } from "@/lib/documentacion/ia-generacion-helper";
-import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
+import {
+  construirContenidoBasePlantilla,
+  getPlantilla,
+  normalizarNombreDocumentoDisplay,
+} from "@/lib/documentacion/plantillas-documento";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
 import { PorVencimientosView } from "./PorVencimientosView";
@@ -99,14 +105,46 @@ export function PendientesPanel({
     setReviewOpen(true);
   }
 
-  function openGenerar(doc: import("./types").DocTrabajadorView, worker: Worker) {
-    const contenidoGenerado = generarPlantillaContenidoIA({
-      tipoNombre: doc.tipo.nombre,
-      trabajadorNombre: `${worker.nombre} ${worker.apellido}`,
-      trabajadorRut: worker.rut,
-      cargo: worker.cargo,
-    });
-    openReview({ doc, worker, contenidoGenerado });
+  const [generandoDocId, setGenerandoDocId] = useState<string | null>(null);
+
+  async function handleGenerarConIA(doc: import("./types").DocTrabajadorView, worker: Worker) {
+    try {
+      setGenerandoDocId(doc.tipo.id);
+      const plantilla = getPlantilla(doc.tipo.id, doc.tipo.nombre);
+      // Prioriza plantillas estructuradas; fallback al generador IA existente.
+      const contenidoGenerado = plantilla
+        ? construirContenidoBasePlantilla(plantilla)
+        : generarPlantillaContenidoIA({
+            tipoNombre: doc.tipo.nombre,
+            trabajadorNombre: `${worker.nombre} ${worker.apellido}`,
+            trabajadorRut: worker.rut,
+            cargo: worker.cargo,
+          });
+
+      // Persist content with estado change to en_revision
+      const generated = await generarContenidoIATrabajadorDocumento(
+        doc.documentoId ?? null,
+        contenidoGenerado,
+        worker.id,
+        doc.tipo.id,
+      );
+
+      // Refresh data and open drawer with updated estado
+      await onSaved?.();
+      // Update the doc locally to reflect new estado
+      const updatedDoc = {
+        ...doc,
+        documentoId: generated.id,
+        estado: "en_revision" as const,
+        observacion: contenidoGenerado,
+      };
+      openReview({ doc: updatedDoc, worker });
+    } catch (error) {
+      console.error("Error generating document:", error);
+      // TODO: Show error toast
+    } finally {
+      setGenerandoDocId(null);
+    }
   }
 
   function openUpload(ctx: DocumentUploadContext) {
@@ -1063,31 +1101,75 @@ export function PendientesPanel({
                                       </button>
                                     )}
 
-                                    {/* Generar con IA — automatizables sin contenido aún */}
-                                    {needsAction && puedeGenerarseConIA(doc.tipo) && !doc.observacion?.trim() && !doc.documentoId && (
+                                    {/* Generar con IA — si contenido vacío o es solo placeholder */}
+                                    {needsAction && puedeGenerarseConIA(doc.tipo) && (
+                                      !doc.observacion?.trim() || esContenidoPlaceholder(doc.observacion)
+                                    ) && (
                                       <button
-                                        onClick={() => openGenerar(doc, worker)}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-violet-700"
+                                        onClick={() => handleGenerarConIA(doc, worker)}
+                                        disabled={generandoDocId === doc.tipo.id}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                       >
-                                        <Sparkles className="h-2.5 w-2.5" />
-                                        Generar con IA
+                                        {generandoDocId === doc.tipo.id ? (
+                                          <>
+                                            <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                            Generando...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Sparkles className="h-2.5 w-2.5" />
+                                            Generar con IA
+                                          </>
+                                        )}
                                       </button>
                                     )}
 
-                                    {/* Revisar — IA con contenido o en estados del flujo */}
+                                    {/* Revisar — IA con contenido REAL o en estados del flujo */}
                                     {puedeGenerarseConIA(doc.tipo) && (
-                                      !!doc.observacion?.trim() ||
+                                      (!!doc.observacion?.trim() && !esContenidoPlaceholder(doc.observacion)) ||
                                       doc.estado === "en_revision" ||
                                       doc.estado === "validado" ||
                                       doc.estado === "enviado_firma" ||
                                       doc.estado === "firmado"
-                                    ) && (
+                                    ) && doc.estado !== "rechazado" && (
                                       <button
                                         onClick={() => openReview({ doc, worker })}
                                         className="inline-flex items-center gap-1 rounded-lg bg-violet-100 px-2.5 py-1 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200 transition hover:bg-violet-200"
                                       >
                                         <Sparkles className="h-2.5 w-2.5" />
                                         Revisar
+                                      </button>
+                                    )}
+
+                                    {/* Rechazado — acción de corrección */}
+                                    {doc.estado === "rechazado" && doc.documentoId && (
+                                      <button
+                                        onClick={() => openReview({ doc, worker })}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2.5 py-1 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200 transition hover:bg-amber-200"
+                                      >
+                                        <PenLine className="h-2.5 w-2.5" />
+                                        Corregir
+                                      </button>
+                                    )}
+
+                                    {/* Rechazado generable — regeneración IA */}
+                                    {doc.estado === "rechazado" && doc.documentoId && puedeGenerarseConIA(doc.tipo) && (
+                                      <button
+                                        onClick={() => handleGenerarConIA(doc, worker)}
+                                        disabled={generandoDocId === doc.tipo.id}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                      >
+                                        {generandoDocId === doc.tipo.id ? (
+                                          <>
+                                            <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                            Regenerando...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Sparkles className="h-2.5 w-2.5" />
+                                            Regenerar con IA
+                                          </>
+                                        )}
                                       </button>
                                     )}
 

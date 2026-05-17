@@ -182,9 +182,9 @@ const workerDocumentTypesBase = [
     activo: true,
   },
   {
-    codigo: "ODI_RIESGOS",
-    nombre: "Obligacion de informar riesgos ODI",
-    descripcion: "Registro de ODI firmado por el trabajador.",
+    codigo: "IRL_RIESGOS",
+    nombre: "Informacion de Riesgos Laborales (IRL)",
+    descripcion: "Acta de Informacion sobre Riesgos Laborales firmada por el trabajador.",
     requiereArchivo: true,
     requiereVencimiento: false,
     vigenciaDias: null,
@@ -230,9 +230,9 @@ const workerDocumentTypesBase = [
 
 const capacitacionesBase = [
   {
-    codigo: "CAP-ODI-001",
-    nombre: "Obligacion de Informar Riesgos ODI",
-    descripcion: "Capacitacion sobre ODI y riesgos especificos del puesto de trabajo.",
+    codigo: "CAP-IRL-001",
+    nombre: "Informacion de Riesgos Laborales (IRL)",
+    descripcion: "Capacitacion sobre riesgos especificos del puesto de trabajo e IRL.",
     categoria: "sst",
     modalidad: "presencial",
     duracionHoras: 2,
@@ -363,7 +363,7 @@ const capacitacionesBase = [
 
 const planCapacitacionBase = [
   {
-    codigo: "CAP-ODI-001",
+    codigo: "CAP-IRL-001",
     periodicidad: "anual",
     mesProgramado: 1,
     obligatorio: true,
@@ -605,7 +605,7 @@ async function seedWorkerDocumentControlBase() {
       "CONTRATO_TRABAJO",
       "CEDULA_IDENTIDAD",
       "REGLAMENTO_INTERNO_RECIBIDO",
-      "ODI_RIESGOS",
+      "IRL_RIESGOS",
       "ENTREGA_EPP",
       "CAPACITACION_INICIAL",
       "EXAMEN_OCUPACIONAL",

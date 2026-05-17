@@ -126,7 +126,7 @@ export const HALLAZGOS_MOCK: Hallazgo[] = [
   {
     id: "h-002",
     tipo: "documental",
-    descripcion: "Documentación incompleta del trabajador Ricardo Flores Pavez (ODI rechazada)",
+    descripcion: "Documentación incompleta del trabajador Ricardo Flores Pavez (IRL rechazada)",
     centroId: "c1",
     centroNombre: "Sede Central MVP Chile",
     trabajadorNombre: "Ricardo Flores Pavez",

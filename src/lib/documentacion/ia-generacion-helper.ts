@@ -19,6 +19,12 @@
  * @param doc - Objeto con id y nombre del tipo de documento.
  */
 
+import {
+  crearDocumentoEppEstructurado,
+  crearDocumentoIrlEstructurado,
+  serializarDocumentoEstructurado,
+} from "./documento-estructurado";
+
 // ── IDs conocidos en el mock documental (types.ts) ────────────────────────────
 
 /**
@@ -86,55 +92,45 @@ const KEYWORDS_GENERABLES = [
   "politica de seguridad",
   "induccion sst",
   "induccion seguridad",
-  "induccion prevision",
-  "notificacion ds44",
-  "ds44",
-  "plan de emergencia",
-  "programa preventivo",
-  "pts",
-  "procedimiento de trabajo seguro",
   "descripcion de cargo",
-  "perfil de cargo",
+  "notificacion ds44",
 ];
 
-type DocRef = { id?: string | null; nombre?: string | null };
-
-function normalizar(texto: string): string {
-  return texto
-    .toLowerCase()
+function normalizar(valor: string | null | undefined): string {
+  return (valor ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
     .trim();
 }
 
-/**
- * Retorna `true` si el documento puede generarse automáticamente con IA.
- *
- * Orden de evaluación:
- * 1. Si el id está en TIPOS_NO_GENERABLES_IA → false
- * 2. Si el id está en TIPOS_GENERABLES_IA → true
- * 3. Fallback por nombre normalizado
- */
-export function puedeGenerarseConIA(doc: DocRef): boolean {
-  const id = doc.id ?? "";
+function tipoDocumentoId(tipo: { id?: string } | null | undefined): string {
+  return normalizar(tipo?.id ?? "");
+}
 
-  // Regla por ID explícito
-  if (id && TIPOS_NO_GENERABLES_IA.has(id)) return false;
-  if (id && TIPOS_GENERABLES_IA.has(id)) return true;
-
-  // Fallback por nombre
-  const nombre = normalizar(doc.nombre ?? "");
-  if (!nombre) return false;
-
-  if (KEYWORDS_NO_GENERABLES.some((kw) => nombre.includes(kw))) return false;
-  if (KEYWORDS_GENERABLES.some((kw) => nombre.includes(kw))) return true;
-
-  return false;
+function tipoDocumentoNombre(tipo: { nombre?: string } | null | undefined): string {
+  return normalizar(tipo?.nombre ?? "");
 }
 
 /**
- * Genera un contenido de plantilla simulado para un documento IA.
- * En producción, esto se reemplazará por una llamada a la API de IA.
+ * Indica si un tipo de documento puede generarse con IA.
+ */
+export function puedeGenerarseConIA(tipo: { id?: string; nombre?: string } | null | undefined): boolean {
+  const id = tipoDocumentoId(tipo);
+  const nombre = tipoDocumentoNombre(tipo);
+
+  if (TIPOS_NO_GENERABLES_IA.has(id)) return false;
+  if (TIPOS_GENERABLES_IA.has(id)) return true;
+
+  if (KEYWORDS_NO_GENERABLES.some((keyword) => nombre.includes(keyword))) return false;
+  return KEYWORDS_GENERABLES.some((keyword) => nombre.includes(keyword));
+}
+
+/**
+ * Genera contenido base para documentos compatibles con IA.
+ *
+ * IRL y EPP pasan a emitirse como JSON estructurado para soportar edición
+ * por secciones y renderizado especializado en PDF.
  */
 export function generarPlantillaContenidoIA(params: {
   tipoNombre: string;
@@ -144,61 +140,41 @@ export function generarPlantillaContenidoIA(params: {
   empresa?: string;
   fecha?: string;
 }): string {
-  const { tipoNombre, trabajadorNombre, trabajadorRut, cargo, empresa = "DICAPREV", fecha = new Date().toLocaleDateString("es-CL") } = params;
+  const {
+    tipoNombre,
+    trabajadorNombre,
+    trabajadorRut,
+    cargo,
+    empresa = "DICAPREV",
+    fecha = new Date().toLocaleDateString("es-CL"),
+  } = params;
+
   const nombreNorm = normalizar(tipoNombre);
 
   if (nombreNorm.includes("irl") || nombreNorm.includes("informacion de riesgos") || nombreNorm.includes("obligacion de informar")) {
-    return `ACTA DE INFORMACIÓN DE RIESGOS LABORALES (IRL)
-Empresa: ${empresa}
-Fecha: ${fecha}
-
-Trabajador: ${trabajadorNombre}
-RUT: ${trabajadorRut}
-Cargo: ${cargo}
-
-Por medio del presente documento, se deja constancia que el trabajador individualizado ha recibido información sobre los riesgos laborales asociados a su puesto de trabajo, en cumplimiento del artículo 21 de la Ley N°16.744.
-
-RIESGOS IDENTIFICADOS:
-- Riesgo ergonómico por posturas mantenidas o movimientos repetitivos
-- Riesgo de caída al mismo o distinto nivel
-- Riesgo de contacto con materiales o sustancias peligrosas (si aplica)
-- Riesgo de accidente por maquinaria o equipos (si aplica)
-
-MEDIDAS PREVENTIVAS:
-- Uso correcto de EPP según procedimiento vigente
-- Cumplimiento de procedimientos de trabajo seguro (PTS)
-- Participación en capacitaciones de seguridad y prevención
-
-El trabajador declara haber recibido y comprendido la información contenida en este documento.
-
-_____________________          _____________________
-Firma Trabajador               Firma Empleador / Prevencioncista
-${trabajadorNombre}`;
+    return serializarDocumentoEstructurado(
+      crearDocumentoIrlEstructurado({
+        tipoNombre,
+        trabajadorNombre,
+        trabajadorRut,
+        cargo,
+        empresa,
+        fecha,
+      }),
+    );
   }
 
   if (nombreNorm.includes("epp") || nombreNorm.includes("entrega")) {
-    return `ACTA DE ENTREGA DE EQUIPOS DE PROTECCIÓN PERSONAL (EPP)
-Empresa: ${empresa}
-Fecha: ${fecha}
-
-Trabajador: ${trabajadorNombre}
-RUT: ${trabajadorRut}
-Cargo: ${cargo}
-
-El trabajador recibe los siguientes elementos de protección personal de acuerdo a los riesgos de su puesto:
-
-- Casco de seguridad
-- Zapatos de seguridad
-- Guantes de protección
-- Lentes de seguridad
-- Protector auditivo (si aplica)
-- Ropa de trabajo
-
-El trabajador se compromete a utilizar correctamente los EPP entregados, mantenerlos en buen estado y reportar cualquier deterioro.
-
-_____________________          _____________________
-Firma Trabajador               Firma Empleador
-${trabajadorNombre}`;
+    return serializarDocumentoEstructurado(
+      crearDocumentoEppEstructurado({
+        tipoNombre,
+        trabajadorNombre,
+        trabajadorRut,
+        cargo,
+        empresa,
+        fecha,
+      }),
+    );
   }
 
   if (nombreNorm.includes("politica") || nombreNorm.includes("prevencion")) {
@@ -242,7 +218,6 @@ _____________________
 ${trabajadorNombre} — Firma`;
   }
 
-  // Plantilla genérica
   return `DOCUMENTO: ${tipoNombre.toUpperCase()}
 Empresa: ${empresa}
 Fecha: ${fecha}
@@ -256,3 +231,18 @@ Contenido generado automáticamente. Por favor revise y edite según corresponda
 _____________________
 ${trabajadorNombre} — Firma`;
 }
+
+/**
+ * Detecta si el contenido del documento es solo el placeholder automático.
+ * Usado para determinar si se debe mostrar "Generar con IA" o "Revisar".
+ *
+ * @param observacion - Contenido del documento (observaciones)
+ * @returns true si es placeholder, false si tiene contenido real
+ */
+export function esContenidoPlaceholder(observacion: string | null | undefined): boolean {
+  if (!observacion?.trim()) return false;
+  const normalizado = observacion.trim().toLowerCase();
+  return normalizado.includes("generado automáticamente por regla documental");
+}
+
+export { parseDocumentoEstructurado, serializarDocumentoEstructurado } from "./documento-estructurado";
