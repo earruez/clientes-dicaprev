@@ -252,9 +252,10 @@ function camposIrlBase(params: {
 }): DocumentoIrlCampos {
   const fecha = params.fecha ?? fechaIsoActual();
   const empresa = params.empresa ?? "DICAPREV";
-  const cargo = normalizarTexto(params.cargo, "Cargo asignado");
-  const area = normalizarTexto(params.area, "Área de trabajo");
+  const cargo = normalizarTexto(params.cargo) || "sin cargo especificado";
+  const area = normalizarTexto(params.area) || "el área asignada";
   const centroTrabajo = normalizarTexto(params.centroTrabajo);
+  const centroPrincipal = centroTrabajo || `Dependencias de ${empresa}`;
 
   return {
     // ── Encabezado ─────────────────────────────────────────────────────────
@@ -283,13 +284,13 @@ function camposIrlBase(params: {
     telefono_emergencia: "",
     // ── Sección 5: Lugar de trabajo ────────────────────────────────────────
     direccion_lugar_trabajo: centroTrabajo || `Dependencias de ${empresa}`,
-    lugar_trabajo: centroTrabajo || `Dependencias operativas de ${empresa}`,
+    lugar_trabajo: centroPrincipal,
     espacio_trabajo:
-      `El ${cargo} desarrolla sus funciones en las dependencias de la empresa, en las áreas asignadas según el cargo. El espacio de trabajo incluye los equipos, herramientas y mobiliario necesarios para el desempeño de las labores. Se requieren condiciones adecuadas de iluminación, ventilación y orden para la correcta ejecución de las tareas.`,
+      `El ocupante del cargo desarrolla sus funciones en las dependencias de la empresa y/o en las áreas asignadas según la naturaleza del trabajo. El espacio incluye los equipos, herramientas y mobiliario necesarios para el desempeño de las labores. Se requieren condiciones adecuadas de iluminación, ventilación y orden para la correcta ejecución de las tareas.`,
     condiciones_ambientales:
-      `Las condiciones ambientales del puesto de trabajo incluyen iluminación, temperatura, ventilación y nivel de ruido propias de ${area}. El trabajador puede estar expuesto a condiciones variables según jornada y tipo de tarea realizada. Se aplican las medidas de control ambiental establecidas en la normativa vigente y el Programa de Prevención de Riesgos.`,
+      `Las condiciones ambientales del puesto de trabajo incluyen iluminación, temperatura, ventilación y nivel de ruido según el área asignada. El trabajador puede estar expuesto a condiciones variables según jornada y tipo de tarea. Se aplican las medidas de control establecidas en la normativa vigente y el Programa de Prevención de Riesgos.`,
     orden_aseo:
-      `El cargo requiere mantener el área de trabajo limpia, ordenada y despejada, evitando la acumulación de materiales innecesarios o elementos que puedan generar caídas, golpes o interferencias. Los equipos y herramientas de trabajo deben mantenerse en buen estado y correctamente ubicados. Cualquier condición insegura detectada debe ser reportada de inmediato a la jefatura directa.`,
+      `El cargo requiere mantener el área de trabajo limpia, ordenada y despejada, evitando la acumulación de materiales innecesarios que puedan generar caídas, golpes o interferencias. Los equipos y herramientas deben mantenerse en buen estado y correctamente ubicados. Cualquier condición insegura debe ser reportada de inmediato a la jefatura directa.`,
     // ── Prevencionista ─────────────────────────────────────────────────────
     prevencionista_nombre: "",
     prevencionista_cargo: "Prevencionista de Riesgos",
@@ -309,7 +310,7 @@ function camposIrlBase(params: {
         "Mantener orden y aseo en el área de trabajo. Señalizar zonas de tránsito y respetar demarcaciones.",
       ),
       crearFilaRiesgo(
-        "Sobreesfuerzos y posturas forzadas por realización de tareas propias del cargo.",
+        "Sobreesfuerzos y posturas forzadas durante la jornada de trabajo.",
         "Lesiones musculoesqueléticas: dolor cervical, dorsal o lumbar; trastornos musculoesqueléticos (TME).",
         "Aplicar técnicas correctas de trabajo y manipulación de materiales. Realizar pausas activas y cambios de postura.",
       ),
@@ -365,25 +366,25 @@ function camposIrlBase(params: {
     ],
     // ── Sección 7.1: Riesgos específicos del cargo ────────────────────────
     descripcion_actividad:
-      `El ${cargo} es responsable del desempeño de las funciones propias del cargo en ${area}, desarrollando sus labores según las instrucciones de la jefatura directa, cumpliendo los procedimientos de trabajo seguro y las normas internas de la empresa.`,
+      `El trabajador es responsable del desempeño de sus funciones en ${area} de ${empresa}, desarrollando sus labores conforme a las instrucciones de la jefatura directa, los procedimientos de trabajo seguro definidos y las normas internas de la empresa. Asegura el cumplimiento de los estándares de calidad, seguridad y productividad del área, reportando condiciones inseguras oportunamente.`,
     tareas_realiza:
-      `• Ejecutar las tareas propias del cargo ${cargo} en el área ${area}.\n• Operar equipos, herramientas y materiales asociados al cargo según instrucciones.\n• Coordinar con la jefatura directa y compañeros de trabajo.\n• Mantener orden y aseo en el área de trabajo.\n• Reportar condiciones inseguras, incidentes o accidentes a la jefatura directa.\n• Cumplir procedimientos de trabajo seguro (PTS) y normas internas de la empresa.`,
+      `• Ejecutar las tareas asignadas en ${area} conforme a los procedimientos de trabajo seguro.\n• Operar equipos, herramientas y materiales con la capacitación y autorización correspondiente.\n• Coordinar con la jefatura directa y compañeros de trabajo el avance de las labores asignadas.\n• Mantener el orden y aseo en el área de trabajo durante toda la jornada.\n• Reportar de inmediato condiciones inseguras, incidentes o accidentes a la jefatura directa.\n• Cumplir los Procedimientos de Trabajo Seguro (PTS) y normas internas de la empresa.\n• Participar activamente en las actividades de capacitación y prevención de riesgos.`,
     lugares_trabajo_cargo:
-      `• Dependencias internas de ${empresa} asignadas al área ${area}.\n• Zonas de trabajo habilitadas para el cargo según organización interna.\n• Otras áreas de la empresa a las que el cargo tenga acceso según función.`,
+      `• ${centroPrincipal}.\n• Dependencias internas de ${empresa} asignadas al área ${area}.\n• Zonas de trabajo habilitadas para el cargo según organización interna de la empresa.`,
     herramientas_equipos:
-      `Herramientas y equipos propios del cargo ${cargo} en el área ${area}, según la naturaleza de las labores asignadas.`,
+      `• Herramientas y equipos asignados al cargo en ${area} según la naturaleza de las labores.\n• Equipos de comunicación (teléfono, radio) para coordinación con la jefatura directa.\n• EPP requerido según la matriz de riesgos del cargo.\n• El trabajador debe estar capacitado y autorizado para operar cada equipo o herramienta.`,
     epp_requerido_info:
-      `Los Elementos de Protección Personal (EPP) requeridos para el cargo ${cargo} son definidos según la matriz de riesgos y la naturaleza de las tareas. El trabajador debe usar los EPP asignados en todo momento durante la exposición al riesgo. Los EPP serán entregados sin costo para el trabajador mediante el Registro de Entrega de EPP correspondiente.`,
+      `EPP requeridos según la matriz de riesgos del cargo y la naturaleza de las tareas en ${area}. El trabajador debe usar los EPP asignados en todo momento durante la exposición al riesgo. Los EPP son entregados sin costo para el trabajador, certificados según D.S. 18 del Minsal.\n⚠ La entrega de EPP se registra en el documento 'Registro de Entrega de EPP' (documento separado).`,
     riesgos_tareas_tabla: [
       crearFilaRiesgo(
-        "Riesgo de accidente por incumplimiento del procedimiento de trabajo del cargo.",
-        "Lesiones de diversa gravedad según el tipo de accidente.",
-        "Cumplir estrictamente el PTS del cargo. Realizar AST antes de iniciar tareas críticas. Consultar a jefatura ante dudas.",
+        "Caída a distinto nivel durante trabajos con uso de escalera, andamio u otras superficies elevadas.",
+        "Traumatismos graves, fracturas óseas, lesiones de columna. Riesgo fatal.",
+        "Usar arnés de seguridad y anclar a punto fijo certificado. Verificar condición de la escalera antes de usar. Delimitar zona inferior.",
       ),
       crearFilaRiesgo(
-        "Exposición a peligros propios de las tareas del cargo (mecánicos, eléctricos, ergonómicos u otros).",
-        "Accidente laboral con consecuencias variables según el peligro específico.",
-        "Identificar peligros antes de iniciar la tarea. Aplicar controles definidos en la matriz de riesgos del cargo.",
+        "Contacto eléctrico al operar o intervenir equipos, herramientas o instalaciones eléctricas.",
+        "Descarga eléctrica, quemaduras, fibrilación ventricular o riesgo vital.",
+        "Verificar ausencia de tensión antes de intervenir. Aplicar LOTO. Usar herramientas aisladas certificadas. Nunca intervenir sistemas energizados sin PTS vigente.",
       ),
     ],
     riesgos_lugar_tabla: [

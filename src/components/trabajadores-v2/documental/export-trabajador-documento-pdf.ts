@@ -550,9 +550,29 @@ async function renderStructuredIrlPdf(
   const cw = layout.contentWidth;
   const ml = layout.margin;
 
+  const pdfTitulo = "ACTA DE INFORMACION SOBRE LOS RIESGOS LABORALES, ART. 15 DEL D.S. 44";
+  const pdfCodigo = c.codigo_documento || "REG-IRL-03";
+
+  function drawRepeatHeader() {
+    const rh = 22;
+    drawCell(doc, { x: ml, y: layout.y, w: cw * 0.72, h: rh, text: pdfTitulo, bold: true, fontSize: 6.8, fillColor: BLU, textColor: WHT, padding: 5 });
+    drawCell(doc, { x: ml + cw * 0.72, y: layout.y, w: cw * 0.14, h: rh, text: pdfCodigo, bold: true, fontSize: 7.5, fillColor: BLU, textColor: WHT, padding: 5, align: "center" });
+    drawCell(doc, { x: ml + cw * 0.86, y: layout.y, w: cw * 0.14, h: rh, text: `Pág. ${doc.getCurrentPageInfo().pageNumber}`, fontSize: 7.5, fillColor: BLU, textColor: WHT, padding: 5, align: "center" });
+    layout.y += rh + 4;
+  }
+
+  function pageSpace(requiredHeight: number) {
+    const bottomLimit = layout.pageHeight - layout.margin;
+    if (layout.y + requiredHeight > bottomLimit) {
+      doc.addPage();
+      layout.y = layout.margin;
+      drawRepeatHeader();
+    }
+  }
+
   // Helper: draw a full-width blue section header
   function drawSectionHeader(text: string) {
-    ensurePageSpace(doc, layout, 22);
+    pageSpace(22);
     drawCell(doc, { x: ml, y: layout.y, w: cw, h: 22, text, bold: true, align: "left", fillColor: BLU, textColor: WHT, fontSize: 9, padding: 6 });
     layout.y += 22;
   }
@@ -561,7 +581,7 @@ async function renderStructuredIrlPdf(
   function drawParagraph(text: string, fontSize = 8.2, minH = 24) {
     const lines = doc.setFontSize(fontSize) && wrapText(doc, text, cw - 12);
     const h = Math.max(minH, lines.length * lineHeight(fontSize) + 10);
-    ensurePageSpace(doc, layout, h);
+    pageSpace(h);
     doc.rect(ml, layout.y, cw, h);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(fontSize);
@@ -600,7 +620,7 @@ async function renderStructuredIrlPdf(
     options.forEach((rowOpts) => {
       const colW = cw / rowOpts.length;
       const h = 20;
-      ensurePageSpace(doc, layout, h);
+      pageSpace(h);
       let cx = ml;
       rowOpts.forEach((opt) => {
         drawCell(doc, { x: cx, y: layout.y, w: colW, h, text: `[${opt.checked ? "X" : " "}]  ${opt.label}`, fontSize: 8.2, padding: 5 });
@@ -657,24 +677,24 @@ async function renderStructuredIrlPdf(
   const nameW = cw * 0.62;
   const rutW = cw - nameW;
   const rowH4 = 22;
-  ensurePageSpace(doc, layout, rowH4);
+  pageSpace(rowH4);
   drawCell(doc, { x: ml, y: layout.y, w: nameW, h: rowH4, text: `Nombre y Apellidos: ${safeText(c.trabajador_nombre || params.trabajador.nombre + " " + params.trabajador.apellido)}`, fontSize: 8.2, padding: 5 });
   drawCell(doc, { x: ml + nameW, y: layout.y, w: rutW, h: rowH4, text: `R.U.T: ${safeText(c.trabajador_rut || params.trabajador.rut)}`, fontSize: 8.2, padding: 5 });
   layout.y += rowH4;
   // Row: Cargo | Fecha
   const cargoW = cw * 0.5;
   const fechaW = cw - cargoW;
-  ensurePageSpace(doc, layout, rowH4);
+  pageSpace(rowH4);
   drawCell(doc, { x: ml, y: layout.y, w: cargoW, h: rowH4, text: `Cargo: ${safeText(c.trabajador_cargo || c.cargo)}`, fontSize: 8.2, padding: 5 });
   drawCell(doc, { x: ml + cargoW, y: layout.y, w: fechaW, h: rowH4, text: `Fecha: ${safeText(c.fecha)}`, fontSize: 8.2, padding: 5 });
   layout.y += rowH4;
   // Row: Área | Duración
-  ensurePageSpace(doc, layout, rowH4);
+  pageSpace(rowH4);
   drawCell(doc, { x: ml, y: layout.y, w: cargoW, h: rowH4, text: `Area: ${safeText(c.trabajador_area || params.trabajador.area)}`, fontSize: 8.2, padding: 5 });
   drawCell(doc, { x: ml + cargoW, y: layout.y, w: fechaW, h: rowH4, text: `Duración de la capacitación: ${safeText(c.duracion_capacitacion)}`, fontSize: 8.2, padding: 5 });
   layout.y += rowH4;
   // Row: Teléfono full-width
-  ensurePageSpace(doc, layout, rowH4);
+  pageSpace(rowH4);
   drawCell(doc, { x: ml, y: layout.y, w: cw, h: rowH4, text: `Teléfono de emergencias (familiar/contacto): ${safeText(c.telefono_emergencia)}`, fontSize: 8.2, padding: 5 });
   layout.y += rowH4;
 
@@ -690,7 +710,7 @@ async function renderStructuredIrlPdf(
   ];
   charFields.forEach(([label, value]) => {
     const lh = Math.max(40, measureCellHeight(doc, value, valW - 8, 8.2, 4) + 8);
-    ensurePageSpace(doc, layout, lh);
+    pageSpace(lh);
     drawCell(doc, { x: ml, y: layout.y, w: labW, h: lh, text: label, bold: true, fontSize: 8, padding: 5 });
     drawCell(doc, { x: ml + labW, y: layout.y, w: valW, h: lh, text: value, fontSize: 8.2, padding: 5 });
     layout.y += lh;
@@ -718,7 +738,7 @@ async function renderStructuredIrlPdf(
 
   // Cargo bloque
   const cargoBlkH = 22;
-  ensurePageSpace(doc, layout, cargoBlkH);
+  pageSpace(cargoBlkH);
   drawCell(doc, { x: ml, y: layout.y, w: cw, h: cargoBlkH, text: "CARGO DEL TRABAJADOR (SEGUN CONTRATO)", bold: true, fontSize: 8, fillColor: [230, 230, 230], padding: 6 });
   layout.y += cargoBlkH;
   drawParagraph(safeText(c.trabajador_cargo || c.cargo), 8.2, 22);
@@ -735,7 +755,7 @@ async function renderStructuredIrlPdf(
   const tareasH = Math.max(60, tareasLines.length * lineHeight(8) + 24);
   const lugaresH = Math.max(60, lugaresLines.length * lineHeight(8) + 24);
   const tareasLugaresH = Math.max(tareasH, lugaresH);
-  ensurePageSpace(doc, layout, tareasLugaresH + 20);
+  pageSpace(tareasLugaresH + 20);
   // headers
   drawCell(doc, { x: ml, y: layout.y, w: half, h: 18, text: "TAREAS QUE REALIZA", bold: true, fontSize: 8, fillColor: BLU2, textColor: WHT, padding: 5 });
   drawCell(doc, { x: ml + half, y: layout.y, w: half, h: 18, text: "LUGARES DE TRABAJO", bold: true, fontSize: 8, fillColor: BLU2, textColor: WHT, padding: 5 });
@@ -750,7 +770,7 @@ async function renderStructuredIrlPdf(
   const herramH = Math.max(60, measureCellHeight(doc, safeText(c.herramientas_equipos), half - 10, 8, 5) + 24);
   const eppInfoH = Math.max(60, measureCellHeight(doc, safeText(c.epp_requerido_info), half - 10, 8, 5) + 24);
   const herramEppH = Math.max(herramH, eppInfoH);
-  ensurePageSpace(doc, layout, herramEppH + 20);
+  pageSpace(herramEppH + 20);
   drawCell(doc, { x: ml, y: layout.y, w: half, h: 18, text: "HERRAMIENTAS Y EQUIPOS", bold: true, fontSize: 8, fillColor: BLU2, textColor: WHT, padding: 5 });
   drawCell(doc, { x: ml + half, y: layout.y, w: half, h: 18, text: "ELEMENTOS DE PROTECCION PERSONAL", bold: true, fontSize: 8, fillColor: BLU2, textColor: WHT, padding: 5 });
   layout.y += 18;
@@ -762,7 +782,7 @@ async function renderStructuredIrlPdf(
   const r7Rows = c.riesgos_tareas_tabla ?? [];
   if (r7Rows.length) {
     const r7SubH = 18;
-    ensurePageSpace(doc, layout, r7SubH);
+    pageSpace(r7SubH);
     drawCell(doc, { x: ml, y: layout.y, w: cw, h: r7SubH, text: "RIESGOS PRESENTES EN LAS TAREAS", bold: true, fontSize: 8, fillColor: [230, 230, 230], padding: 5 });
     layout.y += r7SubH;
     drawRow(doc, layout, ml, [
@@ -781,7 +801,7 @@ async function renderStructuredIrlPdf(
   const r7LRows = c.riesgos_lugar_tabla ?? [];
   if (r7LRows.length) {
     const r7LhH = 18;
-    ensurePageSpace(doc, layout, r7LhH);
+    pageSpace(r7LhH);
     drawCell(doc, { x: ml, y: layout.y, w: cw, h: r7LhH, text: "RIESGOS PRESENTES EN EL LUGAR DE TRABAJO", bold: true, fontSize: 8, fillColor: [230, 230, 230], padding: 5 });
     layout.y += r7LhH;
     drawRow(doc, layout, ml, [
@@ -814,7 +834,7 @@ async function renderStructuredIrlPdf(
   normasSections.forEach(([titulo, texto]) => {
     if (!texto) return;
     // sub-header in bold italic
-    ensurePageSpace(doc, layout, 18);
+    pageSpace(18);
     doc.setFillColor(245, 245, 245);
     doc.rect(ml, layout.y, cw, 16, "FD");
     doc.rect(ml, layout.y, cw, 16);
@@ -826,7 +846,7 @@ async function renderStructuredIrlPdf(
   });
 
   // ── Sección 8k: Protocolos MINSAL ────────────────────────────────────────
-  ensurePageSpace(doc, layout, 18);
+  pageSpace(18);
   doc.setFillColor(245, 245, 245);
   doc.rect(ml, layout.y, cw, 16, "FD");
   doc.rect(ml, layout.y, cw, 16);
@@ -857,7 +877,7 @@ async function renderStructuredIrlPdf(
 
   // ── Sección 8l: Sustancias químicas ──────────────────────────────────────
   if (c.normas_quimicos) {
-    ensurePageSpace(doc, layout, 18);
+    pageSpace(18);
     doc.setFillColor(245, 245, 245);
     doc.rect(ml, layout.y, cw, 16, "FD");
     doc.rect(ml, layout.y, cw, 16);
@@ -903,7 +923,7 @@ async function renderStructuredIrlPdf(
 
   // ── Sección 11: Firmas ────────────────────────────────────────────────────
   const sigH = 80;
-  ensurePageSpace(doc, layout, sigH);
+  pageSpace(sigH);
 
   // Trabajador (firma + huella)
   const sigW3 = cw / 3;
@@ -913,7 +933,7 @@ async function renderStructuredIrlPdf(
 
   // Relator
   const relH = 80;
-  ensurePageSpace(doc, layout, relH);
+  pageSpace(relH);
   const relW4 = cw / 4;
   drawCell(doc, { x: ml, y: layout.y, w: relW4, h: relH, text: "NOMBRE DEL RELATOR", bold: true, fontSize: 8, fillColor: BLU, textColor: WHT, padding: 6 });
   drawCell(doc, { x: ml + relW4, y: layout.y, w: relW4 * 3, h: relH, text: safeText(c.firma_relator), fontSize: 8.2, padding: 6 });
