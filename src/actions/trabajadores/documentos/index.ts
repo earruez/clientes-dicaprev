@@ -243,10 +243,15 @@ function generarTablaEppDesdeContexto(ctx: ContextoGeneracionCampoIA): EppItem[]
     descripcion,
     marca: "",
     modelo: "",
-    color_talla: "",
+    color: "",
+    talla: "",
+    cantidad: 1,
+    norma_tecnica: "",
     fecha_entrega: today,
+    fecha_vencimiento_epp: "",
     si: true,
     no: false,
+    firma_recepcion: "",
     observaciones: "",
   }));
 }
@@ -306,6 +311,47 @@ function generarValorCampoIrl(campoId: keyof DocumentoIrlCampos, ctx: ContextoGe
       return ctx.trabajadorNombre;
     case "firma_relator":
       return `Relator SST ${workerFirstName}`;
+    case "empresa_contratista":
+      return "";
+    case "empresa_mandante":
+      return ctx.empresaNombre;
+    case "jornada":
+      return "Diurna";
+    case "turno":
+      return "Mañana";
+    case "hora_inicio":
+      return "08:00";
+    case "hora_termino":
+      return "17:00";
+    case "direccion_lugar_trabajo":
+      return `Dependencias de ${ctx.empresaNombre}`;
+    case "prevencionista_nombre":
+      return "";
+    case "prevencionista_cargo":
+      return "Prevencionista de Riesgos";
+    case "accidentes_anteriores":
+      return "Sin accidentes previos registrados.";
+    case "capacitaciones_previas":
+      return ["Inducción general de empresa"];
+    case "emergencias_evacuacion":
+      return "En caso de emergencia, evacuar según señalética de salida de emergencia. Punto de encuentro habilitado en zona exterior del recinto. No utilizar ascensores.";
+    case "pts":
+      return `Procedimiento de trabajo seguro para el cargo ${ctx.cargo}. Documentar pasos críticos, peligros identificados y controles aplicados antes del inicio de cada tarea.`;
+    case "epp_induccion_tabla":
+      return [
+        { descripcion: "Casco de seguridad", cantidad: 1, entregado: true, observaciones: "" },
+        { descripcion: "Lentes de seguridad", cantidad: 1, entregado: true, observaciones: "" },
+        { descripcion: "Guantes de protección", cantidad: 1, entregado: true, observaciones: "" },
+        { descripcion: "Zapatos de seguridad", cantidad: 1, entregado: true, observaciones: "" },
+      ];
+    case "compromisos_trabajador":
+      return [
+        "Utilizar los EPP asignados en todo momento durante la jornada.",
+        "Reportar de inmediato incidentes, accidentes o condiciones inseguras.",
+        "Cumplir con los procedimientos de trabajo seguro del cargo.",
+        "Participar activamente en actividades de capacitación y prevención.",
+        "No operar equipos o maquinaria sin autorización y capacitación previa.",
+      ];
     default:
       return "";
   }
@@ -414,6 +460,8 @@ function fieldsBySection(estructura: DocumentoEstructurado, seccionId: string): 
     const map: Record<string, Array<keyof DocumentoIrlCampos>> = {
       encabezado: [
         "empresa_nombre",
+        "empresa_contratista",
+        "empresa_mandante",
         "codigo_documento",
         "version",
         "cargo",
@@ -426,12 +474,21 @@ function fieldsBySection(estructura: DocumentoEstructurado, seccionId: string): 
         "trabajador_cargo",
         "trabajador_area",
         "fecha",
+        "jornada",
+        "turno",
+        "hora_inicio",
+        "hora_termino",
         "telefono_emergencia",
+        "accidentes_anteriores",
+        "capacitaciones_previas",
       ],
-      lugar_trabajo: ["lugar_trabajo", "espacio_trabajo", "condiciones_ambientales", "orden_aseo"],
+      lugar_trabajo: ["direccion_lugar_trabajo", "lugar_trabajo", "espacio_trabajo", "condiciones_ambientales", "orden_aseo", "prevencionista_nombre", "prevencionista_cargo"],
       riesgos_generales: ["riesgos_generales_tabla"],
       riesgos_especificos: ["riesgos_especificos_tabla"],
       normativa: ["normas_generales", "protocolos_minsal", "documentos_asociados"],
+      emergencias: ["emergencias_evacuacion", "pts"],
+      epp_resumen: ["epp_induccion_tabla"],
+      compromisos: ["compromisos_trabajador"],
       cierre: ["declaracion", "firma_trabajador", "firma_relator"],
     };
     return (map[seccionId] ?? []).map(String);

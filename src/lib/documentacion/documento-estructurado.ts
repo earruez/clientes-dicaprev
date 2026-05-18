@@ -6,19 +6,35 @@ export type IrlRiesgoFila = {
   medida: string;
 };
 
+/** Ítem de EPP resumido que aparece dentro de la sección de resumen del IRL */
+export type IrlEppItem = {
+  descripcion: string;
+  cantidad: number;
+  entregado: boolean;
+  observaciones: string;
+};
+
 export type EppItem = {
   descripcion: string;
   marca: string;
   modelo: string;
-  color_talla: string;
+  color: string;
+  talla: string;
+  cantidad: number;
+  norma_tecnica: string;
   fecha_entrega: string;
+  fecha_vencimiento_epp: string;
   si: boolean;
   no: boolean;
+  firma_recepcion: string;
   observaciones: string;
 };
 
 export type DocumentoIrlCampos = {
+  // ── Identificación ──────────────────────────────────────────────────────────
   empresa_nombre: string;
+  empresa_contratista: string;
+  empresa_mandante: string;
   codigo_documento: string;
   version: string;
   cargo: string;
@@ -26,21 +42,42 @@ export type DocumentoIrlCampos = {
   tipo_induccion: string;
   modalidad: string;
   tipo_actividad: string;
+  // ── Datos del trabajador ────────────────────────────────────────────────────
   trabajador_nombre: string;
   trabajador_rut: string;
   trabajador_cargo: string;
   trabajador_area: string;
   fecha: string;
+  jornada: string;
+  turno: string;
+  hora_inicio: string;
+  hora_termino: string;
   telefono_emergencia: string;
+  // ── Lugar e instalaciones ───────────────────────────────────────────────────
+  direccion_lugar_trabajo: string;
   lugar_trabajo: string;
   espacio_trabajo: string;
   condiciones_ambientales: string;
   orden_aseo: string;
+  // ── Prevencionista ──────────────────────────────────────────────────────────
+  prevencionista_nombre: string;
+  prevencionista_cargo: string;
+  // ── Antecedentes del trabajador ─────────────────────────────────────────────
+  accidentes_anteriores: string;
+  capacitaciones_previas: string[];
+  // ── Riesgos ─────────────────────────────────────────────────────────────────
   riesgos_generales_tabla: IrlRiesgoFila[];
   riesgos_especificos_tabla: IrlRiesgoFila[];
+  // ── Normativa y protocolos ──────────────────────────────────────────────────
   normas_generales: string;
   protocolos_minsal: string;
   documentos_asociados: string;
+  // ── Secciones adicionales ───────────────────────────────────────────────────
+  emergencias_evacuacion: string;
+  pts: string;
+  epp_induccion_tabla: IrlEppItem[];
+  compromisos_trabajador: string[];
+  // ── Cierre ──────────────────────────────────────────────────────────────────
   declaracion: string;
   firma_trabajador: string;
   firma_relator: string;
@@ -166,6 +203,8 @@ function camposIrlBase(params: {
 
   return {
     empresa_nombre: empresa,
+    empresa_contratista: "",
+    empresa_mandante: empresa,
     codigo_documento: "NEXTPREV TEMPLATE-01",
     version: "1.0",
     cargo: normalizarTexto(params.cargo),
@@ -178,7 +217,12 @@ function camposIrlBase(params: {
     trabajador_cargo: normalizarTexto(params.cargo),
     trabajador_area: normalizarTexto(params.area),
     fecha,
+    jornada: "Diurna",
+    turno: "Mañana",
+    hora_inicio: "08:00",
+    hora_termino: "17:00",
     telefono_emergencia: "",
+    direccion_lugar_trabajo: normalizarTexto(params.centroTrabajo),
     lugar_trabajo: normalizarTexto(params.centroTrabajo),
     espacio_trabajo:
       "Ambiente operativo con interacción de herramientas, equipos y desplazamiento en áreas de trabajo.",
@@ -186,6 +230,12 @@ function camposIrlBase(params: {
       "Condiciones variables de temperatura, ruido y circulación de personal según jornada.",
     orden_aseo:
       "Mantener pasillos despejados, retiro de residuos y correcta segregación de materiales.",
+    prevencionista_nombre: "",
+    prevencionista_cargo: "Prevencionista de Riesgos",
+    accidentes_anteriores: "Sin accidentes previos registrados.",
+    capacitaciones_previas: [
+      "Inducción general de empresa",
+    ],
     riesgos_generales_tabla: [
       crearFilaRiesgo("Caídas al mismo y distinto nivel", "Contusiones, esguinces o fracturas", "Uso de calzado de seguridad y orden de superficies"),
       crearFilaRiesgo("Golpes o atrapamientos", "Traumatismos y laceraciones", "Aplicar procedimiento seguro y distancia de seguridad"),
@@ -199,10 +249,44 @@ function camposIrlBase(params: {
       "Cumplir reglamento interno, usar EPP obligatorio y reportar condiciones inseguras de inmediato.",
     protocolos_minsal: "Aplicar protocolos MINSAL vigentes de acuerdo con exposición y tareas.",
     documentos_asociados: "AST, PTS del cargo, matriz de riesgos y registros de capacitación.",
+    emergencias_evacuacion:
+      "En caso de emergencia: evacuar por vías señalizadas, reunirse en punto de encuentro y esperar instrucciones del encargado de emergencia. Teléfono emergencia: 131 (Bomberos) / 132 (Ambulancia).",
+    pts: "Procedimiento de Trabajo Seguro (PTS): revisar el ART antes de iniciar la tarea, usar los EPP correspondientes, reportar cualquier condición insegura al supervisor antes de continuar.",
+    epp_induccion_tabla: [
+      { descripcion: "Casco de seguridad", cantidad: 1, entregado: true, observaciones: "" },
+      { descripcion: "Lentes de seguridad", cantidad: 1, entregado: true, observaciones: "" },
+      { descripcion: "Guantes de protección", cantidad: 1, entregado: true, observaciones: "" },
+      { descripcion: "Zapatos de seguridad", cantidad: 1, entregado: true, observaciones: "" },
+    ],
+    compromisos_trabajador: [
+      "Usaré correctamente los EPP asignados en todo momento durante la jornada.",
+      "Reportaré inmediatamente cualquier condición insegura o accidente a mi supervisor.",
+      "Cumpliré el Reglamento Interno de Orden, Higiene y Seguridad.",
+      "Participaré en las capacitaciones y actividades de prevención que me convoquen.",
+      "No operaré equipos o maquinarias para los que no esté habilitado.",
+    ],
     declaracion:
       `Declaro haber recibido y comprendido la información de riesgos laborales con fecha ${fecha}.`,
     firma_trabajador: normalizarTexto(params.trabajadorNombre),
     firma_relator: "Relator / Prevencionista",
+  };
+}
+
+function eppItemVacio(fecha: string): EppItem {
+  return {
+    descripcion: "",
+    marca: "",
+    modelo: "",
+    color: "",
+    talla: "",
+    cantidad: 1,
+    norma_tecnica: "",
+    fecha_entrega: fecha,
+    fecha_vencimiento_epp: "",
+    si: true,
+    no: false,
+    firma_recepcion: "",
+    observaciones: "",
   };
 }
 
@@ -219,46 +303,10 @@ function camposEppBase(params: {
     area: normalizarTexto(params.area),
     fecha,
     epp_tabla: [
-      {
-        descripcion: "Casco de seguridad",
-        marca: "",
-        modelo: "",
-        color_talla: "",
-        fecha_entrega: fecha,
-        si: true,
-        no: false,
-        observaciones: "",
-      },
-      {
-        descripcion: "Lentes de seguridad",
-        marca: "",
-        modelo: "",
-        color_talla: "",
-        fecha_entrega: fecha,
-        si: true,
-        no: false,
-        observaciones: "",
-      },
-      {
-        descripcion: "Guantes de protección",
-        marca: "",
-        modelo: "",
-        color_talla: "",
-        fecha_entrega: fecha,
-        si: true,
-        no: false,
-        observaciones: "",
-      },
-      {
-        descripcion: "Zapatos de seguridad",
-        marca: "",
-        modelo: "",
-        color_talla: "",
-        fecha_entrega: fecha,
-        si: true,
-        no: false,
-        observaciones: "",
-      },
+      { ...eppItemVacio(fecha), descripcion: "Casco de seguridad", norma_tecnica: "NCh 1234" },
+      { ...eppItemVacio(fecha), descripcion: "Lentes de seguridad", norma_tecnica: "NCh 1258 / ANSI Z87.1" },
+      { ...eppItemVacio(fecha), descripcion: "Guantes de protección", norma_tecnica: "NCh 1286" },
+      { ...eppItemVacio(fecha), descripcion: "Zapatos de seguridad", norma_tecnica: "NCh 1511" },
     ],
     observaciones_generales: "",
     declaracion:
@@ -347,16 +395,24 @@ function convertirLegacyEpp(value: LegacyDocumentoEppEstructurado): DocumentoEpp
         trabajadorRut: value.introduccion.trabajadorRut,
         area: value.introduccion.area,
       }),
-      epp_tabla: value.filas.map((fila) => ({
-        descripcion: normalizarTexto(fila.descripcion),
-        marca: normalizarTexto(fila.marca),
-        modelo: normalizarTexto(fila.modelo),
-        color_talla: "",
-        fecha_entrega: normalizarTexto(fila.fechaEntrega),
-        si: Boolean(fila.entregado),
-        no: !fila.entregado,
-        observaciones: normalizarTexto(fila.observaciones),
-      })),
+      epp_tabla: value.filas.map((fila) => {
+        const fecha = normalizarTexto(fila.fechaEntrega);
+        return {
+          descripcion: normalizarTexto(fila.descripcion),
+          marca: normalizarTexto(fila.marca),
+          modelo: normalizarTexto(fila.modelo),
+          color: "",
+          talla: "",
+          cantidad: 1,
+          norma_tecnica: "",
+          fecha_entrega: fecha,
+          fecha_vencimiento_epp: "",
+          si: Boolean(fila.entregado),
+          no: !fila.entregado,
+          firma_recepcion: "",
+          observaciones: normalizarTexto(fila.observaciones),
+        };
+      }),
       observaciones_generales: normalizarTexto(value.observacionesGenerales),
       declaracion: normalizarTexto(value.declaracionFinal),
       firma_trabajador: normalizarTexto(value.firmas.trabajador),
@@ -371,6 +427,55 @@ export function isDocumentoEstructurado(value: unknown): value is DocumentoEstru
   if (candidate.version !== 2) return false;
   if (candidate.plantillaCodigo !== "IRL" && candidate.plantillaCodigo !== "EPP") return false;
   return !!candidate.campos && typeof candidate.campos === "object";
+}
+
+/**
+ * Migra un DocumentoEstructurado v2 al schema actual, rellenando campos nuevos
+ * que no existían en versiones guardadas anteriormente.
+ */
+function migrarDocumentoEstructurado(doc: DocumentoEstructurado): DocumentoEstructurado {
+  if (doc.plantillaCodigo === "EPP") {
+    const base = camposEppBase({ trabajadorNombre: "", trabajadorRut: "" });
+    return {
+      ...doc,
+      campos: {
+        ...base,
+        ...doc.campos,
+        epp_tabla: (doc.campos.epp_tabla ?? []).map((item) => {
+          const legacyItem = item as EppItem & { color_talla?: string };
+          const colorTalla = legacyItem.color_talla ?? "";
+          return {
+            ...eppItemVacio(item.fecha_entrega ?? ""),
+            ...item,
+            color: item.color ?? colorTalla,
+            talla: item.talla ?? "",
+          };
+        }),
+      },
+    };
+  }
+
+  if (doc.plantillaCodigo === "IRL") {
+    const base = camposIrlBase({
+      tipoNombre: doc.campos.tipo_induccion ?? "",
+      trabajadorNombre: doc.campos.trabajador_nombre ?? "",
+      trabajadorRut: doc.campos.trabajador_rut ?? "",
+      cargo: doc.campos.cargo ?? "",
+    });
+    return {
+      ...doc,
+      campos: {
+        ...base,
+        ...doc.campos,
+        // Ensure new array fields are arrays even if missing in old data
+        capacitaciones_previas: doc.campos.capacitaciones_previas ?? base.capacitaciones_previas,
+        compromisos_trabajador: doc.campos.compromisos_trabajador ?? base.compromisos_trabajador,
+        epp_induccion_tabla: doc.campos.epp_induccion_tabla ?? base.epp_induccion_tabla,
+      },
+    };
+  }
+
+  return doc;
 }
 
 export function parseDocumentoEstructurado(contenido: string | null | undefined): DocumentoEstructurado | null {
@@ -399,7 +504,7 @@ export function parseDocumentoEstructurado(contenido: string | null | undefined)
     try {
       const parsed = JSON.parse(candidate) as unknown;
       if (isDocumentoEstructurado(parsed)) {
-        return parsed;
+        return migrarDocumentoEstructurado(parsed);
       }
       if (isLegacyIrl(parsed)) {
         return convertirLegacyIrl(parsed);

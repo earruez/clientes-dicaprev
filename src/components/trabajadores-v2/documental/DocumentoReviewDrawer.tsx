@@ -54,6 +54,7 @@ import {
   type DocumentoIrlEstructurado,
   type DocumentoIrlCampos,
   type EppItem,
+  type IrlEppItem,
   type IrlRiesgoFila,
 } from "@/lib/documentacion/documento-estructurado";
 
@@ -240,51 +241,185 @@ function EppTableEditor({
   onChange: (next: EppItem[]) => void;
   disabled?: boolean;
 }) {
+  const newRow = (): EppItem => ({
+    descripcion: "", marca: "", modelo: "", color: "", talla: "", cantidad: 1,
+    norma_tecnica: "", fecha_entrega: "", fecha_vencimiento_epp: "",
+    si: true, no: false, firma_recepcion: "", observaciones: "",
+  });
   const updateRow = (index: number, patch: Partial<EppItem>) => {
-    const next = rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row));
-    onChange(next);
+    onChange(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
   };
-  const addRow = () => onChange([...rows, { descripcion: "", marca: "", modelo: "", color_talla: "", fecha_entrega: "", si: true, no: false, observaciones: "" }]);
+  const addRow = () => onChange([...rows, newRow()]);
   const removeRow = (index: number) => onChange(rows.filter((_, rowIndex) => rowIndex !== index));
 
+  const th = "border border-slate-200 px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100 whitespace-nowrap";
+  const inp = "w-full rounded border border-slate-200 px-1.5 py-1 text-xs text-slate-800 focus:border-violet-400 focus:outline-none";
+
   return (
-    <SectionCard title="Tabla de EPP">
+    <SectionCard title="Tabla de EPP — Registro de entrega">
       <div className="overflow-x-auto">
-        <table className="min-w-[900px] w-full border-collapse text-left text-sm">
+        <table className="min-w-[1100px] w-full border-collapse text-left text-xs">
           <thead>
-            <tr className="bg-slate-100 text-[11px] uppercase tracking-[0.08em] text-slate-600">
-              <th className="border border-slate-200 px-3 py-2">Descripción artículo</th>
-              <th className="border border-slate-200 px-3 py-2">Marca</th>
-              <th className="border border-slate-200 px-3 py-2">Modelo</th>
-              <th className="border border-slate-200 px-3 py-2">Color/Talla</th>
-              <th className="border border-slate-200 px-3 py-2">Fecha entrega</th>
-              <th className="border border-slate-200 px-3 py-2">SI</th>
-              <th className="border border-slate-200 px-3 py-2">NO</th>
-              <th className="border border-slate-200 px-3 py-2">Observaciones</th>
-              <th className="border border-slate-200 px-3 py-2">Acción</th>
+            <tr>
+              <th className={`${th} w-[18%]`}>Descripción artículo</th>
+              <th className={`${th} w-[9%]`}>Marca</th>
+              <th className={`${th} w-[9%]`}>Modelo</th>
+              <th className={`${th} w-[6%]`}>Color</th>
+              <th className={`${th} w-[6%]`}>Talla</th>
+              <th className={`${th} w-[5%] text-center`}>Cant.</th>
+              <th className={`${th} w-[11%]`}>Norma técnica</th>
+              <th className={`${th} w-[8%]`}>F. entrega</th>
+              <th className={`${th} w-[8%]`}>F. venc. EPP</th>
+              <th className={`${th} w-[4%] text-center`}>SI</th>
+              <th className={`${th} w-[4%] text-center`}>NO</th>
+              <th className={`${th} w-[8%]`}>Firma recepción</th>
+              <th className={`${th} w-[8%]`}>Observaciones</th>
+              <th className={`${th} w-[6%] text-center`}>Acción</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={`${row.descripcion}-${index}`}>
-                <td className="border border-slate-200 p-2"><input className="w-full rounded-lg border border-slate-200 px-2 py-1" value={row.descripcion} onChange={(e) => updateRow(index, { descripcion: e.target.value })} disabled={disabled} /></td>
-                <td className="border border-slate-200 p-2"><input className="w-full rounded-lg border border-slate-200 px-2 py-1" value={row.marca} onChange={(e) => updateRow(index, { marca: e.target.value })} disabled={disabled} /></td>
-                <td className="border border-slate-200 p-2"><input className="w-full rounded-lg border border-slate-200 px-2 py-1" value={row.modelo} onChange={(e) => updateRow(index, { modelo: e.target.value })} disabled={disabled} /></td>
-                <td className="border border-slate-200 p-2"><input className="w-full rounded-lg border border-slate-200 px-2 py-1" value={row.color_talla} onChange={(e) => updateRow(index, { color_talla: e.target.value })} disabled={disabled} /></td>
-                <td className="border border-slate-200 p-2"><input type="date" className="w-full rounded-lg border border-slate-200 px-2 py-1" value={row.fecha_entrega} onChange={(e) => updateRow(index, { fecha_entrega: e.target.value })} disabled={disabled} /></td>
-                <td className="border border-slate-200 p-2">
-                  <input type="checkbox" checked={row.si} disabled={disabled} onChange={(e) => updateRow(index, { si: e.target.checked, no: !e.target.checked })} />
-                </td>
-                <td className="border border-slate-200 p-2"><input type="checkbox" checked={row.no} disabled={disabled} onChange={(e) => updateRow(index, { no: e.target.checked, si: !e.target.checked })} /></td>
-                <td className="border border-slate-200 p-2"><input className="w-full rounded-lg border border-slate-200 px-2 py-1" value={row.observaciones} onChange={(e) => updateRow(index, { observaciones: e.target.value })} disabled={disabled} /></td>
-                <td className="border border-slate-200 p-2"><button type="button" onClick={() => removeRow(index)} disabled={disabled} className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-600 disabled:opacity-50">Eliminar</button></td>
+              <tr key={`epp-${index}`} className="odd:bg-white even:bg-slate-50">
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.descripcion} onChange={(e) => updateRow(index, { descripcion: e.target.value })} disabled={disabled} placeholder="Ej: Casco de seguridad" /></td>
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.marca} onChange={(e) => updateRow(index, { marca: e.target.value })} disabled={disabled} placeholder="3M" /></td>
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.modelo} onChange={(e) => updateRow(index, { modelo: e.target.value })} disabled={disabled} placeholder="H-700" /></td>
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.color} onChange={(e) => updateRow(index, { color: e.target.value })} disabled={disabled} placeholder="Blanco" /></td>
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.talla} onChange={(e) => updateRow(index, { talla: e.target.value })} disabled={disabled} placeholder="M / 42" /></td>
+                <td className="border border-slate-200 p-1.5 text-center"><input type="number" min={1} className={`${inp} text-center w-14`} value={row.cantidad} onChange={(e) => updateRow(index, { cantidad: Math.max(1, Number(e.target.value)) })} disabled={disabled} /></td>
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.norma_tecnica} onChange={(e) => updateRow(index, { norma_tecnica: e.target.value })} disabled={disabled} placeholder="NCh 1234" /></td>
+                <td className="border border-slate-200 p-1.5"><input type="date" className={inp} value={row.fecha_entrega} onChange={(e) => updateRow(index, { fecha_entrega: e.target.value })} disabled={disabled} /></td>
+                <td className="border border-slate-200 p-1.5"><input type="date" className={inp} value={row.fecha_vencimiento_epp} onChange={(e) => updateRow(index, { fecha_vencimiento_epp: e.target.value })} disabled={disabled} /></td>
+                <td className="border border-slate-200 p-1.5 text-center"><input type="checkbox" checked={row.si} disabled={disabled} className="accent-violet-600" onChange={(e) => updateRow(index, { si: e.target.checked, no: !e.target.checked })} /></td>
+                <td className="border border-slate-200 p-1.5 text-center"><input type="checkbox" checked={row.no} disabled={disabled} className="accent-red-500" onChange={(e) => updateRow(index, { no: e.target.checked, si: !e.target.checked })} /></td>
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.firma_recepcion} onChange={(e) => updateRow(index, { firma_recepcion: e.target.value })} disabled={disabled} placeholder="RUT / nombre" /></td>
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.observaciones} onChange={(e) => updateRow(index, { observaciones: e.target.value })} disabled={disabled} /></td>
+                <td className="border border-slate-200 p-1.5 text-center"><button type="button" onClick={() => removeRow(index)} disabled={disabled} className="rounded border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-500 hover:border-red-300 hover:text-red-600 disabled:opacity-40">✕</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <button type="button" onClick={addRow} disabled={disabled} className="mt-3 rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50">Agregar fila</button>
+      <button type="button" onClick={addRow} disabled={disabled} className="mt-3 rounded-xl bg-violet-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50">+ Agregar EPP</button>
     </SectionCard>
+  );
+}
+
+function IrlEppTableEditor({
+  rows,
+  onChange,
+  disabled,
+}: {
+  rows: IrlEppItem[];
+  onChange: (next: IrlEppItem[]) => void;
+  disabled?: boolean;
+}) {
+  const updateRow = (index: number, patch: Partial<IrlEppItem>) => {
+    onChange(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
+  };
+  const addRow = () => onChange([...rows, { descripcion: "", cantidad: 1, entregado: true, observaciones: "" }]);
+  const removeRow = (index: number) => onChange(rows.filter((_, rowIndex) => rowIndex !== index));
+
+  const th = "border border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-600 bg-slate-100";
+  const inp = "w-full rounded border border-slate-200 px-2 py-1 text-sm focus:border-violet-400 focus:outline-none";
+
+  return (
+    <div className="space-y-2">
+      <div className="overflow-x-auto">
+        <table className="min-w-[600px] w-full border-collapse text-left text-sm">
+          <thead>
+            <tr>
+              <th className={`${th} w-[45%]`}>Descripción EPP</th>
+              <th className={`${th} w-[12%] text-center`}>Cantidad</th>
+              <th className={`${th} w-[12%] text-center`}>Entregado</th>
+              <th className={`${th} w-[25%]`}>Observaciones</th>
+              <th className={`${th} w-[6%] text-center`}>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={`irl-epp-${index}`} className="odd:bg-white even:bg-slate-50">
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.descripcion} onChange={(e) => updateRow(index, { descripcion: e.target.value })} disabled={disabled} placeholder="Ej: Casco blanco" /></td>
+                <td className="border border-slate-200 p-1.5 text-center"><input type="number" min={1} className={`${inp} text-center w-16`} value={row.cantidad} onChange={(e) => updateRow(index, { cantidad: Math.max(1, Number(e.target.value)) })} disabled={disabled} /></td>
+                <td className="border border-slate-200 p-1.5 text-center"><input type="checkbox" checked={row.entregado} disabled={disabled} className="accent-violet-600" onChange={(e) => updateRow(index, { entregado: e.target.checked })} /></td>
+                <td className="border border-slate-200 p-1.5"><input className={inp} value={row.observaciones} onChange={(e) => updateRow(index, { observaciones: e.target.value })} disabled={disabled} /></td>
+                <td className="border border-slate-200 p-1.5 text-center"><button type="button" onClick={() => removeRow(index)} disabled={disabled} className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-500 hover:text-red-600 disabled:opacity-40">✕</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" onClick={addRow} disabled={disabled} className="rounded-xl bg-slate-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50">+ Agregar EPP</button>
+    </div>
+  );
+}
+
+function CompromisosEditor({
+  items,
+  onChange,
+  disabled,
+}: {
+  items: string[];
+  onChange: (next: string[]) => void;
+  disabled?: boolean;
+}) {
+  const updateItem = (index: number, value: string) => {
+    onChange(items.map((item, i) => (i === index ? value : item)));
+  };
+  const addItem = () => onChange([...items, ""]);
+  const removeItem = (index: number) => onChange(items.filter((_, i) => i !== index));
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={`comp-${index}`} className="flex items-start gap-2">
+          <span className="mt-2.5 text-slate-400 text-xs font-semibold w-5 shrink-0">{index + 1}.</span>
+          <input
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:outline-none disabled:bg-slate-50"
+            value={item}
+            onChange={(e) => updateItem(index, e.target.value)}
+            disabled={disabled}
+            placeholder="Compromiso del trabajador..."
+          />
+          <button type="button" onClick={() => removeItem(index)} disabled={disabled} className="mt-2 rounded-lg border border-slate-200 px-2 py-1 text-[10px] text-slate-400 hover:text-red-500 disabled:opacity-40">✕</button>
+        </div>
+      ))}
+      <button type="button" onClick={addItem} disabled={disabled} className="rounded-xl bg-slate-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50">+ Agregar compromiso</button>
+    </div>
+  );
+}
+
+function CapacitacionesPreviasEditor({
+  items,
+  onChange,
+  disabled,
+}: {
+  items: string[];
+  onChange: (next: string[]) => void;
+  disabled?: boolean;
+}) {
+  const updateItem = (index: number, value: string) => {
+    onChange(items.map((item, i) => (i === index ? value : item)));
+  };
+  const addItem = () => onChange([...items, ""]);
+  const removeItem = (index: number) => onChange(items.filter((_, i) => i !== index));
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={`cap-${index}`} className="flex items-center gap-2">
+          <span className="text-violet-400 text-xs">✓</span>
+          <input
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:outline-none disabled:bg-slate-50"
+            value={item}
+            onChange={(e) => updateItem(index, e.target.value)}
+            disabled={disabled}
+            placeholder="Ej: Inducción de empresa"
+          />
+          <button type="button" onClick={() => removeItem(index)} disabled={disabled} className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] text-slate-400 hover:text-red-500 disabled:opacity-40">✕</button>
+        </div>
+      ))}
+      <button type="button" onClick={addItem} disabled={disabled} className="rounded-xl bg-slate-700 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50">+ Agregar capacitación previa</button>
+    </div>
   );
 }
 
@@ -496,56 +631,104 @@ export function DocumentoReviewDrawer({
     const c = data.campos;
     return (
       <div className="space-y-4">
+        {/* ── Identificación ─────────────────────────────────────────────────── */}
         <SectionCard title="Identificación y tipo de inducción" action={renderSectionIABtn("encabezado")}>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Field label="Empresa" value={c.empresa_nombre} onChange={(value) => actualizarCampoIrl("empresa_nombre", value)} disabled={isReadOnly} />
-            <Field label="Código documento" value={c.codigo_documento} onChange={(value) => actualizarCampoIrl("codigo_documento", value)} disabled={isReadOnly} />
-            <Field label="Versión" value={c.version} onChange={(value) => actualizarCampoIrl("version", value)} disabled={isReadOnly} />
-            <Field label="Cargo" value={c.cargo} onChange={(value) => actualizarCampoIrl("cargo", value)} disabled={isReadOnly} />
-            <Field label="Año" value={c.anio} onChange={(value) => actualizarCampoIrl("anio", value)} disabled={isReadOnly} />
-            <Field label="Tipo inducción" value={c.tipo_induccion} onChange={(value) => actualizarCampoIrl("tipo_induccion", value)} disabled={isReadOnly} />
-            <Field label="Modalidad" value={c.modalidad} onChange={(value) => actualizarCampoIrl("modalidad", value)} disabled={isReadOnly} />
-            <Field label="Tipo actividad" value={c.tipo_actividad} onChange={(value) => actualizarCampoIrl("tipo_actividad", value)} disabled={isReadOnly} />
-            <Field label="Trabajador" value={c.trabajador_nombre} onChange={(value) => actualizarCampoIrl("trabajador_nombre", value)} disabled={isReadOnly} />
-            <Field label="RUT" value={c.trabajador_rut} onChange={(value) => actualizarCampoIrl("trabajador_rut", value)} disabled={isReadOnly} />
-            <Field label="Trabajador cargo" value={c.trabajador_cargo} onChange={(value) => actualizarCampoIrl("trabajador_cargo", value)} disabled={isReadOnly} />
-            <Field label="Trabajador área" value={c.trabajador_area} onChange={(value) => actualizarCampoIrl("trabajador_area", value)} disabled={isReadOnly} />
-            <Field label="Fecha" type="date" value={c.fecha} onChange={(value) => actualizarCampoIrl("fecha", value)} disabled={isReadOnly} />
-            <Field label="Teléfono emergencia" value={c.telefono_emergencia} onChange={(value) => actualizarCampoIrl("telefono_emergencia", value)} disabled={isReadOnly} />
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <Field label="Empresa" value={c.empresa_nombre} onChange={(v) => actualizarCampoIrl("empresa_nombre", v)} disabled={isReadOnly} />
+            <Field label="Empresa contratista" value={c.empresa_contratista} onChange={(v) => actualizarCampoIrl("empresa_contratista", v)} disabled={isReadOnly} placeholder="Si aplica" />
+            <Field label="Empresa mandante" value={c.empresa_mandante} onChange={(v) => actualizarCampoIrl("empresa_mandante", v)} disabled={isReadOnly} />
+            <Field label="Código documento" value={c.codigo_documento} onChange={(v) => actualizarCampoIrl("codigo_documento", v)} disabled={isReadOnly} />
+            <Field label="Versión" value={c.version} onChange={(v) => actualizarCampoIrl("version", v)} disabled={isReadOnly} />
+            <Field label="Año" value={c.anio} onChange={(v) => actualizarCampoIrl("anio", v)} disabled={isReadOnly} />
+            <Field label="Tipo inducción" value={c.tipo_induccion} onChange={(v) => actualizarCampoIrl("tipo_induccion", v)} disabled={isReadOnly} />
+            <Field label="Modalidad" value={c.modalidad} onChange={(v) => actualizarCampoIrl("modalidad", v)} disabled={isReadOnly} />
+            <Field label="Tipo actividad" value={c.tipo_actividad} onChange={(v) => actualizarCampoIrl("tipo_actividad", v)} disabled={isReadOnly} />
           </div>
         </SectionCard>
 
-        <SectionCard title="Características del lugar de trabajo" action={renderSectionIABtn("lugar_trabajo")}>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Field label="Lugar de trabajo" value={c.lugar_trabajo} onChange={(value) => actualizarCampoIrl("lugar_trabajo", value)} disabled={isReadOnly} />
-            <Field label="Espacio de trabajo" value={c.espacio_trabajo} rows={3} onChange={(value) => actualizarCampoIrl("espacio_trabajo", value)} disabled={isReadOnly} />
-            <Field label="Condiciones ambientales" value={c.condiciones_ambientales} rows={3} onChange={(value) => actualizarCampoIrl("condiciones_ambientales", value)} disabled={isReadOnly} />
-            <Field label="Orden y aseo" value={c.orden_aseo} rows={3} onChange={(value) => actualizarCampoIrl("orden_aseo", value)} disabled={isReadOnly} />
+        {/* ── Datos del trabajador y jornada ──────────────────────────────────── */}
+        <SectionCard title="Datos del trabajador y jornada" action={renderSectionIABtn("encabezado")}>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <Field label="Nombre trabajador" value={c.trabajador_nombre} onChange={(v) => actualizarCampoIrl("trabajador_nombre", v)} disabled={isReadOnly} />
+            <Field label="RUT" value={c.trabajador_rut} onChange={(v) => actualizarCampoIrl("trabajador_rut", v)} disabled={isReadOnly} />
+            <Field label="Cargo" value={c.trabajador_cargo} onChange={(v) => actualizarCampoIrl("trabajador_cargo", v)} disabled={isReadOnly} />
+            <Field label="Área" value={c.trabajador_area} onChange={(v) => actualizarCampoIrl("trabajador_area", v)} disabled={isReadOnly} />
+            <Field label="Fecha" type="date" value={c.fecha} onChange={(v) => actualizarCampoIrl("fecha", v)} disabled={isReadOnly} />
+            <Field label="Jornada" value={c.jornada} onChange={(v) => actualizarCampoIrl("jornada", v)} disabled={isReadOnly} placeholder="Diurna / Nocturna" />
+            <Field label="Turno" value={c.turno} onChange={(v) => actualizarCampoIrl("turno", v)} disabled={isReadOnly} placeholder="Mañana / Tarde / Noche" />
+            <Field label="Hora inicio" value={c.hora_inicio} onChange={(v) => actualizarCampoIrl("hora_inicio", v)} disabled={isReadOnly} placeholder="08:00" />
+            <Field label="Hora término" value={c.hora_termino} onChange={(v) => actualizarCampoIrl("hora_termino", v)} disabled={isReadOnly} placeholder="17:00" />
+            <Field label="Teléfono emergencia" value={c.telefono_emergencia} onChange={(v) => actualizarCampoIrl("telefono_emergencia", v)} disabled={isReadOnly} placeholder="131 / 132" />
           </div>
         </SectionCard>
 
+        {/* ── Prevencionista y lugar ───────────────────────────────────────────── */}
+        <SectionCard title="Prevencionista y lugar de trabajo" action={renderSectionIABtn("lugar_trabajo")}>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field label="Nombre prevencionista" value={c.prevencionista_nombre} onChange={(v) => actualizarCampoIrl("prevencionista_nombre", v)} disabled={isReadOnly} />
+            <Field label="Cargo prevencionista" value={c.prevencionista_cargo} onChange={(v) => actualizarCampoIrl("prevencionista_cargo", v)} disabled={isReadOnly} />
+            <Field label="Dirección lugar de trabajo" value={c.direccion_lugar_trabajo} onChange={(v) => actualizarCampoIrl("direccion_lugar_trabajo", v)} disabled={isReadOnly} />
+            <Field label="Centro / lugar de trabajo" value={c.lugar_trabajo} onChange={(v) => actualizarCampoIrl("lugar_trabajo", v)} disabled={isReadOnly} />
+            <Field label="Espacio de trabajo" value={c.espacio_trabajo} rows={3} onChange={(v) => actualizarCampoIrl("espacio_trabajo", v)} disabled={isReadOnly} />
+            <Field label="Condiciones ambientales" value={c.condiciones_ambientales} rows={3} onChange={(v) => actualizarCampoIrl("condiciones_ambientales", v)} disabled={isReadOnly} />
+            <Field label="Orden y aseo" value={c.orden_aseo} rows={3} onChange={(v) => actualizarCampoIrl("orden_aseo", v)} disabled={isReadOnly} />
+          </div>
+        </SectionCard>
+
+        {/* ── Antecedentes del trabajador ────────────────────────────────────── */}
+        <SectionCard title="Antecedentes del trabajador" action={renderSectionIABtn("encabezado")}>
+          <div className="space-y-3">
+            <Field label="Accidentes anteriores" value={c.accidentes_anteriores} rows={2} onChange={(v) => actualizarCampoIrl("accidentes_anteriores", v)} disabled={isReadOnly} />
+            <div>
+              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Capacitaciones previas recibidas</span>
+              <CapacitacionesPreviasEditor items={c.capacitaciones_previas ?? []} onChange={(v) => actualizarCampoIrl("capacitaciones_previas", v)} disabled={isReadOnly} />
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* ── Riesgos ─────────────────────────────────────────────────────────── */}
         <SectionCard title="Riesgos generales" action={renderSectionIABtn("riesgos_generales")}>
           <RiskTableEditor rows={c.riesgos_generales_tabla} onChange={(next) => actualizarCampoIrl("riesgos_generales_tabla", next)} disabled={isReadOnly} />
         </SectionCard>
 
-        <SectionCard title="Riesgos específicos" action={renderSectionIABtn("riesgos_especificos")}>
+        <SectionCard title="Riesgos específicos del cargo" action={renderSectionIABtn("riesgos_especificos")}>
           <RiskTableEditor rows={c.riesgos_especificos_tabla} onChange={(next) => actualizarCampoIrl("riesgos_especificos_tabla", next)} disabled={isReadOnly} />
         </SectionCard>
 
+        {/* ── Normativa ───────────────────────────────────────────────────────── */}
         <SectionCard title="Normas, protocolos y documentos asociados" action={renderSectionIABtn("normativa")}>
           <div className="space-y-3">
-            <Field label="Normas generales" value={c.normas_generales} rows={4} onChange={(value) => actualizarCampoIrl("normas_generales", value)} disabled={isReadOnly} />
-            <Field label="Protocolos MINSAL" value={c.protocolos_minsal} rows={4} onChange={(value) => actualizarCampoIrl("protocolos_minsal", value)} disabled={isReadOnly} />
-            <Field label="Documentos asociados" value={c.documentos_asociados} rows={4} onChange={(value) => actualizarCampoIrl("documentos_asociados", value)} disabled={isReadOnly} />
+            <Field label="Normas generales" value={c.normas_generales} rows={4} onChange={(v) => actualizarCampoIrl("normas_generales", v)} disabled={isReadOnly} />
+            <Field label="Protocolos MINSAL" value={c.protocolos_minsal} rows={4} onChange={(v) => actualizarCampoIrl("protocolos_minsal", v)} disabled={isReadOnly} />
+            <Field label="Documentos asociados" value={c.documentos_asociados} rows={2} onChange={(v) => actualizarCampoIrl("documentos_asociados", v)} disabled={isReadOnly} />
           </div>
         </SectionCard>
 
+        {/* ── Emergencias y PTS ───────────────────────────────────────────────── */}
+        <SectionCard title="Emergencias, evacuación y PTS" action={renderSectionIABtn("emergencias")}>
+          <div className="space-y-3">
+            <Field label="Plan de emergencias y evacuación" value={c.emergencias_evacuacion} rows={5} onChange={(v) => actualizarCampoIrl("emergencias_evacuacion", v)} disabled={isReadOnly} />
+            <Field label="Procedimiento de Trabajo Seguro (PTS)" value={c.pts} rows={5} onChange={(v) => actualizarCampoIrl("pts", v)} disabled={isReadOnly} />
+          </div>
+        </SectionCard>
+
+        {/* ── EPP en inducción ─────────────────────────────────────────────────── */}
+        <SectionCard title="EPP entregados en esta inducción" action={renderSectionIABtn("epp_resumen")}>
+          <IrlEppTableEditor rows={c.epp_induccion_tabla ?? []} onChange={(next) => actualizarCampoIrl("epp_induccion_tabla", next)} disabled={isReadOnly} />
+        </SectionCard>
+
+        {/* ── Compromisos ─────────────────────────────────────────────────────── */}
+        <SectionCard title="Compromisos del trabajador" action={renderSectionIABtn("compromisos")}>
+          <CompromisosEditor items={c.compromisos_trabajador ?? []} onChange={(v) => actualizarCampoIrl("compromisos_trabajador", v)} disabled={isReadOnly} />
+        </SectionCard>
+
+        {/* ── Cierre ──────────────────────────────────────────────────────────── */}
         <SectionCard title="Declaración y firmas" action={renderSectionIABtn("cierre")}>
           <div className="space-y-3">
-            <Field label="Declaración" value={c.declaracion} rows={4} onChange={(value) => actualizarCampoIrl("declaracion", value)} disabled={isReadOnly} />
+            <Field label="Declaración" value={c.declaracion} rows={4} onChange={(v) => actualizarCampoIrl("declaracion", v)} disabled={isReadOnly} />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Field label="Firma trabajador" value={c.firma_trabajador} onChange={(value) => actualizarCampoIrl("firma_trabajador", value)} disabled={isReadOnly} />
-              <Field label="Firma relator" value={c.firma_relator} onChange={(value) => actualizarCampoIrl("firma_relator", value)} disabled={isReadOnly} />
+              <Field label="Firma trabajador" value={c.firma_trabajador} onChange={(v) => actualizarCampoIrl("firma_trabajador", v)} disabled={isReadOnly} />
+              <Field label="Firma relator" value={c.firma_relator} onChange={(v) => actualizarCampoIrl("firma_relator", v)} disabled={isReadOnly} />
             </div>
           </div>
         </SectionCard>

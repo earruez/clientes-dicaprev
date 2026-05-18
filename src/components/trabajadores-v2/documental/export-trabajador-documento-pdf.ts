@@ -543,12 +543,22 @@ async function renderStructuredIrlPdf(
   drawFieldRow(doc, layout, "NOMBRE DEL TRABAJADOR", c.trabajador_nombre || safeText(params.trabajador.nombre + " " + params.trabajador.apellido));
   drawFieldRow(doc, layout, "RUN", c.trabajador_rut || safeText(params.trabajador.rut));
   drawFieldRow(doc, layout, "CARGO / AREA", `${safeText(c.trabajador_cargo)} / ${safeText(c.trabajador_area || params.trabajador.area)}`);
-  drawFieldRow(doc, layout, "LUGAR DE TRABAJO", safeText(c.lugar_trabajo));
+  if (c.empresa_contratista) drawFieldRow(doc, layout, "EMPRESA CONTRATISTA", safeText(c.empresa_contratista));
+  if (c.empresa_mandante) drawFieldRow(doc, layout, "EMPRESA MANDANTE", safeText(c.empresa_mandante));
+  drawFieldRow(doc, layout, "FECHA", safeText(c.fecha));
+  if (c.jornada || c.turno) drawFieldRow(doc, layout, "JORNADA / TURNO", `${safeText(c.jornada)} / ${safeText(c.turno)}  |  ${safeText(c.hora_inicio)} – ${safeText(c.hora_termino)}`);
 
   drawLongTextBlock(doc, layout, "TIPO Y MODALIDAD DE INDUCCION", `Tipo inducción: ${safeText(c.tipo_induccion)}\nModalidad: ${safeText(c.modalidad)}\nActividad: ${safeText(c.tipo_actividad)}`, 8.2, 52);
+
+  if (c.prevencionista_nombre) drawFieldRow(doc, layout, "PREVENCIONISTA RESPONSABLE", `${safeText(c.prevencionista_nombre)} — ${safeText(c.prevencionista_cargo)}`);
+
+  drawFieldRow(doc, layout, "LUGAR DE TRABAJO", [c.direccion_lugar_trabajo, c.lugar_trabajo].filter(Boolean).join(" — ") || "-");
   drawLongTextBlock(doc, layout, "ESPACIO DE TRABAJO", safeText(c.espacio_trabajo), 8.2, 44);
   drawLongTextBlock(doc, layout, "CONDICIONES AMBIENTALES", safeText(c.condiciones_ambientales), 8.2, 44);
   drawLongTextBlock(doc, layout, "ORDEN Y ASEO", safeText(c.orden_aseo), 8.2, 44);
+
+  if (c.accidentes_anteriores) drawLongTextBlock(doc, layout, "ACCIDENTES ANTERIORES", safeText(c.accidentes_anteriores), 8.2, 36);
+  if (c.capacitaciones_previas?.length) drawLongTextBlock(doc, layout, "CAPACITACIONES PREVIAS RECIBIDAS", c.capacitaciones_previas.map((s, i) => `${i + 1}. ${s}`).join("\n"), 8.2, 44);
 
   const colRiesgo = layout.contentWidth * 0.33;
   const colCons = layout.contentWidth * 0.27;
@@ -588,6 +598,36 @@ async function renderStructuredIrlPdf(
   drawLongTextBlock(doc, layout, "NORMAS GENERALES", safeText(c.normas_generales), 8.2, 44);
   drawLongTextBlock(doc, layout, "PROTOCOLOS MINSAL", safeText(c.protocolos_minsal), 8.2, 44);
   drawLongTextBlock(doc, layout, "DOCUMENTOS ASOCIADOS", safeText(c.documentos_asociados), 8.2, 44);
+
+  if (c.emergencias_evacuacion) drawLongTextBlock(doc, layout, "EMERGENCIAS Y EVACUACION", safeText(c.emergencias_evacuacion), 8.2, 52);
+  if (c.pts) drawLongTextBlock(doc, layout, "PROCEDIMIENTO DE TRABAJO SEGURO (PTS)", safeText(c.pts), 8.2, 52);
+
+  if (c.epp_induccion_tabla?.length) {
+    const colEppDesc = layout.contentWidth * 0.46;
+    const colEppCant = layout.contentWidth * 0.14;
+    const colEppEnt = layout.contentWidth * 0.14;
+    const colEppObs = layout.contentWidth - colEppDesc - colEppCant - colEppEnt;
+    drawRow(doc, layout, layout.margin, [
+      { w: colEppDesc + colEppCant + colEppEnt + colEppObs, text: "EPP ENTREGADOS EN ESTA INDUCCION", bold: true, align: "center", fillColor: headerFill, textColor: headerText },
+    ], { minHeight: 22 });
+    drawRow(doc, layout, layout.margin, [
+      { w: colEppDesc, text: "DESCRIPCION", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
+      { w: colEppCant, text: "CANTIDAD", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
+      { w: colEppEnt, text: "ENTREGADO", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
+      { w: colEppObs, text: "OBSERVACIONES", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
+    ], { minHeight: 20 });
+    c.epp_induccion_tabla.forEach((row) => {
+      drawRow(doc, layout, layout.margin, [
+        { w: colEppDesc, text: row.descripcion, fontSize: 8.2 },
+        { w: colEppCant, text: String(row.cantidad ?? 1), fontSize: 8.2, align: "center" },
+        { w: colEppEnt, text: row.entregado ? "Sí" : "No", fontSize: 8.2, align: "center" },
+        { w: colEppObs, text: row.observaciones, fontSize: 8.2 },
+      ], { minHeight: 20 });
+    });
+  }
+
+  if (c.compromisos_trabajador?.length) drawLongTextBlock(doc, layout, "COMPROMISOS DEL TRABAJADOR", c.compromisos_trabajador.map((s, i) => `${i + 1}. ${s}`).join("\n"), 8.2, 52);
+
   drawLongTextBlock(doc, layout, "DECLARACION", safeText(c.declaracion), 8.2, 46);
 
   const sigH = 72;
@@ -629,41 +669,51 @@ async function renderStructuredEppPdf(
   drawFieldRow(doc, layout, "AREA", safeText(c.area || params.trabajador.area));
   drawFieldRow(doc, layout, "FECHA", safeText(c.fecha));
 
-  const colDescripcion = layout.contentWidth * 0.20;
-  const colMarca = layout.contentWidth * 0.12;
-  const colModelo = layout.contentWidth * 0.12;
-  const colColorTalla = layout.contentWidth * 0.12;
-  const colFecha = layout.contentWidth * 0.11;
-  const colSi = layout.contentWidth * 0.06;
-  const colNo = layout.contentWidth * 0.06;
-  const colObs = layout.contentWidth - colDescripcion - colMarca - colModelo - colColorTalla - colFecha - colSi - colNo;
+  const colDescripcion = layout.contentWidth * 0.19;
+  const colMarca = layout.contentWidth * 0.08;
+  const colModelo = layout.contentWidth * 0.08;
+  const colColorTalla = layout.contentWidth * 0.09;
+  const colCantidad = layout.contentWidth * 0.05;
+  const colNorma = layout.contentWidth * 0.10;
+  const colFecha = layout.contentWidth * 0.09;
+  const colVenc = layout.contentWidth * 0.09;
+  const colSi = layout.contentWidth * 0.04;
+  const colNo = layout.contentWidth * 0.04;
+  const colObs = layout.contentWidth - colDescripcion - colMarca - colModelo - colColorTalla - colCantidad - colNorma - colFecha - colVenc - colSi - colNo;
   const headerFill: [number, number, number] = [34, 90, 126];
   const headerText: [number, number, number] = [255, 255, 255];
 
   const drawHeader = () => {
     drawRow(doc, layout, layout.margin, [
-      { w: colDescripcion, text: "DESCRIPCION", bold: true, fontSize: 8, align: "center", fillColor: headerFill, textColor: headerText },
-      { w: colMarca, text: "MARCA", bold: true, fontSize: 8, align: "center", fillColor: headerFill, textColor: headerText },
-      { w: colModelo, text: "MODELO", bold: true, fontSize: 8, align: "center", fillColor: headerFill, textColor: headerText },
-      { w: colColorTalla, text: "COLOR/TALLA", bold: true, fontSize: 8, align: "center", fillColor: headerFill, textColor: headerText },
-      { w: colFecha, text: "FECHA ENTREGA", bold: true, fontSize: 8, align: "center", fillColor: headerFill, textColor: headerText },
-      { w: colSi, text: "SI", bold: true, fontSize: 8, align: "center", fillColor: headerFill, textColor: headerText },
-      { w: colNo, text: "NO", bold: true, fontSize: 8, align: "center", fillColor: headerFill, textColor: headerText },
-      { w: colObs, text: "OBSERVACIONES", bold: true, fontSize: 8, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colDescripcion, text: "DESCRIPCION", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colMarca, text: "MARCA", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colModelo, text: "MODELO", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colColorTalla, text: "COLOR/TALLA", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colCantidad, text: "CANT.", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colNorma, text: "NORMA", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colFecha, text: "F.ENTREGA", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colVenc, text: "F.VENC.", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colSi, text: "SI", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colNo, text: "NO", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
+      { w: colObs, text: "OBSERVACIONES", bold: true, fontSize: 7, align: "center", fillColor: headerFill, textColor: headerText },
     ], { minHeight: 24 });
   };
 
   drawHeader();
   c.epp_tabla.forEach((row) => {
+    const colorTalla = [row.color, row.talla].filter(Boolean).join("/") || "-";
     drawRow(doc, layout, layout.margin, [
-      { w: colDescripcion, text: row.descripcion, fontSize: 8.2 },
-      { w: colMarca, text: row.marca, fontSize: 8.2 },
-      { w: colModelo, text: row.modelo, fontSize: 8.2 },
-      { w: colColorTalla, text: row.color_talla, fontSize: 8.2 },
-      { w: colFecha, text: row.fecha_entrega, fontSize: 8.2, align: "center" },
-      { w: colSi, text: row.si ? "X" : "", fontSize: 9, align: "center" },
-      { w: colNo, text: row.no ? "X" : "", fontSize: 9, align: "center" },
-      { w: colObs, text: row.observaciones, fontSize: 8.2 },
+      { w: colDescripcion, text: row.descripcion, fontSize: 7 },
+      { w: colMarca, text: row.marca, fontSize: 7 },
+      { w: colModelo, text: row.modelo, fontSize: 7 },
+      { w: colColorTalla, text: colorTalla, fontSize: 7 },
+      { w: colCantidad, text: String(row.cantidad ?? 1), fontSize: 7, align: "center" },
+      { w: colNorma, text: row.norma_tecnica || "-", fontSize: 7 },
+      { w: colFecha, text: row.fecha_entrega, fontSize: 7, align: "center" },
+      { w: colVenc, text: row.fecha_vencimiento_epp || "-", fontSize: 7, align: "center" },
+      { w: colSi, text: row.si ? "X" : "", fontSize: 8, align: "center" },
+      { w: colNo, text: row.no ? "X" : "", fontSize: 8, align: "center" },
+      { w: colObs, text: row.observaciones, fontSize: 7 },
     ], { minHeight: 22, onPageBreak: drawHeader });
   });
 
