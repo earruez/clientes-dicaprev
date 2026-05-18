@@ -676,7 +676,7 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
   reglas: ReglaDocumentalNextPrev[],
 ): Promise<EvaluacionReglasTrabajadorResult> {
   const existentes = await prisma.trabajadorDocumento.findMany({
-    where: { empresaId: context.empresaId, trabajadorId: trabajador.id },
+    where: { empresaId: context.empresaId, trabajadorId: trabajador.id, esVigente: true },
     select: { tipo: true, nombre: true },
   });
 
@@ -1164,6 +1164,7 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
         id: row.id,
         workerId: row.trabajadorId,
         tipoDocumentoId,
+        tipoCodigo: row.tipo,
         estado: mapDocEstado(row.estado),
         fechaCarga: row.createdAt.toISOString().slice(0, 10),
         fechaVencimiento: row.fechaVencimiento ? row.fechaVencimiento.toISOString().slice(0, 10) : undefined,

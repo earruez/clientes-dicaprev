@@ -143,12 +143,13 @@ export function PendientesPanel({
     if (!doc.documentoId) return;
     setCargandoVersiones(true);
     try {
-      // El tipo de Prisma es el campo `tipo` del documento (código del tipo documental)
-      // Para obtener versiones necesitamos el código del tipo, que está en doc.tipo
-      const versiones = await getVersionesTrabajadorDocumento(worker.id, doc.tipo.nombre);
+      // tipoCodigo es el valor raw del campo `tipo` en DB (ej: "IRL", "EPP")
+      // El tipo de Prisma almacena el código del DocumentoTipoTrabajador, no el nombre
+      const codigoTipo = doc.tipoCodigo ?? doc.tipo.nombre;
+      const versiones = await getVersionesTrabajadorDocumento(worker.id, codigoTipo);
       setVersionesDoc({
         tipoNombre: doc.tipo.nombre,
-        tipiCodigo: doc.tipo.nombre,
+        tipiCodigo: codigoTipo,
         trabajador: worker,
         versiones,
       });

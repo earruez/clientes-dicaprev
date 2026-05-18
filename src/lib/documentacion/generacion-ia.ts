@@ -856,6 +856,7 @@ async function _ejecutarGeneracion(
         where: {
           empresaId: params.empresaId,
           trabajadorId: trabajador.id,
+          esVigente: true,
           OR: [{ tipo: regla.codigo }, { nombre: regla.nombre }],
         },
         select: { id: true, estado: true, tipo: true, nombre: true },

@@ -100,7 +100,7 @@ export async function generarAlertasDocumentalesEmpresa(params: {
     prisma.trabajadorDocumento.findMany({
       where: {
         empresaId: params.empresaId,
-        estado: { not: "reemplazado" },
+        esVigente: true,
       },
       select: {
         id: true,

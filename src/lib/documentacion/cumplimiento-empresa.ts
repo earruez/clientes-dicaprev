@@ -90,6 +90,7 @@ export async function calcularCumplimientoEmpresa({ empresaId }: { empresaId: st
     prisma.trabajadorDocumento.findMany({
       where: {
         empresaId,
+        esVigente: true,
         trabajador: {
           estado: { not: "inactivo" },
         },

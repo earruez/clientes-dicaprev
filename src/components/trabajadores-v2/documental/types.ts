@@ -58,10 +58,12 @@ export interface DocumentoTrabajador {
   reemplazadoPorId?: string;
   motivoReemplazo?: string;
   totalVersiones?: number; // calculado: cuántas versiones existen para este trabajador+tipo
+  tipoCodigo?: string; // valor raw del campo `tipo` en DB (codigo del DocumentoTipoTrabajador)
 }
 
 export interface DocTrabajadorView {
   documentoId?: string;
+  tipoCodigo?: string; // valor raw del campo `tipo` en DB (para consultas por código)
   tipo: TipoDocumento;
   estado: DocEstado;
   fechaCarga?: string;
@@ -280,6 +282,7 @@ export function getWorkerDocs(
       }
       return {
         documentoId:      up?.id,
+        tipoCodigo:       up?.tipoCodigo,
         tipo,
         estado,
         fechaCarga:       up?.fechaCarga,
