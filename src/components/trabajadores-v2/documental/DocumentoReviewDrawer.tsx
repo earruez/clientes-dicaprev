@@ -631,47 +631,119 @@ export function DocumentoReviewDrawer({
     const c = data.campos;
     return (
       <div className="space-y-4">
-        {/* ── Identificación ─────────────────────────────────────────────────── */}
-        <SectionCard title="Identificación y tipo de inducción" action={renderSectionIABtn("encabezado")}>
+        {/* ── 1-3: Tipo inducción, modalidad, actividad ───────────────────────── */}
+        <SectionCard title="1–3. Tipo inducción, modalidad y actividad" action={renderSectionIABtn("encabezado")}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-            <Field label="Empresa" value={c.empresa_nombre} onChange={(v) => actualizarCampoIrl("empresa_nombre", v)} disabled={isReadOnly} />
-            <Field label="Empresa contratista" value={c.empresa_contratista} onChange={(v) => actualizarCampoIrl("empresa_contratista", v)} disabled={isReadOnly} placeholder="Si aplica" />
-            <Field label="Empresa mandante" value={c.empresa_mandante} onChange={(v) => actualizarCampoIrl("empresa_mandante", v)} disabled={isReadOnly} />
             <Field label="Código documento" value={c.codigo_documento} onChange={(v) => actualizarCampoIrl("codigo_documento", v)} disabled={isReadOnly} />
             <Field label="Versión" value={c.version} onChange={(v) => actualizarCampoIrl("version", v)} disabled={isReadOnly} />
             <Field label="Año" value={c.anio} onChange={(v) => actualizarCampoIrl("anio", v)} disabled={isReadOnly} />
-            <Field label="Tipo inducción" value={c.tipo_induccion} onChange={(v) => actualizarCampoIrl("tipo_induccion", v)} disabled={isReadOnly} />
-            <Field label="Modalidad" value={c.modalidad} onChange={(v) => actualizarCampoIrl("modalidad", v)} disabled={isReadOnly} />
-            <Field label="Tipo actividad" value={c.tipo_actividad} onChange={(v) => actualizarCampoIrl("tipo_actividad", v)} disabled={isReadOnly} />
+            <Field label="Tipo inducción" value={c.tipo_induccion} onChange={(v) => actualizarCampoIrl("tipo_induccion", v)} disabled={isReadOnly} placeholder="Persona trabajadora nueva" />
+            <Field label="Modalidad" value={c.modalidad} onChange={(v) => actualizarCampoIrl("modalidad", v)} disabled={isReadOnly} placeholder="Presencial / On Line" />
+            <Field label="Tipo actividad" value={c.tipo_actividad} onChange={(v) => actualizarCampoIrl("tipo_actividad", v)} disabled={isReadOnly} placeholder="Interna / Externa" />
           </div>
         </SectionCard>
 
-        {/* ── Datos del trabajador y jornada ──────────────────────────────────── */}
-        <SectionCard title="Datos del trabajador y jornada" action={renderSectionIABtn("encabezado")}>
+        {/* ── 4: Identificación del trabajador ────────────────────────────────── */}
+        <SectionCard title="4. Identificación de la persona trabajadora" action={renderSectionIABtn("encabezado")}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             <Field label="Nombre trabajador" value={c.trabajador_nombre} onChange={(v) => actualizarCampoIrl("trabajador_nombre", v)} disabled={isReadOnly} />
             <Field label="RUT" value={c.trabajador_rut} onChange={(v) => actualizarCampoIrl("trabajador_rut", v)} disabled={isReadOnly} />
             <Field label="Cargo" value={c.trabajador_cargo} onChange={(v) => actualizarCampoIrl("trabajador_cargo", v)} disabled={isReadOnly} />
             <Field label="Área" value={c.trabajador_area} onChange={(v) => actualizarCampoIrl("trabajador_area", v)} disabled={isReadOnly} />
             <Field label="Fecha" type="date" value={c.fecha} onChange={(v) => actualizarCampoIrl("fecha", v)} disabled={isReadOnly} />
-            <Field label="Jornada" value={c.jornada} onChange={(v) => actualizarCampoIrl("jornada", v)} disabled={isReadOnly} placeholder="Diurna / Nocturna" />
-            <Field label="Turno" value={c.turno} onChange={(v) => actualizarCampoIrl("turno", v)} disabled={isReadOnly} placeholder="Mañana / Tarde / Noche" />
-            <Field label="Hora inicio" value={c.hora_inicio} onChange={(v) => actualizarCampoIrl("hora_inicio", v)} disabled={isReadOnly} placeholder="08:00" />
-            <Field label="Hora término" value={c.hora_termino} onChange={(v) => actualizarCampoIrl("hora_termino", v)} disabled={isReadOnly} placeholder="17:00" />
-            <Field label="Teléfono emergencia" value={c.telefono_emergencia} onChange={(v) => actualizarCampoIrl("telefono_emergencia", v)} disabled={isReadOnly} placeholder="131 / 132" />
+            <Field label="Duración capacitación" value={c.duracion_capacitacion} onChange={(v) => actualizarCampoIrl("duracion_capacitacion", v)} disabled={isReadOnly} placeholder="Ej: 2 horas" />
+            <Field label="Teléfono emergencia (contacto)" value={c.telefono_emergencia} onChange={(v) => actualizarCampoIrl("telefono_emergencia", v)} disabled={isReadOnly} placeholder="132 / Nombre contacto" />
+            <Field label="Empresa contratista" value={c.empresa_contratista} onChange={(v) => actualizarCampoIrl("empresa_contratista", v)} disabled={isReadOnly} placeholder="Si aplica" />
+            <Field label="Empresa mandante" value={c.empresa_mandante} onChange={(v) => actualizarCampoIrl("empresa_mandante", v)} disabled={isReadOnly} />
           </div>
         </SectionCard>
 
-        {/* ── Prevencionista y lugar ───────────────────────────────────────────── */}
-        <SectionCard title="Prevencionista y lugar de trabajo" action={renderSectionIABtn("lugar_trabajo")}>
+        {/* ── 5: Características del lugar de trabajo ──────────────────────────── */}
+        <SectionCard title="5. Características del lugar de trabajo" action={renderSectionIABtn("lugar_trabajo")}>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Field label="Nombre prevencionista" value={c.prevencionista_nombre} onChange={(v) => actualizarCampoIrl("prevencionista_nombre", v)} disabled={isReadOnly} />
-            <Field label="Cargo prevencionista" value={c.prevencionista_cargo} onChange={(v) => actualizarCampoIrl("prevencionista_cargo", v)} disabled={isReadOnly} />
-            <Field label="Dirección lugar de trabajo" value={c.direccion_lugar_trabajo} onChange={(v) => actualizarCampoIrl("direccion_lugar_trabajo", v)} disabled={isReadOnly} />
-            <Field label="Centro / lugar de trabajo" value={c.lugar_trabajo} onChange={(v) => actualizarCampoIrl("lugar_trabajo", v)} disabled={isReadOnly} />
+            <Field label="Lugar de trabajo específico" value={c.lugar_trabajo} onChange={(v) => actualizarCampoIrl("lugar_trabajo", v)} disabled={isReadOnly} />
+            <Field label="Dirección / centro de trabajo" value={c.direccion_lugar_trabajo} onChange={(v) => actualizarCampoIrl("direccion_lugar_trabajo", v)} disabled={isReadOnly} />
             <Field label="Espacio de trabajo" value={c.espacio_trabajo} rows={3} onChange={(v) => actualizarCampoIrl("espacio_trabajo", v)} disabled={isReadOnly} />
-            <Field label="Condiciones ambientales" value={c.condiciones_ambientales} rows={3} onChange={(v) => actualizarCampoIrl("condiciones_ambientales", v)} disabled={isReadOnly} />
-            <Field label="Orden y aseo" value={c.orden_aseo} rows={3} onChange={(v) => actualizarCampoIrl("orden_aseo", v)} disabled={isReadOnly} />
+            <Field label="Condiciones ambientales del puesto" value={c.condiciones_ambientales} rows={3} onChange={(v) => actualizarCampoIrl("condiciones_ambientales", v)} disabled={isReadOnly} />
+            <Field label="Condiciones de orden y aseo" value={c.orden_aseo} rows={3} onChange={(v) => actualizarCampoIrl("orden_aseo", v)} disabled={isReadOnly} />
+          </div>
+        </SectionCard>
+
+        {/* ── 6: Riesgos generales ────────────────────────────────────────────── */}
+        <SectionCard title="6. Riesgos generales" action={renderSectionIABtn("riesgos_generales")}>
+          <RiskTableEditor rows={c.riesgos_generales_tabla} onChange={(next) => actualizarCampoIrl("riesgos_generales_tabla", next)} disabled={isReadOnly} />
+        </SectionCard>
+
+        {/* ── 6.1: Riesgos por máquinas y equipos ─────────────────────────────── */}
+        <SectionCard title="6.1 Riesgos por máquinas y/o equipos" action={renderSectionIABtn("riesgos_maquinas")}>
+          <RiskTableEditor rows={c.riesgos_maquinas_tabla ?? []} onChange={(next) => actualizarCampoIrl("riesgos_maquinas_tabla", next)} disabled={isReadOnly} />
+        </SectionCard>
+
+        {/* ── 6.2: Riesgos por agentes químicos ────────────────────────────────── */}
+        <SectionCard title="6.2 Riesgos por agentes químicos" action={renderSectionIABtn("riesgos_quimicos")}>
+          <RiskTableEditor rows={c.riesgos_quimicos_tabla ?? []} onChange={(next) => actualizarCampoIrl("riesgos_quimicos_tabla", next)} disabled={isReadOnly} />
+        </SectionCard>
+
+        {/* ── 6.3: Riesgos psicosociales ───────────────────────────────────────── */}
+        <SectionCard title="6.3 Riesgos psicosociales" action={renderSectionIABtn("riesgos_psicosociales")}>
+          <RiskTableEditor rows={c.riesgos_psicosociales_tabla ?? []} onChange={(next) => actualizarCampoIrl("riesgos_psicosociales_tabla", next)} disabled={isReadOnly} />
+        </SectionCard>
+
+        {/* ── 7.1: Riesgos específicos del cargo ──────────────────────────────── */}
+        <SectionCard title="7.1 Riesgos inherentes a la actividad realizada" action={renderSectionIABtn("riesgos_especificos")}>
+          <div className="space-y-3">
+            <Field label="Descripción de la actividad" value={c.descripcion_actividad} rows={3} onChange={(v) => actualizarCampoIrl("descripcion_actividad", v)} disabled={isReadOnly} />
+            <Field label="Tareas que realiza" value={c.tareas_realiza} rows={4} onChange={(v) => actualizarCampoIrl("tareas_realiza", v)} disabled={isReadOnly} placeholder="Una tarea por línea" />
+            <Field label="Lugares de trabajo del cargo" value={c.lugares_trabajo_cargo} rows={3} onChange={(v) => actualizarCampoIrl("lugares_trabajo_cargo", v)} disabled={isReadOnly} />
+            <Field label="Herramientas y equipos" value={c.herramientas_equipos} rows={3} onChange={(v) => actualizarCampoIrl("herramientas_equipos", v)} disabled={isReadOnly} />
+            <Field label="EPP requerido/informado" value={c.epp_requerido_info} rows={3} onChange={(v) => actualizarCampoIrl("epp_requerido_info", v)} disabled={isReadOnly} placeholder="Descripción de EPP necesarios (no entrega, solo información)" />
+            <div>
+              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Riesgos presentes en las tareas</span>
+              <RiskTableEditor rows={c.riesgos_tareas_tabla ?? []} onChange={(next) => actualizarCampoIrl("riesgos_tareas_tabla", next)} disabled={isReadOnly} />
+            </div>
+            <div>
+              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Riesgos presentes en el lugar de trabajo</span>
+              <RiskTableEditor rows={c.riesgos_lugar_tabla ?? []} onChange={(next) => actualizarCampoIrl("riesgos_lugar_tabla", next)} disabled={isReadOnly} />
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* ── 8: Normas generales de seguridad ─────────────────────────────────── */}
+        <SectionCard title="8. Normas generales de seguridad" action={renderSectionIABtn("normativa")}>
+          <div className="space-y-3">
+            <Field label="a) Ley 16.744 y contenido" value={c.normas_ley16744 || c.normas_generales} rows={3} onChange={(v) => actualizarCampoIrl("normas_ley16744", v)} disabled={isReadOnly} />
+            <Field label="b) Manejo manual de materiales (Ley 20.001 / D.S. 63)" value={c.normas_mmc} rows={3} onChange={(v) => actualizarCampoIrl("normas_mmc", v)} disabled={isReadOnly} />
+            <Field label="c) Control de emergencias, incendios, extintores, primeros auxilios" value={c.normas_emergencias_control} rows={3} onChange={(v) => actualizarCampoIrl("normas_emergencias_control", v)} disabled={isReadOnly} />
+            <Field label="d) Actuación en caso de emergencias" value={c.normas_emergencias_actuacion} rows={3} onChange={(v) => actualizarCampoIrl("normas_emergencias_actuacion", v)} disabled={isReadOnly} />
+            <Field label="e) Res. 156 SUSESO — Accidentes graves y fatales" value={c.normas_accidentes_graves} rows={3} onChange={(v) => actualizarCampoIrl("normas_accidentes_graves", v)} disabled={isReadOnly} />
+            <Field label="f) EPP: tipos, manejo correcto, obligatoriedad" value={c.normas_epp_info} rows={3} onChange={(v) => actualizarCampoIrl("normas_epp_info", v)} disabled={isReadOnly} />
+            <Field label="g) Ergonomía y posición en puesto de trabajo" value={c.normas_ergonomia} rows={3} onChange={(v) => actualizarCampoIrl("normas_ergonomia", v)} disabled={isReadOnly} />
+            <Field label="h) Uso y manejo de extintores" value={c.normas_extintores} rows={3} onChange={(v) => actualizarCampoIrl("normas_extintores", v)} disabled={isReadOnly} />
+            <Field label="i) Señalizaciones de seguridad" value={c.normas_senalizacion} rows={3} onChange={(v) => actualizarCampoIrl("normas_senalizacion", v)} disabled={isReadOnly} />
+            <Field label="j) Procedimientos de trabajo seguro (PTS)" value={c.normas_pts_texto || c.pts} rows={3} onChange={(v) => actualizarCampoIrl("normas_pts_texto", v)} disabled={isReadOnly} />
+            <Field label="l) Sustancias químicas peligrosas" value={c.normas_quimicos} rows={3} onChange={(v) => actualizarCampoIrl("normas_quimicos", v)} disabled={isReadOnly} />
+            {/* Legacy fields */}
+            <Field label="Plan de emergencias y evacuación" value={c.emergencias_evacuacion} rows={3} onChange={(v) => actualizarCampoIrl("emergencias_evacuacion", v)} disabled={isReadOnly} />
+            <Field label="Protocolos MINSAL (texto libre)" value={c.protocolos_minsal} rows={2} onChange={(v) => actualizarCampoIrl("protocolos_minsal", v)} disabled={isReadOnly} />
+          </div>
+        </SectionCard>
+
+        {/* ── 9: Documentos ───────────────────────────────────────────────────── */}
+        <SectionCard title="9. Documentos asociados" action={renderSectionIABtn("documentos_section")}>
+          <div className="space-y-3">
+            <div>
+              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Procedimientos de Trabajo Seguro (PTS)</span>
+              <CompromisosEditor items={c.documentos_pts_lista ?? []} onChange={(v) => actualizarCampoIrl("documentos_pts_lista", v)} disabled={isReadOnly} />
+            </div>
+            <div>
+              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Hojas de Datos de Seguridad (HDS)</span>
+              <CompromisosEditor items={c.documentos_hds_lista ?? []} onChange={(v) => actualizarCampoIrl("documentos_hds_lista", v)} disabled={isReadOnly} />
+            </div>
+            <div>
+              <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Otros documentos</span>
+              <CompromisosEditor items={c.documentos_otros_lista ?? []} onChange={(v) => actualizarCampoIrl("documentos_otros_lista", v)} disabled={isReadOnly} />
+            </div>
+            <Field label="Documentos asociados (texto libre)" value={c.documentos_asociados} rows={2} onChange={(v) => actualizarCampoIrl("documentos_asociados", v)} disabled={isReadOnly} />
           </div>
         </SectionCard>
 
@@ -686,49 +758,32 @@ export function DocumentoReviewDrawer({
           </div>
         </SectionCard>
 
-        {/* ── Riesgos ─────────────────────────────────────────────────────────── */}
-        <SectionCard title="Riesgos generales" action={renderSectionIABtn("riesgos_generales")}>
-          <RiskTableEditor rows={c.riesgos_generales_tabla} onChange={(next) => actualizarCampoIrl("riesgos_generales_tabla", next)} disabled={isReadOnly} />
-        </SectionCard>
-
-        <SectionCard title="Riesgos específicos del cargo" action={renderSectionIABtn("riesgos_especificos")}>
-          <RiskTableEditor rows={c.riesgos_especificos_tabla} onChange={(next) => actualizarCampoIrl("riesgos_especificos_tabla", next)} disabled={isReadOnly} />
-        </SectionCard>
-
-        {/* ── Normativa ───────────────────────────────────────────────────────── */}
-        <SectionCard title="Normas, protocolos y documentos asociados" action={renderSectionIABtn("normativa")}>
-          <div className="space-y-3">
-            <Field label="Normas generales" value={c.normas_generales} rows={4} onChange={(v) => actualizarCampoIrl("normas_generales", v)} disabled={isReadOnly} />
-            <Field label="Protocolos MINSAL" value={c.protocolos_minsal} rows={4} onChange={(v) => actualizarCampoIrl("protocolos_minsal", v)} disabled={isReadOnly} />
-            <Field label="Documentos asociados" value={c.documentos_asociados} rows={2} onChange={(v) => actualizarCampoIrl("documentos_asociados", v)} disabled={isReadOnly} />
-          </div>
-        </SectionCard>
-
-        {/* ── Emergencias y PTS ───────────────────────────────────────────────── */}
-        <SectionCard title="Emergencias, evacuación y PTS" action={renderSectionIABtn("emergencias")}>
-          <div className="space-y-3">
-            <Field label="Plan de emergencias y evacuación" value={c.emergencias_evacuacion} rows={5} onChange={(v) => actualizarCampoIrl("emergencias_evacuacion", v)} disabled={isReadOnly} />
-            <Field label="Procedimiento de Trabajo Seguro (PTS)" value={c.pts} rows={5} onChange={(v) => actualizarCampoIrl("pts", v)} disabled={isReadOnly} />
-          </div>
-        </SectionCard>
-
-        {/* ── EPP en inducción ─────────────────────────────────────────────────── */}
-        <SectionCard title="EPP entregados en esta inducción" action={renderSectionIABtn("epp_resumen")}>
+        {/* ── EPP requeridos (solo informativo, no entrega) ────────────────────── */}
+        <SectionCard title="EPP requeridos/informados en la inducción (solo referencia)" action={renderSectionIABtn("epp_resumen")}>
+          <p className="mb-2 text-[11px] text-slate-500">Esta sección es informativa. La entrega de EPP se registra en el documento &quot;Registro de Entrega de EPP&quot; (documento separado).</p>
           <IrlEppTableEditor rows={c.epp_induccion_tabla ?? []} onChange={(next) => actualizarCampoIrl("epp_induccion_tabla", next)} disabled={isReadOnly} />
         </SectionCard>
 
         {/* ── Compromisos ─────────────────────────────────────────────────────── */}
-        <SectionCard title="Compromisos del trabajador" action={renderSectionIABtn("compromisos")}>
+        <SectionCard title="10. Compromisos del trabajador" action={renderSectionIABtn("compromisos")}>
           <CompromisosEditor items={c.compromisos_trabajador ?? []} onChange={(v) => actualizarCampoIrl("compromisos_trabajador", v)} disabled={isReadOnly} />
         </SectionCard>
 
+        {/* ── Prevencionista ───────────────────────────────────────────────────── */}
+        <SectionCard title="Prevencionista responsable" action={renderSectionIABtn("lugar_trabajo")}>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field label="Nombre prevencionista" value={c.prevencionista_nombre} onChange={(v) => actualizarCampoIrl("prevencionista_nombre", v)} disabled={isReadOnly} />
+            <Field label="Cargo prevencionista" value={c.prevencionista_cargo} onChange={(v) => actualizarCampoIrl("prevencionista_cargo", v)} disabled={isReadOnly} />
+          </div>
+        </SectionCard>
+
         {/* ── Cierre ──────────────────────────────────────────────────────────── */}
-        <SectionCard title="Declaración y firmas" action={renderSectionIABtn("cierre")}>
+        <SectionCard title="10. Declaración y firmas" action={renderSectionIABtn("cierre")}>
           <div className="space-y-3">
             <Field label="Declaración" value={c.declaracion} rows={4} onChange={(v) => actualizarCampoIrl("declaracion", v)} disabled={isReadOnly} />
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <Field label="Firma trabajador" value={c.firma_trabajador} onChange={(v) => actualizarCampoIrl("firma_trabajador", v)} disabled={isReadOnly} />
-              <Field label="Firma relator" value={c.firma_relator} onChange={(v) => actualizarCampoIrl("firma_relator", v)} disabled={isReadOnly} />
+              <Field label="Nombre relator / firma" value={c.firma_relator} onChange={(v) => actualizarCampoIrl("firma_relator", v)} disabled={isReadOnly} />
             </div>
           </div>
         </SectionCard>

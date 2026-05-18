@@ -525,120 +525,404 @@ async function renderStructuredIrlPdf(
 ) {
   const c = data.campos;
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const BLU: [number, number, number] = [0, 70, 127];  // Baker blue
+  const BLU2: [number, number, number] = [0, 112, 192]; // lighter blue
+  const WHT: [number, number, number] = [255, 255, 255];
+
+  // ── Institutional header ─────────────────────────────────────────────────
   const header = await drawInstitutionalHeader(
     doc,
     params.empresa,
-    "ACTA ESTRUCTURADA DE INFORMACION DE RIESGOS LABORALES",
-    c.codigo_documento || "NEXTPREV TEMPLATE-01",
+    "ACTA DE INFORMACION SOBRE LOS RIESGOS LABORALES, ART. 15 DEL D.S. 44",
+    c.codigo_documento || "REG-IRL-03",
     formatDate(new Date()).split(" ")[0],
   );
+
   const layout: LayoutCursor = {
     margin: header.margin,
     pageWidth,
-    pageHeight: doc.internal.pageSize.getHeight(),
+    pageHeight,
     contentWidth: pageWidth - header.margin * 2,
     y: header.yAfter,
   };
 
-  drawFieldRow(doc, layout, "NOMBRE DEL TRABAJADOR", c.trabajador_nombre || safeText(params.trabajador.nombre + " " + params.trabajador.apellido));
-  drawFieldRow(doc, layout, "RUN", c.trabajador_rut || safeText(params.trabajador.rut));
-  drawFieldRow(doc, layout, "CARGO / AREA", `${safeText(c.trabajador_cargo)} / ${safeText(c.trabajador_area || params.trabajador.area)}`);
-  if (c.empresa_contratista) drawFieldRow(doc, layout, "EMPRESA CONTRATISTA", safeText(c.empresa_contratista));
-  if (c.empresa_mandante) drawFieldRow(doc, layout, "EMPRESA MANDANTE", safeText(c.empresa_mandante));
-  drawFieldRow(doc, layout, "FECHA", safeText(c.fecha));
-  if (c.jornada || c.turno) drawFieldRow(doc, layout, "JORNADA / TURNO", `${safeText(c.jornada)} / ${safeText(c.turno)}  |  ${safeText(c.hora_inicio)} – ${safeText(c.hora_termino)}`);
+  const cw = layout.contentWidth;
+  const ml = layout.margin;
 
-  drawLongTextBlock(doc, layout, "TIPO Y MODALIDAD DE INDUCCION", `Tipo inducción: ${safeText(c.tipo_induccion)}\nModalidad: ${safeText(c.modalidad)}\nActividad: ${safeText(c.tipo_actividad)}`, 8.2, 52);
+  // Helper: draw a full-width blue section header
+  function drawSectionHeader(text: string) {
+    ensurePageSpace(doc, layout, 22);
+    drawCell(doc, { x: ml, y: layout.y, w: cw, h: 22, text, bold: true, align: "left", fillColor: BLU, textColor: WHT, fontSize: 9, padding: 6 });
+    layout.y += 22;
+  }
 
-  if (c.prevencionista_nombre) drawFieldRow(doc, layout, "PREVENCIONISTA RESPONSABLE", `${safeText(c.prevencionista_nombre)} — ${safeText(c.prevencionista_cargo)}`);
+  // Helper: draw a full-width paragraph block (auto-height)
+  function drawParagraph(text: string, fontSize = 8.2, minH = 24) {
+    const lines = doc.setFontSize(fontSize) && wrapText(doc, text, cw - 12);
+    const h = Math.max(minH, lines.length * lineHeight(fontSize) + 10);
+    ensurePageSpace(doc, layout, h);
+    doc.rect(ml, layout.y, cw, h);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(fontSize);
+    let ty = layout.y + 8;
+    lines.forEach((line) => {
+      doc.text(line, ml + 6, ty);
+      ty += lineHeight(fontSize);
+    });
+    layout.y += h;
+  }
 
-  drawFieldRow(doc, layout, "LUGAR DE TRABAJO", [c.direccion_lugar_trabajo, c.lugar_trabajo].filter(Boolean).join(" — ") || "-");
-  drawLongTextBlock(doc, layout, "ESPACIO DE TRABAJO", safeText(c.espacio_trabajo), 8.2, 44);
-  drawLongTextBlock(doc, layout, "CONDICIONES AMBIENTALES", safeText(c.condiciones_ambientales), 8.2, 44);
-  drawLongTextBlock(doc, layout, "ORDEN Y ASEO", safeText(c.orden_aseo), 8.2, 44);
-
-  if (c.accidentes_anteriores) drawLongTextBlock(doc, layout, "ACCIDENTES ANTERIORES", safeText(c.accidentes_anteriores), 8.2, 36);
-  if (c.capacitaciones_previas?.length) drawLongTextBlock(doc, layout, "CAPACITACIONES PREVIAS RECIBIDAS", c.capacitaciones_previas.map((s, i) => `${i + 1}. ${s}`).join("\n"), 8.2, 44);
-
-  const colRiesgo = layout.contentWidth * 0.33;
-  const colCons = layout.contentWidth * 0.27;
-  const colMedida = layout.contentWidth - colRiesgo - colCons;
-  const headerFill: [number, number, number] = [34, 90, 126];
-  const headerText: [number, number, number] = [255, 255, 255];
-
-  const drawRiesgoHeader = (titulo: string) => {
-    drawRow(doc, layout, layout.margin, [
-      { w: colRiesgo + colCons + colMedida, text: titulo, bold: true, align: "center", fillColor: headerFill, textColor: headerText },
+  // Helper: draw risk table (3-col) with given rows
+  function drawRiskTable(rows: Array<{ peligro: string; consecuencia: string; medida: string }>) {
+    if (!rows.length) return;
+    const c1 = cw * 0.33;
+    const c2 = cw * 0.27;
+    const c3 = cw - c1 - c2;
+    // column headers
+    drawRow(doc, layout, ml, [
+      { w: c1, text: "RIESGOS", bold: true, fontSize: 8, align: "center", fillColor: BLU2, textColor: WHT },
+      { w: c2, text: "CONSECUENCIAS", bold: true, fontSize: 8, align: "center", fillColor: BLU2, textColor: WHT },
+      { w: c3, text: "MEDIDAS PREVENTIVAS Y METODOS DE TRABAJO CORRECTOS", bold: true, fontSize: 8, align: "center", fillColor: BLU2, textColor: WHT },
     ], { minHeight: 22 });
-    drawRow(doc, layout, layout.margin, [
-      { w: colRiesgo, text: "RIESGO", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
-      { w: colCons, text: "CONSECUENCIA", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
-      { w: colMedida, text: "MEDIDA PREVENTIVA", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
-    ], { minHeight: 20 });
-  };
-
-  drawRiesgoHeader("RIESGOS GENERALES");
-  c.riesgos_generales_tabla.forEach((row) => {
-    drawRow(doc, layout, layout.margin, [
-      { w: colRiesgo, text: row.peligro, fontSize: 8.2 },
-      { w: colCons, text: row.consecuencia, fontSize: 8.2 },
-      { w: colMedida, text: row.medida, fontSize: 8.2 },
-    ], { minHeight: 20 });
-  });
-
-  drawRiesgoHeader("RIESGOS ESPECIFICOS");
-  c.riesgos_especificos_tabla.forEach((row) => {
-    drawRow(doc, layout, layout.margin, [
-      { w: colRiesgo, text: row.peligro, fontSize: 8.2 },
-      { w: colCons, text: row.consecuencia, fontSize: 8.2 },
-      { w: colMedida, text: row.medida, fontSize: 8.2 },
-    ], { minHeight: 20 });
-  });
-
-  drawLongTextBlock(doc, layout, "NORMAS GENERALES", safeText(c.normas_generales), 8.2, 44);
-  drawLongTextBlock(doc, layout, "PROTOCOLOS MINSAL", safeText(c.protocolos_minsal), 8.2, 44);
-  drawLongTextBlock(doc, layout, "DOCUMENTOS ASOCIADOS", safeText(c.documentos_asociados), 8.2, 44);
-
-  if (c.emergencias_evacuacion) drawLongTextBlock(doc, layout, "EMERGENCIAS Y EVACUACION", safeText(c.emergencias_evacuacion), 8.2, 52);
-  if (c.pts) drawLongTextBlock(doc, layout, "PROCEDIMIENTO DE TRABAJO SEGURO (PTS)", safeText(c.pts), 8.2, 52);
-
-  if (c.epp_induccion_tabla?.length) {
-    const colEppDesc = layout.contentWidth * 0.46;
-    const colEppCant = layout.contentWidth * 0.14;
-    const colEppEnt = layout.contentWidth * 0.14;
-    const colEppObs = layout.contentWidth - colEppDesc - colEppCant - colEppEnt;
-    drawRow(doc, layout, layout.margin, [
-      { w: colEppDesc + colEppCant + colEppEnt + colEppObs, text: "EPP ENTREGADOS EN ESTA INDUCCION", bold: true, align: "center", fillColor: headerFill, textColor: headerText },
-    ], { minHeight: 22 });
-    drawRow(doc, layout, layout.margin, [
-      { w: colEppDesc, text: "DESCRIPCION", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
-      { w: colEppCant, text: "CANTIDAD", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
-      { w: colEppEnt, text: "ENTREGADO", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
-      { w: colEppObs, text: "OBSERVACIONES", bold: true, align: "center", fillColor: [79, 129, 157], textColor: headerText },
-    ], { minHeight: 20 });
-    c.epp_induccion_tabla.forEach((row) => {
-      drawRow(doc, layout, layout.margin, [
-        { w: colEppDesc, text: row.descripcion, fontSize: 8.2 },
-        { w: colEppCant, text: String(row.cantidad ?? 1), fontSize: 8.2, align: "center" },
-        { w: colEppEnt, text: row.entregado ? "Sí" : "No", fontSize: 8.2, align: "center" },
-        { w: colEppObs, text: row.observaciones, fontSize: 8.2 },
-      ], { minHeight: 20 });
+    rows.forEach((row) => {
+      drawRow(doc, layout, ml, [
+        { w: c1, text: `• ${row.peligro}`, fontSize: 7.5 },
+        { w: c2, text: `• ${row.consecuencia}`, fontSize: 7.5 },
+        { w: c3, text: `• ${row.medida}`, fontSize: 7.5 },
+      ], { minHeight: 18 });
     });
   }
 
-  if (c.compromisos_trabajador?.length) drawLongTextBlock(doc, layout, "COMPROMISOS DEL TRABAJADOR", c.compromisos_trabajador.map((s, i) => `${i + 1}. ${s}`).join("\n"), 8.2, 52);
+  // Helper: draw a checkbox grid row
+  function drawCheckboxRow(options: { label: string; checked: boolean }[][], title: string) {
+    drawSectionHeader(title);
+    options.forEach((rowOpts) => {
+      const colW = cw / rowOpts.length;
+      const h = 20;
+      ensurePageSpace(doc, layout, h);
+      let cx = ml;
+      rowOpts.forEach((opt) => {
+        drawCell(doc, { x: cx, y: layout.y, w: colW, h, text: `[${opt.checked ? "X" : " "}]  ${opt.label}`, fontSize: 8.2, padding: 5 });
+        cx += colW;
+      });
+      layout.y += h;
+    });
+  }
 
-  drawLongTextBlock(doc, layout, "DECLARACION", safeText(c.declaracion), 8.2, 46);
+  // ── Intro legal ─────────────────────────────────────────────────────────
+  const empresaNombrePdf = safeText(params.empresa?.razonSocial ?? params.empresa?.nombre ?? "La empresa");
+  const introText = `${empresaNombrePdf}, en conformidad con lo dispuesto en el Decreto Supremo N°44 del Ministerio del Trabajo y Previsión Social, que aprueba el Nuevo Reglamento sobre la Gestión Preventiva de los Riesgos Laborales para un Entorno de Trabajo Seguro y Saludable, establece en su Titulo II: Gestión de la Prevención de Riesgos en los Lugares de Trabajo, Parrafo 4, articulo N°15, la obligación de garantizar que cada persona trabajadora, antes de iniciar sus labores, reciba información clara, oportuna y adecuada sobre:\n- Los riesgos asociados a sus funciones\n- Las medidas preventivas a implementar.\n- Los métodos o procedimientos de trabajo seguros, definidos conforme a la Matriz de Riesgos y el Programa de Trabajo Preventivo`;
+  drawParagraph(introText, 8.2, 60);
+  drawParagraph("Se deberá actualizar esta información cada vez que se incorpore un nuevo proceso productivo o se produzcan cambios en las tecnologías, materiales o sustancias utilizadas en el desempeño de las labores.", 8.2, 20);
 
-  const sigH = 72;
+  // ── Sección 1: Tipo de inducción ─────────────────────────────────────────
+  const tipoInduccion = (c.tipo_induccion ?? "Persona trabajadora nueva").toLowerCase();
+  drawCheckboxRow([
+    [
+      { label: "Persona trabajadora nueva", checked: tipoInduccion.includes("nueva") },
+      { label: "Persona trabajadora con ausencia prolongada", checked: tipoInduccion.includes("ausencia") },
+    ],
+    [
+      { label: "Persona trabajadora reubicada/con nuevo cargo", checked: tipoInduccion.includes("reubicad") || tipoInduccion.includes("nuevo cargo") },
+      { label: "Por nuevo proceso productivo, cambio de tecnologias, materiales o sustancias", checked: tipoInduccion.includes("proceso") || tipoInduccion.includes("tecnolog") },
+    ],
+    [
+      { label: "Reinducción del proceso y actividades", checked: tipoInduccion.includes("proceso y actividades") },
+      { label: "Reinducción especifica según eventos", checked: tipoInduccion.includes("evento") },
+    ],
+  ], "1.  TIPO INDUCCION (complete la opcion con una X)");
+
+  // ── Sección 2: Modalidad ─────────────────────────────────────────────────
+  const modalidad = (c.modalidad ?? "Presencial").toLowerCase();
+  drawCheckboxRow([
+    [
+      { label: "Presencial", checked: modalidad.includes("presencial") },
+      { label: "On Line", checked: modalidad.includes("on line") || modalidad.includes("online") },
+    ],
+  ], "2.  MODALIDAD DE LA INDUCCION (complete la opcion con una X)");
+
+  // ── Sección 3: Tipo de actividad ─────────────────────────────────────────
+  const tipoAct = (c.tipo_actividad ?? "Interna").toLowerCase();
+  drawCheckboxRow([
+    [
+      { label: "Interna", checked: tipoAct.includes("intern") },
+      { label: "Externa", checked: tipoAct.includes("extern") },
+    ],
+  ], "3.  TIPO DE ACTIVIDAD (complete la opcion con una X)");
+
+  // ── Sección 4: Identificación del trabajador ─────────────────────────────
+  drawSectionHeader("4.  IDENTIFICACION DE LA PERSONA TRABAJADORA");
+  // Row: Nombre | RUT
+  const nameW = cw * 0.62;
+  const rutW = cw - nameW;
+  const rowH4 = 22;
+  ensurePageSpace(doc, layout, rowH4);
+  drawCell(doc, { x: ml, y: layout.y, w: nameW, h: rowH4, text: `Nombre y Apellidos: ${safeText(c.trabajador_nombre || params.trabajador.nombre + " " + params.trabajador.apellido)}`, fontSize: 8.2, padding: 5 });
+  drawCell(doc, { x: ml + nameW, y: layout.y, w: rutW, h: rowH4, text: `R.U.T: ${safeText(c.trabajador_rut || params.trabajador.rut)}`, fontSize: 8.2, padding: 5 });
+  layout.y += rowH4;
+  // Row: Cargo | Fecha
+  const cargoW = cw * 0.5;
+  const fechaW = cw - cargoW;
+  ensurePageSpace(doc, layout, rowH4);
+  drawCell(doc, { x: ml, y: layout.y, w: cargoW, h: rowH4, text: `Cargo: ${safeText(c.trabajador_cargo || c.cargo)}`, fontSize: 8.2, padding: 5 });
+  drawCell(doc, { x: ml + cargoW, y: layout.y, w: fechaW, h: rowH4, text: `Fecha: ${safeText(c.fecha)}`, fontSize: 8.2, padding: 5 });
+  layout.y += rowH4;
+  // Row: Área | Duración
+  ensurePageSpace(doc, layout, rowH4);
+  drawCell(doc, { x: ml, y: layout.y, w: cargoW, h: rowH4, text: `Area: ${safeText(c.trabajador_area || params.trabajador.area)}`, fontSize: 8.2, padding: 5 });
+  drawCell(doc, { x: ml + cargoW, y: layout.y, w: fechaW, h: rowH4, text: `Duración de la capacitación: ${safeText(c.duracion_capacitacion)}`, fontSize: 8.2, padding: 5 });
+  layout.y += rowH4;
+  // Row: Teléfono full-width
+  ensurePageSpace(doc, layout, rowH4);
+  drawCell(doc, { x: ml, y: layout.y, w: cw, h: rowH4, text: `Teléfono de emergencias (familiar/contacto): ${safeText(c.telefono_emergencia)}`, fontSize: 8.2, padding: 5 });
+  layout.y += rowH4;
+
+  // ── Sección 5: Características del lugar de trabajo ──────────────────────
+  drawSectionHeader("5.  CARACTERISTICAS DEL LUGAR DE TRABAJO");
+  const labW = cw * 0.22;
+  const valW = cw - labW;
+  const charFields: [string, string][] = [
+    ["Lugar de trabajo especifico", safeText(c.lugar_trabajo)],
+    ["Espacio de trabajo", safeText(c.espacio_trabajo)],
+    ["Condiciones ambientales del puesto de trabajo", safeText(c.condiciones_ambientales)],
+    ["Condiciones de orden y aseo exigidos por el puesto de trabajo", safeText(c.orden_aseo)],
+  ];
+  charFields.forEach(([label, value]) => {
+    const lh = Math.max(40, measureCellHeight(doc, value, valW - 8, 8.2, 4) + 8);
+    ensurePageSpace(doc, layout, lh);
+    drawCell(doc, { x: ml, y: layout.y, w: labW, h: lh, text: label, bold: true, fontSize: 8, padding: 5 });
+    drawCell(doc, { x: ml + labW, y: layout.y, w: valW, h: lh, text: value, fontSize: 8.2, padding: 5 });
+    layout.y += lh;
+  });
+
+  // ── Sección 6: Riesgos generales ─────────────────────────────────────────
+  drawSectionHeader("6.  RIESGOS GENERALES");
+  drawRiskTable(c.riesgos_generales_tabla ?? []);
+
+  // ── Sección 6.1: Riesgos por máquinas ────────────────────────────────────
+  drawSectionHeader("6.1.  RIESGOS POR EL USO DE MAQUINAS Y/O EQUIPOS");
+  drawRiskTable(c.riesgos_maquinas_tabla ?? []);
+
+  // ── Sección 6.2: Riesgos químicos ────────────────────────────────────────
+  drawSectionHeader("6.2.  RIESGOS POR USO O EXPOSICION A AGENTES QUIMICOS");
+  drawRiskTable(c.riesgos_quimicos_tabla ?? []);
+
+  // ── Sección 6.3: Riesgos psicosociales ───────────────────────────────────
+  drawSectionHeader("6.3.  RIESGOS PSICOSOCIALES");
+  drawRiskTable(c.riesgos_psicosociales_tabla ?? []);
+
+  // ── Sección 7: Riesgos específicos ───────────────────────────────────────
+  drawSectionHeader("7.  RIESGOS ESPECIFICOS");
+  drawSectionHeader("7.1.  RIESGOS INHERENTES A LA ACTIVIDAD REALIZADA");
+
+  // Cargo bloque
+  const cargoBlkH = 22;
+  ensurePageSpace(doc, layout, cargoBlkH);
+  drawCell(doc, { x: ml, y: layout.y, w: cw, h: cargoBlkH, text: "CARGO DEL TRABAJADOR (SEGUN CONTRATO)", bold: true, fontSize: 8, fillColor: [230, 230, 230], padding: 6 });
+  layout.y += cargoBlkH;
+  drawParagraph(safeText(c.trabajador_cargo || c.cargo), 8.2, 22);
+
+  // Descripción de actividad
+  drawCell(doc, { x: ml, y: layout.y, w: cw, h: 18, text: "DESCRIPCION DE LA ACTIVIDAD", bold: true, fontSize: 8, fillColor: [230, 230, 230], padding: 5 });
+  layout.y += 18;
+  drawParagraph(safeText(c.descripcion_actividad), 8.2, 30);
+
+  // Tareas | Lugares
+  const half = cw / 2;
+  const tareasLines = (c.tareas_realiza ?? "").split("\n").filter(Boolean);
+  const lugaresLines = (c.lugares_trabajo_cargo ?? "").split("\n").filter(Boolean);
+  const tareasH = Math.max(60, tareasLines.length * lineHeight(8) + 24);
+  const lugaresH = Math.max(60, lugaresLines.length * lineHeight(8) + 24);
+  const tareasLugaresH = Math.max(tareasH, lugaresH);
+  ensurePageSpace(doc, layout, tareasLugaresH + 20);
+  // headers
+  drawCell(doc, { x: ml, y: layout.y, w: half, h: 18, text: "TAREAS QUE REALIZA", bold: true, fontSize: 8, fillColor: BLU2, textColor: WHT, padding: 5 });
+  drawCell(doc, { x: ml + half, y: layout.y, w: half, h: 18, text: "LUGARES DE TRABAJO", bold: true, fontSize: 8, fillColor: BLU2, textColor: WHT, padding: 5 });
+  layout.y += 18;
+  const tareasText = tareasLines.map((l) => l.replace(/^[•\-]\s*/, "• ")).join("\n");
+  const lugaresText = lugaresLines.map((l) => l.replace(/^[•\-]\s*/, "• ")).join("\n");
+  drawCell(doc, { x: ml, y: layout.y, w: half, h: tareasLugaresH, text: tareasText, fontSize: 7.5, padding: 5 });
+  drawCell(doc, { x: ml + half, y: layout.y, w: half, h: tareasLugaresH, text: lugaresText, fontSize: 7.5, padding: 5 });
+  layout.y += tareasLugaresH;
+
+  // Herramientas | EPP requerido
+  const herramH = Math.max(60, measureCellHeight(doc, safeText(c.herramientas_equipos), half - 10, 8, 5) + 24);
+  const eppInfoH = Math.max(60, measureCellHeight(doc, safeText(c.epp_requerido_info), half - 10, 8, 5) + 24);
+  const herramEppH = Math.max(herramH, eppInfoH);
+  ensurePageSpace(doc, layout, herramEppH + 20);
+  drawCell(doc, { x: ml, y: layout.y, w: half, h: 18, text: "HERRAMIENTAS Y EQUIPOS", bold: true, fontSize: 8, fillColor: BLU2, textColor: WHT, padding: 5 });
+  drawCell(doc, { x: ml + half, y: layout.y, w: half, h: 18, text: "ELEMENTOS DE PROTECCION PERSONAL", bold: true, fontSize: 8, fillColor: BLU2, textColor: WHT, padding: 5 });
+  layout.y += 18;
+  drawCell(doc, { x: ml, y: layout.y, w: half, h: herramEppH, text: safeText(c.herramientas_equipos), fontSize: 7.5, padding: 5 });
+  drawCell(doc, { x: ml + half, y: layout.y, w: half, h: herramEppH, text: safeText(c.epp_requerido_info), fontSize: 7.5, padding: 5 });
+  layout.y += herramEppH;
+
+  // Riesgos presentes en las tareas (table with 2 cols: Riesgos | Medidas)
+  const r7Rows = c.riesgos_tareas_tabla ?? [];
+  if (r7Rows.length) {
+    const r7SubH = 18;
+    ensurePageSpace(doc, layout, r7SubH);
+    drawCell(doc, { x: ml, y: layout.y, w: cw, h: r7SubH, text: "RIESGOS PRESENTES EN LAS TAREAS", bold: true, fontSize: 8, fillColor: [230, 230, 230], padding: 5 });
+    layout.y += r7SubH;
+    drawRow(doc, layout, ml, [
+      { w: cw * 0.5, text: "RIESGOS PRESENTES", bold: true, fontSize: 8, align: "center", fillColor: BLU, textColor: WHT },
+      { w: cw * 0.5, text: "MEDIDAS PREVENTIVAS", bold: true, fontSize: 8, align: "center", fillColor: BLU, textColor: WHT },
+    ], { minHeight: 18 });
+    r7Rows.forEach((row) => {
+      drawRow(doc, layout, ml, [
+        { w: cw * 0.5, text: `• ${row.peligro}`, fontSize: 7.5 },
+        { w: cw * 0.5, text: `• ${row.medida}`, fontSize: 7.5 },
+      ], { minHeight: 18 });
+    });
+  }
+
+  // Riesgos en el lugar de trabajo
+  const r7LRows = c.riesgos_lugar_tabla ?? [];
+  if (r7LRows.length) {
+    const r7LhH = 18;
+    ensurePageSpace(doc, layout, r7LhH);
+    drawCell(doc, { x: ml, y: layout.y, w: cw, h: r7LhH, text: "RIESGOS PRESENTES EN EL LUGAR DE TRABAJO", bold: true, fontSize: 8, fillColor: [230, 230, 230], padding: 5 });
+    layout.y += r7LhH;
+    drawRow(doc, layout, ml, [
+      { w: cw * 0.5, text: "RIESGOS PRESENTES", bold: true, fontSize: 8, align: "center", fillColor: BLU, textColor: WHT },
+      { w: cw * 0.5, text: "MEDIDAS PREVENTIVAS", bold: true, fontSize: 8, align: "center", fillColor: BLU, textColor: WHT },
+    ], { minHeight: 18 });
+    r7LRows.forEach((row) => {
+      drawRow(doc, layout, ml, [
+        { w: cw * 0.5, text: `• ${row.peligro}`, fontSize: 7.5 },
+        { w: cw * 0.5, text: `• ${row.medida}`, fontSize: 7.5 },
+      ], { minHeight: 18 });
+    });
+  }
+
+  // ── Sección 8: Normas generales ──────────────────────────────────────────
+  drawSectionHeader("8.  NORMAS GENERALES DE SEGURIDAD");
+
+  const normasSections: [string, string][] = [
+    ["a)  Ley de Accidentes del Trabajo y Enfermedades Profesionales, Ley 16.744 y su contenido.", c.normas_ley16744 || c.normas_generales],
+    ["b)  Riesgos del Manejo Manual de Materiales y sus medidas preventivas (Ley 20.001; Ley 20.949; D.S. 63).", c.normas_mmc],
+    ["c)  Control de Emergencias, Incendios, Uso de Extintores, Primeros Auxilios, Atención de Lesionados.", c.normas_emergencias_control],
+    ["d)  Actuación en caso de emergencias.", c.normas_emergencias_actuacion],
+    ["e)  Res. Exenta 156 SUSESO (Procedimiento en Caso de Accidentes Graves y Fatales).", c.normas_accidentes_graves],
+    ["f)  Elementos de Protección Personal (EPP), tipos requeridos, manejo correcto y obligatoriedad de uso.", c.normas_epp_info],
+    ["g)  Posición ergonómica en las estaciones de trabajo.", c.normas_ergonomia],
+    ["h)  Capacitación teórica sobre el uso y manejo de extintores.", c.normas_extintores],
+    ["i)  Señalizaciones de Seguridad.", c.normas_senalizacion],
+    ["j)  Procedimientos de Trabajo Seguro.", c.normas_pts_texto || c.pts],
+  ];
+  normasSections.forEach(([titulo, texto]) => {
+    if (!texto) return;
+    // sub-header in bold italic
+    ensurePageSpace(doc, layout, 18);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(ml, layout.y, cw, 16, "FD");
+    doc.rect(ml, layout.y, cw, 16);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(titulo, ml + 5, layout.y + 11);
+    layout.y += 16;
+    drawParagraph(texto, 8, 20);
+  });
+
+  // ── Sección 8k: Protocolos MINSAL ────────────────────────────────────────
+  ensurePageSpace(doc, layout, 18);
+  doc.setFillColor(245, 245, 245);
+  doc.rect(ml, layout.y, cw, 16, "FD");
+  doc.rect(ml, layout.y, cw, 16);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text("k)  Protocolos MINSAL", ml + 5, layout.y + 11);
+  layout.y += 16;
+
+  const protocolos = (c.normas_protocolos_tabla ?? []).length > 0 ? c.normas_protocolos_tabla : [
+    { protocolo: "Protocolo Psicosocial (CEAL/SM)", aplica: "Sí", detalle: "Aplicable a organizaciones con más de 10 trabajadores. Vigilancia de salud mental." },
+    { protocolo: "Protocolo TMERT/MMC", aplica: "Sí", detalle: "Prevención de trastornos musculoesqueléticos. Movimientos repetitivos y manipulación de cargas." },
+  ];
+  const pw1 = cw * 0.25;
+  const pw2 = cw * 0.10;
+  const pw3 = cw - pw1 - pw2;
+  drawRow(doc, layout, ml, [
+    { w: pw1, text: "PROTOCOLO", bold: true, fontSize: 8, align: "center", fillColor: BLU, textColor: WHT },
+    { w: pw2, text: "APLICA", bold: true, fontSize: 8, align: "center", fillColor: BLU, textColor: WHT },
+    { w: pw3, text: "DETALLE", bold: true, fontSize: 8, align: "center", fillColor: BLU, textColor: WHT },
+  ], { minHeight: 20 });
+  protocolos.forEach((p) => {
+    drawRow(doc, layout, ml, [
+      { w: pw1, text: p.protocolo, fontSize: 7.5 },
+      { w: pw2, text: p.aplica, fontSize: 7.5, align: "center" },
+      { w: pw3, text: p.detalle, fontSize: 7.5 },
+    ], { minHeight: 20 });
+  });
+
+  // ── Sección 8l: Sustancias químicas ──────────────────────────────────────
+  if (c.normas_quimicos) {
+    ensurePageSpace(doc, layout, 18);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(ml, layout.y, cw, 16, "FD");
+    doc.rect(ml, layout.y, cw, 16);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("l)  Sustancias Quimicas Peligrosas a utilizar en las areas de trabajo.", ml + 5, layout.y + 11);
+    layout.y += 16;
+    drawParagraph(c.normas_quimicos, 8, 20);
+  }
+
+  // ── Sección 9: Documentos ─────────────────────────────────────────────────
+  drawSectionHeader("9.  DOCUMENTOS");
+  const ptsList = c.documentos_pts_lista ?? [];
+  const hdsList = c.documentos_hds_lista ?? [];
+  const otrosList = c.documentos_otros_lista ?? [];
+
+  if (ptsList.length) {
+    drawParagraph("PROCEDIMIENTOS DE TRABAJO SEGURO:", 8, 16);
+    drawParagraph(ptsList.map((s) => `- ${s}`).join("\n"), 8, 20);
+  }
+  if (hdsList.length) {
+    drawParagraph("HOJAS DE DATOS DE SEGURIDAD DE PRODUCTOS QUIMICOS:", 8, 16);
+    drawParagraph(hdsList.map((s) => `- ${s}`).join("\n"), 8, 20);
+  }
+  if (otrosList.length) {
+    drawParagraph("OTROS:", 8, 16);
+    drawParagraph(otrosList.map((s) => `- ${s}`).join("\n"), 8, 20);
+  }
+  // Fallback to legacy documentos_asociados
+  if (!ptsList.length && !hdsList.length && !otrosList.length && c.documentos_asociados) {
+    drawParagraph(c.documentos_asociados, 8.2, 24);
+  }
+
+  // ── Sección 10: Declaración ───────────────────────────────────────────────
+  drawSectionHeader("10.  DECLARACION DE RECEPCION DE LA INFORMACION");
+  const declText = c.declaracion || `Declaro haber recibido la Información sobre los Riesgos Laborales, impartida por ${empresaNombrePdf}. Dicha actividad contempla todos los puntos indicados en el presente documento y se ha llevado a cabo antes de mi ingreso a las instalaciones. Se me ha informado sobre los riesgos a los cuales estaré expuesto, las medidas de prevención que debo adoptar y las herramientas necesarias para su aplicación. Entiendo y acepto que el incumplimiento de las medidas de control señaladas puede derivar en un proceso sancionatorio según lo estipulado en el Reglamento Interno de Higiene y Seguridad.`;
+  drawParagraph(declText, 8.2, 40);
+
+  // Compromisos del trabajador
+  if (c.compromisos_trabajador?.length) {
+    drawParagraph(c.compromisos_trabajador.map((s, i) => `${i + 1}. ${s}`).join("\n"), 8, 30);
+  }
+
+  // ── Sección 11: Firmas ────────────────────────────────────────────────────
+  const sigH = 80;
   ensurePageSpace(doc, layout, sigH);
-  const sigW = layout.contentWidth / 2;
-  drawCell(doc, { x: layout.margin, y: layout.y, w: sigW, h: sigH, text: `FIRMA TRABAJADOR\n${safeText(c.firma_trabajador)}`, fontSize: 8.2, bold: true });
-  drawCell(doc, { x: layout.margin + sigW, y: layout.y, w: sigW, h: sigH, text: `FIRMA RELATOR / PREVENTOR\n${safeText(c.firma_relator)}`, fontSize: 8.2, bold: true });
+
+  // Trabajador (firma + huella)
+  const sigW3 = cw / 3;
+  drawCell(doc, { x: ml, y: layout.y, w: sigW3 * 2, h: sigH, text: `FIRMA DE LA PERSONA TRABAJADORA\n\n\n${safeText(c.firma_trabajador || params.trabajador.nombre + " " + params.trabajador.apellido)}`, fontSize: 8.2, bold: true, padding: 8, fillColor: BLU, textColor: WHT });
+  drawCell(doc, { x: ml + sigW3 * 2, y: layout.y, w: sigW3, h: sigH, text: "HUELLA DIGITAL", fontSize: 8.2, bold: true, padding: 8, fillColor: BLU, textColor: WHT });
+  layout.y += sigH;
+
+  // Relator
+  const relH = 80;
+  ensurePageSpace(doc, layout, relH);
+  const relW4 = cw / 4;
+  drawCell(doc, { x: ml, y: layout.y, w: relW4, h: relH, text: "NOMBRE DEL RELATOR", bold: true, fontSize: 8, fillColor: BLU, textColor: WHT, padding: 6 });
+  drawCell(doc, { x: ml + relW4, y: layout.y, w: relW4 * 3, h: relH, text: safeText(c.firma_relator), fontSize: 8.2, padding: 6 });
+  layout.y += relH;
 
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text(`Estado documental: ${estadoLabel(params.estado)} | Documento: ${tipoNombre}`, layout.margin, layout.pageHeight - 14);
+  doc.setFontSize(7.5);
+  const version = safeText(c.version) ? `Versión: ${c.version}` : "";
+  doc.text(`${c.codigo_documento || "REG-IRL-03"}  ${version}  |  ${tipoNombre}`.trim(), ml, layout.pageHeight - 14);
 }
 
 async function renderStructuredEppPdf(

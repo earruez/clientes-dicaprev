@@ -338,20 +338,151 @@ function generarValorCampoIrl(campoId: keyof DocumentoIrlCampos, ctx: ContextoGe
     case "pts":
       return `Procedimiento de trabajo seguro para el cargo ${ctx.cargo}. Documentar pasos críticos, peligros identificados y controles aplicados antes del inicio de cada tarea.`;
     case "epp_induccion_tabla":
-      return [
-        { descripcion: "Casco de seguridad", cantidad: 1, entregado: true, observaciones: "" },
-        { descripcion: "Lentes de seguridad", cantidad: 1, entregado: true, observaciones: "" },
-        { descripcion: "Guantes de protección", cantidad: 1, entregado: true, observaciones: "" },
-        { descripcion: "Zapatos de seguridad", cantidad: 1, entregado: true, observaciones: "" },
-      ];
+      return [];
     case "compromisos_trabajador":
       return [
-        "Utilizar los EPP asignados en todo momento durante la jornada.",
-        "Reportar de inmediato incidentes, accidentes o condiciones inseguras.",
-        "Cumplir con los procedimientos de trabajo seguro del cargo.",
-        "Participar activamente en actividades de capacitación y prevención.",
-        "No operar equipos o maquinaria sin autorización y capacitación previa.",
+        "Utilizar los Elementos de Protección Personal asignados en todo momento durante la exposición al riesgo.",
+        "Reportar de inmediato incidentes, accidentes o condiciones inseguras a mi supervisor.",
+        "Cumplir con los Procedimientos de Trabajo Seguro (PTS) del cargo.",
+        "Participar activamente en las actividades de capacitación y prevención de riesgos.",
+        "No operar equipos o maquinarias para los que no esté habilitado o capacitado.",
       ];
+    case "duracion_capacitacion":
+      return "";
+    // ── Riesgos por máquinas/equipos ─────────────────────────────────────
+    case "riesgos_maquinas_tabla":
+      return ctx.riesgos.some((r) => r.toLowerCase().includes("elect"))
+        ? [
+            { peligro: "Contacto eléctrico al conectar o manipular equipos eléctricos, enchufes o extensiones.", consecuencia: "Descargas eléctricas, quemaduras, electrocución o incendio por sobrecarga.", medida: "Usar equipos certificados y en buen estado. Evitar sobrecargar circuitos. Reportar fallas eléctricas de inmediato." },
+            { peligro: "Golpes o atrapamientos con partes móviles de equipos y herramientas del cargo.", consecuencia: "Laceraciones, fracturas, traumatismos graves.", medida: "Mantener guardas de seguridad. No intervenir maquinaria sin bloqueo y etiquetado. Usar EPP." },
+          ]
+        : [
+            { peligro: "Contacto con equipos, herramientas y maquinaria de uso del cargo.", consecuencia: "Lesiones por golpes, cortes o atrapamientos.", medida: "Usar correctamente los equipos con los EPP requeridos. Mantener en buen estado. Seguir PTS." },
+            { peligro: "Caídas de materiales u objetos durante el uso de equipos o almacenaje.", consecuencia: "Traumatismos y lesiones por impacto.", medida: "Almacenar materiales en forma segura. Usar casco cuando corresponda. No sobrecargar estantes." },
+          ];
+    // ── Riesgos por agentes químicos ──────────────────────────────────────
+    case "riesgos_quimicos_tabla":
+      return [
+        { peligro: "Contacto con productos de limpieza, lubricantes u otras sustancias del área de trabajo.", consecuencia: "Dermatitis, irritación ocular o respiratoria, alergias.", medida: "Revisar HDS de los productos. Ventilar el área. Usar guantes, gafas y mascarilla si corresponde." },
+        { peligro: "Exposición a vapores, polvos o aerosoles generados por el proceso de trabajo del cargo.", consecuencia: "Irritación de vías respiratorias, cefaleas, efectos crónicos.", medida: "Usar EPP respiratorio adecuado. Mantener ventilación. Conocer procedimientos ante derrames." },
+      ];
+    // ── Riesgos psicosociales ─────────────────────────────────────────────
+    case "riesgos_psicosociales_tabla":
+      return [
+        { peligro: "Estrés laboral por carga de trabajo, plazos exigentes y presión por resultados propios del cargo.", consecuencia: "Ansiedad, fatiga mental, trastornos del sueño, disminución de la concentración.", medida: "Planificar cargas de trabajo con jefatura. Aplicar CEAL-SM. Fomentar comunicación y pausas activas." },
+        { peligro: "Demandas emocionales derivadas de la coordinación con distintas áreas o personas en el ejercicio del cargo.", consecuencia: "Desgaste emocional, desmotivación, alteraciones psicosomáticas.", medida: "Promover ambientes colaborativos y respetuosos. Favorecer la desconexión efectiva fuera de jornada." },
+      ];
+    // ── Sección 7.1: Riesgos específicos del cargo ─────────────────────
+    case "descripcion_actividad": {
+      const isTerreno = ctx.riesgos.some((r) => /obra|terreno|instala/i.test(r));
+      const isAdmin = ctx.riesgos.some((r) => /admin|oficina|postura/i.test(r));
+      if (isTerreno) {
+        return `El ${ctx.cargo} es responsable de la supervisión y ejecución de labores en terreno en el área ${ctx.area}, incluyendo la coordinación de actividades, supervisión de trabajos, verificación de condiciones de seguridad y cumplimiento de procedimientos operacionales. Mantiene coordinación permanente con las áreas de trabajo asignadas y reporta a la jefatura directa.`;
+      }
+      if (isAdmin) {
+        return `El ${ctx.cargo} es responsable de las labores administrativas y de coordinación propias del cargo en el área ${ctx.area}, desarrollando sus funciones principalmente en dependencias internas de la empresa mediante el uso de equipos computacionales y herramientas de oficina. Mantiene coordinación permanente con las áreas internas de la organización.`;
+      }
+      return `El ${ctx.cargo} es responsable del desempeño de las funciones propias del cargo en el área ${ctx.area} de ${ctx.empresaNombre}, desarrollando sus labores según las instrucciones de la jefatura directa, cumpliendo los procedimientos de trabajo seguro y las normas internas de la empresa. Asegura el cumplimiento de los estándares de calidad, seguridad y productividad del área.`;
+    }
+    case "tareas_realiza": {
+      const isTerreno = ctx.riesgos.some((r) => /obra|terreno|instala/i.test(r));
+      const isBodega = ctx.riesgos.some((r) => /bodega|logist/i.test(r));
+      if (isTerreno) {
+        return `• Supervisar y ejecutar trabajos de instalación, montaje o construcción según especificaciones técnicas.\n• Coordinar el trabajo del equipo en terreno, asignando tareas y verificando su correcta ejecución.\n• Verificar que se cumplan los procedimientos de trabajo seguro (PTS) y el uso correcto de EPP.\n• Realizar y verificar el AST antes de iniciar tareas de alto riesgo.\n• Inspeccionar condiciones del entorno de trabajo e informar condiciones inseguras a jefatura.\n• Mantener el orden y aseo en las áreas de trabajo asignadas.\n• Coordinar con otras áreas o empresas contratistas cuando corresponda.\n• Reportar a jefatura directa el avance de los trabajos y cualquier condición anormal.`;
+      }
+      if (isBodega) {
+        return `• Recepcionar, almacenar y despachar materiales según procedimientos establecidos.\n• Controlar el inventario y registrar movimientos de bodega.\n• Operar equipos de manejo de materiales según capacitación y autorización.\n• Mantener el orden y aseo del área de bodega.\n• Aplicar técnicas correctas de manipulación manual de cargas.\n• Reportar a jefatura condiciones inseguras, faltantes o deterioro de materiales.\n• Cumplir PTS y normas internas de seguridad en todas las tareas.`;
+      }
+      return `• Ejecutar las tareas propias del cargo ${ctx.cargo} en el área ${ctx.area}.\n• Operar equipos, herramientas y materiales asociados al cargo según instrucciones y PTS.\n• Coordinar con la jefatura directa y compañeros de trabajo respecto al avance de labores.\n• Mantener el orden y aseo en el área de trabajo asignada.\n• Reportar de inmediato condiciones inseguras, incidentes o accidentes a la jefatura.\n• Cumplir procedimientos de trabajo seguro (PTS) y normas internas de la empresa.\n• Participar activamente en las actividades de prevención, capacitación y seguridad de la empresa.`;
+    }
+    case "lugares_trabajo_cargo":
+      return `• Dependencias internas de ${ctx.empresaNombre} asignadas al área ${ctx.area}.\n• Zonas de trabajo habilitadas para el cargo según organización interna de la empresa.\n• Áreas afines según función o tarea asignada por jefatura directa.`;
+    case "herramientas_equipos": {
+      const isTerreno = ctx.riesgos.some((r) => /obra|terreno|instala/i.test(r));
+      const isAdmin = ctx.riesgos.some((r) => /admin|oficina|postura/i.test(r));
+      if (isTerreno) {
+        return `• Herramientas manuales propias del cargo (martillo, llaves, destornilladores, etc.).\n• Herramientas eléctricas o neumáticas según actividad asignada.\n• Equipos de medición e inspección.\n• Equipos de protección colectiva (delimitaciones, señalización de terreno).\n• Vehículos o equipos de transporte interno (si aplica y según autorización).\n• Teléfono corporativo o radio para coordinación.`;
+      }
+      if (isAdmin) {
+        return `• Computador de escritorio o portátil con software corporativo.\n• Monitor(es), teclado, mouse y periféricos ergonómicos.\n• Teléfono, correo corporativo y plataformas digitales para coordinación.\n• Escritorio, silla ergonómica y mobiliario de oficina.\n• Impresora y equipos de oficina (si aplica).`;
+      }
+      return `Herramientas, equipos y materiales propios del cargo ${ctx.cargo} en el área ${ctx.area}, según la naturaleza de las labores asignadas por la jefatura directa. El trabajador debe estar capacitado y autorizado para el uso de cada equipo o herramienta.`;
+    }
+    case "epp_requerido_info": {
+      const isTerreno = ctx.riesgos.some((r) => /obra|terreno|instala/i.test(r));
+      const isAdmin = ctx.riesgos.some((r) => /admin|oficina|postura/i.test(r));
+      if (isTerreno) {
+        return `EPP requeridos para el cargo ${ctx.cargo}:\n- Casco de seguridad (uso obligatorio en terreno).\n- Zapatos o botines de seguridad (punta de acero).\n- Lentes de seguridad.\n- Guantes de protección según tarea.\n- Chaleco reflectante (identificación en obra).\n- Protector auditivo según nivel de ruido del entorno.\n- Arnés de seguridad y línea de vida para trabajos en altura (si aplica).\nLos EPP son entregados sin costo para el trabajador mediante el Registro de Entrega de EPP.`;
+      }
+      if (isAdmin) {
+        return `EPP requeridos para el cargo ${ctx.cargo}:\n- No requiere EPP de uso permanente dados la naturaleza administrativa del cargo.\n- Elementos ergonómicos complementarios: apoya muñeca, apoya pies (según evaluación).\n- EPP básico de uso ocasional al ingresar a áreas operativas: chaleco reflectante, calzado cerrado adecuado.\nLos EPP son entregados sin costo mediante el Registro de Entrega de EPP correspondiente.`;
+      }
+      return `EPP requeridos para el cargo ${ctx.cargo} según la matriz de riesgos y la naturaleza de las tareas del área ${ctx.area}. El trabajador debe usar los EPP asignados en todo momento durante la exposición al riesgo. Los EPP serán entregados sin costo para el trabajador mediante el Registro de Entrega de EPP correspondiente.`;
+    }
+    case "riesgos_tareas_tabla":
+      return ctx.riesgos.map((r) => ({
+        peligro: r,
+        consecuencia: (() => {
+          const n = r.toLowerCase();
+          if (n.includes("caida") || n.includes("caída")) return "Fracturas, contusiones y lesiones incapacitantes.";
+          if (n.includes("elect")) return "Descargas eléctricas, quemaduras o riesgo vital.";
+          if (n.includes("sobreesfuerzo") || n.includes("postur")) return "Lesiones musculoesqueléticas y dolor crónico.";
+          if (n.includes("golpe") || n.includes("atrap")) return "Traumatismos, laceraciones o amputaciones.";
+          if (n.includes("ruido")) return "Hipoacusia, pérdida auditiva inducida por ruido.";
+          if (n.includes("psicosocial") || n.includes("estres")) return "Fatiga mental, ansiedad, bajo rendimiento laboral.";
+          return "Accidente laboral con consecuencias variables según el peligro.";
+        })(),
+        medida: (() => {
+          const n = r.toLowerCase();
+          if (n.includes("caida") || n.includes("caída")) return "Mantener áreas despejadas. Uso de calzado de seguridad. Aplicar PTS.";
+          if (n.includes("elect")) return "Equipos certificados. Bloqueo y etiquetado antes de intervenir. Reportar fallas.";
+          if (n.includes("sobreesfuerzo") || n.includes("postur")) return "Técnica correcta de manipulación. Pausas activas. Evaluación ergonómica.";
+          if (n.includes("golpe") || n.includes("atrap")) return "Guardas de seguridad instaladas. EPP adecuado. Seguir PTS.";
+          if (n.includes("ruido")) return "Protección auditiva obligatoria. Evaluación PREXOR. Rotación de tareas.";
+          return "Identificar peligros antes de iniciar. Aplicar controles de la matriz de riesgos. Usar EPP.";
+        })(),
+      }));
+    case "riesgos_lugar_tabla":
+      return [
+        { peligro: "Caídas al mismo nivel por estado de pisos, pasillos o vías de circulación.", consecuencia: "Contusiones, esguinces, fracturas.", medida: "Mantener zonas de tránsito despejadas y señalizadas. Informar condiciones inseguras." },
+        { peligro: "Riesgos psicosociales por carga mental y condiciones organizacionales del área.", consecuencia: "Estrés, fatiga mental, disminución del rendimiento.", medida: "Comunicación continua con jefatura sobre cargas de trabajo. Aplicar CEAL-SM cuando corresponda." },
+        { peligro: "Condiciones ambientales del lugar de trabajo (iluminación, temperatura, ruido).", consecuencia: "Fatigabilidad, disminución de la concentración, efectos en salud.", medida: "Mantener condiciones adecuadas de iluminación y ventilación. Reportar inmediatamente condiciones inadecuadas." },
+      ];
+    // ── Sección 8: Normas generales ───────────────────────────────────────
+    case "normas_ley16744":
+      return `Ley 16.744 y su contenido: Define Accidente del Trabajo como toda lesión que sufra una persona a causa o con ocasión del trabajo. Accidente del Trayecto: ocurrido en el trayecto directo entre la habitación y el trabajo. Enfermedad Profesional: causada directamente por el ejercicio de la profesión. Beneficios médicos del seguro: atención clínica, honorarios médicos, medicamentos, días cama, exámenes, procedimientos, prótesis y rehabilitación. Beneficios económicos: subsidio por incapacidad laboral, indemnizaciones, pensiones de invalidez y sobrevivencia. Procedimiento: atención inmediata y primeros auxilios. Traslado a Mutual de Seguridad. Emisión de DIAT o DIEP. Notificación a la jefatura.`;
+    case "normas_mmc":
+      return `Riesgos del Manejo Manual de Materiales (Ley 20.001, Art. 211H; Ley 20.949; D.S. 63): Límites máximos de carga manual: Hombres mayores de 18 años: hasta 25 kg. Mujeres y hombres menores de 18 años: no más de 20 kg. Mujeres embarazadas: prohibición de manipular cargas. Aplicar técnicas correctas de levantamiento, traslado, empuje y arrastre. Evaluación ergonómica cuando la manipulación sea frecuente o repetitiva. Uso de ayudas mecánicas (carros, transpaletas, mesas elevadoras). Capacitación periódica en técnicas de manipulación segura.`;
+    case "normas_emergencias_control":
+      return `Control de Emergencias, Incendios y Primeros Auxilios: El trabajador debe conocer los procedimientos generales de emergencia de la empresa, rutas de evacuación, puntos de encuentro y canales de comunicación. En caso de incendio: reconocer el lugar de origen. Evaluar el estado de avance de las llamas. Si está entrenado y el fuego no se ha descontrolado, usar el extintor adecuado. Avisar inmediatamente a la jefatura directa. Retirarse del área. Llamar a emergencias: Ambulancia 131, Bomberos 132, Carabineros 133. En caso de accidente: activar protocolo interno, prestar primeros auxilios básicos y coordinar con servicios de emergencia.`;
+    case "normas_emergencias_actuacion":
+      return `Actuación en caso de emergencias: INCENDIOS: Reconocer el lugar de origen del fuego. Evaluar avance de llamas. Si está entrenado y fuego es controlable, usar extintor. Avisar a jefatura directa. Retirarse del área. Llamar Ambulancia 131, Bomberos 132, Carabineros 133. Si incendio declarado, activar Plan GRD. SISMOS: Mantener la calma. Mantenerse bajo vigas o pilares. Detener marcha si conduce. Alejarse del cableado eléctrico. Esperar señal de evacuación a zonas de seguridad. Al concluir el sismo, evaluar condición de equipos e infraestructura antes de retomar operaciones.`;
+    case "normas_accidentes_graves":
+      return `Res. Exenta 156 SUSESO - Accidentes Graves y Fatales: Accidente Fatal: cuyo resultado es la muerte inmediata o durante traslado. Accidente Grave: caída desde más de 1,8m; obliga a maniobras de rescate o reanimación; provoca pérdida inmediata de parte del cuerpo; involucra número de trabajadores que interrumpe la faena. Procedimiento obligatorio: Paralización inmediata de la faena. Aislamiento del área. Prohibición de modificar el sitio. Comunicación inmediata a: SEREMI de Salud, Inspección del Trabajo, Organismo Administrador del Seguro. Cooperar con la investigación oficial.`;
+    case "normas_epp_info":
+      return `Elementos de Protección Personal (EPP): Deben ser entregados sin costo para el trabajador, certificados según D.S. 18 del Ministerio de Salud. La entrega se realiza contra firma, registrando fecha, tipo de EPP y vigencia. El trabajador debe: mantener los EPP en buen estado, informar inmediatamente su deterioro, entregar el EPP dañado al recibir uno nuevo. El uso de EPP es obligatorio durante todo el tiempo de exposición al riesgo. La empresa debe verificar periódicamente su correcta utilización.`;
+    case "normas_ergonomia":
+      return `Posición Ergonómica en Estaciones de Trabajo: Mantener la espalda apoyada en el respaldo con soporte lumbar. Regular altura del asiento: pies apoyados en el suelo, flexión de rodillas ~90-100°. Hombros relajados, codos cercanos al cuerpo, antebrazos apoyados ~90°. Monitor a la altura de los ojos, a 50-70 cm de distancia. Teclado y mouse sin extensión o flexión forzada de muñecas. Realizar pausas activas periódicas. Aplicar regla 20-20-20 para descanso visual.`;
+    case "normas_extintores":
+      return `Capacitación uso y manejo de extintores: Componentes del fuego (combustible, calor, oxígeno). Clases de fuego: A (sólidos), B (líquidos), C (eléctricos), D (metales). Equipos de extinción: polvo químico seco (PQS) y dióxido de carbono (CO2). Técnica PASS: Jalar el seguro. Apuntar a la base del fuego. Apretar la palanca. Barrer de un lado al otro. Nunca dar la espalda al fuego al retirarse.`;
+    case "normas_senalizacion":
+      return `Señalizaciones de Seguridad: ROJO = PELIGRO: riesgo o peligro inmediato; también indica ubicación de equipos contra incendio. AMARILLO = PRECAUCIÓN: advertencia contra riesgos potenciales o acciones subestándar. VERDE = RECOMENDACIÓN: sugerencias de seguridad y circuitos de evacuación hasta la zona de seguridad. Todas las personas trabajadoras deben respetar las señalizaciones de seguridad de manera obligatoria.`;
+    case "normas_pts_texto":
+      return `Procedimientos de Trabajo Seguro (PTS): Todas las tareas habituales de mediana o alta criticidad del cargo ${ctx.cargo} deben realizarse bajo los PTS definidos por la empresa. El uso de PTS es obligatorio previo a cualquier actividad que implique un riesgo significativo. Revisar el AST antes de iniciar la tarea. Identificar peligros, evaluar riesgos y aplicar controles. Reportar cualquier condición insegura al supervisor antes de continuar.`;
+    case "normas_protocolos_tabla":
+      return [
+        { protocolo: "Protocolo Psicosocial (CEAL/SM)", aplica: "Sí", detalle: "Aplica a organizaciones con más de 10 trabajadores. Vigilancia de la salud mental de los colaboradores." },
+        { protocolo: "Protocolo TMERT/MMC", aplica: "Sí", detalle: "Prevención de trastornos musculoesqueléticos, movimientos repetitivos, esfuerzos físicos y posturas forzadas." },
+      ];
+    case "normas_quimicos":
+      return `Sustancias Químicas Peligrosas: En el desempeño de sus funciones, el trabajador puede estar expuesto a sustancias químicas según el cargo y área. Respetar las Hojas de Datos de Seguridad (HDS) de los productos. Ventilar adecuadamente el área cuando se utilicen productos químicos. Conocer procedimientos ante derrames. Usar EPP adecuado (guantes, gafas, mascarilla) al manipular sustancias químicas. No fumar ni generar chispas cerca de productos inflamables.`;
+    // ── Sección 9: Documentos ─────────────────────────────────────────────
+    case "documentos_pts_lista":
+      return [`PTS de Trabajo Seguro para el cargo ${ctx.cargo}`, "PTS de Uso Seguro de Equipos y Herramientas", "PTS de Orden y Aseo en Áreas de Trabajo", "PTS de Desplazamiento Seguro en la Empresa"];
+    case "documentos_hds_lista":
+      return ["Hojas de Datos de Seguridad de productos químicos presentes en el área de trabajo (si aplica).", "Hojas de Datos de Seguridad de productos de limpieza de uso general."];
+    case "documentos_otros_lista":
+      return ["Evaluación ergonómica del puesto de trabajo (TMERT/MMC u otra metodología aplicada).", "Resultados y registros del Protocolo de Riesgos Psicosociales CEAL-SM.", "Registros de pausas activas y capacitaciones en seguridad.", "Registros de inducción en seguridad y normas internas de la empresa."];
     default:
       return "";
   }
@@ -484,9 +615,12 @@ function fieldsBySection(estructura: DocumentoEstructurado, seccionId: string): 
       ],
       lugar_trabajo: ["direccion_lugar_trabajo", "lugar_trabajo", "espacio_trabajo", "condiciones_ambientales", "orden_aseo", "prevencionista_nombre", "prevencionista_cargo"],
       riesgos_generales: ["riesgos_generales_tabla"],
-      riesgos_especificos: ["riesgos_especificos_tabla"],
-      normativa: ["normas_generales", "protocolos_minsal", "documentos_asociados"],
-      emergencias: ["emergencias_evacuacion", "pts"],
+      riesgos_maquinas: ["riesgos_maquinas_tabla"],
+      riesgos_quimicos: ["riesgos_quimicos_tabla"],
+      riesgos_psicosociales: ["riesgos_psicosociales_tabla"],
+      riesgos_especificos: ["descripcion_actividad", "tareas_realiza", "lugares_trabajo_cargo", "herramientas_equipos", "epp_requerido_info", "riesgos_tareas_tabla", "riesgos_lugar_tabla"],
+      normativa: ["normas_ley16744", "normas_mmc", "normas_emergencias_control", "normas_emergencias_actuacion", "normas_accidentes_graves", "normas_epp_info", "normas_ergonomia", "normas_extintores", "normas_senalizacion", "normas_pts_texto", "normas_protocolos_tabla", "normas_quimicos"],
+      documentos_section: ["documentos_pts_lista", "documentos_hds_lista", "documentos_otros_lista"],
       epp_resumen: ["epp_induccion_tabla"],
       compromisos: ["compromisos_trabajador"],
       cierre: ["declaracion", "firma_trabajador", "firma_relator"],
