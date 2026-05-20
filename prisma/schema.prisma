@@ -242,7 +242,8 @@ model DocumentoRequeridoEmpresa {
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
-  documentos DocumentoEmpresa[]
+  documentos            DocumentoEmpresa[]
+  requisitosAcreditacion RequisitoPlantillaAcreditacion[] @relation("RequisitoDocumentoRequeridoEmpresa")
 
   @@unique([nombre, categoria])
 }
@@ -563,6 +564,7 @@ model DocumentoTipoTrabajador {
 
   empresa Empresa                    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   reglas  ReglaDocumentoTrabajador[]
+  requisitosAcreditacion RequisitoPlantillaAcreditacion[] @relation("RequisitoDocumentoTipoTrabajador")
 
   @@unique([empresaId, codigo])
   @@index([empresaId])
@@ -1025,7 +1027,7 @@ model MandanteAcreditacion {
   id        String   @id @default(cuid())
   empresaId String
   nombre    String
-  rut       String
+  rut       String?
   tipo      String   @default("mandante") // "municipalidad" | "empresa_electrica" | "constructora" | "privado" | "otro"
   activo    Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -1072,6 +1074,8 @@ model RequisitoPlantillaAcreditacion {
   plantillaId             String
   nombreDocumento         String
   codigoDocumento         String?
+  documentoRequeridoEmpresaId String?
+  documentoTipoTrabajadorId   String?
   categoria               String   @default("empresa") // "empresa" | "trabajador" | "sst" | "vehiculo" | "anexo"
   aplicaA                 String   @default("empresa") // "empresa" | "trabajador" | "vehiculo"
   obligatorio             Boolean  @default(true)
@@ -1085,11 +1089,16 @@ model RequisitoPlantillaAcreditacion {
   updatedAt               DateTime @updatedAt
 
   plantilla PlantillaAcreditacion @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+  documentoRequeridoEmpresa DocumentoRequeridoEmpresa? @relation("RequisitoDocumentoRequeridoEmpresa", fields: [documentoRequeridoEmpresaId], references: [id], onDelete: SetNull)
+  documentoTipoTrabajador   DocumentoTipoTrabajador?   @relation("RequisitoDocumentoTipoTrabajador", fields: [documentoTipoTrabajadorId], references: [id], onDelete: SetNull)
 
   documentos DocumentoAcreditacion[]
 
   @@index([plantillaId])
   @@index([activo])
+  @@index([codigoDocumento])
+  @@index([documentoRequeridoEmpresaId])
+  @@index([documentoTipoTrabajadorId])
 }
 
 model Acreditacion {

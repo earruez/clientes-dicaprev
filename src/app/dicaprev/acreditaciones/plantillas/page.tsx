@@ -1,8 +1,11 @@
-import { getPlantillasAcreditacion } from "@/actions/acreditaciones";
+import { getMandantesAcreditacion, getPlantillasAcreditacion } from "@/actions/acreditaciones";
 import PlantillasClient from "./plantillas-client";
 
 export default async function PlantillasPage() {
-  const plantillas = await getPlantillasAcreditacion();
+  const [plantillas, mandantes] = await Promise.all([
+    getPlantillasAcreditacion(),
+    getMandantesAcreditacion(),
+  ]);
 
   return (
     <PlantillasClient
@@ -13,10 +16,19 @@ export default async function PlantillasPage() {
         descripcion: p.descripcion,
         activa: p.activa,
         version: p.version,
+        mandanteId: p.mandanteId,
         mandante: p.mandante?.nombre ?? "Plantilla transversal",
         requisitosCount: p._count.requisitos,
         categorias: Array.from(new Set(p.requisitos.map((r) => r.categoria))),
+        requisitos: p.requisitos.map((r) => ({
+          id: r.id,
+          nombreDocumento: r.nombreDocumento,
+          categoria: r.categoria,
+          aplicaA: r.aplicaA,
+          obligatorio: r.obligatorio,
+        })),
       }))}
+      mandantes={mandantes.map((m) => ({ id: m.id, nombre: m.nombre }))}
     />
   );
 }

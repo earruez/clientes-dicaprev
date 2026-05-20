@@ -1,4 +1,3 @@
-◇ injected env (0) from .env // tip: ⌘ enable debugging { debug: true }
 -- CreateSchema
 CREATE SCHEMA IF NOT EXISTS "public";
 

@@ -23,7 +23,7 @@ export default async function SolicitudesPage() {
         vehiculos: a.vehiculos.length,
         updatedAt: a.updatedAt.toISOString(),
       }))}
-      mandantes={mandantes.map((m) => ({ id: m.id, nombre: m.nombre, rut: m.rut, tipo: m.tipo }))}
+      mandantes={mandantes.map((m) => ({ id: m.id, nombre: m.nombre, rut: m.rut ?? "", tipo: m.tipo }))}
       plantillas={plantillas.map((p) => ({
         id: p.id,
         nombre: p.nombre,
