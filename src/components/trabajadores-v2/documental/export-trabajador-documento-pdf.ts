@@ -541,7 +541,7 @@ function drawPuesto3Section(
     { label: "Movimientos repetitivos", value: conditions.movimientos_repetitivos },
   ];
 
-  const drawAgentGroup = (title: string, agents: Array<{ label: string; value: boolean }>) => {
+  const drawAgentGroup = (title: string, agents: Array<{ label: string; value: boolean | undefined }>) => {
     ensurePage(doc, layout, 10);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6.5);

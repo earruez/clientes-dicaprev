@@ -127,6 +127,10 @@ model Empresa {
   plantillasPlanCapacitacion PlantillaPlanCapacitacion[]
   plantillasDocumentoEmpresa  PlantillaDocumentoEmpresa[]
   activacionEventos          ActivacionEvento[]
+  // Acreditaciones
+  mandantesAcreditacion      MandanteAcreditacion[]
+  plantillasAcreditacion     PlantillaAcreditacion[]
+  acreditaciones             Acreditacion[]
 }
 
 model Usuario {
@@ -152,6 +156,9 @@ model Usuario {
   planesCapacitacionAprobadas    PlanCapacitacion[]             @relation("UsuarioPlanCapacitacionAprobada")
   planesCapacitacionItemsResponsables PlanCapacitacionItem[]     @relation("UsuarioPlanCapacitacionItemResponsable")
   activacionEventosCreados       ActivacionEvento[]             @relation("UsuarioActivacionEvento")
+  // Acreditaciones
+  acreditacionesResponsable      Acreditacion[]
+  acreditacionesHistorial        HistorialAcreditacion[]
 }
 
 model ActivacionEvento {
@@ -410,6 +417,8 @@ model Trabajador {
   capacitacionHistoriales  CapacitacionHistorial[]
   capacitacionEvaluaciones CapacitacionEvaluacion[]
   capacitacionAsistencias  CapacitacionAsistencia[]
+  // Acreditaciones
+  acreditacionesTrabajador AcreditacionTrabajador[]
 
   @@index([empresaId])
   @@index([centroTrabajoId])
@@ -966,6 +975,8 @@ model Vehiculo {
   updatedAt       DateTime             @updatedAt
   documentos      VehiculoDocumento[]
   mantenciones    VehiculoMantencion[]
+  // Acreditaciones
+  acreditacionesVehiculo AcreditacionVehiculo[]
 
   empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   centroTrabajo CentroTrabajo? @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
@@ -1004,6 +1015,193 @@ model VehiculoMantencion {
   vehiculo Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
 
   @@index([vehiculoId])
+}
+
+// ─────────────────────────────────────────────
+// ACREDITACIONES — MODELOS PRISMA
+// ─────────────────────────────────────────────
+
+model MandanteAcreditacion {
+  id        String   @id @default(cuid())
+  empresaId String
+  nombre    String
+  rut       String
+  tipo      String   @default("mandante") // "municipalidad" | "empresa_electrica" | "constructora" | "privado" | "otro"
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  plantillas  PlantillaAcreditacion[]
+  acreditaciones Acreditacion[]
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@index([activo])
+}
+
+model PlantillaAcreditacion {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  mandanteId          String?
+  nombre              String
+  tipo                String   @default("mandante_general") // "municipal" | "enel" | "cge" | "mandante_general" | etc
+  descripcion         String   @default("")
+  origen              String   @default("nextprev") // "nextprev" | "mandante" | "cliente"
+  activa              Boolean  @default(true)
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  mandante MandanteAcreditacion? @relation(fields: [mandanteId], references: [id], onDelete: SetNull)
+
+  requisitos    RequisitoPlantillaAcreditacion[]
+  acreditaciones Acreditacion[]
+
+  @@unique([empresaId, nombre, version])
+  @@index([empresaId])
+  @@index([mandanteId])
+  @@index([activa])
+  @@index([updatedAt])
+}
+
+model RequisitoPlantillaAcreditacion {
+  id                      String   @id @default(cuid())
+  plantillaId             String
+  nombreDocumento         String
+  codigoDocumento         String?
+  categoria               String   @default("empresa") // "empresa" | "trabajador" | "sst" | "vehiculo" | "anexo"
+  aplicaA                 String   @default("empresa") // "empresa" | "trabajador" | "vehiculo"
+  obligatorio             Boolean  @default(true)
+  permiteMultiples        Boolean  @default(false)
+  requiereVencimiento     Boolean  @default(false)
+  requiereRevisionManual  Boolean  @default(false)
+  orden                   Int      @default(0)
+  observacionAyuda        String?
+  activo                  Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  plantilla PlantillaAcreditacion @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+
+  documentos DocumentoAcreditacion[]
+
+  @@index([plantillaId])
+  @@index([activo])
+}
+
+model Acreditacion {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  mandanteId          String
+  plantillaId         String
+  nombreProyecto      String?
+  obraFaena           String?
+  estado              String   @default("en_preparacion") // "en_preparacion" | "listo_para_enviar" | "enviado" | "observada" | "aprobado" | "rechazado" | "cerrada" | "vencido"
+  responsableId       String?
+  observaciones       String?
+  fechaEnvio          DateTime?
+  fechaRespuesta      DateTime?
+  fechaVencimiento    DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  mandante MandanteAcreditacion @relation(fields: [mandanteId], references: [id], onDelete: Cascade)
+  plantilla PlantillaAcreditacion @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+  responsable Usuario? @relation(fields: [responsableId], references: [id], onDelete: SetNull)
+
+  trabajadores  AcreditacionTrabajador[]
+  vehiculos     AcreditacionVehiculo[]
+  documentos    DocumentoAcreditacion[]
+  historial     HistorialAcreditacion[]
+
+  @@index([empresaId])
+  @@index([mandanteId])
+  @@index([plantillaId])
+  @@index([estado])
+  @@index([responsableId])
+  @@index([fechaVencimiento])
+  @@index([updatedAt])
+}
+
+model AcreditacionTrabajador {
+  id              String   @id @default(cuid())
+  acreditacionId  String
+  trabajadorId    String
+  createdAt       DateTime @default(now())
+
+  acreditacion Acreditacion @relation(fields: [acreditacionId], references: [id], onDelete: Cascade)
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@unique([acreditacionId, trabajadorId])
+  @@index([acreditacionId])
+  @@index([trabajadorId])
+}
+
+model AcreditacionVehiculo {
+  id              String   @id @default(cuid())
+  acreditacionId  String
+  vehiculoId      String
+  createdAt       DateTime @default(now())
+
+  acreditacion Acreditacion @relation(fields: [acreditacionId], references: [id], onDelete: Cascade)
+  vehiculo Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+
+  @@unique([acreditacionId, vehiculoId])
+  @@index([acreditacionId])
+  @@index([vehiculoId])
+}
+
+model DocumentoAcreditacion {
+  id                      String   @id @default(cuid())
+  acreditacionId          String
+  requisitoId             String
+  titularTipo             String   @default("empresa") // "empresa" | "trabajador" | "vehiculo"
+  titularId               String?  // trabajadorId, vehiculoId, etc si aplica
+  titularNombre           String?
+  nombreDocumento         String
+  categoria               String   @default("empresa")
+  obligatorio             Boolean  @default(true)
+  estado                  String   @default("faltante") // "faltante" | "completo" | "vencido" | "en_revision" | "rechazado" | "no_aplica"
+  archivoUrl              String?
+  archivoNombre           String?
+  fechaEmision            DateTime?
+  fechaVencimiento        DateTime?
+  fuenteTipo              String?  // "biblioteca" | "documento_empresa" | "documento_trabajador" | "manual"
+  fuenteId                String?
+  observaciones           String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  acreditacion Acreditacion @relation(fields: [acreditacionId], references: [id], onDelete: Cascade)
+  requisito RequisitoPlantillaAcreditacion @relation(fields: [requisitoId], references: [id], onDelete: Cascade)
+
+  @@index([acreditacionId])
+  @@index([requisitoId])
+  @@index([estado])
+  @@index([titularId])
+  @@index([fechaVencimiento])
+}
+
+model HistorialAcreditacion {
+  id                String   @id @default(cuid())
+  acreditacionId    String
+  usuarioId         String?
+  accion            String   // "crear" | "cambiar_estado" | "agregar_documento" | "rechazar" | "observar" | etc
+  detalle           String?
+  estadoAnterior    String?
+  estadoNuevo       String?
+  createdAt         DateTime @default(now())
+
+  acreditacion Acreditacion @relation(fields: [acreditacionId], references: [id], onDelete: Cascade)
+  usuario Usuario? @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  @@index([acreditacionId])
+  @@index([usuarioId])
+  @@index([createdAt])
 }
 
 // ─────────────────────────────────────────────

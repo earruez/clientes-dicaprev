@@ -14,6 +14,38 @@ export type IrlEppItem = {
   observaciones: string;
 };
 
+/** Fila de la tabla de maquinas/herramientas en FORM-IRL 03 */
+export type IrlMaquinaFila = {
+  numero?: number;
+  equipo_herramienta: string;
+  medidas_seguridad: string;
+};
+
+export type IrlCondicionAmbientalFlags = {
+  ruido?: boolean;
+  iluminacion?: boolean;
+  temperaturas_extremas?: boolean;
+  vibraciones?: boolean;
+  virus_bacterias_hongos?: boolean;
+  sustancias_peligrosas?: boolean;
+  polvos_humos_nieblas?: boolean;
+  vapores_organicos?: boolean;
+  electrico?: boolean;
+  altura_fisica?: boolean;
+  caida_mismo_nivel?: boolean;
+  caida_distinto_nivel?: boolean;
+  posturas_forzadas?: boolean;
+  movimientos_repetitivos?: boolean;
+};
+
+export type IrlAntecedenteFila = {
+  numero?: number;
+  condicion: string;
+  si: boolean;
+  no: boolean;
+  observaciones: string;
+};
+
 /** Fila de la tabla de Protocolos MINSAL */
 export type ProtocoloMinsalFila = {
   protocolo: string;
@@ -55,13 +87,19 @@ export type DocumentoIrlCampos = {
   trabajador_rut: string;
   trabajador_cargo: string;
   trabajador_area: string;
+  proyecto?: string;
   fecha: string;
   duracion_capacitacion: string;
   jornada: string;
   turno: string;
   hora_inicio: string;
   hora_termino: string;
+  contacto_emergencia?: string;
   telefono_emergencia: string;
+  parentesco?: string;
+  colaborador_nuevo?: boolean;
+  cambio_proceso_puesto?: boolean;
+  nuevas_actividades?: boolean;
   // ── Sección 5: Características del lugar de trabajo ────────────────────────
   direccion_lugar_trabajo: string;
   lugar_trabajo: string;
@@ -71,6 +109,10 @@ export type DocumentoIrlCampos = {
   // ── Prevencionista ──────────────────────────────────────────────────────────
   prevencionista_nombre: string;
   prevencionista_cargo: string;
+  relator_nombre?: string;
+  relator_rut?: string;
+  relator_cargo?: string;
+  aprobacion_fecha?: string;
   // ── Antecedentes del trabajador ─────────────────────────────────────────────
   accidentes_anteriores: string;
   capacitaciones_previas: string[];
@@ -84,12 +126,16 @@ export type DocumentoIrlCampos = {
   riesgos_psicosociales_tabla: IrlRiesgoFila[];
   // ── Sección 7.1: Riesgos inherentes a la actividad ─────────────────────────
   descripcion_actividad: string;
+  descripcion_cargo?: string;
   tareas_realiza: string;
   lugares_trabajo_cargo: string;
   herramientas_equipos: string;
   epp_requerido_info: string;
+  condiciones_amb_obj?: IrlCondicionAmbientalFlags;
+  maquinas_herramientas_tabla?: IrlMaquinaFila[];
   riesgos_tareas_tabla: IrlRiesgoFila[];
   riesgos_lugar_tabla: IrlRiesgoFila[];
+  riesgos_emergencias_tabla?: IrlRiesgoFila[];
   // ── (legacy) Riesgos específicos tabla – mantengo por compat ───────────────
   riesgos_especificos_tabla: IrlRiesgoFila[];
   // ── Sección 8a: Ley 16.744 ─────────────────────────────────────────────────
@@ -112,6 +158,9 @@ export type DocumentoIrlCampos = {
   normas_senalizacion: string;
   // ── Sección 8j: PTS ─────────────────────────────────────────────────────────
   normas_pts_texto: string;
+  normas_ast?: string;
+  normas_bloqueo_etiquetado?: string;
+  normas_protocolos_minsal_texto?: string;
   // ── Sección 8k: Protocolos MINSAL ──────────────────────────────────────────
   normas_protocolos_tabla: ProtocoloMinsalFila[];
   // ── Sección 8l: Sustancias químicas ────────────────────────────────────────
@@ -128,6 +177,12 @@ export type DocumentoIrlCampos = {
   documentos_otros_lista: string[];
   // ── Sección 10: Declaración ─────────────────────────────────────────────────
   epp_induccion_tabla: IrlEppItem[];
+  antecedentes_enfermedades?: IrlAntecedenteFila[];
+  antecedentes_generales_tabla?: IrlAntecedenteFila[];
+  antecedentes_otras_consideraciones?: IrlAntecedenteFila[];
+  material_adjunto_pts?: string;
+  material_adjunto_productos?: string;
+  material_adjunto_cobertura?: string;
   compromisos_trabajador: string[];
   declaracion: string;
   // ── Sección 11: Firmas ──────────────────────────────────────────────────────
