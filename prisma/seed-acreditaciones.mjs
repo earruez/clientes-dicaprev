@@ -34,6 +34,90 @@ function buildCodigoDocumento(req) {
   return `${categoria}_${aplicaA}_${nombre}`;
 }
 
+const CATALOGO_EMPRESA = [
+  { code: "RUT_EMPRESA", categoria: "empresa", aliases: ["rut_empresa", "rut empresa"] },
+  { code: "ESCRITURA_CONSTITUCION", categoria: "empresa", aliases: ["escritura_de_constitucion_social", "escritura constitucion"] },
+  { code: "CERTIFICADO_VIGENCIA_EMPRESA", categoria: "empresa", aliases: ["certificado_vigencia_empresa", "certificado de vigencia empresa", "certificado vigencia empresa"] },
+  { code: "PATENTE_COMERCIAL", categoria: "empresa", aliases: ["patente_comercial_vigente", "patente comercial"] },
+  { code: "F30", categoria: "empresa", aliases: ["certificado_f30", "f30"] },
+  { code: "F30_1", categoria: "empresa", aliases: ["certificado_f30_1", "certificado_f30_1", "f30_1", "f30-1"] },
+  { code: "NOMINA_TRABAJADORES", categoria: "empresa", aliases: ["nomina_de_trabajadores", "nomina trabajadores", "nomina de trabajadores"] },
+  { code: "CERTIFICADO_MUTUAL", categoria: "empresa", aliases: ["certificado_mutual", "certificado mutual", "certificado_mutual_vigente"] },
+  { code: "SEGURO_RESPONSABILIDAD_CIVIL", categoria: "empresa", aliases: ["seguro_responsabilidad_civil", "seguro responsabilidad civil"] },
+  { code: "CONTRATO_ORDEN_COMPRA", categoria: "empresa", aliases: ["contrato_orden_compra", "orden_de_compra", "decreto_de_adjudicacion"] },
+  { code: "RIOHS", categoria: "sst", aliases: ["riohs", "reglamento_interno_riohs", "reglamento_interno_de_higiene_y_seguridad"] },
+  { code: "POLITICA_SST", categoria: "sst", aliases: ["politica_sst", "politica de sst"] },
+  { code: "MATRIZ_IPER", categoria: "sst", aliases: ["matriz_iper", "miper", "matriz iper"] },
+  { code: "PLAN_EMERGENCIA", categoria: "sst", aliases: ["plan_de_emergencia", "plan emergencia", "plan de emergencia"] },
+  { code: "PROCEDIMIENTO_TRABAJO_SEGURO", categoria: "sst", aliases: ["procedimiento_de_trabajo_seguro", "procedimientos_criticos_de_trabajo", "procedimiento trabajo seguro"] },
+  { code: "PROCEDIMIENTO_TRABAJO_ALTURA", categoria: "sst", aliases: ["procedimiento_trabajo_en_altura", "trabajo en altura"] },
+  { code: "PROCEDIMIENTO_ELECTRICO", categoria: "sst", aliases: ["procedimiento_electrico", "procedimiento electrico", "procedimiento_eléctrico_bt_mt"] },
+  { code: "PROCEDIMIENTO_BLOQUEO_ETIQUETADO", categoria: "sst", aliases: ["procedimiento_bloqueo_y_etiquetado", "loto", "bloqueo y etiquetado"] },
+  { code: "PROGRAMA_PREVENCION", categoria: "sst", aliases: ["programa_de_prevencion", "programa de prevencion de riesgos"] },
+  { code: "ENTREGA_EPP_EMPRESA", categoria: "sst", aliases: ["registro_entrega_epp_empresa", "registro entrega epp dielectrico", "entrega_epp_dielectrico"] },
+];
+
+const CATALOGO_TRABAJADOR = [
+  { code: "CEDULA_IDENTIDAD", aliases: ["cedula_de_identidad", "cédula de identidad", "cedula identidad"] },
+  { code: "CONTRATO_TRABAJO", aliases: ["contrato_de_trabajo", "contrato trabajo"] },
+  { code: "ANEXO_CONTRATO", aliases: ["anexo_de_contrato", "anexo contrato"] },
+  { code: "CERTIFICADO_AFP", aliases: ["certificado_afp"] },
+  { code: "CERTIFICADO_SALUD", aliases: ["certificado_salud_fonasa_isapre", "certificado_salud", "certificado salud"] },
+  { code: "ODI_FIRMADA", aliases: ["odi_firmada", "odi"] },
+  { code: "ENTREGA_EPP", aliases: ["registro_entrega_epp", "entrega_epp"] },
+  { code: "CAPACITACION_INDUCCION", aliases: ["induccion_faena", "capacitacion_induccion"] },
+  { code: "CAPACITACION_ALTURA", aliases: ["capacitacion_trabajo_en_altura", "capacitacion trabajo en altura"] },
+  { code: "CAPACITACION_RIESGO_ELECTRICO", aliases: ["capacitacion_riesgo_electrico"] },
+  { code: "CAPACITACION_USO_EPP", aliases: ["capacitacion_uso_epp"] },
+  { code: "LICENCIA_SEC", aliases: ["licencia_sec", "licencias_habilitantes_segun_tarea"] },
+  { code: "LICENCIA_CONDUCIR", aliases: ["licencia_de_conducir", "licencia conductor"] },
+  { code: "EXAMEN_OCUPACIONAL", aliases: ["examen_ocupacional", "examen_pre_ocupacional"] },
+  { code: "EXAMEN_ALTURA", aliases: ["examen_altura_fisica", "examen ocupacional altura fisica"] },
+  { code: "EXAMEN_ALTURA_GEOGRAFICA", aliases: ["examen_altura_geografica"] },
+  { code: "LIQUIDACION_SUELDO", aliases: ["liquidacion_de_sueldo", "liquidacion sueldo"] },
+  { code: "CERTIFICADO_ANTECEDENTES", aliases: ["certificado_de_antecedentes"] },
+];
+
+const EMPRESA_BY_CODE = new Map(CATALOGO_EMPRESA.map((item) => [item.code, item]));
+
+function matchesAlias(normalizedName, aliases) {
+  return aliases.some((aliasRaw) => {
+    const alias = normalizeText(aliasRaw);
+    return normalizedName === alias || normalizedName.includes(alias) || alias.includes(normalizedName);
+  });
+}
+
+function resolveCatalogCode(req) {
+  const normalizedName = normalizeText(req.nombre);
+
+  if (req.titularTipo === "trabajador") {
+    const match = CATALOGO_TRABAJADOR.find((item) => matchesAlias(normalizedName, item.aliases));
+    return match?.code ?? null;
+  }
+
+  if (req.titularTipo === "empresa" || req.categoria === "empresa" || req.categoria === "sst") {
+    if (normalizedName.includes("formato_mandante")) return null;
+    const match = CATALOGO_EMPRESA.find((item) => matchesAlias(normalizedName, item.aliases));
+    return match?.code ?? null;
+  }
+
+  return null;
+}
+
+function findDocumentoEmpresaByCode(code, docs) {
+  const catalog = EMPRESA_BY_CODE.get(code);
+  if (!catalog) return null;
+
+  const expectedCategory = normalizeText(catalog.categoria);
+  return (
+    docs.find((doc) => {
+      const sameCategory = normalizeText(doc.categoria) === expectedCategory;
+      const normalizedName = normalizeText(doc.nombre);
+      return sameCategory && matchesAlias(normalizedName, catalog.aliases);
+    }) ?? null
+  );
+}
+
 function shouldMapEmpresa(req) {
   return req.titularTipo === "empresa" || req.categoria === "empresa" || req.categoria === "sst";
 }
@@ -68,20 +152,27 @@ async function upsertPlantilla({ empresaId, mandanteId, nombre, descripcion, tip
 
   for (let i = 0; i < requisitos.length; i++) {
     const req = requisitos[i];
-    const codigoDocumento = req.codigoDocumento ?? buildCodigoDocumento(req);
+    const catalogCode = resolveCatalogCode(req);
+    const codigoDocumento = req.codigoDocumento ?? catalogCode ?? buildCodigoDocumento(req);
 
     const matchDocumentoEmpresa = shouldMapEmpresa(req)
-      ? catalogoEmpresa.find((doc) => {
-          const sameName = normalizeText(doc.nombre) === normalizeText(req.nombre);
-          const sameCategory = normalizeText(doc.categoria) === normalizeText(req.categoria)
-            || normalizeText(req.categoria) === "sst";
-          return sameName && sameCategory;
-        })
+      ? (
+          (catalogCode ? findDocumentoEmpresaByCode(catalogCode, catalogoEmpresa) : null)
+          ?? catalogoEmpresa.find((doc) => {
+            const sameName = normalizeText(doc.nombre) === normalizeText(req.nombre);
+            const sameCategory = normalizeText(doc.categoria) === normalizeText(req.categoria)
+              || normalizeText(req.categoria) === "sst";
+            return sameName && sameCategory;
+          })
+          ?? null
+        )
       : null;
 
     const matchDocumentoTrabajador = req.titularTipo === "trabajador"
       ? catalogoTrabajador.find((doc) => {
-          const byCode = normalizeText(doc.codigo) === normalizeText(codigoDocumento);
+          const byCode = catalogCode
+            ? normalizeText(doc.codigo) === normalizeText(catalogCode)
+            : normalizeText(doc.codigo) === normalizeText(codigoDocumento);
           const byName = normalizeText(doc.nombre) === normalizeText(req.nombre);
           return byCode || byName;
         })
