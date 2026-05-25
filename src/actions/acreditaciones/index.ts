@@ -1440,7 +1440,15 @@ export async function crearAcreditacion(data: {
     },
   });
 
-  return acreditacion;
+  return {
+    ok: true as const,
+    acreditacion: {
+      id: acreditacion.id,
+      estado: acreditacion.estado,
+      mandanteId: acreditacion.mandanteId,
+      plantillaId: acreditacion.plantillaId,
+    },
+  };
 }
 
 export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcreditacion, comentario?: string) {

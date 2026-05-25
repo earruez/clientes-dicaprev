@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getAcreditacionById } from "@/actions/acreditaciones";
 import ExpedienteClient from "./expediente-client";
 
@@ -58,24 +58,40 @@ function mapEstadoHistorial(value: string): "generado" | "enviado" {
 
 export default async function AcreditacionExpedientePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const acreditacion = await getAcreditacionById(id);
+  let acreditacion: Awaited<ReturnType<typeof getAcreditacionById>>;
+
+  try {
+    acreditacion = await getAcreditacionById(id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+
+    if (message.toLowerCase().includes("sesion")) {
+      redirect("/dicaprev/login");
+    }
+
+    throw error;
+  }
 
   if (!acreditacion) {
     notFound();
   }
 
-  const workers = acreditacion.trabajadores.map((item) => ({
-    id: item.trabajador.id,
-    nombre: `${item.trabajador.nombres} ${item.trabajador.apellidos}`.trim(),
-    rut: item.trabajador.rut,
-    cargo: item.trabajador.cargo?.nombre ?? "Sin cargo",
-  }));
+  const workers = acreditacion.trabajadores
+    .filter((item) => Boolean(item.trabajador))
+    .map((item) => ({
+      id: item.trabajador.id,
+      nombre: `${item.trabajador.nombres} ${item.trabajador.apellidos}`.trim(),
+      rut: item.trabajador.rut,
+      cargo: item.trabajador.cargo?.nombre ?? "Sin cargo",
+    }));
 
-  const vehiculos = acreditacion.vehiculos.map((item) => ({
-    id: item.vehiculo.id,
-    patente: item.vehiculo.patente,
-    modelo: `${item.vehiculo.marca} ${item.vehiculo.modelo}`.trim(),
-  }));
+  const vehiculos = acreditacion.vehiculos
+    .filter((item) => Boolean(item.vehiculo))
+    .map((item) => ({
+      id: item.vehiculo.id,
+      patente: item.vehiculo.patente,
+      modelo: `${item.vehiculo.marca} ${item.vehiculo.modelo}`.trim(),
+    }));
 
   const docs = acreditacion.documentos.map((doc) => ({
     id: doc.id,
@@ -83,9 +99,9 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     acreditacionId: doc.acreditacionId,
     nombreDocumento: doc.nombreDocumento,
     categoria: mapCategoria(doc.categoria),
-    aplicaA: mapAplicaA(doc.requisito.aplicaA),
+    aplicaA: mapAplicaA(doc.requisito?.aplicaA),
     titularId: doc.titularId,
-    titularNombre: doc.titularNombre ?? (doc.titularTipo === "empresa" ? acreditacion.empresa.nombre : "Sin titular"),
+    titularNombre: doc.titularNombre ?? (doc.titularTipo === "empresa" ? (acreditacion.empresa?.nombre ?? "Sin empresa") : "Sin titular"),
     obligatorio: doc.obligatorio,
     estado: mapEstadoDocumento(doc.estado),
     archivoUrl: doc.archivoUrl ?? undefined,
@@ -120,11 +136,11 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     <ExpedienteClient
       acreditacion={{
         id: acreditacion.id,
-        empresaNombre: acreditacion.empresa.nombre,
-        mandante: acreditacion.mandante.nombre,
-        tipo: acreditacion.plantilla.tipo,
+        empresaNombre: acreditacion.empresa?.nombre ?? "Sin empresa",
+        mandante: acreditacion.mandante?.nombre ?? "Sin mandante",
+        tipo: acreditacion.plantilla?.tipo ?? "mandante_general",
         estado: mapEstadoAcreditacion(acreditacion.estado),
-        plantillaNombre: acreditacion.plantilla.nombre,
+        plantillaNombre: acreditacion.plantilla?.nombre ?? "Sin plantilla",
         trabajadores: workers,
         vehiculos,
         creadoEl: acreditacion.createdAt.toISOString(),

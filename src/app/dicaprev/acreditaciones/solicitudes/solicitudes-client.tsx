@@ -15,6 +15,25 @@ type AcreditacionItem = {
   updatedAt: string;
 };
 
+type CrearAcreditacionResult =
+  | { ok: true; acreditacion: { id: string } }
+  | { id: string };
+
+const ESTADO_LABEL: Record<string, string> = {
+  en_preparacion: "En preparación",
+  listo_para_enviar: "Listo para enviar",
+  enviado: "Enviado",
+  observada: "Observada",
+  aprobado: "Aprobado",
+  rechazado: "Rechazado",
+  cerrada: "Cerrada",
+  vencido: "Vencido",
+};
+
+function formatEstado(estado: string) {
+  return ESTADO_LABEL[estado] ?? estado;
+}
+
 export default function SolicitudesClient({
   initialAcreditaciones,
   mandantes,
@@ -35,12 +54,13 @@ export default function SolicitudesClient({
     obraFaena?: string;
     trabajadorIds?: string[];
     vehiculoIds?: string[];
-  }) => Promise<{ id: string }>;
+  }) => Promise<CrearAcreditacionResult>;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [openWizard, setOpenWizard] = useState(false);
   const [search, setSearch] = useState("");
+  const [crearError, setCrearError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -57,9 +77,21 @@ export default function SolicitudesClient({
     vehiculoIds: string[];
   }) {
     startTransition(async () => {
-      const created = await onCrearAction(data);
-      setOpenWizard(false);
-      router.push(`/dicaprev/acreditaciones/${created.id}`);
+      try {
+        setCrearError(null);
+        const created = await onCrearAction(data);
+        const createdId = ("acreditacion" in created ? created.acreditacion?.id : created.id) ?? null;
+
+        if (!createdId) {
+          throw new Error("La acción de creación no devolvió el id de la acreditación.");
+        }
+
+        setOpenWizard(false);
+        router.push(`/dicaprev/acreditaciones/${createdId}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudo crear la acreditación";
+        setCrearError(message);
+      }
     });
   }
 
@@ -111,7 +143,7 @@ export default function SolicitudesClient({
                     <p className="font-medium text-slate-900">{item.mandante}</p>
                     <p className="text-xs text-slate-500">{item.proyecto}</p>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{item.estado}</td>
+                  <td className="px-4 py-3 text-slate-700">{formatEstado(item.estado)}</td>
                   <td className="px-4 py-3 text-slate-700">{item.trabajadores}</td>
                   <td className="px-4 py-3 text-slate-700">{item.vehiculos}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">{new Date(item.updatedAt).toLocaleDateString("es-CL")}</td>
@@ -139,6 +171,12 @@ export default function SolicitudesClient({
           trabajadores={trabajadores}
           vehiculos={vehiculos}
         />
+      )}
+
+      {crearError && (
+        <div className="fixed bottom-16 right-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 shadow-sm">
+          {crearError}
+        </div>
       )}
 
       {isPending && (
