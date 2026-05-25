@@ -760,9 +760,12 @@ export async function getAcreditaciones(filters?: {
 export async function getAcreditacionById(id: string) {
   const empresaId = await getEmpresaId();
 
-  const acreditacion = await prisma.acreditacion.findUnique({
-    where: { id },
+  const acreditacion = await prisma.acreditacion.findFirst({
+    where: { id, empresaId },
     include: {
+      empresa: {
+        select: { id: true, nombre: true },
+      },
       mandante: true,
       plantilla: {
         include: { requisitos: { orderBy: { orden: "asc" } } },
@@ -770,9 +773,20 @@ export async function getAcreditacionById(id: string) {
       responsable: true,
       documentos: {
         include: { requisito: true },
-        orderBy: { requisito: { orden: "asc" } },
+        orderBy: [
+          { categoria: "asc" },
+          { titularTipo: "asc" },
+          { titularNombre: "asc" },
+          { nombreDocumento: "asc" },
+        ],
       },
-      trabajadores: { include: { trabajador: true } },
+      trabajadores: {
+        include: {
+          trabajador: {
+            include: { cargo: true },
+          },
+        },
+      },
       vehiculos: { include: { vehiculo: true } },
       historial: {
         include: { usuario: { select: { nombre: true } } },
@@ -781,8 +795,7 @@ export async function getAcreditacionById(id: string) {
     },
   });
 
-  if (acreditacion?.empresaId !== empresaId) throw new Error("Unauthorized");
-  return { id: acreditacion.id };
+  return acreditacion;
 }
 
 // ─────────────────────────────────────────────────────────────────────
