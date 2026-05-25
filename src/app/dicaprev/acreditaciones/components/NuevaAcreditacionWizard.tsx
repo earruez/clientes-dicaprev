@@ -40,8 +40,9 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
   const canContinue =
     (paso === 0 && Boolean(data.mandanteId)) ||
     (paso === 1 && Boolean(data.plantillaId)) ||
-    (paso === 2 && data.trabajadorIds.length > 0) ||
+    paso === 2 ||
     paso >= 3;
+  const canCreate = Boolean(data.mandanteId && data.plantillaId);
 
   function toggleWorker(id: string) {
     setData((prev) => ({
@@ -128,45 +129,59 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
           {paso === 2 && (
             <section>
               <p className="mb-3 text-sm font-semibold text-slate-700">Selecciona trabajadores</p>
+              <p className="mb-3 text-xs text-slate-500">Puedes crear la acreditación ahora y agregar trabajadores más adelante.</p>
               <SearchInput value={search} onChange={setSearch} placeholder="Buscar trabajador" />
-              <div className="mt-3 grid gap-2">
-                {trabajadores
-                  .filter((t) => !search || t.nombre.toLowerCase().includes(search.toLowerCase()))
-                  .map((t) => {
-                    const selected = data.trabajadorIds.includes(t.id);
-                    return (
-                      <button
-                        key={t.id}
-                        onClick={() => toggleWorker(t.id)}
-                        className={cn("rounded-xl border p-3 text-left", selected ? "border-emerald-300 bg-emerald-50" : "border-slate-200 hover:bg-slate-50")}
-                      >
-                        <p className="text-sm font-semibold text-slate-900">{t.nombre}</p>
-                        <p className="text-xs text-slate-500">{t.rut} · {t.cargo}</p>
-                      </button>
-                    );
-                  })}
-              </div>
+              {trabajadores.length === 0 ? (
+                <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                  No hay trabajadores cargados. Puedes continuar y agregarlos después.
+                </div>
+              ) : (
+                <div className="mt-3 grid gap-2">
+                  {trabajadores
+                    .filter((t) => !search || t.nombre.toLowerCase().includes(search.toLowerCase()))
+                    .map((t) => {
+                      const selected = data.trabajadorIds.includes(t.id);
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => toggleWorker(t.id)}
+                          className={cn("rounded-xl border p-3 text-left", selected ? "border-emerald-300 bg-emerald-50" : "border-slate-200 hover:bg-slate-50")}
+                        >
+                          <p className="text-sm font-semibold text-slate-900">{t.nombre}</p>
+                          <p className="text-xs text-slate-500">{t.rut} · {t.cargo}</p>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
             </section>
           )}
 
           {paso === 3 && (
             <section>
               <p className="mb-3 text-sm font-semibold text-slate-700">Selecciona vehículos (opcional)</p>
-              <div className="grid gap-2">
-                {vehiculos.map((v) => {
-                  const selected = data.vehiculoIds.includes(v.id);
-                  return (
-                    <button
-                      key={v.id}
-                      onClick={() => toggleVehiculo(v.id)}
-                      className={cn("rounded-xl border p-3 text-left", selected ? "border-blue-300 bg-blue-50" : "border-slate-200 hover:bg-slate-50")}
-                    >
-                      <p className="text-sm font-semibold text-slate-900">{v.etiqueta}</p>
-                      <p className="text-xs text-slate-500">{v.patente}</p>
-                    </button>
-                  );
-                })}
-              </div>
+              <p className="mb-3 text-xs text-slate-500">Puedes crear la acreditación ahora y agregar vehículos más adelante.</p>
+              {vehiculos.length === 0 ? (
+                <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+                  No hay vehículos cargados. Puedes continuar sin vehículos.
+                </div>
+              ) : (
+                <div className="grid gap-2">
+                  {vehiculos.map((v) => {
+                    const selected = data.vehiculoIds.includes(v.id);
+                    return (
+                      <button
+                        key={v.id}
+                        onClick={() => toggleVehiculo(v.id)}
+                        className={cn("rounded-xl border p-3 text-left", selected ? "border-blue-300 bg-blue-50" : "border-slate-200 hover:bg-slate-50")}
+                      >
+                        <p className="text-sm font-semibold text-slate-900">{v.etiqueta}</p>
+                        <p className="text-xs text-slate-500">{v.patente}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           )}
 
@@ -227,7 +242,8 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
                   vehiculoIds: data.vehiculoIds,
                 })
               }
-              className="inline-flex h-10 items-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white"
+              disabled={!canCreate}
+              className="inline-flex h-10 items-center rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white disabled:opacity-50"
             >
               <CheckCircle2 className="mr-1.5 h-4 w-4" />
               Crear acreditación

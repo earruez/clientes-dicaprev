@@ -782,7 +782,7 @@ export async function getAcreditacionById(id: string) {
   });
 
   if (acreditacion?.empresaId !== empresaId) throw new Error("Unauthorized");
-  return acreditacion;
+  return { id: acreditacion.id };
 }
 
 // ─────────────────────────────────────────────────────────────────────
