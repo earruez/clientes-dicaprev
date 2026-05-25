@@ -13,7 +13,9 @@
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "node prisma/seed.mjs"
+    "prisma:seed": "node prisma/seed.mjs",
+    "seed:catalogos": "node prisma/seed-catalogos-documentales.mjs",
+    "seed:acreditaciones": "node prisma/seed-acreditaciones.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
