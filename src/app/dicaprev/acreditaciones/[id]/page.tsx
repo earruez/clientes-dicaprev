@@ -113,6 +113,10 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     fuenteBiblioteca: doc.fuenteTipo === "biblioteca",
     fuenteTipo: doc.fuenteTipo,
     fuenteId: doc.fuenteId,
+    requisitoLibre:
+      !doc.requisito?.documentoRequeridoEmpresaId &&
+      !doc.requisito?.documentoTipoTrabajadorId &&
+      !doc.requisito?.documentoTipoVehiculoId,
   }));
 
   const historial = acreditacion.historial

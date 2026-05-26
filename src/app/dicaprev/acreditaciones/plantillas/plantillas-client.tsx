@@ -30,6 +30,7 @@ type PlantillaItem = {
     obligatorio: boolean;
     documentoRequeridoEmpresaId: string | null;
     documentoTipoTrabajadorId: string | null;
+    documentoTipoVehiculoId: string | null;
   }>;
 };
 
@@ -229,6 +230,13 @@ export default function PlantillasClient({
         key: "trabajador" as const,
       };
     }
+    if (req.documentoTipoVehiculoId) {
+      return {
+        label: "Catálogo vehículo",
+        cls: "border-orange-200 bg-orange-50 text-orange-700",
+        key: "vehiculo" as const,
+      };
+    }
     return {
       label: "Requisito libre",
       cls: "border-slate-200 bg-slate-100 text-slate-600",
@@ -303,7 +311,7 @@ export default function PlantillasClient({
                           acc[k] += 1;
                           return acc;
                         },
-                        { empresa: 0, trabajador: 0, libre: 0 }
+                        { empresa: 0, trabajador: 0, vehiculo: 0, libre: 0 }
                       );
 
                       return (
@@ -313,6 +321,9 @@ export default function PlantillasClient({
                           </span>
                           <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
                             Trabajador: {counts.trabajador}
+                          </span>
+                          <span className="inline-flex items-center rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 font-medium text-orange-700">
+                            Vehículo: {counts.vehiculo}
                           </span>
                           <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
                             Libres: {counts.libre}

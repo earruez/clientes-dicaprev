@@ -78,6 +78,18 @@ const CATALOGO_TRABAJADOR = [
   { code: "CERTIFICADO_ANTECEDENTES", aliases: ["certificado_de_antecedentes"] },
 ];
 
+const CATALOGO_VEHICULO = [
+  { code: "PERMISO_CIRCULACION", aliases: ["permiso_de_circulacion", "permiso circulacion", "permiso_circulacion"] },
+  { code: "SOAP", aliases: ["soap", "soap_vigente"] },
+  { code: "REVISION_TECNICA", aliases: ["revision_tecnica", "revisión_técnica", "revision tecnica"] },
+  { code: "GASES", aliases: ["gases", "certificado_de_gases", "certificado gases"] },
+  { code: "PADRON", aliases: ["padron", "padrón", "padron_del_vehiculo"] },
+  { code: "CHECKLIST_VEHICULO", aliases: ["check_list_vehiculo", "checklist_vehiculo", "check list vehiculo"] },
+  { code: "SEGURO_VEHICULO", aliases: ["seguro_vehiculo", "seguro del vehiculo", "seguro vehículo"] },
+  { code: "CERTIFICADO_MANTENCION", aliases: ["certificado_mantencion", "certificado de mantencion"] },
+  { code: "AUTORIZACION_USO_VEHICULO", aliases: ["autorizacion_uso_vehiculo", "autorización uso vehículo", "autorizacion uso vehiculo"] },
+];
+
 const EMPRESA_BY_CODE = new Map(CATALOGO_EMPRESA.map((item) => [item.code, item]));
 
 function matchesAlias(normalizedName, aliases) {
@@ -98,6 +110,11 @@ function resolveCatalogCode(req) {
   if (req.titularTipo === "empresa" || req.categoria === "empresa" || req.categoria === "sst") {
     if (normalizedName.includes("formato_mandante")) return null;
     const match = CATALOGO_EMPRESA.find((item) => matchesAlias(normalizedName, item.aliases));
+    return match?.code ?? null;
+  }
+
+  if (req.titularTipo === "vehiculo" || req.categoria === "vehiculo") {
+    const match = CATALOGO_VEHICULO.find((item) => matchesAlias(normalizedName, item.aliases));
     return match?.code ?? null;
   }
 
@@ -140,11 +157,15 @@ async function upsertPlantilla({ empresaId, mandanteId, nombre, descripcion, tip
   });
 
   // Upsert requisitos por nombre+categoria
-  const [catalogoEmpresa, catalogoTrabajador] = await Promise.all([
+  const [catalogoEmpresa, catalogoTrabajador, catalogoVehiculo] = await Promise.all([
     prisma.documentoRequeridoEmpresa.findMany({
       select: { id: true, nombre: true, categoria: true },
     }),
     prisma.documentoTipoTrabajador.findMany({
+      where: { empresaId, activo: true },
+      select: { id: true, nombre: true, codigo: true },
+    }),
+    prisma.documentoTipoVehiculo.findMany({
       where: { empresaId, activo: true },
       select: { id: true, nombre: true, codigo: true },
     }),
@@ -178,6 +199,16 @@ async function upsertPlantilla({ empresaId, mandanteId, nombre, descripcion, tip
         })
       : null;
 
+    const matchDocumentoVehiculo = req.titularTipo === "vehiculo"
+      ? catalogoVehiculo.find((doc) => {
+          const byCode = catalogCode
+            ? normalizeText(doc.codigo) === normalizeText(catalogCode)
+            : normalizeText(doc.codigo) === normalizeText(codigoDocumento);
+          const byName = normalizeText(doc.nombre) === normalizeText(req.nombre);
+          return byCode || byName;
+        })
+      : null;
+
     const existing = await prisma.requisitoPlantillaAcreditacion.findFirst({
       where: { plantillaId: plantilla.id, nombreDocumento: req.nombre, categoria: req.categoria },
     });
@@ -190,6 +221,7 @@ async function upsertPlantilla({ empresaId, mandanteId, nombre, descripcion, tip
           codigoDocumento,
           documentoRequeridoEmpresaId: matchDocumentoEmpresa?.id ?? null,
           documentoTipoTrabajadorId: matchDocumentoTrabajador?.id ?? null,
+          documentoTipoVehiculoId: matchDocumentoVehiculo?.id ?? null,
           categoria: req.categoria,
           aplicaA: req.titularTipo ?? "empresa",
           obligatorio: req.obligatorio ?? true,
@@ -204,6 +236,7 @@ async function upsertPlantilla({ empresaId, mandanteId, nombre, descripcion, tip
           codigoDocumento,
           documentoRequeridoEmpresaId: matchDocumentoEmpresa?.id ?? null,
           documentoTipoTrabajadorId: matchDocumentoTrabajador?.id ?? null,
+          documentoTipoVehiculoId: matchDocumentoVehiculo?.id ?? null,
           aplicaA: req.titularTipo ?? "empresa",
           obligatorio: req.obligatorio ?? true,
           orden: i + 1,

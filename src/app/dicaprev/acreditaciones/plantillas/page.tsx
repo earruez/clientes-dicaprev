@@ -29,6 +29,7 @@ export default async function PlantillasPage() {
           obligatorio: r.obligatorio,
           documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
           documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
+          documentoTipoVehiculoId: r.documentoTipoVehiculoId,
         })),
       }))}
       mandantes={mandantes.map((m) => ({ id: m.id, nombre: m.nombre }))}

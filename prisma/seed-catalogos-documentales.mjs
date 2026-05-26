@@ -54,6 +54,18 @@ const DOCUMENTOS_TRABAJADOR_BASE = [
   { codigo: "CERTIFICADO_ANTECEDENTES", nombre: "Certificado de antecedentes", requiereVencimiento: true, vigenciaDias: 365 },
 ];
 
+const DOCUMENTOS_VEHICULO_BASE = [
+  { codigo: "PERMISO_CIRCULACION", nombre: "Permiso de circulación", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "SOAP", nombre: "SOAP vigente", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "REVISION_TECNICA", nombre: "Revisión técnica", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "GASES", nombre: "Certificado de gases", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "PADRON", nombre: "Padrón del vehículo", requiereVencimiento: false, vigenciaDias: null },
+  { codigo: "CHECKLIST_VEHICULO", nombre: "Check list vehículo", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "SEGURO_VEHICULO", nombre: "Seguro vehículo", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "CERTIFICADO_MANTENCION", nombre: "Certificado de mantención", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "AUTORIZACION_USO_VEHICULO", nombre: "Autorización uso vehículo", requiereVencimiento: false, vigenciaDias: null },
+];
+
 async function seedDocumentoRequeridoEmpresa() {
   let created = 0;
   let updated = 0;
@@ -136,13 +148,59 @@ async function seedDocumentoTipoTrabajador() {
   return { created, updated, empresas: empresas.length };
 }
 
+async function seedDocumentoTipoVehiculo() {
+  const empresas = await prisma.empresa.findMany({ select: { id: true } });
+  let created = 0;
+  let updated = 0;
+
+  for (const empresa of empresas) {
+    for (const doc of DOCUMENTOS_VEHICULO_BASE) {
+      const existing = await prisma.documentoTipoVehiculo.findUnique({
+        where: { empresaId_codigo: { empresaId: empresa.id, codigo: doc.codigo } },
+        select: { id: true },
+      });
+
+      await prisma.documentoTipoVehiculo.upsert({
+        where: { empresaId_codigo: { empresaId: empresa.id, codigo: doc.codigo } },
+        create: {
+          empresaId: empresa.id,
+          codigo: doc.codigo,
+          nombre: doc.nombre,
+          descripcion: `Catálogo base ${doc.codigo}`,
+          vigenciaDias: doc.vigenciaDias,
+          requiereVencimiento: doc.requiereVencimiento,
+          requiereArchivo: true,
+          activo: true,
+        },
+        update: {
+          nombre: doc.nombre,
+          descripcion: `Catálogo base ${doc.codigo}`,
+          vigenciaDias: doc.vigenciaDias,
+          requiereVencimiento: doc.requiereVencimiento,
+          requiereArchivo: true,
+          activo: true,
+        },
+      });
+
+      if (existing) updated += 1;
+      else created += 1;
+    }
+  }
+
+  return { created, updated, empresas: empresas.length };
+}
+
 async function main() {
   const empresaDocs = await seedDocumentoRequeridoEmpresa();
   const workerDocs = await seedDocumentoTipoTrabajador();
+  const vehicleDocs = await seedDocumentoTipoVehiculo();
 
   console.log(`DocumentoRequeridoEmpresa: ${empresaDocs.created} creados, ${empresaDocs.updated} actualizados.`);
   console.log(
     `DocumentoTipoTrabajador: ${workerDocs.created} creados, ${workerDocs.updated} actualizados (${workerDocs.empresas} empresas).`,
+  );
+  console.log(
+    `DocumentoTipoVehiculo: ${vehicleDocs.created} creados, ${vehicleDocs.updated} actualizados (${vehicleDocs.empresas} empresas).`,
   );
 }
 

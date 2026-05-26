@@ -68,6 +68,7 @@ type DocumentoInstancia = {
   fuenteBiblioteca?: boolean;
   fuenteTipo?: string | null;
   fuenteId?: string | null;
+  requisitoLibre?: boolean;
 };
 
 type TrabajadorItem = { id: string; nombre: string; rut: string | null; cargo: string };
@@ -212,6 +213,8 @@ function getDocVinculo(doc: DocumentoInstancia) {
         ? "Desde documento empresa"
         : doc.fuenteTipo === "documento_trabajador"
         ? "Desde documento trabajador"
+        : doc.fuenteTipo === "documento_vehiculo"
+        ? "Desde documento vehículo"
         : "Desde fuente documental";
 
     return {
@@ -232,6 +235,14 @@ function getDocVinculo(doc: DocumentoInstancia) {
   if (doc.archivoUrl && !doc.fuenteTipo) {
     return {
       label: "Manual",
+      sourceLabel: null,
+      cls: "border-slate-200 bg-slate-100 text-slate-700",
+    };
+  }
+
+  if (doc.requisitoLibre) {
+    return {
+      label: "Requisito libre",
       sourceLabel: null,
       cls: "border-slate-200 bg-slate-100 text-slate-700",
     };
@@ -437,6 +448,11 @@ function DocRow({ doc }: { doc: DocumentoInstancia }) {
           {vinculo?.sourceLabel && (
             <span className="inline-flex items-center rounded border border-blue-100 bg-blue-50/60 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 shrink-0">
               {vinculo.sourceLabel}
+            </span>
+          )}
+          {doc.requisitoLibre && (
+            <span className="inline-flex items-center rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-700 shrink-0">
+              Requisito libre
             </span>
           )}
           {doc.fuenteBiblioteca && (

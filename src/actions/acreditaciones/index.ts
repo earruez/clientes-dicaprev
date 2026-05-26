@@ -874,6 +874,7 @@ export async function crearPlantillaAcreditacion(data: {
     codigoDocumento?: string;
     documentoRequeridoEmpresaId?: string;
     documentoTipoTrabajadorId?: string;
+    documentoTipoVehiculoId?: string;
   }>;
 }) {
   const empresaId = await getEmpresaId();
@@ -906,6 +907,7 @@ export async function crearPlantillaAcreditacion(data: {
                 obligatorio: r.obligatorio,
                 documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
                 documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
+                documentoTipoVehiculoId: r.documentoTipoVehiculoId,
                 orden: index + 1,
                 activo: true,
               })),
@@ -932,6 +934,7 @@ export async function actualizarPlantillaAcreditacion(data: {
     codigoDocumento?: string;
     documentoRequeridoEmpresaId?: string | null;
     documentoTipoTrabajadorId?: string | null;
+    documentoTipoVehiculoId?: string | null;
   }>;
 }) {
   const empresaId = await getEmpresaId();
@@ -1003,6 +1006,7 @@ export async function actualizarPlantillaAcreditacion(data: {
             obligatorio: req.obligatorio,
             documentoRequeridoEmpresaId: req.documentoRequeridoEmpresaId ?? null,
             documentoTipoTrabajadorId: req.documentoTipoTrabajadorId ?? null,
+            documentoTipoVehiculoId: req.documentoTipoVehiculoId ?? null,
             orden: index + 1,
             activo: true,
           },
@@ -1018,6 +1022,7 @@ export async function actualizarPlantillaAcreditacion(data: {
             obligatorio: req.obligatorio,
             documentoRequeridoEmpresaId: req.documentoRequeridoEmpresaId ?? null,
             documentoTipoTrabajadorId: req.documentoTipoTrabajadorId ?? null,
+            documentoTipoVehiculoId: req.documentoTipoVehiculoId ?? null,
             orden: index + 1,
             activo: true,
           },
@@ -1062,6 +1067,7 @@ export async function duplicarPlantillaAcreditacion(id: string) {
           codigoDocumento: r.codigoDocumento,
           documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
           documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
+          documentoTipoVehiculoId: r.documentoTipoVehiculoId,
           categoria: r.categoria,
           aplicaA: r.aplicaA,
           obligatorio: r.obligatorio,
@@ -1165,6 +1171,7 @@ export async function crearAcreditacion(data: {
 
   const requisitosEmpresaCatalogo = plantilla.requisitos.filter((req) => req.aplicaA === "empresa");
   const requisitosTrabajadorCatalogo = plantilla.requisitos.filter((req) => req.aplicaA === "trabajador");
+  const requisitosVehiculoCatalogo = plantilla.requisitos.filter((req) => req.aplicaA === "vehiculo");
 
   const documentoRequeridoIds = Array.from(
     new Set(
@@ -1182,7 +1189,15 @@ export async function crearAcreditacion(data: {
     )
   );
 
-  const [documentosEmpresaCatalogo, documentosTrabajadorCatalogo, tiposTrabajadorCatalogo] = await Promise.all([
+  const tipoVehiculoIds = Array.from(
+    new Set(
+      requisitosVehiculoCatalogo
+        .map((req) => req.documentoTipoVehiculoId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  const [documentosEmpresaCatalogo, documentosTrabajadorCatalogo, tiposTrabajadorCatalogo, documentosVehiculoCatalogo, tiposVehiculoCatalogo] = await Promise.all([
     prisma.documentoEmpresa.findMany({
       where: {
         empresaId,
@@ -1246,9 +1261,52 @@ export async function crearAcreditacion(data: {
           select: { id: true, codigo: true, nombre: true },
         })
       : Promise.resolve([]),
+    vehiculoIds.length > 0
+      ? prisma.vehiculoDocumento.findMany({
+          where: {
+            empresaId,
+            vehiculoId: { in: vehiculoIds },
+            OR: [
+              ...(tipoVehiculoIds.length > 0 ? [{ tipoDocumentoId: { in: tipoVehiculoIds } }] : []),
+              {
+                tipo: {
+                  in: requisitosVehiculoCatalogo
+                    .map((req) => req.codigoDocumento)
+                    .filter((value): value is string => Boolean(value)),
+                },
+              },
+              {
+                tipo: {
+                  in: requisitosVehiculoCatalogo.map((req) => req.nombreDocumento),
+                },
+              },
+            ],
+          },
+          select: {
+            id: true,
+            vehiculoId: true,
+            tipoDocumentoId: true,
+            tipo: true,
+            estado: true,
+            archivoUrl: true,
+            archivoNombre: true,
+            fechaEmision: true,
+            fechaVencimiento: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+      : Promise.resolve([]),
+    tipoVehiculoIds.length > 0
+      ? prisma.documentoTipoVehiculo.findMany({
+          where: { empresaId, id: { in: tipoVehiculoIds } },
+          select: { id: true, codigo: true, nombre: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const tipoTrabajadorById = new Map(tiposTrabajadorCatalogo.map((doc) => [doc.id, doc]));
+  const tipoVehiculoById = new Map(tiposVehiculoCatalogo.map((doc) => [doc.id, doc]));
 
   const docsEmpresaByRequeridoId = new Map<string, (typeof documentosEmpresaCatalogo)[number]>();
   for (const doc of documentosEmpresaCatalogo) {
@@ -1262,6 +1320,13 @@ export async function crearAcreditacion(data: {
     const existing = docsTrabajadorByTrabajador.get(doc.trabajadorId) ?? [];
     existing.push(doc);
     docsTrabajadorByTrabajador.set(doc.trabajadorId, existing);
+  }
+
+  const docsVehiculoByVehiculo = new Map<string, Array<(typeof documentosVehiculoCatalogo)[number]>>();
+  for (const doc of documentosVehiculoCatalogo) {
+    const existing = docsVehiculoByVehiculo.get(doc.vehiculoId) ?? [];
+    existing.push(doc);
+    docsVehiculoByVehiculo.set(doc.vehiculoId, existing);
   }
 
   const documentosCreate: Array<{
@@ -1378,6 +1443,35 @@ export async function crearAcreditacion(data: {
     for (const vehiculo of vehiculosData) {
       const keyVehiculo = `${req.id}::vehiculo::${vehiculo.id}`;
       if (seenKeys.has(keyVehiculo)) continue;
+
+      const docsVehiculo = docsVehiculoByVehiculo.get(vehiculo.id) ?? [];
+      const tipoVehiculo = req.documentoTipoVehiculoId
+        ? tipoVehiculoById.get(req.documentoTipoVehiculoId)
+        : null;
+
+      const sourceVehiculo = docsVehiculo.find((doc) => {
+        if (tipoVehiculo && doc.tipoDocumentoId === tipoVehiculo.id) {
+          return true;
+        }
+
+        if (tipoVehiculo) {
+          const matchTipoCodigo = normalizeText(doc.tipo) === normalizeText(tipoVehiculo.codigo);
+          const matchTipoNombre = normalizeText(doc.tipo) === normalizeText(tipoVehiculo.nombre);
+          if (matchTipoCodigo || matchTipoNombre) return true;
+        }
+
+        if (req.codigoDocumento && normalizeText(doc.tipo) === normalizeText(req.codigoDocumento)) {
+          return true;
+        }
+
+        return normalizeText(doc.tipo) === normalizeText(req.nombreDocumento);
+      }) ?? null;
+
+      const estadoVehiculo = resolveEstadoDesdeFuente({
+        estado: sourceVehiculo?.estado,
+        fechaVencimiento: sourceVehiculo?.fechaVencimiento,
+      });
+
       seenKeys.add(keyVehiculo);
       documentosCreate.push({
         requisitoId: req.id,
@@ -1387,7 +1481,13 @@ export async function crearAcreditacion(data: {
         titularTipo: "vehiculo",
         titularId: vehiculo.id,
         titularNombre: `${vehiculo.modelo} (${vehiculo.patente})`,
-        estado: "faltante",
+        estado: sourceVehiculo ? estadoVehiculo : "faltante",
+        fuenteTipo: sourceVehiculo ? "documento_vehiculo" : undefined,
+        fuenteId: sourceVehiculo?.id,
+        archivoUrl: sourceVehiculo?.archivoUrl ?? undefined,
+        archivoNombre: sourceVehiculo?.archivoNombre ?? undefined,
+        fechaEmision: sourceVehiculo?.fechaEmision ?? undefined,
+        fechaVencimiento: sourceVehiculo?.fechaVencimiento ?? undefined,
       });
     }
   }
@@ -1502,6 +1602,69 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
 
   if (!acreditacion) throw new Error("Acreditacion not found");
 
+  const requisitosVehiculoCatalogo = acreditacion.plantilla.requisitos.filter((req) => req.aplicaA === "vehiculo");
+  const tipoVehiculoIds = Array.from(
+    new Set(
+      requisitosVehiculoCatalogo
+        .map((req) => req.documentoTipoVehiculoId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  const vehiculoIds = acreditacion.vehiculos.map((item) => item.vehiculo.id);
+
+  const [documentosVehiculoCatalogo, tiposVehiculoCatalogo] = await Promise.all([
+    vehiculoIds.length > 0
+      ? prisma.vehiculoDocumento.findMany({
+          where: {
+            empresaId,
+            vehiculoId: { in: vehiculoIds },
+            OR: [
+              ...(tipoVehiculoIds.length > 0 ? [{ tipoDocumentoId: { in: tipoVehiculoIds } }] : []),
+              {
+                tipo: {
+                  in: requisitosVehiculoCatalogo
+                    .map((req) => req.codigoDocumento)
+                    .filter((value): value is string => Boolean(value)),
+                },
+              },
+              {
+                tipo: {
+                  in: requisitosVehiculoCatalogo.map((req) => req.nombreDocumento),
+                },
+              },
+            ],
+          },
+          select: {
+            id: true,
+            vehiculoId: true,
+            tipoDocumentoId: true,
+            tipo: true,
+            estado: true,
+            archivoUrl: true,
+            archivoNombre: true,
+            fechaEmision: true,
+            fechaVencimiento: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+      : Promise.resolve([]),
+    tipoVehiculoIds.length > 0
+      ? prisma.documentoTipoVehiculo.findMany({
+          where: { empresaId, id: { in: tipoVehiculoIds } },
+          select: { id: true, codigo: true, nombre: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const tipoVehiculoById = new Map(tiposVehiculoCatalogo.map((doc) => [doc.id, doc]));
+  const docsVehiculoByVehiculo = new Map<string, Array<(typeof documentosVehiculoCatalogo)[number]>>();
+  for (const doc of documentosVehiculoCatalogo) {
+    const existing = docsVehiculoByVehiculo.get(doc.vehiculoId) ?? [];
+    existing.push(doc);
+    docsVehiculoByVehiculo.set(doc.vehiculoId, existing);
+  }
+
   const expectedDocs: Array<{
     requisitoId: string;
     nombreDocumento: string;
@@ -1510,6 +1673,13 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
     titularTipo: string;
     titularId: string | null;
     titularNombre: string | null;
+    estado?: "faltante" | "completo" | "vencido";
+    fuenteTipo?: string;
+    fuenteId?: string;
+    archivoUrl?: string;
+    archivoNombre?: string;
+    fechaEmision?: Date;
+    fechaVencimiento?: Date;
   }> = [];
 
   for (const req of acreditacion.plantilla.requisitos) {
@@ -1542,6 +1712,34 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
     }
 
     for (const tv of acreditacion.vehiculos) {
+      const docsVehiculo = docsVehiculoByVehiculo.get(tv.vehiculo.id) ?? [];
+      const tipoVehiculo = req.documentoTipoVehiculoId
+        ? tipoVehiculoById.get(req.documentoTipoVehiculoId)
+        : null;
+
+      const sourceVehiculo = docsVehiculo.find((doc) => {
+        if (tipoVehiculo && doc.tipoDocumentoId === tipoVehiculo.id) {
+          return true;
+        }
+
+        if (tipoVehiculo) {
+          const matchTipoCodigo = normalizeText(doc.tipo) === normalizeText(tipoVehiculo.codigo);
+          const matchTipoNombre = normalizeText(doc.tipo) === normalizeText(tipoVehiculo.nombre);
+          if (matchTipoCodigo || matchTipoNombre) return true;
+        }
+
+        if (req.codigoDocumento && normalizeText(doc.tipo) === normalizeText(req.codigoDocumento)) {
+          return true;
+        }
+
+        return normalizeText(doc.tipo) === normalizeText(req.nombreDocumento);
+      }) ?? null;
+
+      const estadoVehiculo = resolveEstadoDesdeFuente({
+        estado: sourceVehiculo?.estado,
+        fechaVencimiento: sourceVehiculo?.fechaVencimiento,
+      });
+
       expectedDocs.push({
         requisitoId: req.id,
         nombreDocumento: req.nombreDocumento,
@@ -1550,6 +1748,13 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
         titularTipo: "vehiculo",
         titularId: tv.vehiculo.id,
         titularNombre: `${tv.vehiculo.modelo} (${tv.vehiculo.patente})`,
+        estado: sourceVehiculo ? estadoVehiculo : "faltante",
+        fuenteTipo: sourceVehiculo ? "documento_vehiculo" : undefined,
+        fuenteId: sourceVehiculo?.id,
+        archivoUrl: sourceVehiculo?.archivoUrl ?? undefined,
+        archivoNombre: sourceVehiculo?.archivoNombre ?? undefined,
+        fechaEmision: sourceVehiculo?.fechaEmision ?? undefined,
+        fechaVencimiento: sourceVehiculo?.fechaVencimiento ?? undefined,
       });
     }
   }
@@ -1574,7 +1779,13 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
     nombreDocumento: doc.nombreDocumento,
     categoria: doc.categoria,
     obligatorio: doc.obligatorio,
-    estado: "faltante" as const,
+    estado: doc.estado ?? ("faltante" as const),
+    fuenteTipo: doc.fuenteTipo,
+    fuenteId: doc.fuenteId,
+    archivoUrl: doc.archivoUrl,
+    archivoNombre: doc.archivoNombre,
+    fechaEmision: doc.fechaEmision,
+    fechaVencimiento: doc.fechaVencimiento,
   }));
 
   const deletes = existing

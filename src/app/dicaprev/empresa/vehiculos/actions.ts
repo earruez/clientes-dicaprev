@@ -141,7 +141,7 @@ function getRequiredDocsForTipo(tipo: string): TipoDocumento[] {
   return DOCS_REQUERIDOS[key] ?? [];
 }
 
-async function ensureRequiredDocs(vehiculoId: string, tipo: string): Promise<void> {
+async function ensureRequiredDocs(vehiculoId: string, tipo: string, empresaId: string): Promise<void> {
   const required = getRequiredDocsForTipo(tipo);
   if (required.length === 0) return;
 
@@ -156,6 +156,7 @@ async function ensureRequiredDocs(vehiculoId: string, tipo: string): Promise<voi
 
   await prisma.vehiculoDocumento.createMany({
     data: missing.map((tipoDocumento) => ({
+      empresaId,
       vehiculoId,
       tipo: tipoDocumento,
       subido: false,
@@ -202,7 +203,7 @@ export async function getVehiculoById(id: string): Promise<VehiculoDTO | null> {
 
   if (!row) return null;
 
-  await ensureRequiredDocs(row.id, row.tipo);
+  await ensureRequiredDocs(row.id, row.tipo, empresaId);
 
   const refreshed = await prisma.vehiculo.findUniqueOrThrow({
     where: { id: row.id },
@@ -244,6 +245,7 @@ export async function crearVehiculo(data: VehiculoInput): Promise<VehiculoDTO> {
       observaciones: data.observaciones || null,
       documentos: {
         create: getRequiredDocsForTipo(data.tipo).map((doc) => ({
+          empresaId,
           tipo: doc,
           subido: false,
           vencimiento: null,
@@ -281,7 +283,7 @@ export async function actualizarVehiculo(
     include: INCLUDE,
   });
 
-  await ensureRequiredDocs(v.id, data.tipo);
+  await ensureRequiredDocs(v.id, data.tipo, empresaId);
 
   const refreshed = await prisma.vehiculo.findUniqueOrThrow({
     where: { id: v.id },
@@ -329,7 +331,7 @@ export async function getVehiculoDetalle(id: string): Promise<{
     throw new Error("Vehículo no encontrado");
   }
 
-  await ensureRequiredDocs(vehiculo.id, vehiculo.tipo);
+  await ensureRequiredDocs(vehiculo.id, vehiculo.tipo, empresaId);
 
   const finalVehiculo = await prisma.vehiculo.findUniqueOrThrow({
     where: { id: vehiculo.id },
@@ -412,6 +414,7 @@ export async function upsertVehiculoDocumento(
       archivoUrl: data.archivoUrl || null,
     },
     create: {
+      empresaId,
       vehiculoId,
       tipo: data.tipo,
       subido: data.subido,

@@ -115,6 +115,8 @@ model Empresa {
   hallazgosCumplimiento     HallazgoCumplimiento[]
   evidenciasCumplimiento    EvidenciaCumplimiento[]
   documentoTiposTrabajador  DocumentoTipoTrabajador[]
+  documentoTiposVehiculo    DocumentoTipoVehiculo[]
+  vehiculoDocumentos        VehiculoDocumento[]
   reglasDocumentoTrabajador ReglaDocumentoTrabajador[]
   capacitaciones            Capacitacion[]
   capacitacionAsignaciones  CapacitacionAsignacion[]
@@ -987,20 +989,36 @@ model Vehiculo {
 }
 
 model VehiculoDocumento {
-  id            String   @id @default(uuid())
-  vehiculoId    String
-  tipo          String
-  subido        Boolean  @default(false)
-  vencimiento   String?
-  archivoNombre String?
-  archivoUrl    String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  empresaId             String
+  vehiculoId            String
+  tipoDocumentoId       String?
+  tipo                  String
+  subido                Boolean  @default(false)
+  vencimiento           String?
+  estado                String   @default("pendiente")
+  archivoUrl            String?
+  archivoNombre         String?
+  archivoNombreOriginal String?
+  archivoTipo           String?
+  archivoPeso           Int?
+  fechaEmision          DateTime?
+  fechaVencimiento      DateTime?
+  observaciones         String?
+  subidoPorId           String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
-  vehiculo Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+  empresa       Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  vehiculo      Vehiculo               @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
+  tipoDocumento DocumentoTipoVehiculo? @relation(fields: [tipoDocumentoId], references: [id], onDelete: SetNull)
 
   @@unique([vehiculoId, tipo])
+  @@index([empresaId])
   @@index([vehiculoId])
+  @@index([tipoDocumentoId])
+  @@index([estado])
+  @@index([fechaVencimiento])
 }
 
 model VehiculoMantencion {
@@ -1076,6 +1094,7 @@ model RequisitoPlantillaAcreditacion {
   codigoDocumento         String?
   documentoRequeridoEmpresaId String?
   documentoTipoTrabajadorId   String?
+  documentoTipoVehiculoId     String?
   categoria               String   @default("empresa") // "empresa" | "trabajador" | "sst" | "vehiculo" | "anexo"
   aplicaA                 String   @default("empresa") // "empresa" | "trabajador" | "vehiculo"
   obligatorio             Boolean  @default(true)
@@ -1091,6 +1110,7 @@ model RequisitoPlantillaAcreditacion {
   plantilla PlantillaAcreditacion @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
   documentoRequeridoEmpresa DocumentoRequeridoEmpresa? @relation("RequisitoDocumentoRequeridoEmpresa", fields: [documentoRequeridoEmpresaId], references: [id], onDelete: SetNull)
   documentoTipoTrabajador   DocumentoTipoTrabajador?   @relation("RequisitoDocumentoTipoTrabajador", fields: [documentoTipoTrabajadorId], references: [id], onDelete: SetNull)
+  documentoTipoVehiculo     DocumentoTipoVehiculo?     @relation("RequisitoDocumentoTipoVehiculo", fields: [documentoTipoVehiculoId], references: [id], onDelete: SetNull)
 
   documentos DocumentoAcreditacion[]
 
@@ -1099,6 +1119,29 @@ model RequisitoPlantillaAcreditacion {
   @@index([codigoDocumento])
   @@index([documentoRequeridoEmpresaId])
   @@index([documentoTipoTrabajadorId])
+  @@index([documentoTipoVehiculoId])
+}
+
+model DocumentoTipoVehiculo {
+  id                  String   @id @default(uuid())
+  empresaId           String
+  codigo              String
+  nombre              String
+  descripcion         String?
+  vigenciaDias        Int?
+  requiereVencimiento Boolean  @default(true)
+  requiereArchivo     Boolean  @default(true)
+  activo              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  empresa               Empresa                         @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  vehiculoDocumentos    VehiculoDocumento[]
+  requisitosAcreditacion RequisitoPlantillaAcreditacion[] @relation("RequisitoDocumentoTipoVehiculo")
+
+  @@unique([empresaId, codigo])
+  @@index([empresaId])
+  @@index([codigo])
 }
 
 model Acreditacion {
