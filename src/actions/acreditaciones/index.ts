@@ -22,6 +22,7 @@ type OpsAcreditacion = {
   estado: string;
   mandanteId: string;
   mandante: { nombre: string };
+  plantilla: { nombre: string } | null;
   nombreProyecto: string | null;
   obraFaena: string | null;
   responsableId: string | null;
@@ -139,6 +140,8 @@ function mapAcreditacionRow(a: OpsAcreditacion) {
     estado: a.estado,
     mandanteId: a.mandanteId,
     mandante: a.mandante.nombre,
+    plantillaNombre: a.plantilla?.nombre ?? "Sin plantilla",
+    plantilla: a.plantilla?.nombre ?? "Sin plantilla",
     proyecto: a.nombreProyecto || a.obraFaena || "Sin proyecto",
     obraFaena: a.obraFaena,
     responsableId: a.responsableId,

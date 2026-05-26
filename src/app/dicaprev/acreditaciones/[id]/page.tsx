@@ -105,11 +105,14 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     obligatorio: doc.obligatorio,
     estado: mapEstadoDocumento(doc.estado),
     archivoUrl: doc.archivoUrl ?? undefined,
+    archivoNombre: doc.archivoNombre ?? undefined,
     nombreArchivo: doc.archivoNombre ?? undefined,
     fechaEmision: doc.fechaEmision?.toISOString(),
     fechaVencimiento: doc.fechaVencimiento?.toISOString(),
     observaciones: doc.observaciones ?? undefined,
     fuenteBiblioteca: doc.fuenteTipo === "biblioteca",
+    fuenteTipo: doc.fuenteTipo,
+    fuenteId: doc.fuenteId,
   }));
 
   const historial = acreditacion.historial

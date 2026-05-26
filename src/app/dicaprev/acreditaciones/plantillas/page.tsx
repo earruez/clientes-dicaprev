@@ -23,9 +23,12 @@ export default async function PlantillasPage() {
         requisitos: p.requisitos.map((r) => ({
           id: r.id,
           nombreDocumento: r.nombreDocumento,
+          codigoDocumento: r.codigoDocumento,
           categoria: r.categoria,
           aplicaA: r.aplicaA,
           obligatorio: r.obligatorio,
+          documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
+          documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
         })),
       }))}
       mandantes={mandantes.map((m) => ({ id: m.id, nombre: m.nombre }))}

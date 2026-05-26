@@ -60,11 +60,14 @@ type DocumentoInstancia = {
   obligatorio: boolean;
   estado: EstadoDocumento;
   archivoUrl?: string;
+  archivoNombre?: string;
   nombreArchivo?: string;
   fechaEmision?: string;
   fechaVencimiento?: string;
   observaciones?: string;
   fuenteBiblioteca?: boolean;
+  fuenteTipo?: string | null;
+  fuenteId?: string | null;
 };
 
 type TrabajadorItem = { id: string; nombre: string; rut: string | null; cargo: string };
@@ -202,6 +205,41 @@ const ESTADO_DOC: Record<EstadoDocumento, { label: string; cls: string; icon: Re
   },
 };
 
+function getDocVinculo(doc: DocumentoInstancia) {
+  if (doc.fuenteTipo && doc.fuenteId) {
+    const sourceLabel =
+      doc.fuenteTipo === "documento_empresa"
+        ? "Desde documento empresa"
+        : doc.fuenteTipo === "documento_trabajador"
+        ? "Desde documento trabajador"
+        : "Desde fuente documental";
+
+    return {
+      label: "Autovinculado",
+      sourceLabel,
+      cls: "border-blue-200 bg-blue-50 text-blue-700",
+    };
+  }
+
+  if (doc.estado === "faltante" && !doc.fuenteTipo) {
+    return {
+      label: "Pendiente manual",
+      sourceLabel: null,
+      cls: "border-amber-200 bg-amber-50 text-amber-700",
+    };
+  }
+
+  if (doc.archivoUrl && !doc.fuenteTipo) {
+    return {
+      label: "Manual",
+      sourceLabel: null,
+      cls: "border-slate-200 bg-slate-100 text-slate-700",
+    };
+  }
+
+  return null;
+}
+
 const CATEGORIA_CFG: Record<CategoriaRequisito, { label: string; icon: React.ReactNode; cls: string }> = {
   empresa: { label: "Empresa", icon: <Building2 className="h-4 w-4" />, cls: "text-blue-600 bg-blue-50" },
   trabajador: { label: "Trabajadores", icon: <Users className="h-4 w-4" />, cls: "text-violet-600 bg-violet-50" },
@@ -277,7 +315,7 @@ async function generarZip(docs: DocumentoInstancia[], empresaNombre: string): Pr
   const vRoot = root.folder("04_Vehiculos")!;
 
   for (const doc of docs.filter((d) => d.estado !== "faltante")) {
-    const nombre = doc.nombreArchivo ?? `${doc.nombreDocumento.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
+    const nombre = doc.nombreArchivo ?? doc.archivoNombre ?? `${doc.nombreDocumento.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
     const contenido = `[Simulado] ${doc.nombreDocumento}\nTitular: ${doc.titularNombre}\nEmisión: ${doc.fechaEmision ?? "—"}\nVencimiento: ${doc.fechaVencimiento ?? "—"}`;
     const blob = new Blob([contenido], { type: "application/pdf" });
 
@@ -378,6 +416,7 @@ function generarEmail(ac: { empresaNombre: string; mandante: string }, docs: Doc
 
 function DocRow({ doc }: { doc: DocumentoInstancia }) {
   const cfg = ESTADO_DOC[doc.estado];
+  const vinculo = getDocVinculo(doc);
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-slate-100 last:border-0">
       <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium shrink-0", cfg.cls)}>
@@ -390,6 +429,16 @@ function DocRow({ doc }: { doc: DocumentoInstancia }) {
             {doc.nombreDocumento}
           </p>
           {!doc.obligatorio && <span className="text-[10px] font-normal text-slate-400">opcional</span>}
+          {vinculo && (
+            <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium shrink-0", vinculo.cls)}>
+              {vinculo.label}
+            </span>
+          )}
+          {vinculo?.sourceLabel && (
+            <span className="inline-flex items-center rounded border border-blue-100 bg-blue-50/60 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 shrink-0">
+              {vinculo.sourceLabel}
+            </span>
+          )}
           {doc.fuenteBiblioteca && (
             <span
               title="Vinculado desde la Biblioteca Documental"

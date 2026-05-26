@@ -9,9 +9,13 @@ import { cn } from "@/lib/utils";
 type Row = {
   id: string;
   estado: string;
+  estadoLabel?: string;
   mandanteId: string;
   mandante: string;
+  plantillaNombre?: string;
+  plantilla: string;
   proyecto: string;
+  obraFaena: string | null;
   responsableId: string | null;
   responsable: string;
   trabajadores: number;
@@ -70,11 +74,21 @@ export default function ResumenAcreditacionesClient({
   const filtered = useMemo(() => {
     return rows.filter((row) => {
       const q = search.trim().toLowerCase();
+      const estadoLabel = (row.estadoLabel ?? ESTADO_LABEL[row.estado] ?? "").toLowerCase();
+      const estadoRaw = row.estado.toLowerCase();
+      const searchable = [
+        row.mandante,
+        row.plantillaNombre ?? row.plantilla,
+        row.proyecto,
+        row.obraFaena ?? "",
+        row.responsable,
+        estadoLabel,
+        estadoRaw,
+      ]
+        .join(" ")
+        .toLowerCase();
       const passSearch =
-        !q ||
-        row.mandante.toLowerCase().includes(q) ||
-        row.proyecto.toLowerCase().includes(q) ||
-        row.responsable.toLowerCase().includes(q);
+        !q || searchable.includes(q);
       const passEstado = estado === "todos" || row.estado === estado;
       const passMandante = mandante === "todos" || row.mandanteId === mandante;
       const passResponsable =
@@ -158,7 +172,7 @@ export default function ResumenAcreditacionesClient({
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar mandante, proyecto o responsable"
+                placeholder="Buscar mandante, plantilla, estado, proyecto/faena o responsable"
                 className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm"
               />
             </label>

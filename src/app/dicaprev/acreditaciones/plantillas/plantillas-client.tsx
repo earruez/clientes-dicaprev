@@ -24,9 +24,12 @@ type PlantillaItem = {
   requisitos: Array<{
     id: string;
     nombreDocumento: string;
+    codigoDocumento: string | null;
     categoria: string;
     aplicaA: string;
     obligatorio: boolean;
+    documentoRequeridoEmpresaId: string | null;
+    documentoTipoTrabajadorId: string | null;
   }>;
 };
 
@@ -77,7 +80,17 @@ export default function PlantillasClient({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return initialPlantillas.filter((p) => {
-      const passSearch = !q || p.nombre.toLowerCase().includes(q) || p.mandante.toLowerCase().includes(q);
+      const requisitosTexto = p.requisitos
+        .map((r) => `${r.nombreDocumento} ${r.codigoDocumento ?? ""}`)
+        .join(" ")
+        .toLowerCase();
+      const passSearch =
+        !q ||
+        p.nombre.toLowerCase().includes(q) ||
+        p.mandante.toLowerCase().includes(q) ||
+        p.tipo.toLowerCase().includes(q) ||
+        p.descripcion.toLowerCase().includes(q) ||
+        requisitosTexto.includes(q);
       const passTipo = tipo === "todos" || p.tipo === tipo;
       const passEstado =
         estado === "todos" ||
@@ -201,6 +214,28 @@ export default function PlantillasClient({
     });
   }
 
+  function getVinculoRequisito(req: PlantillaItem["requisitos"][number]) {
+    if (req.documentoRequeridoEmpresaId) {
+      return {
+        label: "Catálogo empresa",
+        cls: "border-sky-200 bg-sky-50 text-sky-700",
+        key: "empresa" as const,
+      };
+    }
+    if (req.documentoTipoTrabajadorId) {
+      return {
+        label: "Catálogo trabajador",
+        cls: "border-emerald-200 bg-emerald-50 text-emerald-700",
+        key: "trabajador" as const,
+      };
+    }
+    return {
+      label: "Requisito libre",
+      cls: "border-slate-200 bg-slate-100 text-slate-600",
+      key: "libre" as const,
+    };
+  }
+
   return (
     <div className="min-h-screen bg-slate-50/60 p-6">
       <div className="mx-auto max-w-[1300px] space-y-5">
@@ -227,7 +262,7 @@ export default function PlantillasClient({
             <input
               defaultValue={search}
               onChange={(e) => updateParam("q", e.target.value)}
-              placeholder="Buscar plantilla o mandante"
+              placeholder="Buscar plantilla, mandante, tipo, descripcion o requisito"
               className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-sm"
             />
           </label>
@@ -261,6 +296,44 @@ export default function PlantillasClient({
                     <p className="mt-2 text-xs text-slate-500">
                       {p.requisitosCount} requisitos · Categorías: {p.categorias.join(", ")}
                     </p>
+                    {(() => {
+                      const counts = p.requisitos.reduce(
+                        (acc, req) => {
+                          const k = getVinculoRequisito(req).key;
+                          acc[k] += 1;
+                          return acc;
+                        },
+                        { empresa: 0, trabajador: 0, libre: 0 }
+                      );
+
+                      return (
+                        <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+                          <span className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 font-medium text-sky-700">
+                            Empresa: {counts.empresa}
+                          </span>
+                          <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">
+                            Trabajador: {counts.trabajador}
+                          </span>
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 font-medium text-slate-600">
+                            Libres: {counts.libre}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                    <div className="mt-3 grid gap-1.5">
+                      {p.requisitos.map((req) => {
+                        const vinculo = getVinculoRequisito(req);
+                        return (
+                          <div key={req.id} className="flex flex-wrap items-center gap-1.5 text-xs">
+                            <span className="font-medium text-slate-700">{req.nombreDocumento}</span>
+                            {req.codigoDocumento && <span className="text-slate-400">({req.codigoDocumento})</span>}
+                            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium ${vinculo.cls}`}>
+                              {vinculo.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <span className={`inline-flex h-8 items-center rounded-full px-3 text-xs font-medium ${p.activa ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
