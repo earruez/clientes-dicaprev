@@ -217,6 +217,14 @@ function getDocVinculo(doc: DocumentoInstancia) {
         ? "Desde documento vehículo"
         : "Desde fuente documental";
 
+    if (doc.estado === "faltante") {
+      return {
+        label: "Fuente pendiente",
+        sourceLabel,
+        cls: "border-amber-200 bg-amber-50 text-amber-700",
+      };
+    }
+
     return {
       label: "Autovinculado",
       sourceLabel,

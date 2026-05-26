@@ -18,19 +18,19 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  evaluarEstadoDocumental,
   type DocumentoVehiculo,
   type Vehiculo,
   type TipoVehiculo,
   type EstadoVehiculo,
-  type EstadoDocumental,
 } from "./domain";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
   crearVehiculo, actualizarVehiculo,
-  type VehiculoDTO, type VehiculoInput, type CentroItem,
+  type VehiculoDTO, type VehiculoInput, type CentroItem, type VehiculoDocumentoDTO,
 } from "./actions";
+
+type EstadoDocumentalVehiculo = "en_regla" | "por_vencer" | "fuera_de_regla" | "en_revision";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -61,6 +61,38 @@ function dtoToVehiculo(dto: VehiculoDTO): Vehiculo {
   };
 }
 
+function isDocumentoVencido(doc: VehiculoDocumentoDTO) {
+  if (!doc.fechaVencimiento) return false;
+  return new Date(doc.fechaVencimiento).getTime() < Date.now();
+}
+
+function isDocumentoProximoVencer(doc: VehiculoDocumentoDTO) {
+  if (!doc.fechaVencimiento) return false;
+  const diff = new Date(doc.fechaVencimiento).getTime() - Date.now();
+  return diff >= 0 && diff <= 30 * 24 * 60 * 60 * 1000;
+}
+
+function isDocumentoCompleto(doc: VehiculoDocumentoDTO) {
+  return doc.estado === "completo" && doc.subido && !isDocumentoVencido(doc);
+}
+
+function isDocumentoPendiente(doc: VehiculoDocumentoDTO) {
+  return ["pendiente", "rechazado"].includes(doc.estado) || (!doc.subido && doc.estado !== "no_aplica");
+}
+
+function estadoDocumentalFromVehiculo(dto: VehiculoDTO): EstadoDocumentalVehiculo {
+  if (dto.documentos.some((d) => d.estado === "en_revision")) {
+    return "en_revision";
+  }
+  if (dto.documentos.some((d) => isDocumentoVencido(d) || d.estado === "vencido" || isDocumentoPendiente(d))) {
+    return "fuera_de_regla";
+  }
+  if (dto.documentos.some((d) => isDocumentoProximoVencer(d))) {
+    return "por_vencer";
+  }
+  return "en_regla";
+}
+
 // ── Config visual ─────────────────────────────────────────────────────────
 
 const TIPO_ICON: Record<TipoVehiculo, React.ReactNode> = {
@@ -81,10 +113,11 @@ const ESTADO_OP_CFG: Record<EstadoVehiculo, { label: string; cls: string; icon: 
   baja:       { label: "Dado de baja",  cls: "bg-rose-50 text-rose-700 border-rose-200",           icon: <XCircle className="h-3 w-3" /> },
 };
 
-const ESTADO_DOC_CFG: Record<EstadoDocumental, { label: string; cls: string; dot: string }> = {
+const ESTADO_DOC_CFG: Record<EstadoDocumentalVehiculo, { label: string; cls: string; dot: string }> = {
   en_regla:       { label: "En regla",       cls: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
   por_vencer:     { label: "Por vencer",     cls: "bg-amber-50 text-amber-700 border-amber-200",       dot: "bg-amber-500"   },
   fuera_de_regla: { label: "Fuera de regla", cls: "bg-rose-50 text-rose-700 border-rose-200",           dot: "bg-rose-500"    },
+  en_revision:    { label: "En revision",    cls: "bg-blue-50 text-blue-700 border-blue-200",           dot: "bg-blue-500"    },
 };
 
 const EMPTY: VehiculoInput = {
@@ -118,7 +151,8 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
   const [search, setSearch] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<TipoVehiculo | "todos">("todos");
   const [filtroOp, setFiltroOp] = useState<EstadoVehiculo | "todos">("todos");
-  const [filtroDoc, setFiltroDoc] = useState<EstadoDocumental | "todos">("todos");
+  const [filtroDoc, setFiltroDoc] = useState<EstadoDocumentalVehiculo | "todos">("todos");
+  const [filtroVencimiento, setFiltroVencimiento] = useState<"todos" | "vencidos" | "proximos">("todos");
   const [modal, setModal] = useState<{ open: boolean; modo: "crear" | "editar"; id?: string }>({
     open: false, modo: "crear",
   });
@@ -131,6 +165,9 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
   const vehiculos = vehiculosDTO.map(dtoToVehiculo);
 
   const filtrados = vehiculos.filter((v) => {
+    const dto = vehiculosDTO.find((item) => item.id === v.id);
+    if (!dto) return false;
+
     const q = search.toLowerCase();
     const matchText =
       !q ||
@@ -141,17 +178,25 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
       v.responsable.toLowerCase().includes(q);
     const matchTipo = filtroTipo === "todos" || v.tipo === filtroTipo;
     const matchOp   = filtroOp   === "todos" || v.estado === filtroOp;
-    const matchDoc  = filtroDoc  === "todos" || evaluarEstadoDocumental(v) === filtroDoc;
-    return matchText && matchTipo && matchOp && matchDoc;
+    const matchDoc  = filtroDoc  === "todos" || estadoDocumentalFromVehiculo(dto) === filtroDoc;
+
+    let matchVencimiento = true;
+    if (filtroVencimiento === "vencidos") {
+      matchVencimiento = dto.documentos.some((d) => isDocumentoVencido(d) || d.estado === "vencido");
+    }
+    if (filtroVencimiento === "proximos") {
+      matchVencimiento = dto.documentos.some((d) => isDocumentoProximoVencer(d));
+    }
+
+    return matchText && matchTipo && matchOp && matchDoc && matchVencimiento;
   });
 
-  const total        = vehiculos.length;
-  const operativos   = vehiculos.filter((v) => v.estado === "operativo").length;
-  const enMantencion = vehiculos.filter((v) => v.estado === "mantencion").length;
-  const enBaja       = vehiculos.filter((v) => v.estado === "baja").length;
-  const enRegla      = vehiculos.filter((v) => evaluarEstadoDocumental(v) === "en_regla").length;
-  const porVencer    = vehiculos.filter((v) => evaluarEstadoDocumental(v) === "por_vencer").length;
-  const fueraRegla   = vehiculos.filter((v) => evaluarEstadoDocumental(v) === "fuera_de_regla").length;
+  const totalVehiculos = vehiculos.length;
+  const totalDocs = vehiculosDTO.flatMap((item) => item.documentos);
+  const docsCompletos = totalDocs.filter((d) => isDocumentoCompleto(d)).length;
+  const docsFaltantes = totalDocs.filter((d) => isDocumentoPendiente(d)).length;
+  const docsVencidos = totalDocs.filter((d) => isDocumentoVencido(d) || d.estado === "vencido").length;
+  const docsProximos = totalDocs.filter((d) => isDocumentoProximoVencer(d)).length;
 
   function abrirCrear() {
     setForm({ ...EMPTY, centroTrabajoId: initialCentros[0]?.id ?? NO_CENTRO_VALUE });
@@ -254,16 +299,14 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
       <div className="py-6 space-y-5">
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           {(
             [
-              { label: "Total flota",    val: total,        cls: "text-slate-900"   },
-              { label: "Operativos",     val: operativos,   cls: "text-emerald-600" },
-              { label: "En mantención",  val: enMantencion, cls: "text-amber-600"   },
-              { label: "Dados de baja",  val: enBaja,       cls: "text-rose-500"    },
-              { label: "En regla",       val: enRegla,      cls: "text-emerald-600" },
-              { label: "Por vencer",     val: porVencer,    cls: "text-amber-600"   },
-              { label: "Fuera de regla", val: fueraRegla,   cls: "text-rose-500"    },
+              { label: "Total vehiculos",      val: totalVehiculos, cls: "text-slate-900" },
+              { label: "Docs completos",       val: docsCompletos,  cls: "text-emerald-600" },
+              { label: "Docs faltantes",       val: docsFaltantes,  cls: "text-rose-500" },
+              { label: "Docs vencidos",        val: docsVencidos,   cls: "text-rose-600" },
+              { label: "Proximos a vencer",    val: docsProximos,   cls: "text-amber-600" },
             ] as const
           ).map((k) => (
             <div key={k.label} className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
@@ -306,7 +349,7 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
               <SelectItem value="baja">Dado de baja</SelectItem>
             </SelectContent>
           </Select>
-          <Select value={filtroDoc} onValueChange={(v) => setFiltroDoc(v as EstadoDocumental | "todos")}>
+          <Select value={filtroDoc} onValueChange={(v) => setFiltroDoc(v as EstadoDocumentalVehiculo | "todos")}>
             <SelectTrigger className="h-9 w-48 rounded-xl border-slate-200 bg-white text-sm">
               <SelectValue placeholder="Estado documental" />
             </SelectTrigger>
@@ -314,13 +357,24 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
               <SelectItem value="todos">Estado documental</SelectItem>
               <SelectItem value="en_regla">En regla</SelectItem>
               <SelectItem value="por_vencer">Por vencer</SelectItem>
+              <SelectItem value="en_revision">En revision</SelectItem>
               <SelectItem value="fuera_de_regla">Fuera de regla</SelectItem>
             </SelectContent>
           </Select>
-          {(search || filtroTipo !== "todos" || filtroOp !== "todos" || filtroDoc !== "todos") && (
+          <Select value={filtroVencimiento} onValueChange={(v) => setFiltroVencimiento(v as "todos" | "vencidos" | "proximos")}>
+            <SelectTrigger className="h-9 w-48 rounded-xl border-slate-200 bg-white text-sm">
+              <SelectValue placeholder="Vencimientos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos vencimientos</SelectItem>
+              <SelectItem value="vencidos">Solo vencidos</SelectItem>
+              <SelectItem value="proximos">Proximos a vencer</SelectItem>
+            </SelectContent>
+          </Select>
+          {(search || filtroTipo !== "todos" || filtroOp !== "todos" || filtroDoc !== "todos" || filtroVencimiento !== "todos") && (
             <button
               type="button"
-              onClick={() => { setSearch(""); setFiltroTipo("todos"); setFiltroOp("todos"); setFiltroDoc("todos"); }}
+              onClick={() => { setSearch(""); setFiltroTipo("todos"); setFiltroOp("todos"); setFiltroDoc("todos"); setFiltroVencimiento("todos"); }}
               className="text-xs text-slate-400 hover:text-slate-700 underline underline-offset-2"
             >
               Limpiar filtros
@@ -333,15 +387,20 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
-                {(["", "Código / Patente", "Vehículo / Equipo", "Centro", "Responsable", "Estado operativo", "Estado documental", ""] as const).map((h, i) => (
+                {(["", "Codigo / Patente", "Vehiculo / Equipo", "Centro", "Responsable", "Estado operativo", "Estado documental", "Faltantes", "Vencimientos", ""] as const).map((h, i) => (
                   <th key={i} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filtrados.map((v) => {
+                const dto = vehiculosDTO.find((item) => item.id === v.id);
+                if (!dto) return null;
                 const estadoOp  = ESTADO_OP_CFG[v.estado];
-                const estadoDoc = ESTADO_DOC_CFG[evaluarEstadoDocumental(v)];
+                const estadoDoc = ESTADO_DOC_CFG[estadoDocumentalFromVehiculo(dto)];
+                const faltantes = dto.documentos.filter((d) => isDocumentoPendiente(d)).length;
+                const vencidos = dto.documentos.filter((d) => isDocumentoVencido(d) || d.estado === "vencido").length;
+                const proximos = dto.documentos.filter((d) => isDocumentoProximoVencer(d)).length;
                 return (
                   <tr key={v.id} className="hover:bg-slate-50/40 transition-colors group">
                     <td className="px-4 py-3 text-slate-400 w-8">{TIPO_ICON[v.tipo]}</td>
@@ -365,6 +424,13 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
                         <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", estadoDoc.dot)} />
                         {estadoDoc.label}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-rose-600">{faltantes}</td>
+                    <td className="px-4 py-3 text-xs">
+                      <div className="flex flex-col leading-tight">
+                        <span className="font-semibold text-rose-600">Vencidos: {vencidos}</span>
+                        <span className="font-semibold text-amber-600">Prox.: {proximos}</span>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -391,7 +457,7 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
               })}
               {filtrados.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-16 text-center">
+                  <td colSpan={10} className="px-6 py-16 text-center">
                     <Car className="mx-auto h-9 w-9 text-slate-200 mb-3" />
                     <p className="text-sm font-medium text-slate-500">Sin vehículos que coincidan</p>
                     <p className="text-xs text-slate-400 mt-1">Ajusta los filtros o registra un nuevo vehículo.</p>

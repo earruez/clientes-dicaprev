@@ -15,21 +15,19 @@ import {
   type Vehiculo,
   type TipoVehiculo,
   type EstadoVehiculo,
-  type EstadoDocumental,
   type TipoDocumento,
-  evaluarEstadoDocumental,
-  diasParaVencer,
-  DOC_NOMBRE,
-  DOCS_REQUERIDOS,
 } from "./domain";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 import {
   crearMantencionVehiculo,
+  cambiarEstadoDocumentoVehiculo,
+  crearOActualizarDocumentoVehiculo,
+  evaluarDocumentosVehiculo,
   getVehiculoDetalle,
-  upsertVehiculoDocumento,
   type MantencionEstado,
   type VehiculoMantencionDTO,
 } from "./actions";
+import { formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
 
 type ArchivoSubido = {
   archivoNombre: string;
@@ -38,12 +36,24 @@ type ArchivoSubido = {
 };
 
 type DocumentoVehiculoState = {
+  id?: string;
   tipo: TipoDocumento;
+  tipoNombre?: string;
   subido: boolean;
+  estado?: string;
   vencimiento: string | null;
+  tipoDocumentoId?: string | null;
+  fechaEmision?: string | null;
+  fechaVencimiento?: string | null;
   archivoNombre?: string | null;
+  archivoNombreOriginal?: string | null;
   archivoUrl?: string | null;
+  archivoTipo?: string | null;
+  archivoPeso?: number | null;
+  observaciones?: string | null;
 };
+
+type EstadoDocumentalVehiculo = "en_regla" | "por_vencer" | "fuera_de_regla" | "en_revision";
 
 // ── Visual config ─────────────────────────────────────────────────────────
 
@@ -65,10 +75,11 @@ const ESTADO_OP_CFG: Record<EstadoVehiculo, { label: string; cls: string; icon: 
   baja:       { label: "Dado de baja",  cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",           icon: <XCircle className="h-3 w-3" /> },
 };
 
-const ESTADO_DOC_CFG: Record<EstadoDocumental, { label: string; cls: string; banner: string }> = {
+const ESTADO_DOC_CFG: Record<EstadoDocumentalVehiculo, { label: string; cls: string; banner: string }> = {
   en_regla:       { label: "En regla",       cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200", banner: "bg-emerald-50 border-emerald-200 text-emerald-800" },
   por_vencer:     { label: "Por vencer",     cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",       banner: "bg-amber-50 border-amber-200 text-amber-800"       },
   fuera_de_regla: { label: "Fuera de regla", cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",           banner: "bg-rose-50 border-rose-200 text-rose-800"           },
+  en_revision:    { label: "En revision",    cls: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",           banner: "bg-blue-50 border-blue-200 text-blue-800"           },
 };
 
 const MANTENCIÓN_ESTADO_CLS: Record<"completada" | "pendiente" | "programada", string> = {
@@ -76,6 +87,40 @@ const MANTENCIÓN_ESTADO_CLS: Record<"completada" | "pendiente" | "programada", 
   pendiente:  "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
   programada: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
 };
+
+function isDocumentoVencido(doc: DocumentoVehiculoState) {
+  if (!doc.fechaVencimiento) return false;
+  return new Date(doc.fechaVencimiento).getTime() < Date.now();
+}
+
+function isDocumentoProximoVencer(doc: DocumentoVehiculoState) {
+  if (!doc.fechaVencimiento) return false;
+  const diff = new Date(doc.fechaVencimiento).getTime() - Date.now();
+  return diff >= 0 && diff <= 30 * 24 * 60 * 60 * 1000;
+}
+
+function estadoDocumentalFromDocumentos(docs: DocumentoVehiculoState[]): EstadoDocumentalVehiculo {
+  if (docs.some((d) => d.estado === "en_revision")) {
+    return "en_revision";
+  }
+  if (
+    docs.some(
+      (d) => d.estado === "pendiente" || d.estado === "rechazado" || d.estado === "vencido" || isDocumentoVencido(d)
+    )
+  ) {
+    return "fuera_de_regla";
+  }
+  if (docs.some((d) => isDocumentoProximoVencer(d))) {
+    return "por_vencer";
+  }
+  return "en_regla";
+}
+
+function diasParaVencerDocumento(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const diff = new Date(iso).getTime() - Date.now();
+  return Math.ceil(diff / (24 * 60 * 60 * 1000));
+}
 
 // ── Sub-components ────────────────────────────────────────────────────────
 
@@ -167,10 +212,18 @@ export function VehiculoDetailDrawer({
   const [documentos, setDocumentos] = useState<DocumentoVehiculoState[]>(
     (vehiculoProp?.documentos ?? []).map((d) => ({
       tipo: d.tipo,
+      tipoNombre: d.tipo,
       subido: d.subido,
+      estado: "pendiente",
       vencimiento: d.vencimiento,
+      fechaEmision: null,
+      fechaVencimiento: null,
       archivoNombre: null,
+      archivoNombreOriginal: null,
       archivoUrl: null,
+      archivoTipo: null,
+      archivoPeso: null,
+      observaciones: null,
     }))
   );
   const [mantenciones, setMantenciones] = useState<Mantencion[]>([]);
@@ -185,9 +238,12 @@ export function VehiculoDetailDrawer({
   const [isPending, startTransition] = useTransition();
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docEdit, setDocEdit] = useState<{
+    id?: string;
     tipo: TipoDocumento;
+    tipoNombre: string;
     subido: boolean;
     vencimiento: string;
+    tipoDocumentoId?: string | null;
   } | null>(null);
 
   // Sync from prop (reflects store updates after edits)
@@ -196,10 +252,18 @@ export function VehiculoDetailDrawer({
     setDocumentos(
       (vehiculoProp?.documentos ?? []).map((d) => ({
         tipo: d.tipo,
+        tipoNombre: d.tipo,
         subido: d.subido,
+        estado: "pendiente",
         vencimiento: d.vencimiento,
+        fechaEmision: null,
+        fechaVencimiento: null,
         archivoNombre: null,
+        archivoNombreOriginal: null,
         archivoUrl: null,
+        archivoTipo: null,
+        archivoPeso: null,
+        observaciones: null,
       }))
     );
     setMantencionForm((prev) => ({
@@ -218,11 +282,21 @@ export function VehiculoDetailDrawer({
         if (cancelled) return;
         setDocumentos(
           detalle.documentos.map((d) => ({
+            id: d.id,
             tipo: d.tipo,
+            tipoNombre: d.tipoNombre,
             subido: d.subido,
+            estado: d.estado,
             vencimiento: d.vencimiento,
+            fechaEmision: d.fechaEmision,
+            fechaVencimiento: d.fechaVencimiento,
             archivoNombre: d.archivoNombre,
+            archivoNombreOriginal: d.archivoNombreOriginal,
             archivoUrl: d.archivoUrl,
+            archivoTipo: d.archivoTipo,
+            archivoPeso: d.archivoPeso,
+            observaciones: d.observaciones,
+            tipoDocumentoId: d.tipoDocumentoId,
           }))
         );
         setMantenciones(detalle.mantenciones);
@@ -276,25 +350,39 @@ export function VehiculoDetailDrawer({
     startTransition(async () => {
       try {
         const archivoSubido = docFile ? await subirArchivo(docFile) : null;
-        const updated = await upsertVehiculoDocumento(vehiculo.id, {
+        await crearOActualizarDocumentoVehiculo({
+          vehiculoId: vehiculo.id,
+          documentoId: docEdit.id,
           tipo: docEdit.tipo,
+          tipoDocumentoId: docEdit.tipoDocumentoId ?? undefined,
           subido: docEdit.subido,
+          fechaVencimiento: docEdit.vencimiento,
           vencimiento: docEdit.vencimiento,
           archivoNombre: archivoSubido?.archivoNombre,
+          archivoNombreOriginal: archivoSubido?.archivoNombreOriginal,
           archivoUrl: archivoSubido?.archivoUrl,
         });
 
-        setDocumentos((prev) => {
-          const next = prev.filter((d) => d.tipo !== updated.tipo);
-          next.push({
-            tipo: updated.tipo,
-            subido: updated.subido,
-            vencimiento: updated.vencimiento,
-            archivoNombre: updated.archivoNombre,
-            archivoUrl: updated.archivoUrl,
-          });
-          return next;
-        });
+        const evaluated = await evaluarDocumentosVehiculo(vehiculo.id);
+
+        setDocumentos(
+          evaluated.map((d) => ({
+            id: d.id,
+            tipo: d.tipo,
+            tipoNombre: d.tipoNombre,
+            subido: d.subido,
+            estado: d.estado,
+            vencimiento: d.vencimiento,
+            fechaEmision: d.fechaEmision,
+            fechaVencimiento: d.fechaVencimiento,
+            archivoNombre: d.archivoNombre,
+            archivoNombreOriginal: d.archivoNombreOriginal,
+            archivoUrl: d.archivoUrl,
+            archivoTipo: d.archivoTipo,
+            archivoPeso: d.archivoPeso,
+            observaciones: d.observaciones,
+          }))
+        );
         setDocFile(null);
         setDocEdit(null);
       } catch {
@@ -363,7 +451,7 @@ export function VehiculoDetailDrawer({
           />
           <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">
-              Actualizar — {DOC_NOMBRE[docEdit.tipo]}
+              Actualizar — {docEdit.tipoNombre}
             </h3>
             <form onSubmit={handleDocSave} className="space-y-4">
               <div className="flex items-center gap-3">
@@ -543,18 +631,16 @@ export function VehiculoDetailDrawer({
         {vehiculo &&
           (() => {
             const estadoOp  = ESTADO_OP_CFG[vehiculo.estado];
-            const estDocStr = evaluarEstadoDocumental({
-              ...vehiculo,
-              documentos,
-            });
+            const estDocStr = estadoDocumentalFromDocumentos(documentos);
             const estadoDoc = ESTADO_DOC_CFG[estDocStr];
-            const requeridos    = DOCS_REQUERIDOS[vehiculo.tipo];
+            const requeridos = [...documentos].sort((a, b) =>
+              (a.tipoNombre ?? a.tipo).localeCompare(b.tipoNombre ?? b.tipo, "es")
+            );
             const aniosUso      = new Date().getFullYear() - vehiculo.anio;
-            const hoy           = new Date();
-            const docsPendientes = requeridos.filter((req) => {
-              const doc = documentos.find((d) => d.tipo === req);
-              if (!doc || !doc.subido) return true;
-              if (doc.vencimiento && new Date(doc.vencimiento) < hoy) return true;
+            const docsPendientes = documentos.filter((doc) => {
+              if (doc.estado === "pendiente" || doc.estado === "rechazado" || doc.estado === "vencido") return true;
+              if (!doc.subido) return true;
+              if (isDocumentoVencido(doc)) return true;
               return false;
             }).length;
             const asignaciones = mockAsignaciones(vehiculo);
@@ -772,6 +858,8 @@ export function VehiculoDetailDrawer({
                           "Toda la documentación está vigente y al día."}
                         {estDocStr === "por_vencer" &&
                           "Hay documentos próximos a vencer. Gestionar renovación."}
+                        {estDocStr === "en_revision" &&
+                          "Hay documentos en revisión. Esperando validación administrativa."}
                         {estDocStr === "fuera_de_regla" &&
                           "Hay documentos vencidos o sin cargar. Acción requerida."}
                       </div>
@@ -779,23 +867,28 @@ export function VehiculoDetailDrawer({
                       <SectionTitle label="Documentos requeridos" />
 
                       <div className="space-y-3">
-                        {requeridos.map((req) => {
-                          const doc = documentos.find((d) => d.tipo === req);
-                          const dias = doc?.vencimiento
-                            ? diasParaVencer(doc.vencimiento)
+                        {requeridos.map((doc) => {
+                          const dias = doc.fechaVencimiento
+                            ? diasParaVencerDocumento(doc.fechaVencimiento)
                             : null;
 
                           let badgeLabel = "Sin cargar";
                           let badgeCls = "bg-slate-100 text-slate-500";
 
-                          if (doc?.subido) {
-                            if (dias === null) {
+                          if (doc.estado === "en_revision") {
+                            badgeLabel = "En revision";
+                            badgeCls = "bg-blue-50 text-blue-700 ring-1 ring-blue-200";
+                          } else if (doc.estado === "rechazado") {
+                            badgeLabel = "Rechazado";
+                            badgeCls = "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
+                          } else if (doc.subido) {
+                            if (dias === null && doc.estado !== "vencido") {
                               badgeLabel = "Vigente";
                               badgeCls = "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200";
-                            } else if (dias < 0) {
+                            } else if (dias !== null && dias < 0) {
                               badgeLabel = "Vencido";
                               badgeCls = "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-                            } else if (dias <= 30) {
+                            } else if (dias !== null && dias <= 30) {
                               badgeLabel = "Por vencer";
                               badgeCls = "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
                             } else {
@@ -806,27 +899,27 @@ export function VehiculoDetailDrawer({
 
                           return (
                             <div
-                              key={req}
+                              key={doc.id ?? doc.tipo}
                               className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 gap-3"
                             >
                               <div className="min-w-0">
                                 <p className="text-sm font-semibold text-slate-800">
-                                  {DOC_NOMBRE[req]}
+                                  {doc.tipoNombre ?? doc.tipo}
                                 </p>
                                 <p className="mt-0.5 text-xs text-slate-400">
-                                  {doc?.vencimiento
+                                  {doc.fechaVencimiento
                                     ? `Vence: ${new Date(
-                                        doc.vencimiento + "T00:00:00",
+                                        `${doc.fechaVencimiento}T00:00:00`,
                                       ).toLocaleDateString("es-CL")}${
                                         dias !== null
                                           ? ` (${dias >= 0 ? `${dias} días` : "vencido"})`
                                           : ""
                                       }`
-                                    : doc?.subido
+                                    : doc.subido
                                     ? "Sin fecha de vencimiento"
                                     : "No cargado"}
                                 </p>
-                                {doc?.archivoUrl && (
+                                {doc.archivoUrl && (
                                   <a
                                     href={doc.archivoUrl}
                                     target="_blank"
@@ -835,6 +928,13 @@ export function VehiculoDetailDrawer({
                                   >
                                     Ver archivo
                                   </a>
+                                )}
+                                {(doc.archivoNombreOriginal || doc.archivoTipo || typeof doc.archivoPeso === "number") && (
+                                  <p className="mt-1 text-[11px] text-slate-500">
+                                    {[doc.archivoNombreOriginal, doc.archivoTipo, typeof doc.archivoPeso === "number" ? formatDocumentoPeso(doc.archivoPeso) : null]
+                                      .filter(Boolean)
+                                      .join(" · ")}
+                                  </p>
                                 )}
                               </div>
                               <div className="flex shrink-0 items-center gap-2">
@@ -851,19 +951,63 @@ export function VehiculoDetailDrawer({
                                   onClick={() => {
                                     setDocFile(null);
                                     setDocEdit({
-                                      tipo: req,
-                                      subido: doc?.subido ?? false,
-                                      vencimiento: doc?.vencimiento ?? "",
+                                      id: doc.id,
+                                      tipo: doc.tipo,
+                                      tipoNombre: doc.tipoNombre ?? doc.tipo,
+                                      subido: doc.subido,
+                                      vencimiento: doc.fechaVencimiento ?? doc.vencimiento ?? "",
+                                      tipoDocumentoId: doc.tipoDocumentoId,
                                     });
                                   }}
                                   className="rounded-lg border border-slate-200 p-1.5 text-slate-400 transition-colors hover:border-slate-400 hover:text-slate-700"
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
                                 </button>
+                                {doc.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      startTransition(async () => {
+                                        try {
+                                          await cambiarEstadoDocumentoVehiculo(doc.id as string, "en_revision");
+                                          const evaluated = await evaluarDocumentosVehiculo(vehiculo.id);
+                                          setDocumentos(
+                                            evaluated.map((item) => ({
+                                              id: item.id,
+                                              tipo: item.tipo,
+                                              tipoNombre: item.tipoNombre,
+                                              subido: item.subido,
+                                              estado: item.estado,
+                                              vencimiento: item.vencimiento,
+                                              fechaEmision: item.fechaEmision,
+                                              fechaVencimiento: item.fechaVencimiento,
+                                              archivoNombre: item.archivoNombre,
+                                              archivoNombreOriginal: item.archivoNombreOriginal,
+                                              archivoUrl: item.archivoUrl,
+                                              archivoTipo: item.archivoTipo,
+                                              archivoPeso: item.archivoPeso,
+                                              observaciones: item.observaciones,
+                                            }))
+                                          );
+                                        } catch {
+                                          // keep current UI state
+                                        }
+                                      });
+                                    }}
+                                    className="rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-medium text-blue-700 transition-colors hover:bg-blue-50"
+                                  >
+                                    En revision
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
                         })}
+                        {requeridos.length === 0 && (
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6">
+                            <p className="text-sm text-slate-500">No hay tipos documentales vehiculares activos para la empresa.</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

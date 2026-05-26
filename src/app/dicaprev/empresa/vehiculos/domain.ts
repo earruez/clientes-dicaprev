@@ -4,29 +4,55 @@ export type EstadoVehiculo = "operativo" | "mantencion" | "baja";
 
 export type EstadoDocumental = "en_regla" | "por_vencer" | "fuera_de_regla";
 
-export type TipoDocumento =
-  | "permiso_circulacion"
-  | "soap"
-  | "revision_tecnica"
-  | "padron"
-  | "mantencion"
-  | "certificacion"
-  | "revision_vigente";
+export type TipoDocumento = string;
 
 export const DOC_NOMBRE: Record<TipoDocumento, string> = {
-  permiso_circulacion: "Permiso de circulación",
-  soap: "SOAP",
-  revision_tecnica: "Revisión técnica",
-  padron: "Padrón",
-  mantencion: "Mantención preventiva",
-  certificacion: "Certificación de operación",
-  revision_vigente: "Revisión vigente",
+  PERMISO_CIRCULACION: "Permiso de circulación",
+  SOAP: "SOAP",
+  REVISION_TECNICA: "Revisión técnica",
+  GASES: "Certificado de gases",
+  PADRON: "Padrón",
+  CHECKLIST_VEHICULO: "Check list vehículo",
+  SEGURO_VEHICULO: "Seguro vehículo",
+  CERTIFICADO_MANTENCION: "Certificado de mantención",
+  AUTORIZACION_USO_VEHICULO: "Autorización uso vehículo",
+  LICENCIA_CONDUCTOR: "Licencia conductor",
 };
 
 export const DOCS_REQUERIDOS: Record<TipoVehiculo, TipoDocumento[]> = {
-  camioneta: ["permiso_circulacion", "soap", "revision_tecnica", "padron"],
-  camion: ["permiso_circulacion", "soap", "revision_tecnica", "padron"],
-  equipo: ["mantencion", "certificacion", "revision_vigente"],
+  camioneta: [
+    "PERMISO_CIRCULACION",
+    "SOAP",
+    "REVISION_TECNICA",
+    "GASES",
+    "PADRON",
+    "CHECKLIST_VEHICULO",
+    "SEGURO_VEHICULO",
+    "CERTIFICADO_MANTENCION",
+    "AUTORIZACION_USO_VEHICULO",
+  ],
+  camion: [
+    "PERMISO_CIRCULACION",
+    "SOAP",
+    "REVISION_TECNICA",
+    "GASES",
+    "PADRON",
+    "CHECKLIST_VEHICULO",
+    "SEGURO_VEHICULO",
+    "CERTIFICADO_MANTENCION",
+    "AUTORIZACION_USO_VEHICULO",
+  ],
+  equipo: [
+    "PERMISO_CIRCULACION",
+    "SOAP",
+    "REVISION_TECNICA",
+    "GASES",
+    "PADRON",
+    "CHECKLIST_VEHICULO",
+    "SEGURO_VEHICULO",
+    "CERTIFICADO_MANTENCION",
+    "AUTORIZACION_USO_VEHICULO",
+  ],
 };
 
 export type DocumentoVehiculo = {
@@ -56,14 +82,9 @@ export type Vehiculo = {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DOC_WARNING_WINDOW_DAYS = 30;
 
-function referenceToday(): number {
-  // Keep parity with existing mock/date behavior used by this module.
-  return new Date("2026-04-09").getTime();
-}
-
 export function evaluarEstadoDocumental(v: Vehiculo): EstadoDocumental {
-  const requeridos = DOCS_REQUERIDOS[v.tipo];
-  const hoy = referenceToday();
+  const requeridos = DOCS_REQUERIDOS[v.tipo] ?? [];
+  const hoy = Date.now();
 
   for (const req of requeridos) {
     const doc = v.documentos.find((d) => d.tipo === req);
@@ -83,6 +104,6 @@ export function evaluarEstadoDocumental(v: Vehiculo): EstadoDocumental {
 
 export function diasParaVencer(iso: string | null): number | null {
   if (!iso) return null;
-  const today = referenceToday();
+  const today = Date.now();
   return Math.ceil((new Date(iso).getTime() - today) / MS_PER_DAY);
 }

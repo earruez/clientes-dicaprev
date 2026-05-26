@@ -2,11 +2,6 @@
 
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
-import {
-  DOCS_REQUERIDOS,
-  type TipoDocumento,
-  type TipoVehiculo,
-} from "./domain";
 
 // ── Types ───────────────────────────────────────────────────────────────── //
 
@@ -26,15 +21,41 @@ export type VehiculoDTO = {
   kilometraje: number | null;
   observaciones: string | null;
   createdAt: string;
+  updatedAt: string;
   documentos: VehiculoDocumentoDTO[];
 };
 
+export type EstadoDocumentoVehiculo =
+  | "pendiente"
+  | "en_revision"
+  | "completo"
+  | "vencido"
+  | "rechazado"
+  | "no_aplica";
+
 export type VehiculoDocumentoDTO = {
-  tipo: TipoDocumento;
+  id: string;
+  vehiculoId: string;
+  tipo: string;
+  tipoDocumentoId: string | null;
+  tipoCodigo: string;
+  tipoNombre: string;
+  requiereVencimiento: boolean;
+  requiereArchivo: boolean;
+  estado: EstadoDocumentoVehiculo;
   subido: boolean;
   vencimiento: string | null;
+  fechaEmision: string | null;
+  fechaVencimiento: string | null;
   archivoNombre: string | null;
+  archivoNombreOriginal: string | null;
   archivoUrl: string | null;
+  archivoTipo: string | null;
+  archivoPeso: number | null;
+  observaciones: string | null;
+  subidoPorId: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type MantencionEstado = "completada" | "pendiente" | "programada";
@@ -69,11 +90,22 @@ export type VehiculoInput = {
 };
 
 export type DocumentoVehiculoInput = {
-  tipo: TipoDocumento;
-  subido: boolean;
-  vencimiento: string;
+  documentoId?: string; // ID del VehiculoDocumento existente (lookup directo)
+  vehiculoId?: string;
+  tipoDocumentoId?: string;
+  tipoCodigo?: string;
+  tipo?: string;
+  estado?: EstadoDocumentoVehiculo;
+  subido?: boolean;
+  vencimiento?: string;
+  fechaEmision?: string;
+  fechaVencimiento?: string;
   archivoNombre?: string;
+  archivoNombreOriginal?: string;
   archivoUrl?: string;
+  archivoTipo?: string;
+  archivoPeso?: number;
+  observaciones?: string;
 };
 
 export type MantencionVehiculoInput = {
@@ -102,14 +134,64 @@ function toDTO(v: {
   kilometraje: number | null;
   observaciones: string | null;
   createdAt: Date;
+  updatedAt: Date;
   documentos: {
+    id: string;
+    vehiculoId: string;
     tipo: string;
+    tipoDocumentoId: string | null;
+    tipoDocumento: {
+      id: string;
+      codigo: string;
+      nombre: string;
+      requiereVencimiento: boolean;
+      requiereArchivo: boolean;
+    } | null;
+    estado: string;
     subido: boolean;
     vencimiento: string | null;
+    fechaEmision: Date | null;
+    fechaVencimiento: Date | null;
     archivoNombre: string | null;
+    archivoNombreOriginal: string | null;
     archivoUrl: string | null;
+    archivoTipo: string | null;
+    archivoPeso: number | null;
+    observaciones: string | null;
+    subidoPorId: string | null;
+    createdAt: Date;
+    updatedAt: Date;
   }[];
 }): VehiculoDTO {
+  const documentos = v.documentos.map((d) => {
+    const tipoCodigo = d.tipoDocumento?.codigo ?? d.tipo;
+    const tipoNombre = d.tipoDocumento?.nombre ?? d.tipo;
+    return {
+      id: d.id,
+      vehiculoId: d.vehiculoId,
+      tipo: d.tipo,
+      tipoDocumentoId: d.tipoDocumentoId,
+      tipoCodigo,
+      tipoNombre,
+      requiereVencimiento: d.tipoDocumento?.requiereVencimiento ?? true,
+      requiereArchivo: d.tipoDocumento?.requiereArchivo ?? true,
+      estado: normalizeEstadoDocumento(d.estado),
+      subido: d.subido,
+      vencimiento: d.vencimiento,
+      fechaEmision: toDateString(d.fechaEmision),
+      fechaVencimiento: toDateString(d.fechaVencimiento),
+      archivoNombre: d.archivoNombre,
+      archivoNombreOriginal: d.archivoNombreOriginal,
+      archivoUrl: d.archivoUrl,
+      archivoTipo: d.archivoTipo,
+      archivoPeso: d.archivoPeso,
+      observaciones: d.observaciones,
+      subidoPorId: d.subidoPorId,
+      createdAt: d.createdAt.toISOString(),
+      updatedAt: d.updatedAt.toISOString(),
+    };
+  });
+
   return {
     id: v.id,
     patente: v.patente,
@@ -126,39 +208,125 @@ function toDTO(v: {
     kilometraje: v.kilometraje,
     observaciones: v.observaciones,
     createdAt: v.createdAt.toISOString(),
-    documentos: v.documentos.map((d) => ({
-      tipo: d.tipo as TipoDocumento,
-      subido: d.subido,
-      vencimiento: d.vencimiento,
-      archivoNombre: d.archivoNombre,
-      archivoUrl: d.archivoUrl,
-    })),
+    updatedAt: v.updatedAt.toISOString(),
+    documentos,
   };
 }
 
-function getRequiredDocsForTipo(tipo: string): TipoDocumento[] {
-  const key = tipo as TipoVehiculo;
-  return DOCS_REQUERIDOS[key] ?? [];
+function toDateString(date: Date | null | undefined) {
+  return date ? date.toISOString().slice(0, 10) : null;
 }
 
-async function ensureRequiredDocs(vehiculoId: string, tipo: string, empresaId: string): Promise<void> {
-  const required = getRequiredDocsForTipo(tipo);
-  if (required.length === 0) return;
+function parseOptionalDate(value?: string) {
+  if (!value || !value.trim()) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Fecha invalida: ${value}`);
+  }
+  return parsed;
+}
+
+function normalizeCodigo(value: string | null | undefined) {
+  return (value ?? "").trim().toUpperCase();
+}
+
+function normalizeEstadoDocumento(value: string | null | undefined): EstadoDocumentoVehiculo {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (normalized === "en_revision") return "en_revision";
+  if (normalized === "completo" || normalized === "vigente" || normalized === "aprobado") return "completo";
+  if (normalized === "vencido") return "vencido";
+  if (normalized === "rechazado") return "rechazado";
+  if (normalized === "no_aplica") return "no_aplica";
+  return "pendiente";
+}
+
+function evaluarEstadoDocumento(args: {
+  estadoActual?: string | null;
+  subido?: boolean;
+  fechaVencimiento?: Date | null;
+  requiereVencimiento?: boolean;
+  requiereArchivo?: boolean;
+  archivoUrl?: string | null;
+}) {
+  const estado = normalizeEstadoDocumento(args.estadoActual);
+
+  if (estado === "rechazado" || estado === "no_aplica" || estado === "en_revision") {
+    return estado;
+  }
+
+  const hasFile = Boolean(args.archivoUrl);
+  const requiereArchivo = args.requiereArchivo ?? true;
+  if (requiereArchivo && !hasFile && !args.subido) {
+    return "pendiente";
+  }
+
+  const requiereVencimiento = args.requiereVencimiento ?? true;
+  if (requiereVencimiento) {
+    if (!args.fechaVencimiento) {
+      return hasFile || args.subido ? "completo" : "pendiente";
+    }
+    if (args.fechaVencimiento.getTime() < Date.now()) {
+      return "vencido";
+    }
+  }
+
+  return hasFile || args.subido ? "completo" : "pendiente";
+}
+
+export async function getTiposDocumentoVehiculo() {
+  const { empresaId } = await requirePermission("canReadEmpresa");
+
+  return prisma.documentoTipoVehiculo.findMany({
+    where: { empresaId, activo: true },
+    orderBy: { nombre: "asc" },
+    select: {
+      id: true,
+      codigo: true,
+      nombre: true,
+      descripcion: true,
+      requiereVencimiento: true,
+      requiereArchivo: true,
+      vigenciaDias: true,
+      activo: true,
+    },
+  });
+}
+
+async function ensureRequiredDocs(vehiculoId: string, empresaId: string): Promise<void> {
+  const tipos = await prisma.documentoTipoVehiculo.findMany({
+    where: { empresaId, activo: true },
+    select: {
+      id: true,
+      codigo: true,
+    },
+    orderBy: { nombre: "asc" },
+  });
+
+  if (tipos.length === 0) return;
 
   const existing = await prisma.vehiculoDocumento.findMany({
     where: { vehiculoId },
-    select: { tipo: true },
+    select: { tipo: true, tipoDocumentoId: true },
   });
-  const existingSet = new Set(existing.map((d) => d.tipo));
 
-  const missing = required.filter((doc) => !existingSet.has(doc));
+  const existingByTipoCodigo = new Set(existing.map((d) => normalizeCodigo(d.tipo)));
+  const existingByTipoId = new Set(existing.map((d) => d.tipoDocumentoId).filter(Boolean));
+
+  const missing = tipos.filter((tipo) => {
+    if (existingByTipoId.has(tipo.id)) return false;
+    if (existingByTipoCodigo.has(normalizeCodigo(tipo.codigo))) return false;
+    return true;
+  });
+
   if (missing.length === 0) return;
 
   await prisma.vehiculoDocumento.createMany({
     data: missing.map((tipoDocumento) => ({
       empresaId,
       vehiculoId,
-      tipo: tipoDocumento,
+      tipo: tipoDocumento.codigo,
+      tipoDocumentoId: tipoDocumento.id,
+      estado: "pendiente",
       subido: false,
       vencimiento: null,
     })),
@@ -170,11 +338,33 @@ const INCLUDE = {
   centroTrabajo: { select: { nombre: true } },
   documentos: {
     select: {
+      id: true,
+      vehiculoId: true,
       tipo: true,
+      tipoDocumentoId: true,
+      tipoDocumento: {
+        select: {
+          id: true,
+          codigo: true,
+          nombre: true,
+          requiereVencimiento: true,
+          requiereArchivo: true,
+        },
+      },
+      estado: true,
       subido: true,
       vencimiento: true,
+      fechaEmision: true,
+      fechaVencimiento: true,
       archivoNombre: true,
+      archivoNombreOriginal: true,
       archivoUrl: true,
+      archivoTipo: true,
+      archivoPeso: true,
+      observaciones: true,
+      subidoPorId: true,
+      createdAt: true,
+      updatedAt: true,
     },
   },
 } as const;
@@ -203,7 +393,7 @@ export async function getVehiculoById(id: string): Promise<VehiculoDTO | null> {
 
   if (!row) return null;
 
-  await ensureRequiredDocs(row.id, row.tipo, empresaId);
+  await ensureRequiredDocs(row.id, empresaId);
 
   const refreshed = await prisma.vehiculo.findUniqueOrThrow({
     where: { id: row.id },
@@ -243,19 +433,18 @@ export async function crearVehiculo(data: VehiculoInput): Promise<VehiculoDTO> {
       proximaRevision: data.proximaRevision || null,
       kilometraje: data.kilometraje,
       observaciones: data.observaciones || null,
-      documentos: {
-        create: getRequiredDocsForTipo(data.tipo).map((doc) => ({
-          empresaId,
-          tipo: doc,
-          subido: false,
-          vencimiento: null,
-        })),
-      },
     },
     include: INCLUDE,
   });
 
-  return toDTO(v);
+  await ensureRequiredDocs(v.id, empresaId);
+
+  const refreshed = await prisma.vehiculo.findUniqueOrThrow({
+    where: { id: v.id },
+    include: INCLUDE,
+  });
+
+  return toDTO(refreshed);
 }
 
 export async function actualizarVehiculo(
@@ -283,7 +472,7 @@ export async function actualizarVehiculo(
     include: INCLUDE,
   });
 
-  await ensureRequiredDocs(v.id, data.tipo, empresaId);
+  await ensureRequiredDocs(v.id, empresaId);
 
   const refreshed = await prisma.vehiculo.findUniqueOrThrow({
     where: { id: v.id },
@@ -291,6 +480,63 @@ export async function actualizarVehiculo(
   });
 
   return toDTO(refreshed);
+}
+
+export async function eliminarVehiculo(id: string): Promise<void> {
+  const { empresaId } = await requirePermission("canManageEmpresa");
+  await prisma.vehiculo.delete({ where: { id, empresaId } });
+}
+
+export async function evaluarDocumentosVehiculo(vehiculoId: string) {
+  const { empresaId } = await requirePermission("canManageEmpresa");
+
+  const vehiculo = await prisma.vehiculo.findFirst({
+    where: { id: vehiculoId, empresaId },
+    select: { id: true },
+  });
+
+  if (!vehiculo) {
+    throw new Error("Vehiculo no encontrado");
+  }
+
+  await ensureRequiredDocs(vehiculo.id, empresaId);
+
+  const documentos = await prisma.vehiculoDocumento.findMany({
+    where: { empresaId, vehiculoId },
+    include: {
+      tipoDocumento: {
+        select: {
+          id: true,
+          codigo: true,
+          nombre: true,
+          requiereVencimiento: true,
+          requiereArchivo: true,
+        },
+      },
+    },
+  });
+
+  for (const doc of documentos) {
+    const nextEstado = evaluarEstadoDocumento({
+      estadoActual: doc.estado,
+      subido: doc.subido,
+      fechaVencimiento: doc.fechaVencimiento,
+      requiereVencimiento: doc.tipoDocumento?.requiereVencimiento,
+      requiereArchivo: doc.tipoDocumento?.requiereArchivo,
+      archivoUrl: doc.archivoUrl,
+    });
+
+    if (nextEstado !== normalizeEstadoDocumento(doc.estado)) {
+      await prisma.vehiculoDocumento.update({
+        where: { id: doc.id },
+        data: {
+          estado: nextEstado,
+        },
+      });
+    }
+  }
+
+  return getDocumentosVehiculo(vehiculoId);
 }
 
 export async function getVehiculoDetalle(id: string): Promise<{
@@ -331,18 +577,40 @@ export async function getVehiculoDetalle(id: string): Promise<{
     throw new Error("Vehículo no encontrado");
   }
 
-  await ensureRequiredDocs(vehiculo.id, vehiculo.tipo, empresaId);
+  await ensureRequiredDocs(vehiculo.id, empresaId);
 
   const finalVehiculo = await prisma.vehiculo.findUniqueOrThrow({
     where: { id: vehiculo.id },
     select: {
       documentos: {
         select: {
+          id: true,
+          vehiculoId: true,
           tipo: true,
+          tipoDocumentoId: true,
+          tipoDocumento: {
+            select: {
+              id: true,
+              codigo: true,
+              nombre: true,
+              requiereVencimiento: true,
+              requiereArchivo: true,
+            },
+          },
+          estado: true,
           subido: true,
           vencimiento: true,
+          fechaEmision: true,
+          fechaVencimiento: true,
           archivoNombre: true,
+          archivoNombreOriginal: true,
           archivoUrl: true,
+          archivoTipo: true,
+          archivoPeso: true,
+          observaciones: true,
+          subidoPorId: true,
+          createdAt: true,
+          updatedAt: true,
         },
       },
       mantenciones: {
@@ -361,11 +629,28 @@ export async function getVehiculoDetalle(id: string): Promise<{
 
   return {
     documentos: finalVehiculo.documentos.map((d) => ({
-      tipo: d.tipo as TipoDocumento,
+      id: d.id,
+      vehiculoId: d.vehiculoId,
+      tipo: d.tipo,
+      tipoDocumentoId: d.tipoDocumentoId,
+      tipoCodigo: d.tipoDocumento?.codigo ?? d.tipo,
+      tipoNombre: d.tipoDocumento?.nombre ?? d.tipo,
+      requiereVencimiento: d.tipoDocumento?.requiereVencimiento ?? true,
+      requiereArchivo: d.tipoDocumento?.requiereArchivo ?? true,
+      estado: normalizeEstadoDocumento(d.estado),
       subido: d.subido,
       vencimiento: d.vencimiento,
+      fechaEmision: toDateString(d.fechaEmision),
+      fechaVencimiento: toDateString(d.fechaVencimiento),
       archivoNombre: d.archivoNombre,
+      archivoNombreOriginal: d.archivoNombreOriginal,
       archivoUrl: d.archivoUrl,
+      archivoTipo: d.archivoTipo,
+      archivoPeso: d.archivoPeso,
+      observaciones: d.observaciones,
+      subidoPorId: d.subidoPorId,
+      createdAt: d.createdAt.toISOString(),
+      updatedAt: d.updatedAt.toISOString(),
     })),
     mantenciones: finalVehiculo.mantenciones.map((m) => ({
       id: m.id,
@@ -383,6 +668,10 @@ export async function getVehiculoDocumentos(id: string): Promise<VehiculoDocumen
   return detalle.documentos;
 }
 
+export async function getDocumentosVehiculo(vehiculoId: string): Promise<VehiculoDocumentoDTO[]> {
+  return getVehiculoDocumentos(vehiculoId);
+}
+
 export async function getVehiculoMantenciones(id: string): Promise<VehiculoMantencionDTO[]> {
   const detalle = await getVehiculoDetalle(id);
   return detalle.mantenciones;
@@ -392,7 +681,24 @@ export async function upsertVehiculoDocumento(
   vehiculoId: string,
   data: DocumentoVehiculoInput
 ): Promise<VehiculoDocumentoDTO> {
-  const { empresaId } = await requirePermission("canManageEmpresa");
+  const payload: DocumentoVehiculoInput = {
+    ...data,
+    vehiculoId,
+    tipo: data.tipo,
+  };
+
+  return crearOActualizarDocumentoVehiculo(payload);
+}
+
+export async function crearOActualizarDocumentoVehiculo(
+  data: DocumentoVehiculoInput
+): Promise<VehiculoDocumentoDTO> {
+  const { empresaId, usuarioId } = await requirePermission("canManageEmpresa");
+
+  const vehiculoId = data.vehiculoId;
+  if (!vehiculoId) {
+    throw new Error("vehiculoId es obligatorio");
+  }
 
   const vehiculo = await prisma.vehiculo.findFirst({
     where: { id: vehiculoId, empresaId },
@@ -400,37 +706,215 @@ export async function upsertVehiculoDocumento(
   });
   if (!vehiculo) throw new Error("Vehículo no encontrado");
 
-  const doc = await prisma.vehiculoDocumento.upsert({
-    where: {
-      vehiculoId_tipo: {
-        vehiculoId,
-        tipo: data.tipo,
+  let tipoDocumento = null as {
+    id: string;
+    codigo: string;
+    nombre: string;
+    requiereVencimiento: boolean;
+    requiereArchivo: boolean;
+  } | null;
+
+  if (data.tipoDocumentoId) {
+    tipoDocumento = await prisma.documentoTipoVehiculo.findFirst({
+      where: { id: data.tipoDocumentoId, empresaId, activo: true },
+      select: {
+        id: true,
+        codigo: true,
+        nombre: true,
+        requiereVencimiento: true,
+        requiereArchivo: true,
       },
-    },
-    update: {
-      subido: data.subido,
-      vencimiento: data.vencimiento || null,
-      archivoNombre: data.archivoNombre || null,
-      archivoUrl: data.archivoUrl || null,
-    },
-    create: {
-      empresaId,
-      vehiculoId,
-      tipo: data.tipo,
-      subido: data.subido,
-      vencimiento: data.vencimiento || null,
-      archivoNombre: data.archivoNombre || null,
-      archivoUrl: data.archivoUrl || null,
+    });
+  } else if (data.tipoCodigo) {
+    tipoDocumento = await prisma.documentoTipoVehiculo.findFirst({
+      where: { empresaId, codigo: normalizeCodigo(data.tipoCodigo), activo: true },
+      select: {
+        id: true,
+        codigo: true,
+        nombre: true,
+        requiereVencimiento: true,
+        requiereArchivo: true,
+      },
+    });
+  }
+
+  const tipo = normalizeCodigo(tipoDocumento?.codigo ?? data.tipo ?? data.tipoCodigo);
+  if (!tipo) {
+    throw new Error("Debes indicar un tipo de documento vehicular");
+  }
+
+  const fechaEmision = parseOptionalDate(data.fechaEmision);
+  const fechaVencimiento = parseOptionalDate(data.fechaVencimiento ?? data.vencimiento);
+  const subido = data.subido ?? Boolean(data.archivoUrl);
+
+  const estado = evaluarEstadoDocumento({
+    estadoActual: data.estado,
+    subido,
+    fechaVencimiento,
+    requiereVencimiento: tipoDocumento?.requiereVencimiento,
+    requiereArchivo: tipoDocumento?.requiereArchivo,
+    archivoUrl: data.archivoUrl,
+  });
+
+  // Buscar registro existente: primero por documentoId explícito, luego por tipo
+  let existing: { id: string; tipoDocumentoId: string | null } | null = null;
+
+  if (data.documentoId) {
+    existing = await prisma.vehiculoDocumento.findFirst({
+      where: { id: data.documentoId, empresaId, vehiculoId },
+      select: { id: true, tipoDocumentoId: true },
+    });
+  }
+
+  if (!existing) {
+    // Buscar por tipoDocumentoId resuelto (si lo tenemos) o por tipo (código)
+    const whereConditions: Array<{ tipoDocumentoId?: string; tipo?: string }> = [];
+    if (tipoDocumento?.id) {
+      whereConditions.push({ tipoDocumentoId: tipoDocumento.id });
+    }
+    if (tipo) {
+      whereConditions.push({ tipo });
+    }
+    if (whereConditions.length > 0) {
+      existing = await prisma.vehiculoDocumento.findFirst({
+        where: { empresaId, vehiculoId, OR: whereConditions },
+        select: { id: true, tipoDocumentoId: true },
+      });
+    }
+  }
+
+  // El tipoDocumentoId a usar: el resuelto, o el que ya tenía el registro existente (nunca null si el existente ya tenía uno)
+  const resolvedTipoDocumentoId = tipoDocumento?.id ?? existing?.tipoDocumentoId ?? null;
+
+  // Guardia: no crear registros huérfanos sin tipoDocumentoId
+  if (!existing && resolvedTipoDocumentoId === null) {
+    throw new Error(
+      "No se puede crear un documento vehicular sin tipoDocumentoId. Indica tipoDocumentoId, tipoCodigo o documenta el tipo correctamente."
+    );
+  }
+
+  const doc = existing
+    ? await prisma.vehiculoDocumento.update({
+        where: { id: existing.id },
+        data: {
+          tipo,
+          tipoDocumentoId: resolvedTipoDocumentoId,
+          subido,
+          estado,
+          vencimiento: data.vencimiento || data.fechaVencimiento || null,
+          fechaEmision,
+          fechaVencimiento,
+          archivoNombre: data.archivoNombre?.trim() || null,
+          archivoNombreOriginal: data.archivoNombreOriginal?.trim() || null,
+          archivoUrl: data.archivoUrl?.trim() || null,
+          archivoTipo: data.archivoTipo?.trim() || null,
+          archivoPeso: data.archivoPeso ?? null,
+          observaciones: data.observaciones?.trim() || null,
+          subidoPorId: subido ? usuarioId : null,
+        },
+      })
+    : await prisma.vehiculoDocumento.create({
+        data: {
+          empresaId,
+          vehiculoId,
+          tipo,
+          tipoDocumentoId: resolvedTipoDocumentoId,
+          subido,
+          estado,
+          vencimiento: data.vencimiento || data.fechaVencimiento || null,
+          fechaEmision,
+          fechaVencimiento,
+          archivoNombre: data.archivoNombre?.trim() || null,
+          archivoNombreOriginal: data.archivoNombreOriginal?.trim() || null,
+          archivoUrl: data.archivoUrl?.trim() || null,
+          archivoTipo: data.archivoTipo?.trim() || null,
+          archivoPeso: data.archivoPeso ?? null,
+          observaciones: data.observaciones?.trim() || null,
+          subidoPorId: subido ? usuarioId : null,
+        },
+      });
+
+  const hydrated = await prisma.vehiculoDocumento.findUniqueOrThrow({
+    where: { id: doc.id },
+    include: {
+      tipoDocumento: {
+        select: {
+          id: true,
+          codigo: true,
+          nombre: true,
+          requiereVencimiento: true,
+          requiereArchivo: true,
+        },
+      },
     },
   });
 
   return {
-    tipo: doc.tipo as TipoDocumento,
-    subido: doc.subido,
-    vencimiento: doc.vencimiento,
-    archivoNombre: doc.archivoNombre,
-    archivoUrl: doc.archivoUrl,
+    id: hydrated.id,
+    vehiculoId: hydrated.vehiculoId,
+    tipo: hydrated.tipo,
+    tipoDocumentoId: hydrated.tipoDocumentoId,
+    tipoCodigo: hydrated.tipoDocumento?.codigo ?? hydrated.tipo,
+    tipoNombre: hydrated.tipoDocumento?.nombre ?? hydrated.tipo,
+    requiereVencimiento: hydrated.tipoDocumento?.requiereVencimiento ?? true,
+    requiereArchivo: hydrated.tipoDocumento?.requiereArchivo ?? true,
+    estado: normalizeEstadoDocumento(hydrated.estado),
+    subido: hydrated.subido,
+    vencimiento: hydrated.vencimiento,
+    fechaEmision: toDateString(hydrated.fechaEmision),
+    fechaVencimiento: toDateString(hydrated.fechaVencimiento),
+    archivoNombre: hydrated.archivoNombre,
+    archivoNombreOriginal: hydrated.archivoNombreOriginal,
+    archivoUrl: hydrated.archivoUrl,
+    archivoTipo: hydrated.archivoTipo,
+    archivoPeso: hydrated.archivoPeso,
+    observaciones: hydrated.observaciones,
+    subidoPorId: hydrated.subidoPorId,
+    createdAt: hydrated.createdAt.toISOString(),
+    updatedAt: hydrated.updatedAt.toISOString(),
   };
+}
+
+export async function cambiarEstadoDocumentoVehiculo(
+  id: string,
+  estado: EstadoDocumentoVehiculo
+): Promise<VehiculoDocumentoDTO> {
+  const { empresaId } = await requirePermission("canManageEmpresa");
+
+  const doc = await prisma.vehiculoDocumento.findFirst({
+    where: { id, empresaId },
+    select: { id: true, vehiculoId: true },
+  });
+
+  if (!doc) {
+    throw new Error("Documento de vehiculo no encontrado");
+  }
+
+  await prisma.vehiculoDocumento.update({
+    where: { id },
+    data: { estado },
+  });
+
+  const docs = await getDocumentosVehiculo(doc.vehiculoId);
+  const updated = docs.find((item) => item.id === id);
+  if (!updated) {
+    throw new Error("No se pudo recuperar el documento actualizado");
+  }
+
+  return updated;
+}
+
+export async function eliminarDocumentoVehiculo(id: string): Promise<void> {
+  const { empresaId } = await requirePermission("canManageEmpresa");
+  const doc = await prisma.vehiculoDocumento.findFirst({
+    where: { id, empresaId },
+    select: { id: true },
+  });
+  if (!doc) {
+    throw new Error("Documento de vehiculo no encontrado");
+  }
+
+  await prisma.vehiculoDocumento.delete({ where: { id } });
 }
 
 export async function crearMantencionVehiculo(
