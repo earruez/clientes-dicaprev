@@ -69,6 +69,14 @@ export type VehiculoMantencionDTO = {
   kilometraje: number | null;
 };
 
+export type VehiculoAcreditacionRelacionDTO = {
+  id: string;
+  mandante: string;
+  proyecto: string;
+  estado: string;
+  updatedAt: string;
+};
+
 export type CentroItem = {
   id: string;
   nombre: string;
@@ -542,6 +550,7 @@ export async function evaluarDocumentosVehiculo(vehiculoId: string) {
 export async function getVehiculoDetalle(id: string): Promise<{
   documentos: VehiculoDocumentoDTO[];
   mantenciones: VehiculoMantencionDTO[];
+  acreditaciones: VehiculoAcreditacionRelacionDTO[];
 }> {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
@@ -569,6 +578,25 @@ export async function getVehiculoDetalle(id: string): Promise<{
           kilometraje: true,
         },
         orderBy: { fecha: "desc" },
+      },
+      acreditacionesVehiculo: {
+        select: {
+          acreditacion: {
+            select: {
+              id: true,
+              estado: true,
+              updatedAt: true,
+              nombreProyecto: true,
+              obraFaena: true,
+              mandante: {
+                select: {
+                  nombre: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
       },
     },
   });
@@ -624,6 +652,25 @@ export async function getVehiculoDetalle(id: string): Promise<{
         },
         orderBy: { fecha: "desc" },
       },
+      acreditacionesVehiculo: {
+        select: {
+          acreditacion: {
+            select: {
+              id: true,
+              estado: true,
+              updatedAt: true,
+              nombreProyecto: true,
+              obraFaena: true,
+              mandante: {
+                select: {
+                  nombre: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -659,6 +706,13 @@ export async function getVehiculoDetalle(id: string): Promise<{
       estado: m.estado as MantencionEstado,
       observaciones: m.observaciones,
       kilometraje: m.kilometraje,
+    })),
+    acreditaciones: finalVehiculo.acreditacionesVehiculo.map((item) => ({
+      id: item.acreditacion.id,
+      mandante: item.acreditacion.mandante.nombre,
+      proyecto: item.acreditacion.nombreProyecto ?? item.acreditacion.obraFaena ?? "Sin proyecto",
+      estado: item.acreditacion.estado,
+      updatedAt: item.acreditacion.updatedAt.toISOString(),
     })),
   };
 }

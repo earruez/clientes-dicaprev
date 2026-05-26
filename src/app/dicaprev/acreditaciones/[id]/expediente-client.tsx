@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -47,6 +47,7 @@ type EstadoAcreditacion =
 
 type CategoriaRequisito = "empresa" | "trabajador" | "sst" | "vehiculo" | "anexo";
 type EstadoDocumento = "completo" | "vencido" | "faltante";
+type EstadoDocumentoFiltro = EstadoDocumento | "todos";
 
 type DocumentoInstancia = {
   id: string;
@@ -591,11 +592,29 @@ export default function ExpedienteClient({
 }) {
   const router = useRouter();
   const acId = acreditacion.id;
+  const docsSectionRef = useRef<HTMLDivElement | null>(null);
 
   const docs = useMemo(() => initialDocs, [initialDocs]);
-  const agrupado = useMemo(() => agruparExpediente(acreditacion, docs), [acreditacion, docs]);
   const validacion = useMemo(() => evaluarEstadoExpediente(docs), [docs]);
   const pctGlobal = useMemo(() => calcularCompletitud(docs), [docs]);
+  const [estadoFiltro, setEstadoFiltro] = useState<EstadoDocumentoFiltro>("todos");
+
+  const docsVisibles = useMemo(() => {
+    if (estadoFiltro === "todos") return docs;
+    return docs.filter((doc) => doc.estado === estadoFiltro);
+  }, [docs, estadoFiltro]);
+
+  const agrupado = useMemo(() => agruparExpediente(acreditacion, docsVisibles), [acreditacion, docsVisibles]);
+  const resumenDocs = useMemo(
+    () => ({
+      total: docs.length,
+      completos: docs.filter((d) => d.estado === "completo").length,
+      vencidos: docs.filter((d) => d.estado === "vencido").length,
+      faltantes: docs.filter((d) => d.estado === "faltante").length,
+      visibles: docsVisibles.length,
+    }),
+    [docs, docsVisibles.length]
+  );
 
   const [historial, setHistorial] = useState<HistorialExpediente[]>(initialHistorial);
   const [generando, setGenerando] = useState(false);
@@ -650,6 +669,11 @@ export default function ExpedienteClient({
     setHistorialEstados((prev) => [...prev, entrada]);
     push("success", `Estado actualizado a \u201c${ESTADO_AC_CFG[modalCambioEstado]?.label}\u201d.`);
     setModalCambioEstado(null);
+  }
+
+  function enfocarDocumentos(filtro: EstadoDocumentoFiltro) {
+    setEstadoFiltro(filtro);
+    docsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   const estadoVal = validacion.bloqueado
@@ -809,9 +833,66 @@ export default function ExpedienteClient({
 
         {/* ── Columna central — documentos agrupados ── */}
         <main className="flex flex-col gap-4 min-w-0">
-          <p className="text-xs text-slate-400 font-medium uppercase tracking-widest px-1">
-            Documentos por categoría · {docs.length} totales
-          </p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { key: "todos", label: "Total documentos", value: resumenDocs.total, tone: "text-slate-900 bg-white border-slate-200" },
+              { key: "completo", label: "Completos", value: resumenDocs.completos, tone: "text-emerald-700 bg-emerald-50 border-emerald-200" },
+              { key: "faltante", label: "Faltantes", value: resumenDocs.faltantes, tone: "text-rose-700 bg-rose-50 border-rose-200" },
+              { key: "vencido", label: "Vencidos", value: resumenDocs.vencidos, tone: "text-amber-700 bg-amber-50 border-amber-200" },
+            ].map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => enfocarDocumentos(item.key as EstadoDocumentoFiltro)}
+                className={cn(
+                  "rounded-2xl border px-4 py-4 text-left shadow-sm transition-colors hover:opacity-90",
+                  item.tone,
+                  estadoFiltro === item.key && "ring-2 ring-slate-900/10"
+                )}
+              >
+                <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">{item.label}</p>
+                <p className="mt-1 text-3xl font-bold">{item.value}</p>
+                <p className="mt-1 text-xs opacity-80">
+                  {item.key === "todos" ? "Vista completa del expediente" : "Filtrar documentos de este estado"}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          <div ref={docsSectionRef} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-widest text-slate-400">
+                  Documentos por categoría · {resumenDocs.visibles} visibles de {resumenDocs.total}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Usa los filtros para enfocarte en faltantes, vencidos o documentos completos antes de generar el expediente.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { key: "todos", label: "Todos" },
+                  { key: "faltante", label: `Faltantes (${resumenDocs.faltantes})` },
+                  { key: "vencido", label: `Vencidos (${resumenDocs.vencidos})` },
+                  { key: "completo", label: `Completos (${resumenDocs.completos})` },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setEstadoFiltro(item.key as EstadoDocumentoFiltro)}
+                    className={cn(
+                      "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                      estadoFiltro === item.key
+                        ? "border-slate-900 bg-slate-900 text-white"
+                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                    )}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
           {/* Empresa */}
           {agrupado.empresa.length > 0 && (
@@ -887,6 +968,13 @@ export default function ExpedienteClient({
               defaultOpen={false}
             />
           )}
+
+          {docsVisibles.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-10 text-center shadow-sm">
+              <p className="text-sm font-medium text-slate-700">No hay documentos para el filtro actual.</p>
+              <p className="mt-1 text-xs text-slate-500">Cambia el filtro para volver a la vista completa del expediente.</p>
+            </div>
+          )}
         </main>
 
         {/* ── Columna derecha — validaciones + acciones ── */}
@@ -935,6 +1023,24 @@ export default function ExpedienteClient({
           {/* Acciones */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-2.5">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Acciones</p>
+
+            <Button
+              variant="outline"
+              onClick={() => enfocarDocumentos("faltante")}
+              disabled={resumenDocs.faltantes === 0}
+              className="w-full rounded-xl text-sm h-9 justify-start"
+            >
+              <XCircle className="h-4 w-4 mr-1.5 text-rose-500" />Ver faltantes obligatorios
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={() => enfocarDocumentos("vencido")}
+              disabled={resumenDocs.vencidos === 0}
+              className="w-full rounded-xl text-sm h-9 justify-start"
+            >
+              <AlertTriangle className="h-4 w-4 mr-1.5 text-amber-500" />Ver documentos vencidos
+            </Button>
 
             <Button
               onClick={async () => { await handleZip(); if (!validacion.bloqueado) handlePDF(); }}
@@ -995,7 +1101,8 @@ export default function ExpedienteClient({
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Resumen</p>
             <div className="space-y-2 text-sm">
-              <MiniRow label="Total docs" val={String(docs.length)} />
+              <MiniRow label="Total docs" val={String(resumenDocs.total)} />
+              <MiniRow label="Docs visibles" val={String(resumenDocs.visibles)} />
               <MiniRow label="Requisitos plantilla" val={String(docs.length)} />
               <MiniRow label="Trabajadores" val={String(acreditacion.trabajadores.length)} />
               <MiniRow label="Vehículos" val={String(acreditacion.vehiculos.length)} />
