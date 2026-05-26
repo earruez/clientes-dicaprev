@@ -117,7 +117,7 @@ const ESTADO_DOC_CFG: Record<EstadoDocumentalVehiculo, { label: string; cls: str
   en_regla:       { label: "En regla",       cls: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
   por_vencer:     { label: "Por vencer",     cls: "bg-amber-50 text-amber-700 border-amber-200",       dot: "bg-amber-500"   },
   fuera_de_regla: { label: "Fuera de regla", cls: "bg-rose-50 text-rose-700 border-rose-200",           dot: "bg-rose-500"    },
-  en_revision:    { label: "En revision",    cls: "bg-blue-50 text-blue-700 border-blue-200",           dot: "bg-blue-500"    },
+  en_revision:    { label: "En revisión",    cls: "bg-blue-50 text-blue-700 border-blue-200",           dot: "bg-blue-500"    },
 };
 
 const EMPTY: VehiculoInput = {
@@ -357,7 +357,7 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
               <SelectItem value="todos">Estado documental</SelectItem>
               <SelectItem value="en_regla">En regla</SelectItem>
               <SelectItem value="por_vencer">Por vencer</SelectItem>
-              <SelectItem value="en_revision">En revision</SelectItem>
+              <SelectItem value="en_revision">En revisión</SelectItem>
               <SelectItem value="fuera_de_regla">Fuera de regla</SelectItem>
             </SelectContent>
           </Select>

@@ -50,7 +50,7 @@ function normalizeText(value: string) {
 function estadoLabel(estado: string) {
   const normalized = normalizeText(estado);
   if (normalized === "firmado") return "Firmado";
-  if (normalized === "en_revision") return "En revision";
+  if (normalized === "en_revision") return "En revisión";
   if (normalized === "validado") return "Validado";
   if (normalized === "enviado_firma") return "Enviado a firma";
   if (normalized === "pendiente") return "Pendiente";

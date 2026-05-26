@@ -79,7 +79,7 @@ const ESTADO_DOC_CFG: Record<EstadoDocumentalVehiculo, { label: string; cls: str
   en_regla:       { label: "En regla",       cls: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200", banner: "bg-emerald-50 border-emerald-200 text-emerald-800" },
   por_vencer:     { label: "Por vencer",     cls: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",       banner: "bg-amber-50 border-amber-200 text-amber-800"       },
   fuera_de_regla: { label: "Fuera de regla", cls: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",           banner: "bg-rose-50 border-rose-200 text-rose-800"           },
-  en_revision:    { label: "En revision",    cls: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",           banner: "bg-blue-50 border-blue-200 text-blue-800"           },
+  en_revision:    { label: "En revisión",    cls: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",           banner: "bg-blue-50 border-blue-200 text-blue-800"           },
 };
 
 const MANTENCIÓN_ESTADO_CLS: Record<"completada" | "pendiente" | "programada", string> = {
@@ -876,7 +876,7 @@ export function VehiculoDetailDrawer({
                           let badgeCls = "bg-slate-100 text-slate-500";
 
                           if (doc.estado === "en_revision") {
-                            badgeLabel = "En revision";
+                            badgeLabel = "En revisión";
                             badgeCls = "bg-blue-50 text-blue-700 ring-1 ring-blue-200";
                           } else if (doc.estado === "rechazado") {
                             badgeLabel = "Rechazado";
@@ -996,7 +996,7 @@ export function VehiculoDetailDrawer({
                                     }}
                                     className="rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-medium text-blue-700 transition-colors hover:bg-blue-50"
                                   >
-                                    En revision
+                                    En revisión
                                   </button>
                                 )}
                               </div>

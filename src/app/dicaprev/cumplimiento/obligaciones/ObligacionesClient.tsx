@@ -154,7 +154,7 @@ function ObligacionDrawer({
 
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1">
-              Descripcion
+              Descripción
             </p>
             <p className="text-sm text-slate-700 leading-relaxed">{obligacion.descripcion}</p>
           </div>
@@ -193,7 +193,7 @@ function ObligacionDrawer({
             </div>
             <p className="mt-3 text-[10px] text-slate-400 flex items-center gap-1">
               <Cpu className="h-3 w-3" />
-              Estado calculado con la ultima evidencia documental disponible.
+              Estado calculado con la última evidencia documental disponible.
             </p>
           </div>
         </div>
@@ -430,7 +430,7 @@ export default function ObligacionesClient({ data }: { data: CumplimientoEmpresa
                               ? "Cumple"
                               : ob.manualEstado === "no_cumple"
                                 ? "No cumple"
-                                : "En revision"}
+                                : "En revisión"}
                           </span>
                         )}
                       </td>
@@ -564,7 +564,7 @@ export default function ObligacionesClient({ data }: { data: CumplimientoEmpresa
                 <SelectContent>
                   <SelectItem value="cumple">Cumple</SelectItem>
                   <SelectItem value="no_cumple">No cumple</SelectItem>
-                  <SelectItem value="en_revision">En revision</SelectItem>
+                  <SelectItem value="en_revision">En revisión</SelectItem>
                 </SelectContent>
               </Select>
             </div>
