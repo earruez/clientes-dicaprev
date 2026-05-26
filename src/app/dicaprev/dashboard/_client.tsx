@@ -1,138 +1,311 @@
-"use client";
-
-import React, { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import Link from "next/link";
+import {
+  Activity,
+  AlertTriangle,
+  Building2,
+  Car,
+  ClipboardList,
+  FileCheck2,
+  ShieldAlert,
+  Users,
+  ArrowRight,
+} from "lucide-react";
+import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import type { ResumenEmpresaResponse } from "@/actions/empresa/resumen";
+import { cn } from "@/lib/utils";
+import type { DashboardEjecutivoResponse } from "./actions";
 
 interface DashboardClientProps {
-  resumenInicial: ResumenEmpresaResponse;
+  resumenInicial: DashboardEjecutivoResponse;
 }
 
 export default function DashboardClient({ resumenInicial }: DashboardClientProps) {
-  const [resumen] = useState<ResumenEmpresaResponse>(resumenInicial);
+  const resumen = resumenInicial;
+  const actualizacion = new Date(resumen.actualizadoEl).toLocaleString("es-CL", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+
+  const kpis = [
+    {
+      label: "Cumplimiento general",
+      value:
+        resumen.kpis.cumplimientoGeneral === null ? "—" : `${resumen.kpis.cumplimientoGeneral}%`,
+      detail: "Estado consolidado de cumplimiento",
+      icon: <Activity className="h-5 w-5" />,
+      tone: "from-emerald-50 to-emerald-100 text-emerald-700 border-emerald-200",
+    },
+    {
+      label: "Trabajadores activos",
+      value: resumen.kpis.trabajadoresActivos,
+      detail: `${resumen.kpis.totalTrabajadores} registrados`,
+      icon: <Users className="h-5 w-5" />,
+      tone: "from-blue-50 to-blue-100 text-blue-700 border-blue-200",
+    },
+    {
+      label: "Vehículos",
+      value: resumen.kpis.totalVehiculos,
+      detail: "Flota y equipos en sistema",
+      icon: <Car className="h-5 w-5" />,
+      tone: "from-orange-50 to-orange-100 text-orange-700 border-orange-200",
+    },
+    {
+      label: "Acreditaciones activas",
+      value: resumen.kpis.acreditacionesActivas,
+      detail: `${resumen.acreditaciones.enPreparacion} en preparación`,
+      icon: <FileCheck2 className="h-5 w-5" />,
+      tone: "from-violet-50 to-violet-100 text-violet-700 border-violet-200",
+    },
+    {
+      label: "Documentos pendientes",
+      value: resumen.kpis.documentosPendientes,
+      detail: "Empresa, trabajadores y vehículos",
+      icon: <ClipboardList className="h-5 w-5" />,
+      tone: "from-amber-50 to-amber-100 text-amber-700 border-amber-200",
+    },
+    {
+      label: "Documentos vencidos",
+      value: resumen.kpis.documentosVencidos,
+      detail: "Requieren regularización",
+      icon: <AlertTriangle className="h-5 w-5" />,
+      tone: "from-rose-50 to-rose-100 text-rose-700 border-rose-200",
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* Encabezado principal */}
-      <header className="space-y-2">
-        <h1 className="text-3xl font-bold text-slate-900">
-          Bienvenido a DICAPREV
-        </h1>
-        <p className="text-slate-600">
-          Gestiona tu cumplimiento documentario y seguridad en SST
-        </p>
-      </header>
+      <StandardPageHeader
+        moduleLabel="Módulo Inicio"
+        title="Panel ejecutivo"
+        description="Vista general del estado preventivo de la empresa con indicadores reales conectados a Prisma."
+        icon={<Activity className="h-6 w-6" />}
+        iconWrapClassName="bg-slate-900"
+        actions={
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2 text-right">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Actualizado</p>
+            <p className="mt-0.5 text-sm font-semibold text-slate-700">{actualizacion}</p>
+          </div>
+        }
+      />
 
-      {/* Estado de cumplimiento */}
-      <Card className="border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="space-y-4">
-          <div className="flex items-start justify-between">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {kpis.map((kpi) => (
+          <Card
+            key={kpi.label}
+            className={cn(
+              "rounded-2xl border bg-gradient-to-br p-5 shadow-sm",
+              kpi.tone,
+            )}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.18em] opacity-80">{kpi.label}</p>
+                <p className="mt-2 text-4xl font-semibold tracking-tight">{kpi.value}</p>
+                <p className="mt-1 text-sm opacity-80">{kpi.detail}</p>
+              </div>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/70 shadow-sm">
+                {kpi.icon}
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_1fr]">
+        <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                Estado de Cumplimiento
-              </h2>
-              <p className="text-sm text-slate-600 mt-1">
-                {resumen.empresa.nombre}
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Panorama preventivo</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-900">{resumen.empresa.nombre}</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Seguimiento ejecutivo de documentación, acreditaciones y cumplimiento operativo.
               </p>
             </div>
-            <div className="text-right">
-              <div className="text-4xl font-bold text-slate-900">
-                {resumen.cumplimiento.porcentaje}%
-              </div>
-              <p className="text-xs text-slate-500 mt-1">cumplimiento total</p>
+            <div className="rounded-2xl bg-slate-900 px-4 py-3 text-right text-white shadow-sm">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">Cumplimiento general</p>
+              <p className="mt-1 text-3xl font-semibold">
+                {resumen.kpis.cumplimientoGeneral === null ? "—" : `${resumen.kpis.cumplimientoGeneral}%`}
+              </p>
             </div>
           </div>
 
-          {/* Barra de progreso */}
-          <div className="space-y-2">
-            <Progress
-              value={resumen.cumplimiento.porcentaje}
-              className="h-2"
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <MiniStat
+              label="Empresa"
+              value={`${resumen.documentos.empresa.completos}/${resumen.documentos.empresa.total}`}
+              detail={`${resumen.documentos.empresa.pendientes} pendientes · ${resumen.documentos.empresa.vencidos} vencidos`}
             />
-            <div className="flex justify-between text-xs text-slate-600">
-              <span>{resumen.cumplimiento.totalCumple} cumplidas</span>
-              <span>
-                {resumen.cumplimiento.totalFaltantes} faltantes
-              </span>
-              <span>
-                {resumen.cumplimiento.totalIncompletos} incompletas
-              </span>
-            </div>
-          </div>
-
-          {/* Resumen de estado */}
-          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-100">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-emerald-600">
-                {resumen.cumplimiento.totalCumple}
-              </div>
-              <p className="text-xs text-slate-600">Cumple</p>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-amber-600">
-                {resumen.cumplimiento.totalIncompletos}
-              </div>
-              <p className="text-xs text-slate-600">Incompleta</p>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {resumen.cumplimiento.totalFaltantes}
-              </div>
-              <p className="text-xs text-slate-600">Faltante</p>
-            </div>
-          </div>
-        </div>
-      </Card>
-
-      {/* Alertas de cumplimiento bajo */}
-      {resumen.cumplimiento.porcentaje < 50 && (
-        <Card className="border border-red-200 bg-red-50 p-4 shadow-sm">
-          <div className="flex gap-3">
-            <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="font-semibold text-red-900">Atención requerida</h3>
-              <p className="text-sm text-red-800 mt-1">
-                La empresa tiene cumplimiento bajo. Acciones recomendadas:
-              </p>
-              <ul className="text-sm text-red-800 mt-2 space-y-1 list-disc list-inside">
-                <li>Generar documentos obligatorios faltantes</li>
-                <li>Completar documentos en revisión</li>
-                <li>Revisar vencimientos próximos</li>
-              </ul>
-            </div>
+            <MiniStat
+              label="Trabajadores"
+              value={`${resumen.documentos.trabajadores.completos}/${resumen.documentos.trabajadores.total}`}
+              detail={`${resumen.documentos.trabajadores.pendientes} pendientes · ${resumen.documentos.trabajadores.vencidos} vencidos`}
+            />
+            <MiniStat
+              label="Vehículos"
+              value={`${resumen.documentos.vehiculos.completos}/${resumen.documentos.vehiculos.total}`}
+              detail={`${resumen.documentos.vehiculos.pendientes} pendientes · ${resumen.documentos.vehiculos.vencidos} vencidos`}
+            />
           </div>
         </Card>
-      )}
 
-      {/* Acceso rápido a módulos principales */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <QuickAccessCard
-          title="Documentación"
-          description="Gestionar documentos"
-          href="/dicaprev/documentacion"
-          icon="📄"
-        />
-        <QuickAccessCard
-          title="Cumplimiento"
-          description="Ver obligaciones"
-          href="/dicaprev/cumplimiento/resumen"
-          icon="✓"
-        />
-        <QuickAccessCard
-          title="Trabajadores"
-          description="Gestionar equipo"
-          href="/dicaprev/trabajadores-v2"
-          icon="👥"
-        />
-        <QuickAccessCard
-          title="Empresa"
-          description="Información general"
-          href="/dicaprev/empresa"
-          icon="🏢"
-        />
+        <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Acciones rápidas</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-900">Operación diaria</h2>
+            </div>
+            <ArrowRight className="h-5 w-5 text-slate-300" />
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <QuickAccessCard title="Control documental" description="Trabajadores" href="/dicaprev/trabajadores/control-documental" icon={<Users className="h-4 w-4" />} />
+            <QuickAccessCard title="Vehículos" description="Flota y expedientes" href="/dicaprev/empresa/vehiculos" icon={<Car className="h-4 w-4" />} />
+            <QuickAccessCard title="Acreditaciones" description="Solicitudes y expedientes" href="/dicaprev/acreditaciones" icon={<FileCheck2 className="h-4 w-4" />} />
+            <QuickAccessCard title="Cumplimiento" description="Obligaciones y hallazgos" href="/dicaprev/cumplimiento" icon={<ShieldAlert className="h-4 w-4" />} />
+            <QuickAccessCard title="Documentación empresa" description="Legales y corporativos" href="/dicaprev/documentacion" icon={<Building2 className="h-4 w-4" />} />
+          </div>
+        </Card>
       </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_1fr]">
+        <div className="grid gap-5 md:grid-cols-3">
+          <EstadoDocumentalCard
+            title="Estado documental empresa"
+            icon={<Building2 className="h-4 w-4" />}
+            resumen={resumen.documentos.empresa}
+            tone="blue"
+          />
+          <EstadoDocumentalCard
+            title="Estado documental trabajadores"
+            icon={<Users className="h-4 w-4" />}
+            resumen={resumen.documentos.trabajadores}
+            tone="violet"
+          />
+          <EstadoDocumentalCard
+            title="Estado documental vehículos"
+            icon={<Car className="h-4 w-4" />}
+            resumen={resumen.documentos.vehiculos}
+            tone="orange"
+          />
+        </div>
+
+        <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Acreditaciones</p>
+          <h2 className="mt-2 text-xl font-semibold text-slate-900">Estado operativo</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 xl:grid-cols-1">
+            <MiniStat label="Activas" value={resumen.acreditaciones.activas} detail="En curso o listas para gestionar" />
+            <MiniStat label="En preparación" value={resumen.acreditaciones.enPreparacion} detail="Expedientes en armado" />
+            <MiniStat label="Con faltantes" value={resumen.acreditaciones.conFaltantes} detail="Documentación pendiente" />
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.2fr_1fr]">
+        <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Acreditaciones recientes</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-900">Últimos expedientes</h2>
+            </div>
+            <Link href="/dicaprev/acreditaciones" className="text-sm font-medium text-slate-500 hover:text-slate-900">
+              Ver módulo
+            </Link>
+          </div>
+          <div className="mt-4 space-y-3">
+            {resumen.acreditaciones.recientes.map((item) => (
+              <Link
+                key={item.id}
+                href={`/dicaprev/acreditaciones/${item.id}`}
+                className="block rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 transition-colors hover:border-slate-300 hover:bg-white"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{item.mandante}</p>
+                    <p className="truncate text-xs text-slate-500">{item.proyecto}</p>
+                  </div>
+                  <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[11px] font-medium text-white">
+                    {item.estado}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>Avance</span>
+                    <span>{item.progreso}%</span>
+                  </div>
+                  <Progress value={item.progreso} className="h-2" />
+                </div>
+                <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                  <span>{item.faltantes} faltante{item.faltantes !== 1 ? "s" : ""}</span>
+                  <span>{new Date(item.updatedAt).toLocaleDateString("es-CL")}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Riesgos y hallazgos</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-900">Seguimiento abierto</h2>
+            </div>
+            <Link href="/dicaprev/cumplimiento/hallazgos" className="text-sm font-medium text-slate-500 hover:text-slate-900">
+              Ver hallazgos
+            </Link>
+          </div>
+
+          {resumen.hallazgos ? (
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                <MiniStat label="Abiertos" value={resumen.hallazgos.abiertos} detail="Pendientes de cierre" />
+                <MiniStat label="Críticos" value={resumen.hallazgos.criticos} detail="Priorización inmediata" />
+              </div>
+              <div className="mt-4 space-y-3">
+                {resumen.hallazgos.recientes.length > 0 ? (
+                  resumen.hallazgos.recientes.map((item) => (
+                    <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="line-clamp-2 text-sm font-semibold text-slate-900">{item.descripcion}</p>
+                          <p className="mt-1 text-xs text-slate-500">{item.centroNombre}</p>
+                        </div>
+                        <span className={cn(
+                          "rounded-full px-2.5 py-1 text-[11px] font-medium",
+                          item.prioridad === "Crítica" ? "bg-rose-100 text-rose-700" : item.prioridad === "Alta" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"
+                        )}>
+                          {item.prioridad}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                        <span>{item.estado}</span>
+                        <span>Compromiso {new Date(item.fechaCompromiso).toLocaleDateString("es-CL")}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    Sin hallazgos abiertos registrados.
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+              Sin integración de hallazgos disponible.
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, detail }: { label: string; value: string | number; detail: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-900">{value}</p>
+      <p className="mt-1 text-xs text-slate-500">{detail}</p>
     </div>
   );
 }
@@ -146,15 +319,76 @@ function QuickAccessCard({
   title: string;
   description: string;
   href: string;
-  icon: string;
+  icon: React.ReactNode;
 }) {
   return (
-    <a href={href}>
-      <Card className="border border-slate-200 bg-white p-4 hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-colors shadow-sm">
-        <div className="text-2xl mb-2">{icon}</div>
-        <h3 className="font-semibold text-slate-900 text-sm">{title}</h3>
-        <p className="text-xs text-slate-600">{description}</p>
+    <Link href={href}>
+      <Card className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+            {icon}
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
+            <p className="mt-0.5 text-xs text-slate-500">{description}</p>
+          </div>
+        </div>
       </Card>
-    </a>
+    </Link>
+  );
+}
+
+function EstadoDocumentalCard({
+  title,
+  icon,
+  resumen,
+  tone,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  resumen: DashboardEjecutivoResponse["documentos"]["empresa"];
+  tone: "blue" | "violet" | "orange";
+}) {
+  const toneMap = {
+    blue: "bg-blue-50 text-blue-700 border-blue-200",
+    violet: "bg-violet-50 text-violet-700 border-violet-200",
+    orange: "bg-orange-50 text-orange-700 border-orange-200",
+  } as const;
+
+  return (
+    <Card className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl border", toneMap[tone])}>
+          {icon}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-slate-900">{title}</p>
+          <p className="text-xs text-slate-500">{resumen.total} documentos evaluados</p>
+        </div>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <div className="flex items-center justify-between text-xs text-slate-500">
+          <span>Cobertura</span>
+          <span>{resumen.porcentaje}%</span>
+        </div>
+        <Progress value={resumen.porcentaje} className="h-2" />
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-xl bg-emerald-50 px-3 py-2">
+          <p className="text-lg font-semibold text-emerald-700">{resumen.completos}</p>
+          <p className="text-[11px] text-emerald-600">Completos</p>
+        </div>
+        <div className="rounded-xl bg-amber-50 px-3 py-2">
+          <p className="text-lg font-semibold text-amber-700">{resumen.pendientes}</p>
+          <p className="text-[11px] text-amber-600">Pendientes</p>
+        </div>
+        <div className="rounded-xl bg-rose-50 px-3 py-2">
+          <p className="text-lg font-semibold text-rose-700">{resumen.vencidos}</p>
+          <p className="text-[11px] text-rose-600">Vencidos</p>
+        </div>
+      </div>
+    </Card>
   );
 }

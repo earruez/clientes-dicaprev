@@ -1,7 +1,7 @@
 import React, { Suspense } from "react";
 import { Card } from "@/components/ui/card";
 import DashboardClient from "./_client";
-import { getResumenEmpresa } from "@/actions/empresa/resumen";
+import { getDashboardEjecutivo } from "./actions";
 
 export const metadata = {
   title: "Dashboard - DICAPREV",
@@ -21,8 +21,7 @@ function DashboardLoading() {
 }
 
 export default async function DashboardPage() {
-  // Server-side fetching of initial resume
-  const resumen = await getResumenEmpresa();
+  const resumen = await getDashboardEjecutivo();
 
   return (
     <Suspense fallback={<DashboardLoading />}>
