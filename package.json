@@ -14,6 +14,8 @@
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "prisma:seed": "node prisma/seed.mjs",
+    "prisma:seed:reglas-trabajador": "node prisma/seed-reglas-documentales-trabajador.mjs",
+    "documentos:reconciliar-trabajador": "node prisma/reconciliar-documentos-trabajador.mjs",
     "seed:catalogos": "node prisma/seed-catalogos-documentales.mjs",
     "seed:acreditaciones": "node prisma/seed-acreditaciones.mjs"
   },

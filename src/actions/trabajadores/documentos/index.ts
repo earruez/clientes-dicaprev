@@ -116,6 +116,9 @@ export type EvaluacionReglasTrabajadorResult = {
   reglasAplicables: number;
   pendientesGenerados: number;
   documentosGeneradosIds: string[];
+  fuenteReglas?: "bd" | "fallback";
+  reglasDesdeBD?: number;
+  reglasDesdeFallback?: number;
 };
 
 export type EvaluacionReglasEmpresaResult = {
@@ -146,6 +149,9 @@ export type EvaluacionDocumentosPorEventoResult = {
   trabajadoresEvaluados: number;
   documentosTrabajadorGenerados: number;
   documentosEmpresaGenerados: number;
+  fuenteReglasTrabajador?: "bd" | "fallback";
+  reglasTrabajadorDesdeBD?: number;
+  reglasTrabajadorDesdeFallback?: number;
 };
 
 type ContextoGeneracionCampoIA = {
@@ -897,6 +903,21 @@ type EmpresaEvaluable = {
   cantidadTrabajadores: number;
 };
 
+type ReglaTrabajadorResolvida = {
+  codigo: string;
+  nombre: string;
+  requiereVencimiento: boolean;
+  estadoInicial: string;
+};
+
+type ReglasTrabajadorContexto = {
+  fuente: "bd" | "fallback";
+  reglasEvaluadas: number;
+  reglasDesdeBD: number;
+  reglasDesdeFallback: number;
+  reglasAplicables: ReglaTrabajadorResolvida[];
+};
+
 const DEBUG_REGLAS_DOCUMENTALES =
   process.env.NODE_ENV !== "production" && process.env.DEBUG_REGLAS_DOCUMENTALES === "1";
 
@@ -973,10 +994,96 @@ function filtrarReglasAplicables(
   });
 }
 
+function matchesTipoContrato(regla: string | null, trabajador: string | null): boolean {
+  if (!regla) return true;
+  if (!trabajador) return false;
+  return normalizeDocName(regla) === normalizeDocName(trabajador);
+}
+
+async function resolverReglasDocumentalesTrabajador(
+  empresa: EmpresaEvaluable,
+  trabajador: TrabajadorEvaluable,
+): Promise<ReglasTrabajadorContexto> {
+  const reglasBD = await prisma.reglaDocumentoTrabajador.findMany({
+    where: {
+      empresaId: empresa.id,
+      activo: true,
+      tipoDocumento: { activo: true },
+    },
+    include: {
+      tipoDocumento: {
+        select: {
+          codigo: true,
+          nombre: true,
+          requiereVencimiento: true,
+        },
+      },
+    },
+    orderBy: [{ obligatorio: "desc" }, { createdAt: "asc" }],
+  });
+
+  if (reglasBD.length > 0) {
+    const aplicables = reglasBD.filter((regla) => {
+      if (regla.cargoId && regla.cargoId !== trabajador.cargoId) return false;
+      if (regla.areaId && regla.areaId !== trabajador.areaId) return false;
+      if (regla.centroTrabajoId && regla.centroTrabajoId !== trabajador.centroTrabajoId) return false;
+      if (!matchesTipoContrato(regla.tipoContrato, trabajador.tipoContrato)) return false;
+      return true;
+    });
+
+    const dedup = new Map<string, ReglaTrabajadorResolvida>();
+    for (const regla of aplicables) {
+      const key = normalizeDocName(regla.tipoDocumento.codigo);
+      if (dedup.has(key)) continue;
+      dedup.set(key, {
+        codigo: regla.tipoDocumento.codigo,
+        nombre: regla.tipoDocumento.nombre,
+        requiereVencimiento: regla.tipoDocumento.requiereVencimiento,
+        estadoInicial: regla.obligatorio ? "pendiente" : "no_aplica",
+      });
+    }
+
+    return {
+      fuente: "bd",
+      reglasEvaluadas: reglasBD.length,
+      reglasDesdeBD: reglasBD.length,
+      reglasDesdeFallback: 0,
+      reglasAplicables: Array.from(dedup.values()),
+    };
+  }
+
+  // Fallback temporal de compatibilidad para empresas aun no sembradas en BD.
+  const fallbackAplicables = filtrarReglasAplicables(empresa, trabajador)
+    .filter((regla) => normalizeDocName(regla.entidadAplicable) === "trabajador")
+    .map((regla) => ({
+      codigo: regla.codigo,
+      nombre: regla.nombre,
+      requiereVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
+      estadoInicial: mapEstadoInicialDocumentoTrabajador(regla.workflow.estadoInicialSugerido),
+    }));
+
+  const dedupFallback = new Map<string, ReglaTrabajadorResolvida>();
+  for (const regla of fallbackAplicables) {
+    const key = normalizeDocName(regla.codigo);
+    if (dedupFallback.has(key)) continue;
+    dedupFallback.set(key, regla);
+  }
+
+  return {
+    fuente: "fallback",
+    reglasEvaluadas: REGLAS_DOCUMENTALES.filter(
+      (regla) => normalizeDocName(regla.entidadAplicable) === "trabajador",
+    ).length,
+    reglasDesdeBD: 0,
+    reglasDesdeFallback: dedupFallback.size,
+    reglasAplicables: Array.from(dedupFallback.values()),
+  };
+}
+
 async function evaluarReglasDocumentalesTrabajadorInternal(
   context: { empresaId: string; usuarioId: string; email: string },
   trabajador: TrabajadorEvaluable,
-  reglas: ReglaDocumentalNextPrev[],
+  reglasContexto: ReglasTrabajadorContexto,
 ): Promise<EvaluacionReglasTrabajadorResult> {
   const existentes = await prisma.trabajadorDocumento.findMany({
     where: { empresaId: context.empresaId, trabajadorId: trabajador.id, esVigente: true },
@@ -989,11 +1096,9 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
     existentesKeys.add(doc.nombre.toLowerCase());
   });
 
-  const reglasAplicables = reglas.filter((regla) => normalizeDocName(regla.entidadAplicable) === "trabajador");
+  const tiposPendientes = new Map<string, ReglaTrabajadorResolvida>();
 
-  const tiposPendientes = new Map<string, ReglaDocumentalNextPrev>();
-
-  for (const regla of reglasAplicables) {
+  for (const regla of reglasContexto.reglasAplicables) {
     const codigoKey = regla.codigo.toLowerCase();
     const nombreKey = regla.nombre.toLowerCase();
     if (existentesKeys.has(codigoKey) || existentesKeys.has(nombreKey)) continue;
@@ -1013,12 +1118,12 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
             nombre: regla.nombre,
             tipo: regla.codigo,
             categoria: "trabajador",
-            estado: mapEstadoInicialDocumentoTrabajador(regla.workflow.estadoInicialSugerido),
+            estado: regla.estadoInicial,
             version: "1.0",
             esVigente: true,
             versionNumero: 1,
             origen: "sistema",
-            tieneVencimiento: Boolean(regla.workflow.frecuenciaVigencia),
+            tieneVencimiento: regla.requiereVencimiento,
             observaciones: "Generado automáticamente por regla documental.",
             subidoPorId: context.usuarioId,
             creadoPorEmail: context.email,
@@ -1049,10 +1154,13 @@ async function evaluarReglasDocumentalesTrabajadorInternal(
 
   return {
     trabajadorId: trabajador.id,
-    reglasEvaluadas: REGLAS_DOCUMENTALES.length,
-    reglasAplicables: reglasAplicables.length,
+    reglasEvaluadas: reglasContexto.reglasEvaluadas,
+    reglasAplicables: reglasContexto.reglasAplicables.length,
     pendientesGenerados: documentosGeneradosIds.length,
     documentosGeneradosIds,
+    fuenteReglas: reglasContexto.fuente,
+    reglasDesdeBD: reglasContexto.reglasDesdeBD,
+    reglasDesdeFallback: reglasContexto.reglasDesdeFallback,
   };
 }
 
@@ -1251,10 +1359,13 @@ export async function evaluarDocumentosPendientesPorEvento(
 
     if (!trabajador) return result;
 
-    const reglasAplicables = filtrarReglasAplicables(empresa, trabajador);
-    const evalResult = await evaluarReglasDocumentalesTrabajadorInternal(runtimeContext, trabajador, reglasAplicables);
+    const reglasContexto = await resolverReglasDocumentalesTrabajador(empresa, trabajador);
+    const evalResult = await evaluarReglasDocumentalesTrabajadorInternal(runtimeContext, trabajador, reglasContexto);
     result.trabajadoresEvaluados = 1;
     result.documentosTrabajadorGenerados = evalResult.pendientesGenerados;
+    result.fuenteReglasTrabajador = evalResult.fuenteReglas;
+    result.reglasTrabajadorDesdeBD = evalResult.reglasDesdeBD;
+    result.reglasTrabajadorDesdeFallback = evalResult.reglasDesdeFallback;
     return result;
   }
 
@@ -1277,9 +1388,12 @@ export async function evaluarDocumentosPendientesPorEvento(
   });
 
   for (const trabajador of trabajadores) {
-    const reglasAplicables = filtrarReglasAplicables(empresa, trabajador);
-    const evalResult = await evaluarReglasDocumentalesTrabajadorInternal(runtimeContext, trabajador, reglasAplicables);
+    const reglasContexto = await resolverReglasDocumentalesTrabajador(empresa, trabajador);
+    const evalResult = await evaluarReglasDocumentalesTrabajadorInternal(runtimeContext, trabajador, reglasContexto);
     result.documentosTrabajadorGenerados += evalResult.pendientesGenerados;
+    result.fuenteReglasTrabajador = evalResult.fuenteReglas;
+    result.reglasTrabajadorDesdeBD = (result.reglasTrabajadorDesdeBD ?? 0) + (evalResult.reglasDesdeBD ?? 0);
+    result.reglasTrabajadorDesdeFallback = (result.reglasTrabajadorDesdeFallback ?? 0) + (evalResult.reglasDesdeFallback ?? 0);
   }
   result.trabajadoresEvaluados = trabajadores.length;
 
@@ -2553,12 +2667,12 @@ export async function evaluarReglasDocumentalesTrabajador(
     };
   }
 
-  const reglasAplicables = filtrarReglasAplicables(empresa, trabajador);
+  const reglasContexto = await resolverReglasDocumentalesTrabajador(empresa, trabajador);
 
   return evaluarReglasDocumentalesTrabajadorInternal(
     { empresaId, usuarioId, email },
     trabajador,
-    reglasAplicables,
+    reglasContexto,
   );
 }
 
@@ -2602,11 +2716,11 @@ export async function evaluarReglasDocumentalesEmpresa(): Promise<EvaluacionRegl
   const detalles: EvaluacionReglasTrabajadorResult[] = [];
 
   for (const trabajador of trabajadores) {
-    const reglasAplicables = filtrarReglasAplicables(empresa, trabajador);
+    const reglasContexto = await resolverReglasDocumentalesTrabajador(empresa, trabajador);
     const result = await evaluarReglasDocumentalesTrabajadorInternal(
       { empresaId, usuarioId, email },
       trabajador,
-      reglasAplicables,
+      reglasContexto,
     );
     detalles.push(result);
   }

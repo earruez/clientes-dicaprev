@@ -191,6 +191,15 @@ const workerDocumentTypesBase = [
     activo: true,
   },
   {
+    codigo: "ODI_OBLIGACION_INFORMAR",
+    nombre: "ODI / obligacion de informar",
+    descripcion: "Constancia de obligacion de informar riesgos laborales y medidas preventivas.",
+    requiereArchivo: true,
+    requiereVencimiento: false,
+    vigenciaDias: null,
+    activo: true,
+  },
+  {
     codigo: "ENTREGA_EPP",
     nombre: "Entrega de EPP",
     descripcion: "Registro de entrega de elementos de proteccion personal.",
@@ -589,7 +598,7 @@ async function seedWorkerDocumentControlBase() {
     const [cargos, areas, centros] = await Promise.all([
       prisma.cargo.findMany({
         where: { empresaId: empresa.id, estado: "activo" },
-        select: { id: true, nombre: true },
+        select: { id: true, nombre: true, esCritico: true, perfilSST: true, descripcion: true },
       }),
       prisma.area.findMany({
         where: { empresaId: empresa.id, estado: "activa" },
@@ -606,9 +615,10 @@ async function seedWorkerDocumentControlBase() {
       "CEDULA_IDENTIDAD",
       "REGLAMENTO_INTERNO_RECIBIDO",
       "IRL_RIESGOS",
+      "ODI_OBLIGACION_INFORMAR",
       "ENTREGA_EPP",
       "CAPACITACION_INICIAL",
-      "EXAMEN_OCUPACIONAL",
+      "EXAMEN_OCUPACIONAL"
     ];
 
     for (const code of generalCodes) {
@@ -688,6 +698,34 @@ async function seedWorkerDocumentControlBase() {
 
       if (res === "created") counters.reglasCreadas += 1;
       else counters.reglasActualizadas += 1;
+    }
+
+    const cargoCriticoDocs = ["ENTREGA_EPP", "CAPACITACION_INICIAL", "EXAMEN_OCUPACIONAL"];
+    const cargosCriticos = cargos.filter((cargo) => {
+      if (cargo.esCritico) return true;
+      const source = `${cargo.nombre ?? ""} ${cargo.perfilSST ?? ""} ${cargo.descripcion ?? ""}`.toLowerCase();
+      return /(ds44|riesgo|critico|altura|electr|maquinaria|conductor|operador|soldad|faena|obra)/i.test(source);
+    });
+
+    for (const cargo of cargosCriticos) {
+      for (const code of cargoCriticoDocs) {
+        const tipoDocumentoId = tipoIdsByCode.get(code);
+        if (!tipoDocumentoId) continue;
+
+        const res = await upsertWorkerDocumentRule({
+          empresaId: empresa.id,
+          tipoDocumentoId,
+          cargoId: cargo.id,
+          areaId: null,
+          centroTrabajoId: null,
+          tipoContrato: null,
+          obligatorio: true,
+          activo: true,
+        });
+
+        if (res === "created") counters.reglasCreadas += 1;
+        else counters.reglasActualizadas += 1;
+      }
     }
   }
 
