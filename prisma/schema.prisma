@@ -68,6 +68,7 @@ enum Rol {
   SUPERVISOR
   TRABAJADOR
   AUDITOR
+  LECTURA
 }
 
 // ─────────────────────────────────────────────
@@ -77,6 +78,7 @@ enum Rol {
 model Empresa {
   id                    String   @id @default(cuid())
   nombre                String
+  activa                Boolean  @default(true)
   rut                   String?
   razonSocial           String?
   giro                  String?
@@ -103,6 +105,8 @@ model Empresa {
   updatedAt             DateTime @updatedAt
 
   usuarios                  Usuario[]
+  usuariosEmpresa           UsuarioEmpresa[]
+  modulos                   EmpresaModulo[]
   documentosEmpresa         DocumentoEmpresa[]
   trabajadorDocumentos      TrabajadorDocumento[]      @relation("TrabajadorDocumentosEmpresa")
   centrosTrabajo            CentroTrabajo[]
@@ -140,11 +144,14 @@ model Usuario {
   nombre    String
   email     String   @unique
   rol       Rol
+  activo    Boolean  @default(true)
+  passwordHash String?
   empresaId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   empresa                        Empresa?                       @relation(fields: [empresaId], references: [id])
+  empresas                       UsuarioEmpresa[]
   documentosSubidos              DocumentoEmpresa[]             @relation("UsuarioDocumentosSubidos")
   documentosHistorial            DocumentoEmpresaHistorial[]    @relation("UsuarioDocumentoHistorial")
   trabajadorDocumentosSubidos    TrabajadorDocumento[]          @relation("UsuarioTrabajadorDocumentosSubidos")
@@ -161,6 +168,40 @@ model Usuario {
   // Acreditaciones
   acreditacionesResponsable      Acreditacion[]
   acreditacionesHistorial        HistorialAcreditacion[]
+}
+
+model UsuarioEmpresa {
+  id        String   @id @default(cuid())
+  usuarioId String
+  empresaId String
+  rol       Rol
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([usuarioId, empresaId])
+  @@index([empresaId])
+  @@index([usuarioId])
+  @@index([activo])
+}
+
+model EmpresaModulo {
+  id        String   @id @default(cuid())
+  empresaId String
+  modulo    String
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+
+  @@unique([empresaId, modulo])
+  @@index([empresaId])
+  @@index([modulo])
+  @@index([activo])
 }
 
 model ActivacionEvento {

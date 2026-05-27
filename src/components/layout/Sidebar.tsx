@@ -16,16 +16,18 @@ import {
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/lib/permissions";
 import type { PermissionKey } from "@/lib/permissions-matrix";
+import type { CompanyModuleKey } from "@/lib/company-modules";
 import SidebarModuleLabel from "@/components/layout/SidebarModuleLabel";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-type NavItem = { href: string; label: string; description?: string; permission?: PermissionKey };
+type NavItem = { href: string; label: string; description?: string; permission?: PermissionKey; moduleKey?: CompanyModuleKey };
 type ModuleItem = {
   id: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   defaultHref: string;
   permission?: PermissionKey;
+  moduleKey?: CompanyModuleKey;
   items: NavItem[];
 };
 
@@ -35,6 +37,7 @@ const MODULES: ModuleItem[] = [
     label: "Inicio",
     icon: Home,
     defaultHref: "/dicaprev/dashboard",
+    moduleKey: "dashboard",
     items: [{ href: "/dicaprev/dashboard", label: "Dashboard" }],
   },
   {
@@ -43,6 +46,7 @@ const MODULES: ModuleItem[] = [
     icon: Building2,
     defaultHref: "/dicaprev/empresa",
     permission: "canReadEmpresa",
+    moduleKey: "empresa",
     items: [
       { href: "/dicaprev/empresa", label: "Resumen", permission: "canReadCumplimiento" },
       { href: "/dicaprev/empresa/informacion-general", label: "Información general" },
@@ -51,8 +55,8 @@ const MODULES: ModuleItem[] = [
       { href: "/dicaprev/empresa/cargos", label: "Cargos" },
       { href: "/dicaprev/empresa/indicadores-sst", label: "Indicadores SST" },
       { href: "/dicaprev/empresa/vehiculos", label: "Vehículos y equipos" },
-      { href: "/dicaprev/documentacion", label: "Documentación empresa", description: "Documentos legales y corporativos propios de la empresa.", permission: "canReadDocumentacion" },
-      { href: "/dicaprev/biblioteca", label: "Biblioteca documental", description: "Plantillas, formatos y documentos base reutilizables." },
+      { href: "/dicaprev/documentacion", label: "Documentación empresa", description: "Documentos legales y corporativos propios de la empresa.", permission: "canReadDocumentacion", moduleKey: "documentacion" },
+      { href: "/dicaprev/biblioteca", label: "Biblioteca documental", description: "Plantillas, formatos y documentos base reutilizables.", moduleKey: "biblioteca_capacitaciones" },
     ],
   },
   {
@@ -61,6 +65,7 @@ const MODULES: ModuleItem[] = [
     icon: Users,
     defaultHref: "/dicaprev/trabajadores",
     permission: "canReadTrabajadores",
+    moduleKey: "trabajadores",
     items: [
       { href: "/dicaprev/trabajadores", label: "Listado" },
       { href: "/dicaprev/trabajadores/control-documental", label: "Control documental" },
@@ -73,6 +78,7 @@ const MODULES: ModuleItem[] = [
     icon: ShieldCheck,
     defaultHref: "/dicaprev/cumplimiento",
     permission: "canReadCumplimiento",
+    moduleKey: "cumplimiento",
     items: [
       { href: "/dicaprev/cumplimiento", label: "Resumen" },
       { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
@@ -86,6 +92,7 @@ const MODULES: ModuleItem[] = [
     label: "Acreditación",
     icon: FileCheck2,
     defaultHref: "/dicaprev/acreditaciones",
+    moduleKey: "acreditaciones",
     items: [
       { href: "/dicaprev/acreditaciones", label: "Resumen" },
       { href: "/dicaprev/acreditaciones/solicitudes", label: "Solicitudes" },
@@ -98,6 +105,7 @@ const MODULES: ModuleItem[] = [
     label: "Plan",
     icon: CalendarRange,
     defaultHref: "/dicaprev/plandetrabajo",
+    moduleKey: "plan_trabajo",
     items: [
       { href: "/dicaprev/plandetrabajo/resumen", label: "Resumen" },
       { href: "/dicaprev/plandetrabajo/matriz-anual", label: "Matriz anual" },
@@ -136,6 +144,7 @@ const MODULES: ModuleItem[] = [
     icon: Bell,
     defaultHref: "/dicaprev/alertas",
     permission: "canReadAlertas",
+    moduleKey: "notificaciones",
     items: [{ href: "/dicaprev/alertas", label: "Centro de alertas" }],
   },
 ];
@@ -147,15 +156,33 @@ function isItemActive(pathname: string, href: string) {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { hasPermission } = usePermissions();
+  const { hasPermission, hasModule, role } = usePermissions();
 
   const visibleModules = MODULES
     .filter((module) => (module.permission ? hasPermission(module.permission) : true))
+    .filter((module) => (module.moduleKey ? hasModule(module.moduleKey) : true))
     .map((module) => ({
       ...module,
-      items: module.items.filter((item) => (item.permission ? hasPermission(item.permission) : true)),
+      items: module.items.filter((item) => {
+        const canByPermission = item.permission ? hasPermission(item.permission) : true;
+        const canByModule = item.moduleKey ? hasModule(item.moduleKey) : true;
+        return canByPermission && canByModule;
+      }),
     }))
     .filter((module) => module.items.length > 0);
+
+  if (role === "SUPERADMIN") {
+    const exists = visibleModules.some((module) => module.id === "superadmin");
+    if (!exists) {
+      visibleModules.push({
+        id: "superadmin",
+        label: "Admin",
+        icon: ShieldCheck,
+        defaultHref: "/dicaprev/superadmin",
+        items: [{ href: "/dicaprev/superadmin", label: "Panel superadmin" }],
+      });
+    }
+  }
 
   const activeModule =
     visibleModules.find((module) => module.items.some((item) => isItemActive(pathname, item.href))) ??

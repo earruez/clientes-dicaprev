@@ -59,11 +59,36 @@ async function resolveEmpresaActivaId(input: {
     return primeraEmpresa.id;
   }
 
-  if (input.empresaId) {
-    return input.empresaId;
+  const asignaciones = await prisma.usuarioEmpresa.findMany({
+    where: {
+      usuarioId: input.usuarioId,
+      activo: true,
+      empresa: { activa: true },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { empresaId: true },
+  });
+
+  if (cookieEmpresaId) {
+    const found = asignaciones.find((row) => row.empresaId === cookieEmpresaId);
+    if (found) {
+      return found.empresaId;
+    }
   }
 
-  const empresas = await prisma.empresa.findMany({
+  if (input.empresaId) {
+    const found = asignaciones.find((row) => row.empresaId === input.empresaId);
+    if (found) {
+      return found.empresaId;
+    }
+  }
+
+  if (asignaciones.length > 0) {
+    return asignaciones[0].empresaId;
+  }
+
+  const empresasActivas = await prisma.empresa.findMany({
+    where: { activa: true },
     orderBy: { createdAt: "asc" },
     select: { id: true },
     take: 2,
@@ -71,13 +96,29 @@ async function resolveEmpresaActivaId(input: {
 
   const allowSingleEmpresaFallback = process.env.NODE_ENV !== "production";
 
-  if (allowSingleEmpresaFallback && empresas.length === 1) {
+  if (allowSingleEmpresaFallback && empresasActivas.length === 1) {
     await prisma.usuario.update({
       where: { id: input.usuarioId },
-      data: { empresaId: empresas[0].id },
+      data: { empresaId: empresasActivas[0].id },
     });
 
-    return empresas[0].id;
+    await prisma.usuarioEmpresa.upsert({
+      where: {
+        usuarioId_empresaId: {
+          usuarioId: input.usuarioId,
+          empresaId: empresasActivas[0].id,
+        },
+      },
+      update: { activo: true },
+      create: {
+        usuarioId: input.usuarioId,
+        empresaId: empresasActivas[0].id,
+        rol: input.rol,
+        activo: true,
+      },
+    });
+
+    return empresasActivas[0].id;
   }
 
   throw new Error("El usuario autenticado no tiene empresa asignada");
@@ -97,6 +138,7 @@ export async function getCurrentAppContext(): Promise<AppContext> {
       id: true,
       email: true,
       rol: true,
+      activo: true,
       empresaId: true,
     },
   });
@@ -105,16 +147,35 @@ export async function getCurrentAppContext(): Promise<AppContext> {
     throw new Error("El usuario autenticado no existe en NextPrev");
   }
 
+  if (!usuario.activo) {
+    throw new Error("El usuario autenticado esta inactivo");
+  }
+
   const empresaId = await resolveEmpresaActivaId({
     usuarioId: usuario.id,
     rol: usuario.rol,
     empresaId: usuario.empresaId,
   });
 
+  let rol = usuario.rol;
+  if (usuario.rol !== "SUPERADMIN") {
+    const asignacion = await prisma.usuarioEmpresa.findFirst({
+      where: {
+        usuarioId: usuario.id,
+        empresaId,
+        activo: true,
+      },
+      select: { rol: true },
+    });
+    if (asignacion) {
+      rol = asignacion.rol;
+    }
+  }
+
   return {
     empresaId,
     usuarioId: usuario.id,
-    rol: usuario.rol,
+    rol,
     email: usuario.email,
   };
 }

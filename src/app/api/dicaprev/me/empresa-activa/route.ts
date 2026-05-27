@@ -16,17 +16,32 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "empresaId es requerido" }, { status: 400 });
     }
 
-    if (context.rol !== "SUPERADMIN" && context.empresaId !== empresaId) {
-      return NextResponse.json({ error: "No autorizado para seleccionar esta empresa" }, { status: 403 });
+    if (context.rol !== "SUPERADMIN") {
+      const asignacion = await prisma.usuarioEmpresa.findFirst({
+        where: {
+          usuarioId: context.usuarioId,
+          empresaId,
+          activo: true,
+        },
+        select: { id: true },
+      });
+
+      if (!asignacion) {
+        return NextResponse.json({ error: "No autorizado para seleccionar esta empresa" }, { status: 403 });
+      }
     }
 
     const empresa = await prisma.empresa.findUnique({
       where: { id: empresaId },
-      select: { id: true, nombre: true },
+      select: { id: true, nombre: true, activa: true },
     });
 
     if (!empresa) {
       return NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 });
+    }
+
+    if (!empresa.activa) {
+      return NextResponse.json({ error: "Empresa inactiva" }, { status: 400 });
     }
 
     const response = NextResponse.json({ ok: true, empresaId: empresa.id, nombre: empresa.nombre });
