@@ -69,6 +69,53 @@ export type ResumenEmpresaResponse = {
   };
 };
 
+export type EstadoActivacionPaso = "completo" | "pendiente" | "recomendado";
+
+export type ActivacionPasoEmpresa = {
+  id:
+    | "empresa"
+    | "centros"
+    | "estructura"
+    | "trabajadores"
+    | "vehiculos"
+    | "documentos_empresa"
+    | "reglas_documentales"
+    | "plan_trabajo"
+    | "acreditaciones";
+  titulo: string;
+  descripcion: string;
+  estado: EstadoActivacionPaso;
+  resumen: string;
+  accionLabel: string;
+  href: string;
+  esOpcional?: boolean;
+};
+
+export type EstadoActivacionEmpresaResponse = {
+  porcentajeActivacion: number;
+  pasosCompletados: ActivacionPasoEmpresa[];
+  pasosPendientes: ActivacionPasoEmpresa[];
+  siguienteAccionRecomendada: ActivacionPasoEmpresa | null;
+  pasos: ActivacionPasoEmpresa[];
+};
+
+function trimOrEmpty(value?: string | null) {
+  return value?.trim() ?? "";
+}
+
+function porcentajeActivacionDesdePasos(pasos: ActivacionPasoEmpresa[]) {
+  const ponderables = pasos.filter((paso) => !paso.esOpcional);
+  if (ponderables.length === 0) return 0;
+
+  const puntaje = ponderables.reduce((acc, paso) => {
+    if (paso.estado === "completo") return acc + 1;
+    if (paso.estado === "recomendado") return acc + 0.5;
+    return acc;
+  }, 0);
+
+  return Math.round((puntaje / ponderables.length) * 100);
+}
+
 export async function getResumenEmpresa(): Promise<ResumenEmpresaResponse> {
   const { empresaId } = await requirePermission("canReadCumplimiento");
 
@@ -229,6 +276,244 @@ export async function getResumenEmpresa(): Promise<ResumenEmpresaResponse> {
       totalFaltantes: cumplimiento.totalFaltantes,
       totalIncompletos: cumplimiento.totalIncompletos,
     },
+  };
+}
+
+export async function getEstadoActivacionEmpresa(): Promise<EstadoActivacionEmpresaResponse> {
+  const { empresaId } = await requirePermission("canReadCumplimiento");
+
+  const [
+    empresa,
+    totalCentros,
+    totalAreas,
+    totalCargos,
+    totalTrabajadores,
+    totalVehiculos,
+    requeridosEmpresa,
+    documentosEmpresa,
+    totalTiposTrabajador,
+    totalReglasTrabajador,
+    totalTiposVehiculo,
+    totalAcreditaciones,
+  ] = await Promise.all([
+    prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: {
+        nombre: true,
+        rut: true,
+        razonSocial: true,
+        giro: true,
+        direccion: true,
+        region: true,
+        correo: true,
+        telefono: true,
+      },
+    }),
+    prisma.centroTrabajo.count({ where: { empresaId } }),
+    prisma.area.count({ where: { empresaId } }),
+    prisma.cargo.count({ where: { empresaId } }),
+    prisma.trabajador.count({ where: { empresaId } }),
+    prisma.vehiculo.count({ where: { empresaId } }),
+    prisma.documentoRequeridoEmpresa.findMany({
+      where: { activo: true },
+      select: { id: true },
+      orderBy: { orden: "asc" },
+    }),
+    prisma.documentoEmpresa.findMany({
+      where: { empresaId },
+      select: {
+        documentoRequeridoId: true,
+        archivoNombre: true,
+        archivoUrl: true,
+        fechaVencimiento: true,
+        updatedAt: true,
+      },
+      orderBy: [{ updatedAt: "desc" }],
+    }),
+    prisma.documentoTipoTrabajador.count({ where: { empresaId, activo: true } }),
+    prisma.reglaDocumentoTrabajador.count({ where: { empresaId, activo: true } }),
+    prisma.documentoTipoVehiculo.count({ where: { empresaId, activo: true } }),
+    prisma.acreditacion.count({ where: { empresaId } }),
+  ]);
+
+  if (!empresa) {
+    throw new Error("No existe empresa configurada para activacion");
+  }
+
+  const camposBasicos = [
+    trimOrEmpty(empresa.nombre),
+    trimOrEmpty(empresa.rut),
+    trimOrEmpty(empresa.razonSocial),
+    trimOrEmpty(empresa.giro),
+    trimOrEmpty(empresa.direccion),
+    trimOrEmpty(empresa.region),
+    trimOrEmpty(empresa.correo),
+    trimOrEmpty(empresa.telefono),
+  ];
+  const camposBasicosCompletos = camposBasicos.filter(Boolean).length;
+
+  const latestByRequerido = new Map<string, (typeof documentosEmpresa)[number]>();
+  for (const doc of documentosEmpresa) {
+    if (!doc.documentoRequeridoId) continue;
+    if (!latestByRequerido.has(doc.documentoRequeridoId)) {
+      latestByRequerido.set(doc.documentoRequeridoId, doc);
+    }
+  }
+
+  let documentosCompletos = 0;
+  let documentosPendientes = 0;
+  let documentosVencidos = 0;
+
+  for (const requerido of requeridosEmpresa) {
+    const doc = latestByRequerido.get(requerido.id);
+    const hasFile = Boolean(doc && (doc.archivoNombre || doc.archivoUrl));
+
+    if (!doc || !hasFile) {
+      documentosPendientes += 1;
+      continue;
+    }
+
+    const estado = getEstadoDocumento(doc.fechaVencimiento);
+    if (estado === "vigente" || estado === "por-vencer") {
+      documentosCompletos += 1;
+      continue;
+    }
+
+    documentosVencidos += 1;
+  }
+
+  const totalTiposReglasActivas = totalTiposTrabajador + totalTiposVehiculo + totalReglasTrabajador;
+
+  const pasos: ActivacionPasoEmpresa[] = [
+    {
+      id: "empresa",
+      titulo: "Completar datos de empresa",
+      descripcion: "Carga la ficha base para habilitar el resto de los módulos operativos.",
+      estado:
+        camposBasicosCompletos === camposBasicos.length
+          ? "completo"
+          : camposBasicosCompletos > 0
+            ? "recomendado"
+            : "pendiente",
+      resumen: `${camposBasicosCompletos}/${camposBasicos.length} campos base completos`,
+      accionLabel: "Completar empresa",
+      href: "/dicaprev/empresa/informacion-general",
+    },
+    {
+      id: "centros",
+      titulo: "Crear centros de trabajo",
+      descripcion: "Define faenas o centros para segmentar personas, vehículos y cumplimiento.",
+      estado: totalCentros > 0 ? "completo" : "pendiente",
+      resumen:
+        totalCentros > 0
+          ? `${totalCentros} centro${totalCentros === 1 ? "" : "s"} creado${totalCentros === 1 ? "" : "s"}`
+          : "Sin centros de trabajo registrados",
+      accionLabel: "Crear centro de trabajo",
+      href: "/dicaprev/empresa/centros",
+    },
+    {
+      id: "estructura",
+      titulo: "Definir estructura mínima",
+      descripcion: "Configura áreas o cargos para ordenar dotación y reglas documentales.",
+      estado:
+        totalAreas > 0 && totalCargos > 0
+          ? "completo"
+          : totalAreas > 0 || totalCargos > 0
+            ? "recomendado"
+            : "pendiente",
+      resumen: `${totalAreas} áreas · ${totalCargos} cargos`,
+      accionLabel: "Configurar estructura",
+      href: "/dicaprev/trabajadores/areas-cargos",
+    },
+    {
+      id: "trabajadores",
+      titulo: "Cargar trabajadores",
+      descripcion: "Incorpora la dotación para activar control documental y acreditaciones.",
+      estado: totalTrabajadores > 0 ? "completo" : "pendiente",
+      resumen:
+        totalTrabajadores > 0
+          ? `${totalTrabajadores} trabajador${totalTrabajadores === 1 ? "" : "es"} cargado${totalTrabajadores === 1 ? "" : "s"}`
+          : "Sin trabajadores registrados",
+      accionLabel: "Cargar trabajadores",
+      href: "/dicaprev/trabajadores",
+    },
+    {
+      id: "vehiculos",
+      titulo: "Cargar vehículos",
+      descripcion: "Registra la flota para controlar expedientes y documentación vehicular.",
+      estado: totalVehiculos > 0 ? "completo" : "pendiente",
+      resumen:
+        totalVehiculos > 0
+          ? `${totalVehiculos} vehículo${totalVehiculos === 1 ? "" : "s"} registrado${totalVehiculos === 1 ? "" : "s"}`
+          : "Sin vehículos registrados",
+      accionLabel: "Cargar vehículos",
+      href: "/dicaprev/empresa/vehiculos",
+    },
+    {
+      id: "documentos_empresa",
+      titulo: "Subir documentación empresa",
+      descripcion: "Completa los documentos corporativos mínimos para operar con cumplimiento base.",
+      estado:
+        requeridosEmpresa.length > 0 && documentosPendientes === 0 && documentosVencidos === 0
+          ? "completo"
+          : documentosCompletos > 0
+            ? "recomendado"
+            : "pendiente",
+      resumen: `${documentosCompletos}/${requeridosEmpresa.length} completos · ${documentosPendientes} pendientes · ${documentosVencidos} vencidos`,
+      accionLabel: "Subir documentos empresa",
+      href: "/dicaprev/documentacion",
+    },
+    {
+      id: "reglas_documentales",
+      titulo: "Activar tipos y reglas documentales",
+      descripcion: "Ajusta la matriz documental para que trabajadores y vehículos operen con reglas reales.",
+      estado:
+        totalReglasTrabajador > 0
+          ? "completo"
+          : totalTiposReglasActivas > 0
+            ? "recomendado"
+            : "pendiente",
+      resumen: `${totalTiposTrabajador} tipos trabajador · ${totalTiposVehiculo} tipos vehículo · ${totalReglasTrabajador} reglas activas`,
+      accionLabel: "Revisar cumplimiento",
+      href: "/dicaprev/cumplimiento",
+    },
+    {
+      id: "plan_trabajo",
+      titulo: "Iniciar plan de trabajo",
+      descripcion: "El módulo está disponible para planificación, pero hoy no tiene persistencia server-side para medir avance real.",
+      estado: "recomendado",
+      resumen: "Paso opcional recomendado para la puesta en marcha operativa",
+      accionLabel: "Abrir plan de trabajo",
+      href: "/dicaprev/plandetrabajo",
+      esOpcional: true,
+    },
+    {
+      id: "acreditaciones",
+      titulo: "Crear primera acreditación",
+      descripcion: "Abre el primer expediente para comenzar operación con mandantes y proyectos.",
+      estado: totalAcreditaciones > 0 ? "completo" : "pendiente",
+      resumen:
+        totalAcreditaciones > 0
+          ? `${totalAcreditaciones} acreditación${totalAcreditaciones === 1 ? "" : "es"} creada${totalAcreditaciones === 1 ? "" : "s"}`
+          : "Sin acreditaciones creadas",
+      accionLabel: "Crear primera acreditación",
+      href: "/dicaprev/acreditaciones/solicitudes",
+    },
+  ];
+
+  const pasosCompletados = pasos.filter((paso) => paso.estado === "completo");
+  const pasosPendientes = pasos.filter((paso) => paso.estado !== "completo");
+  const siguienteAccionRecomendada =
+    pasos.find((paso) => !paso.esOpcional && paso.estado === "pendiente")
+    ?? pasos.find((paso) => !paso.esOpcional && paso.estado === "recomendado")
+    ?? null;
+
+  return {
+    porcentajeActivacion: porcentajeActivacionDesdePasos(pasos),
+    pasosCompletados,
+    pasosPendientes,
+    siguienteAccionRecomendada,
+    pasos,
   };
 }
 

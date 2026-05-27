@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { calcularCumplimientoEmpresa } from "@/lib/documentacion/cumplimiento-empresa";
 import { requirePermission } from "@/server/auth/permissions";
+import { getEstadoActivacionEmpresa, type EstadoActivacionEmpresaResponse } from "@/actions/empresa/resumen";
 
 type DashboardEstadoDocumento = {
   total: number;
@@ -62,6 +63,7 @@ export type DashboardEjecutivoResponse = {
     criticos: number;
     recientes: DashboardHallazgoReciente[];
   } | null;
+  activacion: EstadoActivacionEmpresaResponse;
 };
 
 function startOfToday() {
@@ -150,6 +152,7 @@ export async function getDashboardEjecutivo(): Promise<DashboardEjecutivoRespons
     hallazgosAbiertos,
     hallazgosCriticos,
     hallazgosRecientes,
+    activacion,
   ] = await Promise.all([
     prisma.empresa.findUniqueOrThrow({
       where: { id: empresaId },
@@ -228,6 +231,7 @@ export async function getDashboardEjecutivo(): Promise<DashboardEjecutivoRespons
       orderBy: [{ prioridad: "asc" }, { fechaCompromiso: "asc" }, { createdAt: "desc" }],
       take: 5,
     }),
+    getEstadoActivacionEmpresa(),
   ]);
 
   const latestEmpresaByRequerido = new Map<string, (typeof documentosEmpresa)[number]>();
@@ -365,5 +369,6 @@ export async function getDashboardEjecutivo(): Promise<DashboardEjecutivoRespons
         fechaCompromiso: item.fechaCompromiso.toISOString(),
       })),
     },
+    activacion,
   };
 }
