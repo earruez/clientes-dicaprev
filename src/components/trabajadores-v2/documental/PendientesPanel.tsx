@@ -40,7 +40,7 @@ import {
   cambiarEstadoTrabajadorDocumento,
   enviarTrabajadorDocumentoAFirma,
   firmarTrabajadorDocumento,
-  generarContenidoIATrabajadorDocumento,
+  generarContenidoDocumentoTrabajadorIA,
   getHistorialDocumentoTrabajador,
   getEmpresaDocumentoMeta,
   getVersionesTrabajadorDocumento,
@@ -59,12 +59,7 @@ import {
   type DocumentoReviewContext,
 } from "./DocumentoReviewDrawer";
 import { VersionesHistorialDrawer } from "./VersionesHistorialDrawer";
-import { generarPlantillaContenidoIA } from "@/lib/documentacion/ia-generacion-helper";
-import {
-  construirContenidoBasePlantilla,
-  getPlantilla,
-  normalizarNombreDocumentoDisplay,
-} from "@/lib/documentacion/plantillas-documento";
+import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
@@ -74,6 +69,22 @@ type FilterEstado = "todos" | "criticos" | "pendientes" | "vencidos" | "rechazad
 type BulkModal    = null | "plantilla" | "revisado" | "exportar" | "recordar" | "estado";
 type MainView     = "trabajador" | "centro" | "cargo" | "vencimientos";
 type DocActionType = "validar" | "rechazar" | "no_aplica" | "en_revision" | "enviar_firma" | "firmar";
+
+function esDocumentoODI(tipo: { id?: string; nombre?: string } | null | undefined): boolean {
+  const source = `${tipo?.id ?? ""} ${tipo?.nombre ?? ""}`
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  return (
+    source.includes("odi") ||
+    source.includes("obligacion de informar") ||
+    source.includes("obligacion informar") ||
+    source.includes("informacion de riesgos") ||
+    source.includes("informacion riesgos") ||
+    source.includes("irl")
+  );
+}
 
 interface PendientesPanelProps {
   initialWorkerId?: string;
@@ -184,35 +195,22 @@ export function PendientesPanel({
   async function handleGenerarConIA(doc: import("./types").DocTrabajadorView, worker: Worker) {
     try {
       setGenerandoDocId(doc.tipo.id);
-      const plantilla = getPlantilla(doc.tipo.id, doc.tipo.nombre);
-      // Prioriza plantillas estructuradas; fallback al generador IA existente.
-      const contenidoGenerado = plantilla
-        ? construirContenidoBasePlantilla(plantilla)
-        : generarPlantillaContenidoIA({
-            tipoNombre: doc.tipo.nombre,
-            trabajadorNombre: `${worker.nombre} ${worker.apellido}`,
-            trabajadorRut: worker.rut,
-            cargo: worker.cargo,
-          });
+      if (!doc.documentoId) {
+        throw new Error("El documento ODI no tiene un registro vigente para generar borrador IA");
+      }
 
-      // Persist content with estado change to en_revision
-      const generated = await generarContenidoIATrabajadorDocumento(
-        doc.documentoId ?? null,
-        contenidoGenerado,
-        worker.id,
-        doc.tipo.id,
-      );
+      const generated = await generarContenidoDocumentoTrabajadorIA(doc.documentoId);
 
-      // Refresh data and open drawer with updated estado
-      await onSaved?.();
-      // Update the doc locally to reflect new estado
       const updatedDoc = {
         ...doc,
-        documentoId: generated.id,
-        estado: "en_revision" as const,
-        observacion: contenidoGenerado,
+        observacion: generated.contenido,
       };
-      openReview({ doc: updatedDoc, worker });
+
+      openReview({
+        doc: updatedDoc,
+        worker,
+        contenidoGenerado: generated.contenido,
+      });
     } catch (error) {
       console.error("Error generating document:", error);
       // TODO: Show error toast
@@ -1101,6 +1099,7 @@ export function PendientesPanel({
                               const catCfg    = CATEGORIA_CONFIG[doc.tipo.categoria];
                               const estCfg    = ESTADO_DOC_CONFIG[doc.estado];
                               const isAutomatizable = puedeGenerarseConIA(doc.tipo);
+                              const isOdi = esDocumentoODI(doc.tipo);
                               const hasStructuredIaContent = !!doc.observacion?.trim() && !esContenidoPlaceholder(doc.observacion);
                               const hasUploadedFile = Boolean(doc.archivoUrl || doc.archivoNombre || doc.archivoNombreOriginal);
                               const hasAnyRecord = Boolean(doc.documentoId);
@@ -1119,12 +1118,7 @@ export function PendientesPanel({
                                 doc.estado === "firmado" ||
                                 doc.estado === "rechazado"
                               );
-                              const puedeGenerarIa = isAutomatizable && (
-                                !hasStructuredIaContent ||
-                                doc.estado === "pendiente" ||
-                                doc.estado === "rechazado" ||
-                                doc.estado === "vencido"
-                              );
+                              const puedeGenerarIa = isOdi && hasAnyRecord && !isSigned;
                               const puedeDescargarPdf = Boolean(doc.observacion?.trim()) && ["en_revision", "validado", "enviado_firma", "firmado"].includes(doc.estado);
                               const uploadMode: "subir" | "reenviar" = hasAnyRecord ? "reenviar" : "subir";
                               const cardBg =

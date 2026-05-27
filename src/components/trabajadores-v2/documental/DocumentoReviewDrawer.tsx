@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   History,
   Download,
+  Copy,
 } from "lucide-react";
 import { type Worker } from "../types";
 import { type DocTrabajadorView } from "./types";
@@ -863,6 +864,18 @@ export function DocumentoReviewDrawer({
     }
   }
 
+  async function handleCopiarContenido() {
+    if (!contenido.trim()) return;
+    try {
+      await navigator.clipboard.writeText(contenido);
+      setPhase("done");
+      setTimeout(() => setPhase("idle"), 1200);
+    } catch {
+      setErrorMsg("No fue posible copiar el contenido al portapapeles");
+      setPhase("error");
+    }
+  }
+
   async function handleGuardar() {
     if (phase !== "idle") return;
     setPhase("saving");
@@ -1255,6 +1268,17 @@ export function DocumentoReviewDrawer({
                       <Download className="h-3.5 w-3.5" />
                     )}
                     Descargar PDF
+                  </button>
+                )}
+
+                {Boolean(contenido.trim()) && (
+                  <button
+                    onClick={handleCopiarContenido}
+                    disabled={isLoading}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                    Copiar contenido
                   </button>
                 )}
 

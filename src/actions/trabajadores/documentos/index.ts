@@ -154,6 +154,13 @@ export type EvaluacionDocumentosPorEventoResult = {
   reglasTrabajadorDesdeFallback?: number;
 };
 
+export type GeneracionContenidoOdiIAResult = {
+  documentoId: string;
+  contenido: string;
+  fuente: "openai" | "fallback_local";
+  advertencia: string;
+};
+
 type ContextoGeneracionCampoIA = {
   documentoId: string;
   empresaNombre: string;
@@ -752,6 +759,276 @@ function fieldsBySection(estructura: DocumentoEstructurado, seccionId: string): 
     cierre: ["observaciones_generales", "declaracion", "firma_trabajador", "entregado_por"],
   };
   return (map[seccionId] ?? []).map(String);
+}
+
+function normalizeOdiToken(value: string | null | undefined): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function esDocumentoOdiTrabajador(tipo: string, nombre: string): boolean {
+  const source = `${normalizeOdiToken(tipo)} ${normalizeOdiToken(nombre)}`;
+  return (
+    source.includes("odi") ||
+    source.includes("obligacion de informar") ||
+    source.includes("obligacion informar") ||
+    source.includes("informacion de riesgos") ||
+    source.includes("informacion riesgos") ||
+    source.includes("irl")
+  );
+}
+
+function extraerRiesgosDesdePerfil(cargoPerfil: string | null, cargoDescripcion: string | null): string[] {
+  const source = normalizeOdiToken(`${cargoPerfil ?? ""} ${cargoDescripcion ?? ""}`);
+  const riesgos: string[] = [];
+  if (source.includes("altura")) riesgos.push("Trabajos en altura");
+  if (source.includes("elect")) riesgos.push("Riesgo eléctrico");
+  if (source.includes("ruido")) riesgos.push("Exposición a ruido");
+  if (source.includes("silice") || source.includes("silica")) riesgos.push("Exposición a sílice");
+  if (source.includes("quimic")) riesgos.push("Exposición a agentes químicos");
+  if (source.includes("psicosocial")) riesgos.push("Riesgos psicosociales");
+  if (source.includes("tmert") || source.includes("ergonom")) riesgos.push("Riesgos ergonómicos");
+  if (source.includes("mmc") || source.includes("carga")) riesgos.push("Manipulación manual de cargas");
+  return riesgos;
+}
+
+function construirBorradorOdiLocal(input: {
+  empresaNombre: string;
+  trabajadorNombre: string;
+  trabajadorRut: string;
+  cargo: string;
+  area: string;
+  centroTrabajo: string;
+  tipoContrato: string;
+  riesgos: string[];
+}): string {
+  const fecha = new Date().toISOString().slice(0, 10);
+  const riesgos = input.riesgos.length
+    ? input.riesgos.map((riesgo) => `- ${riesgo}`).join("\n")
+    : "- Riesgos generales del puesto por definir con equipo SST";
+
+  return [
+    "OBLIGACION DE INFORMAR (ODI) - BORRADOR",
+    "",
+    `Fecha: ${fecha}`,
+    `Empresa: ${input.empresaNombre}`,
+    `Trabajador: ${input.trabajadorNombre}`,
+    `RUT: ${input.trabajadorRut || "No informado"}`,
+    `Cargo: ${input.cargo || "No informado"}`,
+    `Area: ${input.area || "No informada"}`,
+    `Centro de trabajo: ${input.centroTrabajo || "No informado"}`,
+    `Tipo de contrato: ${input.tipoContrato || "No informado"}`,
+    "",
+    "1) Objetivo",
+    "Informar a la persona trabajadora sobre los riesgos laborales del cargo, medidas preventivas, procedimientos seguros y protocolos de emergencia aplicables.",
+    "",
+    "2) Riesgos del cargo",
+    riesgos,
+    "",
+    "3) Medidas preventivas",
+    "- Uso obligatorio de EPP según tarea y exposición",
+    "- Cumplimiento de procedimientos de trabajo seguro (PTS)",
+    "- Reporte inmediato de incidentes y condiciones inseguras",
+    "- Participación en inducciones y capacitaciones obligatorias",
+    "",
+    "4) Emergencias y reporte",
+    "- Activar protocolo interno de emergencia ante incidente",
+    "- Notificar a jefatura directa y al equipo de prevención",
+    "- Mantener y respetar rutas de evacuación y punto de encuentro",
+    "",
+    "5) Declaración",
+    `Declaro haber recibido la información de riesgos laborales para el cargo ${input.cargo || "asignado"}, comprender su contenido y comprometerme a cumplir las medidas preventivas definidas.`,
+    "",
+    "Firma trabajador: __________________________",
+    "Firma relator SST: _________________________",
+    "",
+    "Documento generado como borrador y requiere revisión profesional antes de firma.",
+  ].join("\n");
+}
+
+async function generarBorradorOdiConOpenAI(input: {
+  empresaNombre: string;
+  trabajadorNombre: string;
+  trabajadorRut: string;
+  cargo: string;
+  area: string;
+  centroTrabajo: string;
+  tipoContrato: string;
+  riesgos: string[];
+}): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY no configurada");
+  }
+
+  const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
+  const riesgos = input.riesgos.length ? input.riesgos.join(", ") : "No informados";
+  const prompt = [
+    "Genera un borrador profesional en espanol para un documento ODI (Obligacion de Informar) de Chile.",
+    "No uses markdown.",
+    "Incluye secciones: Objetivo, Identificacion del trabajador, Riesgos del cargo, Medidas preventivas, Emergencias, Declaracion.",
+    "Datos:",
+    `Empresa: ${input.empresaNombre}`,
+    `Trabajador: ${input.trabajadorNombre}`,
+    `RUT: ${input.trabajadorRut || "No informado"}`,
+    `Cargo: ${input.cargo || "No informado"}`,
+    `Area: ${input.area || "No informada"}`,
+    `Centro de trabajo: ${input.centroTrabajo || "No informado"}`,
+    `Tipo de contrato: ${input.tipoContrato || "No informado"}`,
+    `Riesgos: ${riesgos}`,
+    "Agrega al final exactamente esta leyenda: Documento generado como borrador y requiere revisión profesional antes de firma.",
+  ].join("\n");
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.3,
+      max_tokens: 1200,
+      messages: [
+        {
+          role: "system",
+          content: "Eres un especialista en documentacion SST en Chile. Redactas documentos ODI claros y auditables.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenAI HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+  };
+  const content = payload.choices?.[0]?.message?.content?.trim();
+  if (!content) {
+    throw new Error("OpenAI sin contenido");
+  }
+  return content;
+}
+
+export async function generarContenidoDocumentoTrabajadorIA(
+  documentoId: string,
+): Promise<GeneracionContenidoOdiIAResult> {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+
+  const documento = await prisma.trabajadorDocumento.findFirst({
+    where: {
+      id: documentoId,
+      empresaId,
+      esVigente: true,
+    },
+    select: {
+      id: true,
+      tipo: true,
+      nombre: true,
+      trabajador: {
+        select: {
+          nombres: true,
+          apellidos: true,
+          rut: true,
+          tipoContrato: true,
+          cargo: {
+            select: {
+              nombre: true,
+              perfilSST: true,
+              descripcion: true,
+            },
+          },
+          area: {
+            select: {
+              nombre: true,
+            },
+          },
+          centroTrabajo: {
+            select: {
+              nombre: true,
+            },
+          },
+        },
+      },
+      empresa: {
+        select: {
+          nombre: true,
+          razonSocial: true,
+        },
+      },
+    },
+  });
+
+  if (!documento) {
+    throw new Error("Documento no encontrado para la empresa actual");
+  }
+
+  if (!esDocumentoOdiTrabajador(documento.tipo, documento.nombre)) {
+    throw new Error("La generación IA v1 está habilitada solo para ODI / Obligación de Informar");
+  }
+
+  const trabajadorNombre = `${documento.trabajador?.nombres ?? ""} ${documento.trabajador?.apellidos ?? ""}`.trim();
+  const trabajadorRut = documento.trabajador?.rut ?? "";
+  const cargo = documento.trabajador?.cargo?.nombre ?? "";
+  const area = documento.trabajador?.area?.nombre ?? "";
+  const centroTrabajo = documento.trabajador?.centroTrabajo?.nombre ?? "";
+  const tipoContrato = documento.trabajador?.tipoContrato ?? "";
+  const empresaNombre = documento.empresa?.razonSocial ?? documento.empresa?.nombre ?? "DICAPREV";
+
+  const riesgos = Array.from(
+    new Set([
+      ...detectarRiesgosContextuales(cargo, area),
+      ...extraerRiesgosDesdePerfil(
+        documento.trabajador?.cargo?.perfilSST ?? null,
+        documento.trabajador?.cargo?.descripcion ?? null,
+      ),
+    ]),
+  );
+
+  let contenido = "";
+  let fuente: "openai" | "fallback_local" = "fallback_local";
+
+  try {
+    contenido = await generarBorradorOdiConOpenAI({
+      empresaNombre,
+      trabajadorNombre,
+      trabajadorRut,
+      cargo,
+      area,
+      centroTrabajo,
+      tipoContrato,
+      riesgos,
+    });
+    fuente = "openai";
+  } catch {
+    contenido = construirBorradorOdiLocal({
+      empresaNombre,
+      trabajadorNombre,
+      trabajadorRut,
+      cargo,
+      area,
+      centroTrabajo,
+      tipoContrato,
+      riesgos,
+    });
+    fuente = "fallback_local";
+  }
+
+  return {
+    documentoId: documento.id,
+    contenido,
+    fuente,
+    advertencia: "Documento generado como borrador y requiere revisión profesional antes de firma.",
+  };
 }
 
 function mapDocEstado(estado: string): DocEstado {
