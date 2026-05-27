@@ -1,30 +1,30 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getCurrentAppContext } from "@/server/context";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const email = session?.user?.email?.trim().toLowerCase();
+  try {
+    const context = await getCurrentAppContext();
+    const empresas =
+      context.rol === "SUPERADMIN"
+        ? await prisma.empresa.findMany({
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true },
+          })
+        : await prisma.empresa.findMany({
+            where: { id: context.empresaId },
+            select: { id: true, nombre: true },
+          });
 
-  if (!email) {
-    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+    return NextResponse.json({
+      role: context.rol,
+      email: context.email,
+      empresaId: context.empresaId,
+      empresas,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No autenticado";
+    const status = message === "No hay sesion activa" ? 401 : 403;
+    return NextResponse.json({ error: message }, { status });
   }
-
-  const usuario = await prisma.usuario.findUnique({
-    where: { email },
-    select: {
-      rol: true,
-      email: true,
-    },
-  });
-
-  if (!usuario) {
-    return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 });
-  }
-
-  return NextResponse.json({
-    role: usuario.rol,
-    email: usuario.email,
-  });
 }

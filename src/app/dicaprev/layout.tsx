@@ -28,7 +28,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Topbar */}
         <header className="sticky top-0 z-30 flex h-13 items-center justify-between border-b border-slate-200 bg-white px-5 py-2.5 shadow-sm">
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-700 tracking-wide">MVP CHILE SPA</span>
+            <span className="text-sm font-semibold text-slate-700 tracking-wide">NEXTPREV</span>
             <ActiveCompanySelector />
           </div>
           <div className="flex items-center gap-3">
