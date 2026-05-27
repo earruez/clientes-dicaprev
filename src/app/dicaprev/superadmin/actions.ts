@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { COMPANY_MODULES, type CompanyModuleKey } from "@/lib/company-modules";
 import { requireRole } from "@/server/auth/permissions";
+import { bootstrapEmpresaOperativa } from "@/server/bootstrap/empresa-operativa";
 import type { Rol } from "@prisma/client";
 
 const SUPERADMIN_ROLES: Rol[] = [
@@ -191,12 +192,32 @@ export async function createEmpresaAction(formData: FormData) {
       razonSocial: nombre,
       activa: true,
     },
-    select: { id: true },
+    select: { id: true, nombre: true },
   });
 
-  await ensureEmpresaModules(empresa.id);
+  const bootstrap = await bootstrapEmpresaOperativa(empresa.id);
 
   revalidatePath("/dicaprev/superadmin");
+
+  return {
+    empresa,
+    bootstrap,
+  };
+}
+
+export async function prepararEmpresaAction(formData: FormData) {
+  await requireRole("SUPERADMIN");
+
+  const empresaId = parseString(formData, "empresaId");
+  if (!empresaId) {
+    throw new Error("Empresa requerida");
+  }
+
+  const bootstrap = await bootstrapEmpresaOperativa(empresaId);
+
+  revalidatePath("/dicaprev/superadmin");
+
+  return bootstrap;
 }
 
 export async function updateEmpresaAction(formData: FormData) {

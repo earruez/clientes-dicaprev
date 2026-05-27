@@ -6,6 +6,7 @@ import {
   createUsuarioAction,
   ensureBackfillAction,
   getSuperadminData,
+  prepararEmpresaAction,
   toggleEmpresaActivaAction,
   toggleEmpresaModuloAction,
   toggleUsuarioActivoAction,
@@ -99,13 +100,21 @@ export default async function SuperadminPage() {
               </form>
               <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                 <span>ID: {empresa.id}</span>
-                <form action={toggleEmpresaActivaAction}>
-                  <input type="hidden" name="empresaId" value={empresa.id} />
-                  <input type="hidden" name="activa" value={empresa.activa ? "0" : "1"} />
-                  <button className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                    {empresa.activa ? "Desactivar" : "Activar"}
-                  </button>
-                </form>
+                <div className="flex items-center gap-2">
+                  <form action={prepararEmpresaAction}>
+                    <input type="hidden" name="empresaId" value={empresa.id} />
+                    <button className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">
+                      Preparar empresa
+                    </button>
+                  </form>
+                  <form action={toggleEmpresaActivaAction}>
+                    <input type="hidden" name="empresaId" value={empresa.id} />
+                    <input type="hidden" name="activa" value={empresa.activa ? "0" : "1"} />
+                    <button className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                      {empresa.activa ? "Desactivar" : "Activar"}
+                    </button>
+                  </form>
+                </div>
               </div>
             </div>
           ))}
