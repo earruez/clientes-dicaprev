@@ -4,6 +4,7 @@ import React, { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import NotificationBell from "@/components/layout/NotificationBell";
+import ActiveCompanySelector from "@/components/layout/ActiveCompanySelector";
 
 /* =========================
    LAYOUT DICAPREV
@@ -26,7 +27,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex flex-1 flex-col">
         {/* Topbar */}
         <header className="sticky top-0 z-30 flex h-13 items-center justify-between border-b border-slate-200 bg-white px-5 py-2.5 shadow-sm">
-          <span className="text-sm font-semibold text-slate-700 tracking-wide">MVP CHILE SPA</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-semibold text-slate-700 tracking-wide">MVP CHILE SPA</span>
+            <ActiveCompanySelector />
+          </div>
           <div className="flex items-center gap-3">
             <NotificationBell />
             <div className="h-4 w-px bg-slate-200" />
