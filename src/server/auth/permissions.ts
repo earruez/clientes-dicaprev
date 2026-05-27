@@ -1,13 +1,21 @@
 import type { AppContext, AppRole } from "@/server/context";
 import { getCurrentAppContext } from "@/server/context";
 import { PERMISSIONS, type PermissionKey } from "@/lib/permissions-matrix";
+import { redirect } from "next/navigation";
 
 function forbidden(message: string): never {
   throw new Error(message);
 }
 
 export async function requireAuth(): Promise<AppContext> {
-  return getCurrentAppContext();
+  try {
+    return await getCurrentAppContext();
+  } catch (error) {
+    if (error instanceof Error && error.message === "No hay sesion activa") {
+      redirect("/login");
+    }
+    throw error;
+  }
 }
 
 export async function requirePermission(permission: PermissionKey): Promise<AppContext> {
