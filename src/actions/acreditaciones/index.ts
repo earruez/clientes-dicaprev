@@ -1602,7 +1602,26 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
 
   if (!acreditacion) throw new Error("Acreditacion not found");
 
+  const requisitosEmpresaCatalogo = acreditacion.plantilla.requisitos.filter((req) => req.aplicaA === "empresa");
+  const requisitosTrabajadorCatalogo = acreditacion.plantilla.requisitos.filter((req) => req.aplicaA === "trabajador");
   const requisitosVehiculoCatalogo = acreditacion.plantilla.requisitos.filter((req) => req.aplicaA === "vehiculo");
+
+  const documentoRequeridoIds = Array.from(
+    new Set(
+      requisitosEmpresaCatalogo
+        .map((req) => req.documentoRequeridoEmpresaId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
+  const tipoTrabajadorIds = Array.from(
+    new Set(
+      requisitosTrabajadorCatalogo
+        .map((req) => req.documentoTipoTrabajadorId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+
   const tipoVehiculoIds = Array.from(
     new Set(
       requisitosVehiculoCatalogo
@@ -1610,9 +1629,73 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
         .filter((id): id is string => Boolean(id))
     )
   );
+  const trabajadorIds = acreditacion.trabajadores.map((item) => item.trabajador.id);
   const vehiculoIds = acreditacion.vehiculos.map((item) => item.vehiculo.id);
 
-  const [documentosVehiculoCatalogo, tiposVehiculoCatalogo] = await Promise.all([
+  const [documentosEmpresaCatalogo, documentosTrabajadorCatalogo, tiposTrabajadorCatalogo, documentosVehiculoCatalogo, tiposVehiculoCatalogo] = await Promise.all([
+    prisma.documentoEmpresa.findMany({
+      where: {
+        empresaId,
+        OR: [
+          ...(documentoRequeridoIds.length > 0
+            ? [{ documentoRequeridoId: { in: documentoRequeridoIds } }]
+            : []),
+          {
+            nombre: {
+              in: requisitosEmpresaCatalogo.map((req) => req.nombreDocumento),
+            },
+          },
+          {
+            tipo: {
+              in: requisitosEmpresaCatalogo
+                .map((req) => req.codigoDocumento)
+                .filter((value): value is string => Boolean(value)),
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        documentoRequeridoId: true,
+        nombre: true,
+        tipo: true,
+        estado: true,
+        archivoUrl: true,
+        archivoNombre: true,
+        fechaEmision: true,
+        fechaVencimiento: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+    }),
+    trabajadorIds.length > 0
+      ? prisma.trabajadorDocumento.findMany({
+          where: {
+            empresaId,
+            trabajadorId: { in: trabajadorIds },
+            esVigente: true,
+          },
+          select: {
+            id: true,
+            trabajadorId: true,
+            nombre: true,
+            tipo: true,
+            estado: true,
+            archivoUrl: true,
+            archivoNombre: true,
+            fechaEmision: true,
+            fechaVencimiento: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+      : Promise.resolve([]),
+    tipoTrabajadorIds.length > 0
+      ? prisma.documentoTipoTrabajador.findMany({
+          where: { empresaId, id: { in: tipoTrabajadorIds } },
+          select: { id: true, codigo: true, nombre: true },
+        })
+      : Promise.resolve([]),
     vehiculoIds.length > 0
       ? prisma.vehiculoDocumento.findMany({
           where: {
@@ -1657,7 +1740,23 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
       : Promise.resolve([]),
   ]);
 
+  const tipoTrabajadorById = new Map(tiposTrabajadorCatalogo.map((doc) => [doc.id, doc]));
   const tipoVehiculoById = new Map(tiposVehiculoCatalogo.map((doc) => [doc.id, doc]));
+
+  const docsEmpresaByRequeridoId = new Map<string, (typeof documentosEmpresaCatalogo)[number]>();
+  for (const doc of documentosEmpresaCatalogo) {
+    if (doc.documentoRequeridoId && !docsEmpresaByRequeridoId.has(doc.documentoRequeridoId)) {
+      docsEmpresaByRequeridoId.set(doc.documentoRequeridoId, doc);
+    }
+  }
+
+  const docsTrabajadorByTrabajador = new Map<string, Array<(typeof documentosTrabajadorCatalogo)[number]>>();
+  for (const doc of documentosTrabajadorCatalogo) {
+    const existing = docsTrabajadorByTrabajador.get(doc.trabajadorId) ?? [];
+    existing.push(doc);
+    docsTrabajadorByTrabajador.set(doc.trabajadorId, existing);
+  }
+
   const docsVehiculoByVehiculo = new Map<string, Array<(typeof documentosVehiculoCatalogo)[number]>>();
   for (const doc of documentosVehiculoCatalogo) {
     const existing = docsVehiculoByVehiculo.get(doc.vehiculoId) ?? [];
@@ -1684,6 +1783,19 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
 
   for (const req of acreditacion.plantilla.requisitos) {
     if (req.aplicaA === "empresa") {
+      const sourceEmpresa = req.documentoRequeridoEmpresaId
+        ? docsEmpresaByRequeridoId.get(req.documentoRequeridoEmpresaId) ?? null
+        : documentosEmpresaCatalogo.find((doc) => {
+            const byCode = req.codigoDocumento && normalizeText(doc.tipo) === normalizeText(req.codigoDocumento);
+            const byName = normalizeText(doc.nombre) === normalizeText(req.nombreDocumento);
+            return Boolean(byCode || byName);
+          }) ?? null;
+
+      const estadoEmpresa = resolveEstadoDesdeFuente({
+        estado: sourceEmpresa?.estado,
+        fechaVencimiento: sourceEmpresa?.fechaVencimiento,
+      });
+
       expectedDocs.push({
         requisitoId: req.id,
         nombreDocumento: req.nombreDocumento,
@@ -1692,12 +1804,45 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
         titularTipo: "empresa",
         titularId: null,
         titularNombre: null,
+        estado: sourceEmpresa ? estadoEmpresa : "faltante",
+        fuenteTipo: sourceEmpresa ? "documento_empresa" : undefined,
+        fuenteId: sourceEmpresa?.id,
+        archivoUrl: sourceEmpresa?.archivoUrl ?? undefined,
+        archivoNombre: sourceEmpresa?.archivoNombre ?? undefined,
+        fechaEmision: sourceEmpresa?.fechaEmision ?? undefined,
+        fechaVencimiento: sourceEmpresa?.fechaVencimiento ?? undefined,
       });
       continue;
     }
 
     if (req.aplicaA === "trabajador") {
       for (const tw of acreditacion.trabajadores) {
+        const docsTrabajador = docsTrabajadorByTrabajador.get(tw.trabajador.id) ?? [];
+        const tipoTrabajador = req.documentoTipoTrabajadorId
+          ? tipoTrabajadorById.get(req.documentoTipoTrabajadorId)
+          : null;
+
+        const sourceTrabajador = docsTrabajador.find((doc) => {
+          if (tipoTrabajador) {
+            const matchTipoCodigo = normalizeText(doc.tipo) === normalizeText(tipoTrabajador.codigo);
+            const matchTipoNombre = normalizeText(doc.tipo) === normalizeText(tipoTrabajador.nombre);
+            const matchNombre = normalizeText(doc.nombre) === normalizeText(tipoTrabajador.nombre);
+            if (matchTipoCodigo || matchTipoNombre || matchNombre) return true;
+          }
+
+          if (req.codigoDocumento && normalizeText(doc.tipo) === normalizeText(req.codigoDocumento)) {
+            return true;
+          }
+
+          return normalizeText(doc.nombre) === normalizeText(req.nombreDocumento)
+            || normalizeText(doc.tipo) === normalizeText(req.nombreDocumento);
+        }) ?? null;
+
+        const estadoTrabajador = resolveEstadoDesdeFuente({
+          estado: sourceTrabajador?.estado,
+          fechaVencimiento: sourceTrabajador?.fechaVencimiento,
+        });
+
         expectedDocs.push({
           requisitoId: req.id,
           nombreDocumento: req.nombreDocumento,
@@ -1706,6 +1851,13 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
           titularTipo: "trabajador",
           titularId: tw.trabajador.id,
           titularNombre: `${tw.trabajador.nombres} ${tw.trabajador.apellidos}`.trim(),
+          estado: sourceTrabajador ? estadoTrabajador : "faltante",
+          fuenteTipo: sourceTrabajador ? "documento_trabajador" : undefined,
+          fuenteId: sourceTrabajador?.id,
+          archivoUrl: sourceTrabajador?.archivoUrl ?? undefined,
+          archivoNombre: sourceTrabajador?.archivoNombre ?? undefined,
+          fechaEmision: sourceTrabajador?.fechaEmision ?? undefined,
+          fechaVencimiento: sourceTrabajador?.fechaVencimiento ?? undefined,
         });
       }
       continue;

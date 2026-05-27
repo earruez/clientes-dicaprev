@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
+import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
 import { requirePermission } from "@/server/auth/permissions";
 
 export type EmpresaGeneralData = {
@@ -66,7 +67,7 @@ export async function getEmpresaActual(): Promise<EmpresaGeneralData> {
 }
 
 export async function actualizarEmpresaActual(data: EmpresaGeneralData): Promise<void> {
-  const { empresaId } = await requirePermission("canManageEmpresa");
+  const { empresaId, usuarioId, email } = await requirePermission("canManageEmpresa");
 
   await prisma.empresa.update({
     where: { id: empresaId },
@@ -92,6 +93,13 @@ export async function actualizarEmpresaActual(data: EmpresaGeneralData): Promise
       cotizacionAdicional: data.cotizacionAdicional,
       cantidadTrabajadores: data.cantidadTrabajadores,
     },
+  });
+
+  await evaluarDocumentosPendientesPorEvento({
+    empresaId,
+    evento: "empresa_actualizada",
+    usuarioId,
+    email,
   });
 }
 
