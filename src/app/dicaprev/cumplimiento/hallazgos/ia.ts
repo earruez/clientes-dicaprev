@@ -389,7 +389,7 @@ export async function analizarFotoHallazgoIA(
 
 export async function confirmarHallazgoDesdeFotoIA(
   input: ConfirmarHallazgoFotoIAInput,
-): Promise<{ hallazgoId: string; evidenciaId: string }> {
+): Promise<{ hallazgoId: string; evidenciaId: string; accionCorrectivaId: string }> {
   const context = await requireAuth();
   if (!input.archivoUrl.trim()) {
     throw new Error("La foto es obligatoria para confirmar el hallazgo.");
@@ -478,7 +478,22 @@ export async function confirmarHallazgoDesdeFotoIA(
       select: { id: true },
     });
 
-    return { hallazgoId: hallazgo.id, evidenciaId: evidencia.id };
+    const accionCorrectiva = await tx.evidenciaCumplimiento.create({
+      data: {
+        empresaId: context.empresaId,
+        titulo: "Medida correctiva sugerida",
+        tipo: "accion_correctiva",
+        estado: "pendiente",
+        fechaEvidencia: new Date(),
+        observacion: input.sugerencia.accionSugerida,
+        hallazgoId: hallazgo.id,
+        centroTrabajoId: centro?.id ?? null,
+        creadoPorId: context.usuarioId,
+      },
+      select: { id: true },
+    });
+
+    return { hallazgoId: hallazgo.id, evidenciaId: evidencia.id, accionCorrectivaId: accionCorrectiva.id };
   });
 
   return created;

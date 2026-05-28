@@ -125,6 +125,28 @@ export type HallazgoInput = {
   fechaCompromiso: string;
 };
 
+export type HallazgoDetalle = {
+  id: string;
+  estado: EstadoHallazgo;
+  evidencias: Array<{
+    id: string;
+    titulo: string;
+    tipo: string;
+    estado: string;
+    observacion: string | null;
+    archivoUrl: string | null;
+    archivoNombre: string | null;
+    fechaEvidencia: string;
+  }>;
+  medidaCorrectiva: {
+    id: string;
+    titulo: string;
+    descripcion: string;
+    estado: string;
+    fechaCompromiso: string;
+  } | null;
+};
+
 function canManageCumplimiento(rol: string): boolean {
   if (rol === "SUPERADMIN") return true;
   const manageCumplimiento = PERMISSIONS.canManageCumplimiento.some((r) => r === rol);
@@ -145,6 +167,14 @@ function ensureEstado(estado: string): EstadoHallazgo {
   return "abierto";
 }
 
+function normalizeToken(value: string | null | undefined): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 function normalizeHallazgoRow(row: {
   id: string;
   tipo: string;
@@ -155,6 +185,7 @@ function normalizeHallazgoRow(row: {
   createdAt: Date;
   updatedAt: Date;
   obligacionClave: string | null;
+  evidenciasCumplimiento: Array<{ id: string }>;
   centroTrabajo: { id: string; nombre: string } | null;
   trabajador: { id: string; nombres: string; apellidos: string } | null;
   creadoPor: { nombre: string };
@@ -194,7 +225,7 @@ function normalizeHallazgoRow(row: {
         accion: "Actualización",
       },
     ],
-    evidenciaIds: [],
+    evidenciaIds: row.evidenciasCumplimiento.map((ev) => ev.id),
   };
 }
 
@@ -207,11 +238,71 @@ export async function getHallazgos(): Promise<Hallazgo[]> {
       centroTrabajo: { select: { id: true, nombre: true } },
       trabajador: { select: { id: true, nombres: true, apellidos: true } },
       creadoPor: { select: { nombre: true } },
+      evidenciasCumplimiento: { select: { id: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
   return rows.map(normalizeHallazgoRow);
+}
+
+export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | null> {
+  const context = await requirePermission("canReadCumplimiento");
+
+  const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
+    where: {
+      id,
+      empresaId: context.empresaId,
+    },
+    select: {
+      id: true,
+      estado: true,
+      fechaCompromiso: true,
+      evidenciasCumplimiento: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          titulo: true,
+          tipo: true,
+          estado: true,
+          observacion: true,
+          archivoUrl: true,
+          archivoNombre: true,
+          fechaEvidencia: true,
+        },
+      },
+    },
+  });
+
+  if (!hallazgo) {
+    return null;
+  }
+
+  const medidaCorrectiva = hallazgo.evidenciasCumplimiento.find((ev) => normalizeToken(ev.tipo) === "accion_correctiva");
+
+  return {
+    id: hallazgo.id,
+    estado: ensureEstado(hallazgo.estado),
+    evidencias: hallazgo.evidenciasCumplimiento.map((ev) => ({
+      id: ev.id,
+      titulo: ev.titulo,
+      tipo: ev.tipo,
+      estado: ev.estado,
+      observacion: ev.observacion,
+      archivoUrl: ev.archivoUrl,
+      archivoNombre: ev.archivoNombre,
+      fechaEvidencia: ev.fechaEvidencia.toISOString(),
+    })),
+    medidaCorrectiva: medidaCorrectiva
+      ? {
+          id: medidaCorrectiva.id,
+          titulo: medidaCorrectiva.titulo,
+          descripcion: medidaCorrectiva.observacion ?? "Sin descripción",
+          estado: medidaCorrectiva.estado,
+          fechaCompromiso: hallazgo.fechaCompromiso.toISOString().slice(0, 10),
+        }
+      : null,
+  };
 }
 
 export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
@@ -333,19 +424,74 @@ export async function actualizarHallazgo(
   });
 }
 
-export async function cerrarHallazgo(id: string): Promise<void> {
+export async function cerrarHallazgo(id: string, comentarioCierre?: string): Promise<void> {
   const context = await requireAuth();
   if (!canManageCumplimiento(context.rol)) {
     throw new Error("No autorizado para cerrar hallazgos.");
   }
 
-  await prisma.hallazgoCumplimiento.updateMany({
+  const comentario = comentarioCierre?.trim() ?? "";
+  const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
     where: {
       id,
       empresaId: context.empresaId,
     },
-    data: {
-      estado: "cerrado",
+    select: {
+      id: true,
+      centroTrabajoId: true,
+      trabajadorId: true,
+      evidenciasCumplimiento: {
+        select: {
+          id: true,
+          tipo: true,
+          estado: true,
+          observacion: true,
+        },
+      },
     },
+  });
+
+  if (!hallazgo) {
+    throw new Error("Hallazgo no encontrado para la empresa activa.");
+  }
+
+  const accionCompletada = hallazgo.evidenciasCumplimiento.some((ev) => {
+    const tipo = normalizeToken(ev.tipo);
+    const estado = normalizeToken(ev.estado);
+    return tipo === "accion_correctiva" && (estado === "valida" || estado === "cerrada" || estado === "completada");
+  });
+  const evidenciaCierre = hallazgo.evidenciasCumplimiento.some((ev) => {
+    const tipo = normalizeToken(ev.tipo);
+    return tipo === "cierre" || normalizeToken(ev.observacion).includes("cierre");
+  });
+
+  if (!accionCompletada && !evidenciaCierre && !comentario) {
+    throw new Error("Para cerrar el hallazgo debes registrar una medida correctiva o evidencia de cierre.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (comentario) {
+      await tx.evidenciaCumplimiento.create({
+        data: {
+          empresaId: context.empresaId,
+          titulo: "Comentario de cierre",
+          tipo: "cierre",
+          estado: "valida",
+          fechaEvidencia: new Date(),
+          observacion: comentario,
+          hallazgoId: hallazgo.id,
+          centroTrabajoId: hallazgo.centroTrabajoId,
+          trabajadorId: hallazgo.trabajadorId,
+          creadoPorId: context.usuarioId,
+        },
+      });
+    }
+
+    await tx.hallazgoCumplimiento.update({
+      where: { id: hallazgo.id },
+      data: {
+        estado: "cerrado",
+      },
+    });
   });
 }

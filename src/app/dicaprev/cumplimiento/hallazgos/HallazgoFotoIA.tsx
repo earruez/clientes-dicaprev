@@ -56,6 +56,7 @@ function tipoLabel(tipo: SugerenciaHallazgoIA["tipo"]) {
 
 export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigurada, onConfirmed }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragCounterRef = useRef(0);
   const [archivo, setArchivo] = useState<File | null>(null);
   const [archivoUrl, setArchivoUrl] = useState<string | null>(null);
   const [archivoNombre, setArchivoNombre] = useState<string | null>(null);
@@ -67,6 +68,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
 
   const imagenPreview = useMemo(() => {
     if (!archivo) return null;
@@ -101,9 +103,12 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     onOpenChange(nextOpen);
   }
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
+  function setSelectedFile(file: File | null) {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Solo se permiten imágenes (JPG, PNG, WEBP).");
+      return;
+    }
 
     setArchivo(file);
     setArchivoUrl(null);
@@ -111,6 +116,41 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     setArchivoTipo(file.type || null);
     setSugerencias([]);
     setError(null);
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    setSelectedFile(event.target.files?.[0] ?? null);
+  }
+
+  function onDragEnter(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    dragCounterRef.current += 1;
+    setIsDragActive(true);
+  }
+
+  function onDragOver(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
+  function onDragLeave(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragActive(false);
+    }
+  }
+
+  function onDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragActive(false);
+    const file = event.dataTransfer.files?.[0] ?? null;
+    setSelectedFile(file);
   }
 
   async function uploadAndAnalyze() {
@@ -157,6 +197,12 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
       areaId: areaId || null,
       observacion: observacion.trim() || null,
     });
+
+    if (!analysis || typeof analysis !== "object" || !("ok" in analysis)) {
+      setError("No fue posible procesar la respuesta del analisis IA.");
+      setSugerencias([]);
+      return;
+    }
 
     if (!analysis.ok) {
       setError(analysis.error === "IA no configurada" ? IA_NO_CONFIGURADA : analysis.error);
@@ -254,7 +300,16 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
             </div>
           </div>
 
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4">
+          <div
+            className={cn(
+              "rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4 transition-colors",
+              isDragActive && "border-emerald-500 bg-emerald-50",
+            )}
+            onDragEnter={onDragEnter}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -269,7 +324,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                 <Camera className="mr-2 h-4 w-4" />
                 {archivo ? "Cambiar foto" : "Seleccionar foto"}
               </Button>
-              <p className="text-xs text-slate-500">Puedes usar cámara móvil o subir archivo desde computador.</p>
+              <p className="text-xs text-slate-500">Puedes usar cámara móvil, subir archivo o arrastrar la foto aquí.</p>
             </div>
 
             <div className="mt-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
@@ -349,7 +404,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                           ) : (
                             <CheckCircle2 className="mr-2 h-4 w-4" />
                           )}
-                          Crear hallazgo
+                          Crear hallazgo con evidencia
                         </Button>
                       </div>
                     </div>

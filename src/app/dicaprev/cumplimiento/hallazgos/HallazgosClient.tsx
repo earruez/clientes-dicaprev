@@ -44,7 +44,9 @@ import {
   actualizarHallazgo,
   cerrarHallazgo,
   crearHallazgo,
+  getHallazgoDetalle,
   getHallazgos,
+  type HallazgoDetalle,
   type OpcionesHallazgo,
   type PlantillaHallazgo,
 } from "./actions";
@@ -164,6 +166,11 @@ export default function HallazgosClient({
   const [modalIAOpen, setModalIAOpen] = useState(false);
 
   const [selected, setSelected] = useState<Hallazgo | null>(null);
+  const [detalle, setDetalle] = useState<HallazgoDetalle | null>(null);
+  const [detalleLoading, setDetalleLoading] = useState(false);
+  const [detalleError, setDetalleError] = useState<string | null>(null);
+  const [comentarioCierre, setComentarioCierre] = useState("");
+  const [cierreError, setCierreError] = useState<string | null>(null);
 
   const obligacionesMap = useMemo(() => {
     return new Map(opciones.obligaciones.map((o) => [o.clave, o.nombre]));
@@ -243,13 +250,37 @@ export default function HallazgosClient({
     }
   }
 
+  async function openDetalle(h: Hallazgo) {
+    setSelected(h);
+    setDetalle(null);
+    setDetalleError(null);
+    setComentarioCierre("");
+    setCierreError(null);
+    try {
+      setDetalleLoading(true);
+      const detalleHallazgo = await getHallazgoDetalle(h.id);
+      if (!detalleHallazgo) {
+        setDetalleError("No fue posible cargar el detalle del hallazgo.");
+        return;
+      }
+      setDetalle(detalleHallazgo);
+    } finally {
+      setDetalleLoading(false);
+    }
+  }
+
   async function onCerrar(h: Hallazgo) {
     if (!opciones.puedeEditar) return;
     try {
       setSaving(true);
-      await cerrarHallazgo(h.id);
+      setCierreError(null);
+      await cerrarHallazgo(h.id, comentarioCierre);
       await reloadHallazgos();
       setSelected(null);
+      setDetalle(null);
+      setComentarioCierre("");
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible cerrar el hallazgo.");
     } finally {
       setSaving(false);
     }
@@ -431,7 +462,7 @@ export default function HallazgosClient({
                       </td>
                       <td className="py-3 text-slate-600">{fmtFecha(h.fechaCompromiso)}</td>
                       <td className="py-3 pr-2 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setSelected(h)}>
+                        <Button variant="ghost" size="sm" onClick={() => void openDetalle(h)}>
                           <ChevronRight className="h-4 w-4" />
                         </Button>
                       </td>
@@ -595,7 +626,15 @@ export default function HallazgosClient({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(selected)} onOpenChange={(o) => !o && setSelected(null)}>
+      <Dialog open={Boolean(selected)} onOpenChange={(o) => {
+        if (!o) {
+          setSelected(null);
+          setDetalle(null);
+          setDetalleError(null);
+          setComentarioCierre("");
+          setCierreError(null);
+        }
+      }}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Detalle del hallazgo</DialogTitle>
@@ -609,13 +648,83 @@ export default function HallazgosClient({
                 <div>Centro: {selected.centroNombre}</div>
                 <div>Obligación: {selected.obligacionClave ? (obligacionesMap.get(selected.obligacionClave) ?? selected.obligacionClave) : "Sin asociar"}</div>
               </div>
+
+              {detalleLoading ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600">
+                  Cargando evidencias y medida correctiva...
+                </div>
+              ) : null}
+
+              {detalleError ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-700">
+                  {detalleError}
+                </div>
+              ) : null}
+
+              {detalle?.medidaCorrectiva ? (
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Medida correctiva sugerida</p>
+                  <p className="mt-1 font-medium text-slate-900">{detalle.medidaCorrectiva.titulo}</p>
+                  <p className="mt-1 text-slate-700">{detalle.medidaCorrectiva.descripcion}</p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">Estado: {detalle.medidaCorrectiva.estado}</span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">Compromiso: {fmtFecha(detalle.medidaCorrectiva.fechaCompromiso)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600">
+                  Sin medida correctiva registrada.
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Evidencias asociadas</p>
+                {detalle?.evidencias.length ? (
+                  <div className="space-y-2">
+                    {detalle.evidencias.map((ev) => (
+                      <div key={ev.id} className="rounded-lg border border-slate-200 bg-white p-2">
+                        <p className="text-sm font-medium text-slate-900">{ev.titulo}</p>
+                        <p className="text-xs text-slate-500">Tipo: {ev.tipo} · Estado: {ev.estado} · Fecha: {fmtFecha(ev.fechaEvidencia)}</p>
+                        {ev.observacion ? <p className="mt-1 text-sm text-slate-700">{ev.observacion}</p> : null}
+                        {ev.archivoUrl ? (
+                          <div className="mt-2 flex items-center gap-2">
+                            <img src={ev.archivoUrl} alt={ev.archivoNombre ?? ev.titulo} className="h-14 w-14 rounded border object-cover" />
+                            <a href={ev.archivoUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-emerald-700 hover:text-emerald-800">
+                              Ver imagen
+                            </a>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600">
+                    Sin evidencias asociadas.
+                  </div>
+                )}
+              </div>
+
+              {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                <div className="space-y-1">
+                  <Label>Comentario de cierre (opcional si ya hay gestión registrada)</Label>
+                  <Textarea
+                    rows={3}
+                    value={comentarioCierre}
+                    onChange={(e) => setComentarioCierre(e.target.value)}
+                    placeholder="Describe la gestión realizada para cerrar el hallazgo"
+                  />
+                  {cierreError ? (
+                    <p className="text-xs text-rose-700">{cierreError}</p>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <DialogFooter>
             {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
               <>
                 <Button variant="outline" onClick={() => selected && openEdit(selected)}>Editar</Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => selected && onCerrar(selected)}>
+                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => selected && void onCerrar(selected)}>
                   Cerrar hallazgo
                 </Button>
               </>
