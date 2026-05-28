@@ -47,9 +47,12 @@ import {
   type OpcionesHallazgo,
   type PlantillaHallazgo,
 } from "./actions";
+import HallazgoFotoIA from "./HallazgoFotoIA";
 
 const TIPO_CFG: Record<string, { label: string; cls: string }> = {
   documental: { label: "Documental", cls: "bg-sky-50 text-sky-700 border border-sky-200" },
+  condicion_insegura: { label: "Condición insegura", cls: "bg-amber-50 text-amber-700 border border-amber-200" },
+  acto_inseguro: { label: "Acto inseguro", cls: "bg-rose-50 text-rose-700 border border-rose-200" },
   estructural: { label: "Estructural", cls: "bg-indigo-50 text-indigo-700 border border-indigo-200" },
   capacitacion: { label: "Capacitación", cls: "bg-violet-50 text-violet-700 border border-violet-200" },
   evidencia: { label: "Evidencia", cls: "bg-cyan-50 text-cyan-700 border border-cyan-200" },
@@ -57,6 +60,7 @@ const TIPO_CFG: Record<string, { label: string; cls: string }> = {
   comite_paritario: { label: "Comité Paritario", cls: "bg-orange-50 text-orange-700 border border-orange-200" },
   plan_trabajo: { label: "Plan de trabajo", cls: "bg-emerald-50 text-emerald-700 border border-emerald-200" },
   accidente_incidente: { label: "Accidente/incidente", cls: "bg-red-50 text-red-700 border border-red-200" },
+  emergencia: { label: "Emergencia", cls: "bg-red-50 text-red-700 border border-red-200" },
   otro: { label: "Otro", cls: "bg-slate-100 text-slate-700 border border-slate-200" },
   // legacy
   seguridad: { label: "Seguridad", cls: "bg-rose-50 text-rose-700 border border-rose-200" },
@@ -317,6 +321,8 @@ export default function HallazgosClient({
             </Card>
           ))}
         </div>
+
+        <HallazgoFotoIA opciones={{ centros: opciones.centros, areas: opciones.areas }} onConfirmed={reloadHallazgos} />
 
         <Card className="border-none shadow-sm bg-white">
           <CardContent className="pt-5 flex flex-col gap-3">

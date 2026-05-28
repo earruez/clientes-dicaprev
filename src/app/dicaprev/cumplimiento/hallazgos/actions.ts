@@ -103,6 +103,7 @@ const PLANTILLAS_HALLAZGO: PlantillaHallazgo[] = [
 export type OpcionesHallazgo = {
   puedeEditar: boolean;
   centros: Array<{ id: string; nombre: string }>;
+  areas: Array<{ id: string; nombre: string }>;
   trabajadores: Array<{ id: string; nombreCompleto: string; centroTrabajoId: string | null }>;
   obligaciones: Array<{
     clave: string;
@@ -216,9 +217,14 @@ export async function getHallazgos(): Promise<Hallazgo[]> {
 export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
   const context = await requirePermission("canReadCumplimiento");
 
-  const [centros, trabajadores, obligacionesPayload] = await Promise.all([
+  const [centros, areas, trabajadores, obligacionesPayload] = await Promise.all([
     prisma.centroTrabajo.findMany({
       where: { empresaId: context.empresaId, estado: "activo" },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: "asc" },
+    }),
+    prisma.area.findMany({
+      where: { empresaId: context.empresaId, estado: "activa" },
       select: { id: true, nombre: true },
       orderBy: { nombre: "asc" },
     }),
@@ -238,6 +244,7 @@ export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
   return {
     puedeEditar: canManageCumplimiento(context.rol),
     centros,
+    areas,
     trabajadores: trabajadores.map((t) => ({
       id: t.id,
       nombreCompleto: `${t.nombres} ${t.apellidos}`.trim(),

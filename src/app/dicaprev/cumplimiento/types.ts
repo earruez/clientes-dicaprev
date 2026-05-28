@@ -11,7 +11,11 @@ export type TipoHallazgo =
   | "seguridad"
   | "conducta"
   | "equipos"
-  | "emergencias";
+  | "emergencias"
+  | "condicion_insegura"
+  | "acto_inseguro"
+  | "emergencia"
+  | "otro";
 
 export type EstadoHallazgo =
   | "abierto"
