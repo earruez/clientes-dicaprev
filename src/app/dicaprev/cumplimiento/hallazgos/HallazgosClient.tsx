@@ -30,6 +30,7 @@ import {
   Eye,
   Plus,
   Search,
+  Sparkles,
   User,
 } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
@@ -142,9 +143,11 @@ function FORM_EMPTY(): HallazgoFormData {
 export default function HallazgosClient({
   initialHallazgos,
   opciones,
+  iaConfigurada,
 }: {
   initialHallazgos: Hallazgo[];
   opciones: OpcionesHallazgo;
+  iaConfigurada: boolean;
 }) {
   const [hallazgos, setHallazgos] = useState<Hallazgo[]>(initialHallazgos);
   const [saving, setSaving] = useState(false);
@@ -158,6 +161,7 @@ export default function HallazgosClient({
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<HallazgoFormData>(FORM_EMPTY());
   const [soloIncumplidas, setSoloIncumplidas] = useState(true);
+  const [modalIAOpen, setModalIAOpen] = useState(false);
 
   const [selected, setSelected] = useState<Hallazgo | null>(null);
 
@@ -294,15 +298,25 @@ export default function HallazgosClient({
           description="Registro de hallazgos con plantillas rápidas y vínculos reales a obligaciones, centros y trabajadores."
           icon={AlertTriangle}
           actions={
-            opciones.puedeEditar ? (
+            <div className="flex flex-wrap items-center gap-2">
               <Button
-                onClick={openCreate}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
+                variant="outline"
+                onClick={() => setModalIAOpen(true)}
+                className="rounded-full px-5 py-2.5 text-sm font-medium"
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Nuevo hallazgo
+                <Sparkles className="mr-2 h-4 w-4" />
+                Analizar foto con IA
               </Button>
-            ) : null
+              {opciones.puedeEditar ? (
+                <Button
+                  onClick={openCreate}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nuevo hallazgo
+                </Button>
+              ) : null}
+            </div>
           }
         />
 
@@ -322,7 +336,13 @@ export default function HallazgosClient({
           ))}
         </div>
 
-        <HallazgoFotoIA opciones={{ centros: opciones.centros, areas: opciones.areas }} onConfirmed={reloadHallazgos} />
+        <HallazgoFotoIA
+          open={modalIAOpen}
+          onOpenChange={setModalIAOpen}
+          opciones={{ centros: opciones.centros, areas: opciones.areas }}
+          iaConfigurada={iaConfigurada}
+          onConfirmed={reloadHallazgos}
+        />
 
         <Card className="border-none shadow-sm bg-white">
           <CardContent className="pt-5 flex flex-col gap-3">

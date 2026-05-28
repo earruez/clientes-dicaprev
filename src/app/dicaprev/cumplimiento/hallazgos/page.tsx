@@ -7,5 +7,7 @@ export default async function HallazgosPage() {
     getOpcionesHallazgo(),
   ]);
 
-  return <HallazgosClient initialHallazgos={initialHallazgos} opciones={opciones} />;
+  const iaConfigurada = Boolean(process.env.OPENAI_API_KEY);
+
+  return <HallazgosClient initialHallazgos={initialHallazgos} opciones={opciones} iaConfigurada={iaConfigurada} />;
 }
