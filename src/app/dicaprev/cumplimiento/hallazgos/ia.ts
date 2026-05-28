@@ -101,17 +101,40 @@ function buildPrompt(params: {
   observacion: string | null;
 }) {
   return [
-    "Analiza la imagen como apoyo para prevención de riesgos laborales en Chile.",
-    "Identifica solo riesgos visibles.",
-    "No inventes fechas ni datos que no sean legibles.",
-    "Si una etiqueta no se puede leer, responde No concluyente.",
-    "Devuelve sugerencias como borrador, siempre sujetas a revisión profesional.",
-    "No identifiques personas ni hagas conclusiones legales.",
-    "Si la imagen no permite concluir un riesgo visible claro, devuelve exactamente una sola sugerencia con titulo 'No concluyente'.",
-    "Si el riesgo es un extintor y la fecha de mantencion/vencimiento es legible y está vencida, puedes sugerir el hallazgo; si no es legible, pide revisión manual y no afirmes vencimiento.",
-    "Devuelve SOLO JSON valido con la forma {\"sugerencias\":[...]}.",
-    "Cada sugerencia debe incluir: titulo, descripcion, tipo, prioridad, confianza, evidenciaVisible, accionSugerida, requiereRevision.",
-    "La confianza debe ser un numero de 0 a 100.",
+    "Analiza la imagen adjunta y detecta posibles hallazgos de seguridad o salud ocupacional visibles.",
+    "Considera especialmente:",
+    "- extintores vencidos, descargados, sin señalética o con acceso obstruido",
+    "- salidas de emergencia obstruidas",
+    "- cableado expuesto",
+    "- riesgo de caída",
+    "- desorden o falta de aseo",
+    "- almacenamiento inseguro",
+    "- ausencia de EPP visible cuando el contexto lo exige",
+    "- señalética faltante",
+    "- botiquines o equipos de emergencia vencidos o incompletos",
+    "- condiciones inseguras generales",
+    "",
+    "Si hay una etiqueta de extintor:",
+    "- si la fecha de mantención o vencimiento es claramente legible y está vencida, sugerir hallazgo",
+    "- si la fecha no es legible, no afirmar vencimiento; sugerir revisión manual",
+    "",
+    "Devuelve solo JSON válido con este formato:",
+    "{",
+    '  "sugerencias": [',
+    "    {",
+    '      "titulo": "string",',
+    '      "descripcion": "string",',
+    '      "tipo": "condicion_insegura | acto_inseguro | documental | emergencia | otro",',
+    '      "prioridad": "baja | media | alta | critica",',
+    '      "confianza": 0.0,',
+    '      "evidenciaVisible": "string",',
+    '      "accionSugerida": "string",',
+    '      "requiereRevision": true',
+    "    }",
+    "  ],",
+    '  "resultadoGeneral": "con_hallazgos | no_concluyente | sin_hallazgos_visibles",',
+    '  "advertencia": "Documento generado como apoyo y requiere revisión profesional antes de crear el hallazgo."',
+    "}",
     "",
     `Empresa: ${params.empresaNombre}`,
     params.centroNombre ? `Centro: ${params.centroNombre}` : "Centro: no seleccionado",
@@ -176,7 +199,22 @@ function normalizarSugerenciasHallazgoIA(raw: unknown): SugerenciaHallazgoIA[] {
     return fallbackNoConcluyente();
   }
 
-  const payload = raw as { sugerencias?: unknown };
+  const payload = raw as {
+    sugerencias?: unknown;
+    resultadoGeneral?: unknown;
+  };
+  const resultadoGeneral =
+    typeof payload.resultadoGeneral === "string"
+      ? normalizeToken(payload.resultadoGeneral)
+      : "";
+
+  if (resultadoGeneral === "sin_hallazgos_visibles") {
+    return [];
+  }
+  if (resultadoGeneral === "no_concluyente") {
+    return fallbackNoConcluyente();
+  }
+
   const sugerenciasRaw = Array.isArray(payload.sugerencias) ? payload.sugerencias : [];
   const sugerencias = sugerenciasRaw
     .map((item) => normalizarSugerenciaHallazgoIA(item))
@@ -288,7 +326,7 @@ export async function analizarFotoHallazgoIA(
           {
             role: "system",
             content:
-              "Eres un asistente de prevencion de riesgos laborales para Chile. Identificas solo riesgos visibles. No identificas personas. No inventas datos. Si una etiqueta no se lee, respondes No concluyente. Devuelves solo JSON valido.",
+              "Actuas como asistente tecnico de prevencion de riesgos laborales en Chile. Analiza fotografias de lugares de trabajo para apoyar la deteccion preliminar de hallazgos. Identifica solo riesgos visibles en la imagen. No inventes datos, fechas, condiciones, nombres ni ubicaciones. Si una etiqueta, fecha o texto no es claramente legible, responde 'No concluyente' para ese punto. No identifiques personas. No emitas sanciones ni conclusiones legales definitivas. Tus respuestas son sugerencias tecnicas que requieren revision profesional antes de crear un hallazgo.",
           },
           {
             role: "user",
