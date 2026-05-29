@@ -370,7 +370,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
             <div className="space-y-3">
               {sugerencias.map((sugerencia, index) => {
                 const confirmationKey = `${sugerencia.titulo}-${sugerencia.confianza}-${index}`;
-                const noConcluyente = sugerencia.titulo.toLowerCase().includes("no concluyente");
+                const bajaConfianza = sugerencia.confianza < 20;
                 return (
                   <div key={confirmationKey} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -380,6 +380,11 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                           <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", prioridadClass(sugerencia.confianza))}>
                             Confianza {sugerencia.confianza}%
                           </span>
+                          {bajaConfianza && (
+                            <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                              No concluyente
+                            </span>
+                          )}
                           <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
                             {tipoLabel(sugerencia.tipo)}
                           </span>
@@ -388,6 +393,11 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                           </span>
                         </div>
                         <p className="text-sm text-slate-700">{sugerencia.descripcion}</p>
+                        {bajaConfianza && (
+                          <p className="text-xs text-amber-700">
+                            <strong>⚠️ La imagen no permite confirmar el hallazgo con suficiente claridad.</strong>
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -397,7 +407,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                         <Button
                           className="bg-emerald-600 text-white hover:bg-emerald-700"
                           onClick={() => void handleConfirmar(sugerencia)}
-                          disabled={confirmingKey === confirmationKey || noConcluyente}
+                          disabled={confirmingKey === confirmationKey || bajaConfianza}
                         >
                           {confirmingKey === confirmationKey ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
