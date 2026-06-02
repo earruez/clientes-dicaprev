@@ -41,11 +41,14 @@ import type {
   PrioridadHallazgo,
 } from "../types";
 import {
+  agregarEvidenciaCierreHallazgo,
   actualizarHallazgo,
+  actualizarEstadoMedidaCorrectiva,
   cerrarHallazgo,
   crearHallazgo,
   getHallazgoDetalle,
   getHallazgos,
+  registrarMedidaCorrectivaHallazgo,
   type HallazgoDetalle,
   type OpcionesHallazgo,
   type PlantillaHallazgo,
@@ -116,6 +119,7 @@ type HallazgoFormData = {
   obligacionClave: string;
   prioridad: PrioridadHallazgo;
   fechaCompromiso: string;
+  medidaCorrectivaSugerida: string;
 };
 
 function fechaCompromisoDesdePlantilla(dias: number): string {
@@ -139,6 +143,7 @@ function FORM_EMPTY(): HallazgoFormData {
     obligacionClave: "none",
     prioridad: "media",
     fechaCompromiso: "",
+    medidaCorrectivaSugerida: "",
   };
 }
 
@@ -171,6 +176,8 @@ export default function HallazgosClient({
   const [detalleError, setDetalleError] = useState<string | null>(null);
   const [comentarioCierre, setComentarioCierre] = useState("");
   const [cierreError, setCierreError] = useState<string | null>(null);
+  const [evidenciaCierreTexto, setEvidenciaCierreTexto] = useState("");
+  const [medidaCorrectivaTexto, setMedidaCorrectivaTexto] = useState("");
 
   const obligacionesMap = useMemo(() => {
     return new Map(opciones.obligaciones.map((o) => [o.clave, o.nombre]));
@@ -214,6 +221,7 @@ export default function HallazgosClient({
       obligacionClave: h.obligacionClave ?? h.obligacionId ?? "none",
       prioridad: h.prioridad,
       fechaCompromiso: h.fechaCompromiso,
+      medidaCorrectivaSugerida: "",
     });
     setModalOpen(true);
   }
@@ -231,6 +239,7 @@ export default function HallazgosClient({
           prioridad: form.prioridad,
           descripcion: form.descripcion,
           fechaCompromiso: form.fechaCompromiso,
+          medidaCorrectivaSugerida: form.medidaCorrectivaSugerida || null,
         });
       } else {
         await actualizarHallazgo(editId, {
@@ -255,6 +264,8 @@ export default function HallazgosClient({
     setDetalle(null);
     setDetalleError(null);
     setComentarioCierre("");
+    setEvidenciaCierreTexto("");
+    setMedidaCorrectivaTexto("");
     setCierreError(null);
     try {
       setDetalleLoading(true);
@@ -279,8 +290,79 @@ export default function HallazgosClient({
       setSelected(null);
       setDetalle(null);
       setComentarioCierre("");
+      setEvidenciaCierreTexto("");
     } catch (error) {
       setCierreError(error instanceof Error ? error.message : "No fue posible cerrar el hallazgo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onMarcarMedidaCompletada(hallazgoId: string, medidaId: string) {
+    if (!opciones.puedeEditar) return;
+    try {
+      setSaving(true);
+      setCierreError(null);
+      await actualizarEstadoMedidaCorrectiva(hallazgoId, medidaId, "completada");
+      const detalleHallazgo = await getHallazgoDetalle(hallazgoId);
+      if (detalleHallazgo) setDetalle(detalleHallazgo);
+      await reloadHallazgos();
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible completar la medida correctiva.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onActualizarEstadoMedida(
+    hallazgoId: string,
+    medidaId: string,
+    estado: "pendiente" | "en_proceso" | "completada" | "descartada",
+  ) {
+    if (!opciones.puedeEditar) return;
+    try {
+      setSaving(true);
+      setCierreError(null);
+      await actualizarEstadoMedidaCorrectiva(hallazgoId, medidaId, estado);
+      const detalleHallazgo = await getHallazgoDetalle(hallazgoId);
+      if (detalleHallazgo) setDetalle(detalleHallazgo);
+      await reloadHallazgos();
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible actualizar el estado de la medida correctiva.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onRegistrarMedidaCorrectiva(hallazgoId: string) {
+    if (!opciones.puedeEditar) return;
+    try {
+      setSaving(true);
+      setCierreError(null);
+      await registrarMedidaCorrectivaHallazgo(hallazgoId, medidaCorrectivaTexto);
+      setMedidaCorrectivaTexto("");
+      const detalleHallazgo = await getHallazgoDetalle(hallazgoId);
+      if (detalleHallazgo) setDetalle(detalleHallazgo);
+      await reloadHallazgos();
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible registrar la medida correctiva.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onAgregarEvidenciaCierre(hallazgoId: string) {
+    if (!opciones.puedeEditar) return;
+    try {
+      setSaving(true);
+      setCierreError(null);
+      await agregarEvidenciaCierreHallazgo(hallazgoId, evidenciaCierreTexto);
+      setEvidenciaCierreTexto("");
+      const detalleHallazgo = await getHallazgoDetalle(hallazgoId);
+      if (detalleHallazgo) setDetalle(detalleHallazgo);
+      await reloadHallazgos();
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible registrar evidencia de cierre.");
     } finally {
       setSaving(false);
     }
@@ -609,6 +691,16 @@ export default function HallazgosClient({
                 onChange={(e) => setForm((prev) => ({ ...prev, fechaCompromiso: e.target.value }))}
               />
             </div>
+
+            <div className="space-y-1">
+              <Label>Medida correctiva sugerida (opcional al crear)</Label>
+              <Textarea
+                rows={3}
+                value={form.medidaCorrectivaSugerida}
+                onChange={(e) => setForm((prev) => ({ ...prev, medidaCorrectivaSugerida: e.target.value }))}
+                placeholder="Ej. Suspender tarea hasta implementar control de riesgo y verificar evidencia antes de retomar."
+              />
+            </div>
           </div>
 
           <DialogFooter>
@@ -632,6 +724,8 @@ export default function HallazgosClient({
           setDetalle(null);
           setDetalleError(null);
           setComentarioCierre("");
+          setEvidenciaCierreTexto("");
+          setMedidaCorrectivaTexto("");
           setCierreError(null);
         }
       }}>
@@ -661,19 +755,70 @@ export default function HallazgosClient({
                 </div>
               ) : null}
 
-              {detalle?.medidaCorrectiva ? (
+              {detalle?.medidasCorrectivas?.length ? (
                 <div className="rounded-lg border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Medida correctiva sugerida</p>
-                  <p className="mt-1 font-medium text-slate-900">{detalle.medidaCorrectiva.titulo}</p>
-                  <p className="mt-1 text-slate-700">{detalle.medidaCorrectiva.descripcion}</p>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">Estado: {detalle.medidaCorrectiva.estado}</span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">Compromiso: {fmtFecha(detalle.medidaCorrectiva.fechaCompromiso)}</span>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Medidas correctivas</p>
+                  <div className="mt-2 space-y-2">
+                    {detalle.medidasCorrectivas.map((medida) => (
+                      <div key={medida.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-slate-700">{medida.descripcion}</p>
+                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Responsable: {medida.responsable}</span>
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Compromiso: {fmtFecha(medida.fechaCompromiso)}</span>
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Estado: {medida.estado}</span>
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Evidencia cierre: {medida.evidenciaCierre ? "Sí" : "No"}</span>
+                        </div>
+                        {opciones.puedeEditar && selected?.estado !== "cerrado" ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <Select
+                              value={medida.estado}
+                              onValueChange={(v) => void onActualizarEstadoMedida(selected.id, medida.id, v as "pendiente" | "en_proceso" | "completada" | "descartada")}
+                            >
+                              <SelectTrigger className="h-8 w-40 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="pendiente">pendiente</SelectItem>
+                                <SelectItem value="en_proceso">en_proceso</SelectItem>
+                                <SelectItem value="completada">completada</SelectItem>
+                                <SelectItem value="descartada">descartada</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void onMarcarMedidaCompletada(selected.id, medida.id)}
+                              disabled={saving || medida.estado === "completada"}
+                            >
+                              Marcar medida como completada
+                            </Button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600">
-                  Sin medida correctiva registrada.
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600 space-y-2">
+                  <p>Sin medida correctiva registrada. Pendiente de definir.</p>
+                  {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                    <>
+                      <Textarea
+                        rows={3}
+                        value={medidaCorrectivaTexto}
+                        onChange={(e) => setMedidaCorrectivaTexto(e.target.value)}
+                        placeholder="Describe la medida correctiva para gestionar el cierre del hallazgo"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void onRegistrarMedidaCorrectiva(selected.id)}
+                        disabled={saving || !medidaCorrectivaTexto.trim()}
+                      >
+                        Registrar medida correctiva
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
               )}
 
@@ -705,8 +850,24 @@ export default function HallazgosClient({
               </div>
 
               {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
-                <div className="space-y-1">
-                  <Label>Comentario de cierre (opcional si ya hay gestión registrada)</Label>
+                <div className="space-y-2">
+                  <Label>Evidencia de cierre</Label>
+                  <Textarea
+                    rows={2}
+                    value={evidenciaCierreTexto}
+                    onChange={(e) => setEvidenciaCierreTexto(e.target.value)}
+                    placeholder="Describe la evidencia de cierre asociada a la medida correctiva"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void onAgregarEvidenciaCierre(selected.id)}
+                    disabled={saving || !evidenciaCierreTexto.trim()}
+                  >
+                    Agregar evidencia de cierre
+                  </Button>
+
+                  <Label>Comentario de cierre (complementario)</Label>
                   <Textarea
                     rows={3}
                     value={comentarioCierre}

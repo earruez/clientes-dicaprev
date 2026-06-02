@@ -123,6 +123,7 @@ export type HallazgoInput = {
   prioridad: PrioridadHallazgo;
   descripcion: string;
   fechaCompromiso: string;
+  medidaCorrectivaSugerida?: string | null;
 };
 
 export type HallazgoDetalle = {
@@ -138,6 +139,14 @@ export type HallazgoDetalle = {
     archivoNombre: string | null;
     fechaEvidencia: string;
   }>;
+  medidasCorrectivas: Array<{
+    id: string;
+    descripcion: string;
+    responsable: string;
+    fechaCompromiso: string;
+    estado: "pendiente" | "en_proceso" | "completada" | "descartada";
+    evidenciaCierre: boolean;
+  }>;
   medidaCorrectiva: {
     id: string;
     titulo: string;
@@ -146,6 +155,20 @@ export type HallazgoDetalle = {
     fechaCompromiso: string;
   } | null;
 };
+
+type EstadoMedidaCorrectiva = "pendiente" | "en_proceso" | "completada" | "descartada";
+
+function normalizeEstadoMedida(value: string | null | undefined): EstadoMedidaCorrectiva {
+  const token = normalizeToken(value);
+  if (token === "completada" || token === "valida" || token === "cerrada") return "completada";
+  if (token === "descartada") return "descartada";
+  if (token === "en_proceso") return "en_proceso";
+  return "pendiente";
+}
+
+function medidaGestionada(estado: EstadoMedidaCorrectiva): boolean {
+  return estado === "completada" || estado === "descartada";
+}
 
 function canManageCumplimiento(rol: string): boolean {
   if (rol === "SUPERADMIN") return true;
@@ -269,6 +292,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
           archivoUrl: true,
           archivoNombre: true,
           fechaEvidencia: true,
+          creadoPor: { select: { nombre: true } },
         },
       },
     },
@@ -278,7 +302,24 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
     return null;
   }
 
-  const medidaCorrectiva = hallazgo.evidenciasCumplimiento.find((ev) => normalizeToken(ev.tipo) === "accion_correctiva");
+  const medidasCorrectivas = hallazgo.evidenciasCumplimiento
+    .filter((ev) => normalizeToken(ev.tipo) === "accion_correctiva")
+    .map((ev) => {
+      const estado = normalizeEstadoMedida(ev.estado);
+      return {
+        id: ev.id,
+        descripcion: ev.observacion ?? "Sin descripcion",
+        responsable: ev.creadoPor?.nombre ?? "Por asignar",
+        fechaCompromiso: hallazgo.fechaCompromiso.toISOString().slice(0, 10),
+        estado,
+        evidenciaCierre: hallazgo.evidenciasCumplimiento.some((cierre) => {
+          const tipo = normalizeToken(cierre.tipo);
+          return tipo === "cierre" || normalizeToken(cierre.observacion).includes("cierre");
+        }),
+      };
+    });
+
+  const medidaCorrectiva = medidasCorrectivas[0] ?? null;
 
   return {
     id: hallazgo.id,
@@ -293,11 +334,12 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
       archivoNombre: ev.archivoNombre,
       fechaEvidencia: ev.fechaEvidencia.toISOString(),
     })),
+    medidasCorrectivas,
     medidaCorrectiva: medidaCorrectiva
       ? {
           id: medidaCorrectiva.id,
-          titulo: medidaCorrectiva.titulo,
-          descripcion: medidaCorrectiva.observacion ?? "Sin descripción",
+          titulo: "Medida correctiva",
+          descripcion: medidaCorrectiva.descripcion,
           estado: medidaCorrectiva.estado,
           fechaCompromiso: hallazgo.fechaCompromiso.toISOString().slice(0, 10),
         }
@@ -367,20 +409,41 @@ export async function crearHallazgo(data: HallazgoInput): Promise<{ id: string }
     throw new Error("La fecha compromiso es obligatoria.");
   }
 
-  const created = await prisma.hallazgoCumplimiento.create({
-    data: {
-      empresaId: context.empresaId,
-      centroTrabajoId: data.centroTrabajoId,
-      trabajadorId: data.trabajadorId,
-      obligacionClave: data.obligacionClave,
-      tipo: data.tipo,
-      prioridad: data.prioridad,
-      descripcion: data.descripcion.trim(),
-      estado: "abierto",
-      fechaCompromiso: new Date(data.fechaCompromiso),
-      creadoPorId: context.usuarioId,
-    },
-    select: { id: true },
+  const created = await prisma.$transaction(async (tx) => {
+    const hallazgo = await tx.hallazgoCumplimiento.create({
+      data: {
+        empresaId: context.empresaId,
+        centroTrabajoId: data.centroTrabajoId,
+        trabajadorId: data.trabajadorId,
+        obligacionClave: data.obligacionClave,
+        tipo: data.tipo,
+        prioridad: data.prioridad,
+        descripcion: data.descripcion.trim(),
+        estado: "abierto",
+        fechaCompromiso: new Date(data.fechaCompromiso),
+        creadoPorId: context.usuarioId,
+      },
+      select: { id: true },
+    });
+
+    if (data.medidaCorrectivaSugerida?.trim()) {
+      await tx.evidenciaCumplimiento.create({
+        data: {
+          empresaId: context.empresaId,
+          titulo: "Medida correctiva inicial",
+          tipo: "accion_correctiva",
+          estado: "pendiente",
+          fechaEvidencia: new Date(),
+          observacion: data.medidaCorrectivaSugerida.trim(),
+          hallazgoId: hallazgo.id,
+          centroTrabajoId: data.centroTrabajoId,
+          trabajadorId: data.trabajadorId,
+          creadoPorId: context.usuarioId,
+        },
+      });
+    }
+
+    return hallazgo;
   });
 
   return created;
@@ -441,6 +504,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
       centroTrabajoId: true,
       trabajadorId: true,
       evidenciasCumplimiento: {
+        orderBy: { createdAt: "desc" },
         select: {
           id: true,
           tipo: true,
@@ -455,18 +519,20 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
     throw new Error("Hallazgo no encontrado para la empresa activa.");
   }
 
-  const accionCompletada = hallazgo.evidenciasCumplimiento.some((ev) => {
-    const tipo = normalizeToken(ev.tipo);
-    const estado = normalizeToken(ev.estado);
-    return tipo === "accion_correctiva" && (estado === "valida" || estado === "cerrada" || estado === "completada");
-  });
+  const medidas = hallazgo.evidenciasCumplimiento.filter((ev) => normalizeToken(ev.tipo) === "accion_correctiva");
+  const medidaPrincipal = medidas[0] ?? null;
+  const estadoMedidaPrincipal = medidaPrincipal ? normalizeEstadoMedida(medidaPrincipal.estado) : null;
+
+  const tieneMedidaRegistrada = medidas.length > 0;
+  const medidaCompleta = estadoMedidaPrincipal ? medidaGestionada(estadoMedidaPrincipal) : false;
+
   const evidenciaCierre = hallazgo.evidenciasCumplimiento.some((ev) => {
     const tipo = normalizeToken(ev.tipo);
     return tipo === "cierre" || normalizeToken(ev.observacion).includes("cierre");
   });
 
-  if (!accionCompletada && !evidenciaCierre && !comentario) {
-    throw new Error("Para cerrar el hallazgo debes registrar una medida correctiva o evidencia de cierre.");
+  if (!tieneMedidaRegistrada || !medidaCompleta || (!evidenciaCierre && !comentario)) {
+    throw new Error("Para cerrar el hallazgo debes registrar y completar una medida correctiva, además de dejar evidencia o comentario de cierre.");
   }
 
   await prisma.$transaction(async (tx) => {
@@ -493,5 +559,132 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
         estado: "cerrado",
       },
     });
+  });
+}
+
+export async function actualizarEstadoMedidaCorrectiva(
+  hallazgoId: string,
+  medidaId: string,
+  estado: EstadoMedidaCorrectiva,
+): Promise<void> {
+  const context = await requireAuth();
+  if (!canManageCumplimiento(context.rol)) {
+    throw new Error("No autorizado para gestionar medidas correctivas.");
+  }
+
+  const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
+    where: {
+      id: hallazgoId,
+      empresaId: context.empresaId,
+    },
+    select: { id: true },
+  });
+
+  if (!hallazgo) {
+    throw new Error("Hallazgo no encontrado para la empresa activa.");
+  }
+
+  await prisma.evidenciaCumplimiento.updateMany({
+    where: {
+      id: medidaId,
+      hallazgoId,
+      empresaId: context.empresaId,
+      tipo: "accion_correctiva",
+    },
+    data: {
+      estado,
+    },
+  });
+}
+
+export async function registrarMedidaCorrectivaHallazgo(
+  hallazgoId: string,
+  descripcion: string,
+): Promise<void> {
+  const context = await requireAuth();
+  if (!canManageCumplimiento(context.rol)) {
+    throw new Error("No autorizado para registrar medidas correctivas.");
+  }
+
+  const descripcionNormalizada = descripcion.trim();
+  if (!descripcionNormalizada) {
+    throw new Error("Debes ingresar una descripcion para la medida correctiva.");
+  }
+
+  const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
+    where: {
+      id: hallazgoId,
+      empresaId: context.empresaId,
+    },
+    select: {
+      id: true,
+      centroTrabajoId: true,
+      trabajadorId: true,
+    },
+  });
+
+  if (!hallazgo) {
+    throw new Error("Hallazgo no encontrado para la empresa activa.");
+  }
+
+  await prisma.evidenciaCumplimiento.create({
+    data: {
+      empresaId: context.empresaId,
+      titulo: "Medida correctiva",
+      tipo: "accion_correctiva",
+      estado: "pendiente",
+      fechaEvidencia: new Date(),
+      observacion: descripcionNormalizada,
+      hallazgoId: hallazgo.id,
+      centroTrabajoId: hallazgo.centroTrabajoId,
+      trabajadorId: hallazgo.trabajadorId,
+      creadoPorId: context.usuarioId,
+    },
+  });
+}
+
+export async function agregarEvidenciaCierreHallazgo(
+  hallazgoId: string,
+  observacion: string,
+): Promise<void> {
+  const context = await requireAuth();
+  if (!canManageCumplimiento(context.rol)) {
+    throw new Error("No autorizado para registrar evidencia de cierre.");
+  }
+
+  const obs = observacion.trim();
+  if (!obs) {
+    throw new Error("Debes ingresar una observacion para la evidencia de cierre.");
+  }
+
+  const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
+    where: {
+      id: hallazgoId,
+      empresaId: context.empresaId,
+    },
+    select: {
+      id: true,
+      centroTrabajoId: true,
+      trabajadorId: true,
+    },
+  });
+
+  if (!hallazgo) {
+    throw new Error("Hallazgo no encontrado para la empresa activa.");
+  }
+
+  await prisma.evidenciaCumplimiento.create({
+    data: {
+      empresaId: context.empresaId,
+      titulo: "Evidencia de cierre",
+      tipo: "cierre",
+      estado: "valida",
+      fechaEvidencia: new Date(),
+      observacion: obs,
+      hallazgoId: hallazgo.id,
+      centroTrabajoId: hallazgo.centroTrabajoId,
+      trabajadorId: hallazgo.trabajadorId,
+      creadoPorId: context.usuarioId,
+    },
   });
 }
