@@ -23,12 +23,11 @@ import {
   type AreaDef,
   type CargoDef,
 } from "./plantillas";
-import { aplicarPlantillaInicialEmpresa } from "@/app/dicaprev/empresa/plantilla/actions";
 
 // ─── Active types ──────────────────────────────────────────────────────── //
 
 export type AreaStatus = "activa" | "inactiva";
-export type CargoEstado = "activo" | "inctivo";
+export type CargoEstado = "activo" | "inactivo";
 export type CargoTipoUI =
   | "Operativo"
   | "Supervisión"
@@ -374,14 +373,6 @@ class EmpresaStore {
     }
     this._tipoPlantilla = tipo;
 
-    void aplicarPlantillaInicialEmpresa(tipo, modo)
-      .then(() => {
-        window.location.reload();
-      })
-      .catch((error) => {
-        console.error("No se pudo aplicar la plantilla inicial en Prisma:", error);
-        window.alert("No se pudo aplicar la plantilla inicial en la estructura real de la empresa.");
-      });
   }
 
   /** Reset to defaults and clear persistence. */
