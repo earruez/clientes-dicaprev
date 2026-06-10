@@ -1,5 +1,6 @@
 "use server";
 
+import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -238,10 +239,10 @@ export async function getTrabajadores() {
 }
 
 export async function crearTrabajador(data: TrabajadorInput) {
-  const { empresaId } = await requirePermission("canCreateTrabajador");
+  const { empresaId, usuarioId, email } = await requirePermission("canCreateTrabajador");
   const payload = await validateTrabajador(data);
 
-  return prisma.trabajador.create({
+  const trabajador = await prisma.trabajador.create({
     data: {
       empresaId,
       centroTrabajoId: payload.centroTrabajoId,
@@ -260,6 +261,20 @@ export async function crearTrabajador(data: TrabajadorInput) {
     },
     include: includeRelations(),
   });
+
+  try {
+    await evaluarDocumentosPendientesPorEvento({
+      empresaId,
+      evento: "trabajador_creado",
+      trabajadorId: trabajador.id,
+      usuarioId,
+      email,
+    });
+  } catch (error) {
+    console.error("No se pudo evaluar documentacion pendiente del trabajador creado:", error);
+  }
+
+  return trabajador;
 }
 
 export async function actualizarTrabajador(id: string, data: TrabajadorInput) {
