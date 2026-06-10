@@ -36,7 +36,7 @@ export type CargoTipoUI =
   | "Técnico";
 
 /**
- * Full runtime representation of an Área (as used by areas/page.tsx).
+ * Full local state of an Área (as used by areas/page.tsx).
  * Superset of AreaDef — includes all UI-level fields.
  */
 export interface EmpresaArea {
@@ -88,7 +88,7 @@ export interface EmpresaStructure {
   tipoPlantilla: TipoEmpresa | null;
 }
 
-// ─── Default mock data (used when no template is active) ──────────────── //
+// ─── Default mock data (used when no template is active) ────────────────── //
 
 function cargosDeArea(areaId: string) {
   return CARGO_REFS.filter((c) => c.areaId === areaId);
@@ -176,7 +176,7 @@ const DEFAULT_CARGOS: EmpresaCargo[] = [
   },
 ];
 
-// ─── Hydration helpers ─────────────────────────────────────────────────── //
+// ─── Hydration helpers ────────────────────────────────────────────────── //
 
 function hydrateAreas(saved: PlantillaAplicada): EmpresaArea[] {
   return saved.areas.map((def: AreaDef): EmpresaArea => {
@@ -298,7 +298,7 @@ class EmpresaStore {
     this._initialized = true;
   }
 
-  // ── Getters ──────────────────────────────────────────────────────────── //
+  // ── Getters ─────────────────────────────────────────────────────────── //
 
   getActiveStructure(): EmpresaStructure {
     return {
@@ -320,7 +320,7 @@ class EmpresaStore {
     return this._tipoPlantilla;
   }
 
-  // ── Mutations ────────────────────────────────────────────────────────── //
+  // ── Mutations ───────────────────────────────────────────────────────── //
 
   /** Replace the full area list (called by areas/page on every local mutation). */
   setAreas(areas: EmpresaArea[]): void {
@@ -339,6 +339,11 @@ class EmpresaStore {
    * Persists the choice to localStorage.
    */
   applyTemplate(tipo: TipoEmpresa, modo: PlantillaModo): void {
+    if (modo === "reemplazar") {
+      window.alert("El modo reemplazar queda pendiente para evitar afectar áreas, cargos o dotación existente.");
+      throw new Error("El modo reemplazar queda pendiente para evitar afectar áreas o cargos existentes");
+    }
+
     persist(tipo, modo);
     const p = PLANTILLAS[tipo];
     const fake: PlantillaAplicada = {
@@ -367,6 +372,7 @@ class EmpresaStore {
       this._cargos = hydratedCargos;
     }
     this._tipoPlantilla = tipo;
+
   }
 
   /** Reset to defaults and clear persistence. */
@@ -378,7 +384,7 @@ class EmpresaStore {
   }
 }
 
-// ─── Exports ───────────────────────────────────────────────────────────── //
+// ─── Exports ──────────────────────────────────────────────────────────── //
 
 export const empresaStore = new EmpresaStore();
 

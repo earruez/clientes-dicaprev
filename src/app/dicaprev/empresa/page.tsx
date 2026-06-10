@@ -38,6 +38,7 @@ import {
   applyEmpresaTemplate,
   clearEmpresaTemplate,
 } from "@/lib/empresa/empresa-store";
+import { aplicarPlantillaInicialEmpresa } from "@/app/dicaprev/empresa/plantilla/actions";
 import { getEmpresaActual } from "@/app/dicaprev/empresa/informacion-general/actions";
 
 interface CompanyData {
@@ -190,12 +191,21 @@ export default function CompanyPage() {
     };
   }, []);
 
-  const handleAplicarPlantilla = (modo: PlantillaModo) => {
+  const handleAplicarPlantilla = async (modo: PlantillaModo) => {
     if (!selectedTipo) return;
+
     applyEmpresaTemplate(selectedTipo, modo);
     setPlantillaAplicada(selectedTipo);
     setConfirmOpen(false);
     setSelectedTipo(null);
+
+    try {
+      await aplicarPlantillaInicialEmpresa(selectedTipo, modo);
+      window.location.reload();
+    } catch (error) {
+      console.error("No se pudo aplicar la plantilla inicial en Prisma:", error);
+      window.alert("No se pudo aplicar la plantilla inicial en la estructura real de la empresa.");
+    }
   };
 
   const handleCambiarPlantilla = () => {
