@@ -96,14 +96,14 @@ export default function ControlDocumentalClient({
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-6 py-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e8eefc_0%,_#f8fafc_40%,_#f8fafc_100%)] px-4 py-6 sm:px-6 sm:py-8">
       <BulkUploadDrawer
         isOpen={bulkOpen}
         onClose={() => setBulkOpen(false)}
         workers={documentalData.workers}
         tipos={documentalData.tipos}
       />
-      <div className="mx-auto max-w-7xl space-y-8">
+      <div className="mx-auto max-w-[1300px] space-y-6">
 
         <StandardPageHeader
           moduleLabel="Módulo Personas"
@@ -167,14 +167,14 @@ export default function ControlDocumentalClient({
         />
 
         {/* ── Stats strip ── */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
             { label: "Tipos de documentos",   value: stats.tiposTotal,    icon: <FileStack className="h-5 w-5" />,      color: "text-blue-600",    bg: "bg-blue-50" },
             { label: "Reglas activas",         value: stats.reglasActivas, icon: <ShieldCheck className="h-5 w-5" />,   color: "text-emerald-600", bg: "bg-emerald-50" },
             { label: "Workers con pendientes", value: stats.conPendientes, icon: <FileWarning className="h-5 w-5" />,   color: "text-amber-600",   bg: "bg-amber-50" },
             { label: "Documentos vencidos",    value: stats.docsVencidos,  icon: <CalendarClock className="h-5 w-5" />, color: "text-red-600",     bg: "bg-red-50" },
           ].map(({ label, value, icon, color, bg }) => (
-            <div key={label} className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+            <div key={label} className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm backdrop-blur">
               <div className="flex items-start justify-between">
                 <div>
                   <p className={`text-3xl font-bold ${color}`}>{value}</p>
@@ -189,33 +189,36 @@ export default function ControlDocumentalClient({
         </div>
 
         {/* ── Tab section ── */}
-        <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
-          <div className="overflow-x-auto border-b border-slate-100">
-            <div className="flex min-w-max">
+        <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm">
+          <div className="border-b border-slate-100 bg-slate-50/70 p-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`relative flex items-center gap-2 px-6 py-4 text-sm font-semibold whitespace-nowrap transition-colors ${
+                  className={`group relative rounded-2xl border px-4 py-3 text-left transition-all ${
                     activeTab === tab.id
-                      ? "text-slate-900"
-                      : "text-slate-400 hover:text-slate-700"
+                      ? "border-slate-900 bg-slate-900 text-white shadow"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900"
                   }`}
                 >
-                  {tab.icon}
-                  {tab.label}
-                  {activeTab === tab.id && (
-                    <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-slate-900" />
-                  )}
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    {tab.icon}
+                    <span>{tab.label}</span>
+                  </div>
+                  <p
+                    className={`mt-1.5 text-[11px] ${
+                      activeTab === tab.id ? "text-white/80" : "text-slate-400 group-hover:text-slate-500"
+                    }`}
+                  >
+                    {tab.description}
+                  </p>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="p-6">
-            <p className="mb-6 text-xs text-slate-400">
-              {TABS.find((t) => t.id === activeTab)?.description}
-            </p>
+          <div className="p-4 sm:p-6">
 
             {documentalData.workers.length === 0 &&
             documentalData.tipos.length === 0 &&

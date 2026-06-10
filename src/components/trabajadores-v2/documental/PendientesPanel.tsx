@@ -8,6 +8,8 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   XCircle,
   Bell,
@@ -339,6 +341,8 @@ export function PendientesPanel({
   }
 
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(initialWorkerId ?? null);
+  const [pageSize, setPageSize] = useState(25);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // When initialWorkerId changes (e.g. page re-renders with new param), sync state
   useEffect(() => {
@@ -391,14 +395,28 @@ export function PendientesPanel({
     });
   }, [searchRows, filterEstado]);
 
-  const allFilteredChecked  = filtered.length > 0 && filtered.every((r) => checkedIds.has(r.worker.id));
-  const someFilteredChecked = !allFilteredChecked && filtered.some((r) => checkedIds.has(r.worker.id));
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterEstado, soloDS44, mainView]);
+
+  const totalFiltered = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const pageStart = totalFiltered === 0 ? 0 : (safePage - 1) * pageSize + 1;
+  const pageEnd = Math.min(totalFiltered, safePage * pageSize);
+  const paginatedRows = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, safePage, pageSize]);
+
+  const allFilteredChecked  = paginatedRows.length > 0 && paginatedRows.every((r) => checkedIds.has(r.worker.id));
+  const someFilteredChecked = !allFilteredChecked && paginatedRows.some((r) => checkedIds.has(r.worker.id));
 
   function toggleCheckAll() {
     if (allFilteredChecked) {
-      setCheckedIds((prev) => { const n = new Set(prev); filtered.forEach((r) => n.delete(r.worker.id)); return n; });
+      setCheckedIds((prev) => { const n = new Set(prev); paginatedRows.forEach((r) => n.delete(r.worker.id)); return n; });
     } else {
-      setCheckedIds((prev) => { const n = new Set(prev); filtered.forEach((r) => n.add(r.worker.id)); return n; });
+      setCheckedIds((prev) => { const n = new Set(prev); paginatedRows.forEach((r) => n.add(r.worker.id)); return n; });
     }
   }
 
@@ -858,8 +876,9 @@ export function PendientesPanel({
 
       {mainView === "trabajador" && (<>
       {/* Controls */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1.5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap items-center gap-1.5">
           {FILTER_OPTS.map((f) => (
             <button
               key={f.id}
@@ -876,16 +895,39 @@ export function PendientesPanel({
               </span>
             </button>
           ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Buscar trabajador..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none sm:w-64"
+              />
+            </div>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-slate-400 focus:outline-none"
+            >
+              {[10, 25, 50, 100].map((size) => (
+                <option key={size} value={size}>{size} por página</option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar trabajador..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-9 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none sm:w-56"
-          />
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
+          <p>
+            Mostrando <span className="font-semibold text-slate-700">{pageStart}-{pageEnd}</span> de <span className="font-semibold text-slate-700">{totalFiltered}</span> trabajadores filtrados.
+          </p>
+          <p>
+            Seleccionados: <span className="font-semibold text-slate-700">{checkedIds.size}</span>
+          </p>
         </div>
       </div>
 
@@ -953,7 +995,7 @@ export function PendientesPanel({
                 </td>
               </tr>
             )}
-            {filtered.map(({ worker, docs, summary }) => {
+            {paginatedRows.map(({ worker, docs, summary }) => {
               const isSelected = selectedWorkerId === worker.id;
               const initials   = `${worker.nombre[0]}${worker.apellido[0]}`;
 
@@ -1088,8 +1130,8 @@ export function PendientesPanel({
                           </Link>
                         </div>
 
-                        {/* Full doc list — priority: vencido, rechazado, pendiente, en_revision, completo, no_aplica */}
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {/* Lista compacta de documentos */}
+                        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                           {[...docs]
                             .sort((a, b) => {
                               const order: Record<string, number> = { vencido: 0, rechazado: 1, pendiente: 2, en_revision: 3, validado: 4, enviado_firma: 5, firmado: 6, completo: 7, no_aplica: 8 };
@@ -1121,32 +1163,24 @@ export function PendientesPanel({
                               const puedeGenerarIa = isOdi && hasAnyRecord && !isSigned;
                               const puedeDescargarPdf = Boolean(doc.observacion?.trim()) && ["en_revision", "validado", "enviado_firma", "firmado"].includes(doc.estado);
                               const uploadMode: "subir" | "reenviar" = hasAnyRecord ? "reenviar" : "subir";
-                              const cardBg =
-                                doc.estado === "vencido"     ? "border-red-200 bg-red-50"
-                                : doc.estado === "rechazado" ? "border-rose-200 bg-rose-50"
-                                : doc.estado === "pendiente" ? "border-amber-200 bg-amber-50"
-                                : doc.estado === "en_revision" ? "border-blue-200 bg-blue-50"
-                                : doc.estado === "validado" ? "border-indigo-200 bg-indigo-50"
-                                : doc.estado === "enviado_firma" ? "border-teal-200 bg-teal-50"
-                                : doc.estado === "firmado" ? "border-emerald-200 bg-emerald-50"
-                                : "border-slate-200 bg-white";
-                              const nameColor =
-                                doc.estado === "vencido" || doc.estado === "rechazado" ? "text-red-900"
-                                : doc.estado === "pendiente" ? "text-amber-900"
-                                : doc.estado === "en_revision" ? "text-blue-900"
-                                : doc.estado === "validado" ? "text-indigo-900"
-                                : doc.estado === "enviado_firma" ? "text-teal-900"
-                                : doc.estado === "firmado" ? "text-emerald-900"
-                                : "text-slate-900";
+                              const cardTone =
+                                doc.estado === "vencido"     ? "ring-red-200"
+                                : doc.estado === "rechazado" ? "ring-rose-200"
+                                : doc.estado === "pendiente" ? "ring-amber-200"
+                                : doc.estado === "en_revision" ? "ring-blue-200"
+                                : doc.estado === "validado" ? "ring-indigo-200"
+                                : doc.estado === "enviado_firma" ? "ring-teal-200"
+                                : doc.estado === "firmado" ? "ring-emerald-200"
+                                : "ring-slate-200";
                               return (
-                                <div key={doc.tipo.id} className={`flex flex-col gap-1.5 rounded-xl border px-3.5 py-3 ${cardBg}`}>
+                                <div key={doc.tipo.id} className={`flex flex-col gap-2.5 border-b border-slate-100 px-3 py-3 ring-1 ${cardTone} last:border-b-0 sm:px-4`}>
                                   {/* Row 1: categoria + nombre + estado badge */}
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex items-start gap-2 min-w-0">
                                       <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${catCfg.bg} ${catCfg.text} ${catCfg.ring}`}>
                                         {doc.tipo.categoria}
                                       </span>
-                                      <p className={`text-xs font-semibold leading-tight ${nameColor}`}>
+                                      <p className="text-sm font-semibold leading-tight text-slate-900">
                                         {normalizarNombreDocumentoDisplay(doc.tipo.nombre)}
                                         {doc.tipo.esCritico && <span className="ml-1 text-[10px] font-bold text-red-600">●</span>}
                                       </p>
@@ -1167,13 +1201,13 @@ export function PendientesPanel({
                                   )}
 
                                   <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-700">
+                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
                                       Origen: {origen}
                                     </span>
-                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-700">
+                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
                                       Fecha: {doc.fechaCarga ? formatDate(doc.fechaCarga) : "-"}
                                     </span>
-                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 font-semibold text-slate-700">
+                                    <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-700">
                                       Responsable: {doc.cargadoPor ?? "-"}
                                     </span>
                                   </div>
@@ -1188,7 +1222,7 @@ export function PendientesPanel({
                                   )}
 
                                   {/* Row 4: actions */}
-                                  <div className="mt-0.5 flex flex-wrap gap-1.5">
+                                  <div className="mt-0.5 flex items-center gap-1.5 overflow-x-auto border-t border-slate-100 pt-2.5 whitespace-nowrap">
                                     {/* Siempre permitir subida/reemplazo (excepto firmados) */}
                                     {!isSigned && (
                                       <button
@@ -1201,10 +1235,10 @@ export function PendientesPanel({
                                             rejectionObservation:  doc.estado === "rechazado" ? doc.observacion : undefined,
                                           })
                                         }
-                                        className="inline-flex items-center gap-1 rounded-lg bg-amber-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-amber-700"
+                                        className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800"
                                       >
                                         <UploadCloud className="h-2.5 w-2.5" />
-                                        {hasAnyRecord || hasCarga || hasStructuredIaContent ? "Reemplazar" : "Subir documento"}
+                                        {hasAnyRecord || hasCarga || hasStructuredIaContent ? "Reemplazar" : "Subir"}
                                       </button>
                                     )}
 
@@ -1213,17 +1247,17 @@ export function PendientesPanel({
                                       <button
                                         onClick={() => handleGenerarConIA(doc, worker)}
                                         disabled={generandoDocId === doc.tipo.id}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                       >
                                         {generandoDocId === doc.tipo.id ? (
                                           <>
                                             <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                                            Generando...
+                                            IA...
                                           </>
                                         ) : (
                                           <>
                                             <Sparkles className="h-2.5 w-2.5" />
-                                            Generar con IA
+                                            Generar IA
                                           </>
                                         )}
                                       </button>
@@ -1233,7 +1267,7 @@ export function PendientesPanel({
                                     {puedeRevisarIa && (
                                       <button
                                         onClick={() => openReview({ doc, worker })}
-                                        className="inline-flex items-center gap-1 rounded-lg bg-violet-100 px-2.5 py-1 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200 transition hover:bg-violet-200"
+                                        className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100"
                                       >
                                         <Sparkles className="h-2.5 w-2.5" />
                                         Revisar
@@ -1265,7 +1299,7 @@ export function PendientesPanel({
                                         ) : (
                                           <Download className="h-2.5 w-2.5" />
                                         )}
-                                        Descargar PDF
+                                        PDF
                                       </button>
                                     )}
 
@@ -1287,7 +1321,7 @@ export function PendientesPanel({
                                         className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-teal-700"
                                       >
                                         <UploadCloud className="h-2.5 w-2.5" />
-                                        Enviar firma
+                                        Enviar a firma
                                       </button>
                                     )}
 
@@ -1328,7 +1362,7 @@ export function PendientesPanel({
                                         className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-blue-700"
                                       >
                                         <Clock className="h-2.5 w-2.5" />
-                                        En revisión
+                                        Revisar estado
                                       </button>
                                     )}
 
@@ -1380,6 +1414,31 @@ export function PendientesPanel({
             })}
           </tbody>
         </table>
+        {totalFiltered > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50 px-4 py-3">
+            <p className="text-xs text-slate-500">
+              Página <span className="font-semibold text-slate-700">{safePage}</span> de <span className="font-semibold text-slate-700">{totalPages}</span>
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Anterior
+              </button>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage >= totalPages}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Siguiente
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       </>)}
       {mainView === "centro"       && <PorCentroView       rows={searchRows} />}
