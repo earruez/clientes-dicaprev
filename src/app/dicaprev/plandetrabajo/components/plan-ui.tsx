@@ -103,7 +103,7 @@ export function TopActions({
   );
 }
 
-export function MonthlyMatrix({ data, meses }: { data: ActividadPlanRow[]; meses: MesShort[] }) {
+export function MonthlyMatrix({ data, meses }: { data: ActividadPlanRow[]; meses: readonly MesShort[] }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
       <table className="min-w-[1150px] w-full text-sm">

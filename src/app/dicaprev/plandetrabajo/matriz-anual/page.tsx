@@ -7,9 +7,9 @@ import { MonthlyMatrix } from "../components/plan-ui";
 import {
   getPlanTrabajo,
   getActividadesPlan,
-  MESES_SHORT,
   type ActividadPlanRow,
 } from "@/actions/plandetrabajo";
+import { MESES_SHORT } from "@/lib/plandetrabajo/constants";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 export default function MatrizAnualPage() {

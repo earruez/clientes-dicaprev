@@ -25,8 +25,8 @@ import {
   type HistorialRow,
   type PlanTrabajoRow,
   type ActualizarActividadInput,
-  MESES_SHORT,
 } from "@/actions/plandetrabajo";
+import { MESES_SHORT } from "@/lib/plandetrabajo/constants";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 type EditFormState = { id: string } & ActivityFormModel;
