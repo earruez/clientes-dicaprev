@@ -13,8 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { ActividadPlan, EstadoActividad, MesShort } from "../mock-data";
-import type { EstadoPlan } from "../store";
+import type { ActividadPlanRow, EstadoActividad, EstadoPlan, MesShort } from "@/actions/plandetrabajo";
+
+export type { EstadoActividad, EstadoPlan };
 
 export function EstadoBadge({ estado }: { estado: EstadoActividad }) {
   const config: Record<EstadoActividad, { label: string; className: string }> = {
@@ -102,7 +103,7 @@ export function TopActions({
   );
 }
 
-export function MonthlyMatrix({ data, meses }: { data: ActividadPlan[]; meses: MesShort[] }) {
+export function MonthlyMatrix({ data, meses }: { data: ActividadPlanRow[]; meses: MesShort[] }) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
       <table className="min-w-[1150px] w-full text-sm">
@@ -122,7 +123,7 @@ export function MonthlyMatrix({ data, meses }: { data: ActividadPlan[]; meses: M
               <td className="px-4 py-3 text-slate-600">{row.normativa}</td>
               {meses.map((mes) => (
                 <td key={mes} className="px-2 py-3 text-center">
-                  <EstadoBadge estado={row.meses[mes]} />
+                  <EstadoBadge estado={row.mesesEstados[mes]} />
                 </td>
               ))}
             </tr>
@@ -140,9 +141,9 @@ export function ActivitiesTable({
   disableEdit,
   disableEditReason,
 }: {
-  data: ActividadPlan[];
-  onEdit?: (actividad: ActividadPlan) => void;
-  onView?: (actividad: ActividadPlan) => void;
+  data: ActividadPlanRow[];
+  onEdit?: (actividad: ActividadPlanRow) => void;
+  onView?: (actividad: ActividadPlanRow) => void;
   disableEdit?: boolean;
   disableEditReason?: string;
 }) {
@@ -158,7 +159,6 @@ export function ActivitiesTable({
             <th className="px-4 py-3 text-left">Responsable</th>
             <th className="px-4 py-3 text-left">Centro/Contratista</th>
             <th className="px-4 py-3 text-left">Estado</th>
-            <th className="px-4 py-3 text-left">Evidencia</th>
             <th className="px-4 py-3 text-left">Acciones</th>
           </tr>
         </thead>
@@ -172,11 +172,6 @@ export function ActivitiesTable({
               <td className="px-4 py-3 text-slate-600">{item.responsable}</td>
               <td className="px-4 py-3 text-slate-600">{item.centroContratista}</td>
               <td className="px-4 py-3"><EstadoBadge estado={item.estado} /></td>
-              <td className="px-4 py-3">
-                <Badge variant={item.evidencia === "cargada" ? "default" : item.evidencia === "rechazada" ? "destructive" : "secondary"}>
-                  {item.evidencia}
-                </Badge>
-              </td>
               <td className="px-4 py-3">
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={() => onView?.(item)}>Ver</Button>

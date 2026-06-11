@@ -1,21 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { PlanNav } from "../components/plan-nav";
 import { MonthlyMatrix } from "../components/plan-ui";
-import { MESES_SHORT } from "../mock-data";
-import { getPlanSnapshot, hydratePlanStore, subscribePlan } from "../store";
+import {
+  getPlanTrabajo,
+  getActividadesPlan,
+  MESES_SHORT,
+  type ActividadPlanRow,
+} from "@/actions/plandetrabajo";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 export default function MatrizAnualPage() {
-  const [snapshot, setSnapshot] = useState(getPlanSnapshot());
+  const [actividades, setActividades] = useState<ActividadPlanRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    try {
+      const plan = await getPlanTrabajo();
+      const acts = await getActividadesPlan(plan.id);
+      setActividades(acts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error al cargar la matriz.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    hydratePlanStore();
-    setSnapshot(getPlanSnapshot());
-    return subscribePlan(() => setSnapshot(getPlanSnapshot()));
-  }, []);
+    void loadData();
+  }, [loadData]);
 
   return (
     <div className="p-6 space-y-5">
@@ -27,7 +43,18 @@ export default function MatrizAnualPage() {
       />
 
       <PlanNav />
-      <MonthlyMatrix data={snapshot.actividades} meses={MESES_SHORT} />
+
+      {error ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      ) : null}
+
+      {loading ? (
+        <div className="text-sm text-slate-500">Cargando matriz...</div>
+      ) : (
+        <MonthlyMatrix data={actividades} meses={MESES_SHORT} />
+      )}
     </div>
   );
 }
