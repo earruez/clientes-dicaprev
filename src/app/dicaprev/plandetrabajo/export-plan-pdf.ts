@@ -1,7 +1,37 @@
 import { jsPDF } from "jspdf";
-import type { ActividadPlan } from "./mock-data";
-import type { PlanSnapshot } from "./store";
+import type { EstadoActividad, EstadoPlan, MesShort } from "@/actions/plandetrabajo";
 import { EMPRESA_MOCK } from "@/lib/empresa/empresa-store";
+
+// Compatible snapshot type accepted by this function.
+// Pages that call exportPlanTrabajoPdf build this shape from Prisma-backed data.
+export type PlanPdfSnapshot = {
+  actividades: Array<{
+    id: number | string;
+    actividad: string;
+    normativa: string;
+    categoria: string;
+    periodicidad: string;
+    responsable: string;
+    centroContratista: string;
+    requiereEvidencia: boolean;
+    estado: EstadoActividad;
+    evidencia?: string;
+    critica?: boolean;
+    meses: Record<MesShort, EstadoActividad>;
+  }>;
+  evidencias: unknown[];
+  historial: unknown[];
+  estadoPlan: EstadoPlan;
+  aprobadoPor: string | null | undefined;
+  aprobadoCargo: string | null | undefined;
+  aprobadoEn: string | null | undefined;
+  rechazadoPor: string | null | undefined;
+  rechazadoCargo: string | null | undefined;
+  rechazadoEn: string | null | undefined;
+  motivoRechazo: string | null | undefined;
+  enviadoRevisionEn: string | null | undefined;
+  versionPlan: number;
+};
 
 async function loadImageDataUrl(src: string): Promise<string | null> {
   if (!src || typeof window === "undefined") return null;
@@ -40,12 +70,15 @@ function formatDate(value: Date) {
   });
 }
 
-function firstActiveMonth(actividad: ActividadPlan) {
-  const month = Object.entries(actividad.meses).find(([, status]) => status !== "no_aplica");
+function firstActiveMonth(meses: Record<MesShort, EstadoActividad>) {
+  const month = Object.entries(meses).find(([, status]) => status !== "no_aplica");
   return month?.[0] ?? "-";
 }
 
-function summarizeByField(actividades: ActividadPlan[], field: "normativa" | "categoria") {
+function summarizeByField(
+  actividades: PlanPdfSnapshot["actividades"],
+  field: "normativa" | "categoria"
+) {
   const acc = new Map<string, { total: number; realizadas: number; pendientes: number; vencidas: number }>();
 
   actividades.forEach((a) => {
@@ -68,8 +101,8 @@ function summarizeByField(actividades: ActividadPlan[], field: "normativa" | "ca
   }));
 }
 
-function planStateLabel(state: PlanSnapshot["estadoPlan"]) {
-  const labels: Record<PlanSnapshot["estadoPlan"], string> = {
+function planStateLabel(state: EstadoPlan) {
+  const labels: Record<EstadoPlan, string> = {
     borrador: "Borrador",
     en_revision: "En revisión",
     aprobado: "Aprobado",
@@ -78,7 +111,7 @@ function planStateLabel(state: PlanSnapshot["estadoPlan"]) {
   return labels[state];
 }
 
-export async function exportPlanTrabajoPdf(snapshot: PlanSnapshot, year: string) {
+export async function exportPlanTrabajoPdf(snapshot: PlanPdfSnapshot, year: string) {
   const actividades = snapshot.actividades;
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
   const companyName = EMPRESA_MOCK.nombre || "Empresa cliente";
@@ -275,21 +308,19 @@ export async function exportPlanTrabajoPdf(snapshot: PlanSnapshot, year: string)
       "Centro/Contratista",
       "Estado",
       "Req. evidencia",
-      "Estado evidencia",
     ],
     actividades.map((a) => [
       a.actividad,
       a.normativa,
       a.categoria,
       a.periodicidad,
-      firstActiveMonth(a),
+      firstActiveMonth(a.meses),
       a.responsable,
       a.centroContratista,
       a.estado,
       a.requiereEvidencia ? "Si" : "No",
-      a.evidencia,
     ]),
-    [170, 90, 88, 78, 44, 96, 118, 60, 68, 74]
+    [170, 90, 88, 78, 44, 96, 118, 60, 74]
   );
 
   sectionTitle("Observaciones generales");

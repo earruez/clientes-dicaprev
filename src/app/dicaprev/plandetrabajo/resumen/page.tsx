@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, ListTodo } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -26,17 +26,17 @@ import { KpiCard, QuickActions, TopActions, EstadoBadge, EstadoPlanBadge } from 
 import { exportPlanTrabajoPdf } from "../export-plan-pdf";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
+  getPlanTrabajo,
+  getActividadesPlan,
+  crearActividad,
+  enviarPlanRevision,
   aprobarPlan,
-  canMutatePlanActivities,
-  createActividad,
-  enviarPlanARevision,
-  getPlanSnapshot,
-  hydratePlanStore,
   rechazarPlan,
-  subscribePlan,
+  volverBorrador,
+  type PlanTrabajoRow,
+  type ActividadPlanRow,
   type CrearActividadInput,
-  volverABorrador,
-} from "../store";
+} from "@/actions/plandetrabajo";
 
 type FormState = ActivityFormModel;
 
@@ -53,7 +53,11 @@ const initialForm: FormState = {
 };
 
 export default function PlanResumenPage() {
-  const [snapshot, setSnapshot] = useState(getPlanSnapshot());
+  const [plan, setPlan] = useState<PlanTrabajoRow | null>(null);
+  const [actividades, setActividades] = useState<ActividadPlanRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
   const [openCreate, setOpenCreate] = useState(false);
   const [openWizard, setOpenWizard] = useState(false);
   const [openApprove, setOpenApprove] = useState(false);
@@ -62,27 +66,36 @@ export default function PlanResumenPage() {
   const [wizardStep, setWizardStep] = useState(1);
   const [form, setForm] = useState<FormState>(initialForm);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [approvalUser, setApprovalUser] = useState("admin@nextprev.cl");
-  const [approvalCargo, setApprovalCargo] = useState("Administrador SST");
-  const [rejectUser, setRejectUser] = useState("admin@nextprev.cl");
-  const [rejectCargo, setRejectCargo] = useState("Administrador SST");
+  const [approvalUser, setApprovalUser] = useState("");
+  const [approvalCargo, setApprovalCargo] = useState("");
+  const [rejectUser, setRejectUser] = useState("");
+  const [rejectCargo, setRejectCargo] = useState("");
   const [rejectReason, setRejectReason] = useState("");
-  const [backToDraftUser, setBackToDraftUser] = useState("admin@nextprev.cl");
 
-  useEffect(() => {
-    hydratePlanStore();
-    setSnapshot(getPlanSnapshot());
-    return subscribePlan(() => setSnapshot(getPlanSnapshot()));
+  const loadData = useCallback(async () => {
+    try {
+      const p = await getPlanTrabajo();
+      const acts = await getActividadesPlan(p.id);
+      setPlan(p);
+      setActividades(acts);
+    } catch (err) {
+      setInfoMessage(err instanceof Error ? err.message : "Error al cargar el plan.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const actividades = snapshot.actividades;
-  const estadoPlan = snapshot.estadoPlan;
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const estadoPlan = plan?.estadoPlan ?? "borrador";
   const realizadas = actividades.filter((a) => a.estado === "realizada").length;
   const pendientes = actividades.filter((a) => a.estado === "pendiente").length;
   const vencidas = actividades.filter((a) => a.estado === "vencida").length;
   const cumplimiento = actividades.length ? Math.round((realizadas / actividades.length) * 100) : 0;
   const criticas = actividades.filter((a) => a.critica || a.estado === "vencida").slice(0, 4);
-  const canEditActivities = canMutatePlanActivities();
+  const canEditActivities = estadoPlan === "borrador";
   const blockedByReviewOrApproved = estadoPlan === "en_revision" || estadoPlan === "aprobado";
 
   const canSave = useMemo(() => {
@@ -100,12 +113,13 @@ export default function PlanResumenPage() {
   }
 
   function handleSaveActividad() {
+    if (!plan) return;
     if (!canEditActivities) {
       setInfoMessage("No se puede crear actividad fuera de borrador.");
       return;
     }
-
     if (!canSave) return;
+
     const payload: CrearActividadInput = {
       actividad: form.actividad,
       normativa: form.normativa,
@@ -118,45 +132,113 @@ export default function PlanResumenPage() {
       requiereEvidencia: form.requiereEvidencia,
     };
 
-    createActividad(payload);
-    setOpenCreate(false);
-    setForm(initialForm);
-    setInfoMessage("Actividad creada y sincronizada en Matriz, Actividades y Evidencias.");
+    startTransition(async () => {
+      try {
+        await crearActividad(plan.id, payload);
+        const acts = await getActividadesPlan(plan.id);
+        setActividades(acts);
+        setOpenCreate(false);
+        setForm(initialForm);
+        setInfoMessage("Actividad creada y sincronizada en Matriz, Actividades y Evidencias.");
+      } catch (err) {
+        setInfoMessage(err instanceof Error ? err.message : "Error al crear la actividad.");
+      }
+    });
   }
 
   function handleSendToReview() {
-    const ok = enviarPlanARevision("admin@nextprev.cl", "Administrador SST");
-    setInfoMessage(ok ? "Plan enviado a revisión." : "No se pudo enviar a revisión.");
+    if (!plan) return;
+    startTransition(async () => {
+      try {
+        const updated = await enviarPlanRevision(plan.id);
+        setPlan(updated);
+        setInfoMessage("Plan enviado a revisión.");
+      } catch (err) {
+        setInfoMessage(err instanceof Error ? err.message : "No se pudo enviar a revisión.");
+      }
+    });
   }
 
   function handleApprove() {
-    const ok = aprobarPlan({ usuario: approvalUser.trim(), cargo: approvalCargo.trim() });
-    setOpenApprove(false);
-    setInfoMessage(ok ? "Plan aprobado correctamente." : "No se pudo aprobar el plan.");
+    if (!plan) return;
+    startTransition(async () => {
+      try {
+        const updated = await aprobarPlan(plan.id, { usuario: approvalUser.trim(), cargo: approvalCargo.trim() });
+        setPlan(updated);
+        setOpenApprove(false);
+        setInfoMessage("Plan aprobado correctamente.");
+      } catch (err) {
+        setInfoMessage(err instanceof Error ? err.message : "No se pudo aprobar el plan.");
+      }
+    });
   }
 
   function handleReject() {
-    const ok = rechazarPlan({
-      usuario: rejectUser.trim(),
-      cargo: rejectCargo.trim(),
-      motivo: rejectReason.trim(),
+    if (!plan) return;
+    startTransition(async () => {
+      try {
+        const updated = await rechazarPlan(plan.id, {
+          usuario: rejectUser.trim(),
+          cargo: rejectCargo.trim(),
+          motivo: rejectReason.trim(),
+        });
+        setPlan(updated);
+        setRejectReason("");
+        setOpenReject(false);
+        setInfoMessage("Plan rechazado y registrado en historial.");
+      } catch (err) {
+        setInfoMessage(err instanceof Error ? err.message : "Debes ingresar un motivo de rechazo.");
+      }
     });
-    if (ok) {
-      setRejectReason("");
-      setOpenReject(false);
-    }
-    setInfoMessage(ok ? "Plan rechazado y registrado en historial." : "Debes ingresar un motivo de rechazo.");
   }
 
   function handleBackToDraft() {
-    const ok = volverABorrador(backToDraftUser.trim() || "admin@nextprev.cl");
-    setOpenBackToDraft(false);
-    setInfoMessage(ok ? "Plan vuelto a borrador." : "No se pudo volver a borrador.");
+    if (!plan) return;
+    startTransition(async () => {
+      try {
+        const updated = await volverBorrador(plan.id);
+        setPlan(updated);
+        setOpenBackToDraft(false);
+        setInfoMessage("Plan vuelto a borrador.");
+      } catch (err) {
+        setInfoMessage(err instanceof Error ? err.message : "No se pudo volver a borrador.");
+      }
+    });
   }
 
   async function handleExportPdf() {
+    if (!plan) return;
     try {
-      const year = String(new Date().getFullYear());
+      const year = String(plan.anio);
+      // Build a snapshot-compatible object for the existing export function
+      const snapshot = {
+        actividades: actividades.map((a) => ({
+          id: 0,
+          actividad: a.actividad,
+          normativa: a.normativa,
+          categoria: a.categoria,
+          periodicidad: a.periodicidad,
+          responsable: a.responsable,
+          centroContratista: a.centroContratista,
+          requiereEvidencia: a.requiereEvidencia,
+          estado: a.estado,
+          evidencia: "pendiente" as const,
+          critica: a.critica,
+          meses: a.mesesEstados,
+        })),
+        evidencias: [],
+        historial: [],
+        estadoPlan: plan.estadoPlan,
+        aprobadoPor: plan.aprobadoPor,
+        aprobadoCargo: plan.aprobadoCargo,
+        aprobadoEn: plan.aprobadoEn,
+        rechazadoPor: plan.rechazadoPor,
+        rechazadoCargo: plan.rechazadoCargo,
+        rechazadoEn: plan.rechazadoEn,
+        motivoRechazo: plan.motivoRechazo ?? "",
+        enviadoRevisionEn: plan.enviadoRevisionEn,
+        versionPlan: plan.version,
+      };
       await exportPlanTrabajoPdf(snapshot, year);
       setInfoMessage("PDF generado correctamente.");
     } catch {
@@ -168,6 +250,14 @@ export default function PlanResumenPage() {
     setOpenWizard(false);
     setWizardStep(1);
     setInfoMessage("Asistente ejecutado en modo base. Puedes continuar creando actividades manualmente.");
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="text-sm text-slate-500">Cargando plan de trabajo...</div>
+      </div>
+    );
   }
 
   return (
@@ -195,34 +285,34 @@ export default function PlanResumenPage() {
           <div>
             <p className="text-xs uppercase tracking-wide text-slate-400">Estado del plan</p>
             <div className="mt-2"><EstadoPlanBadge estado={estadoPlan} /></div>
-            {snapshot.enviadoRevisionEn ? (
-              <p className="mt-2 text-xs text-slate-500">Enviado a revisión: {snapshot.enviadoRevisionEn}</p>
+            {plan?.enviadoRevisionEn ? (
+              <p className="mt-2 text-xs text-slate-500">Enviado a revisión: {plan.enviadoRevisionEn}</p>
             ) : null}
             {estadoPlan === "aprobado" ? (
               <p className="mt-2 text-sm text-emerald-700">
-                Plan aprobado por {snapshot.aprobadoPor} ({snapshot.aprobadoCargo}) el {snapshot.aprobadoEn} · Versión v{snapshot.versionPlan}
+                Plan aprobado por {plan?.aprobadoPor} ({plan?.aprobadoCargo}) el {plan?.aprobadoEn} · Versión v{plan?.version}
               </p>
             ) : null}
             {estadoPlan === "rechazado" ? (
               <p className="mt-2 text-sm text-rose-700">
-                Motivo de rechazo: {snapshot.motivoRechazo || "Sin motivo informado"}
+                Motivo de rechazo: {plan?.motivoRechazo ?? "Sin motivo informado"}
               </p>
             ) : null}
           </div>
 
           <div className="flex flex-wrap gap-2">
             {estadoPlan === "borrador" ? (
-              <Button className="bg-amber-600 hover:bg-amber-700" onClick={handleSendToReview}>
+              <Button className="bg-amber-600 hover:bg-amber-700" onClick={handleSendToReview} disabled={isPending}>
                 Enviar a revisión
               </Button>
             ) : null}
 
             {estadoPlan === "en_revision" ? (
               <>
-                <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setOpenApprove(true)}>
+                <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setOpenApprove(true)} disabled={isPending}>
                   Aprobar plan
                 </Button>
-                <Button variant="destructive" onClick={() => setOpenReject(true)}>
+                <Button variant="destructive" onClick={() => setOpenReject(true)} disabled={isPending}>
                   Rechazar plan
                 </Button>
               </>
@@ -235,7 +325,7 @@ export default function PlanResumenPage() {
             ) : null}
 
             {estadoPlan === "rechazado" ? (
-              <Button variant="outline" onClick={() => setOpenBackToDraft(true)}>
+              <Button variant="outline" onClick={() => setOpenBackToDraft(true)} disabled={isPending}>
                 Volver a borrador
               </Button>
             ) : null}
@@ -322,7 +412,7 @@ export default function PlanResumenPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenCreate(false)}>Cancelar</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveActividad} disabled={!canSave || !canEditActivities}>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveActividad} disabled={!canSave || !canEditActivities || isPending}>
               Guardar actividad
             </Button>
           </DialogFooter>
@@ -355,7 +445,7 @@ export default function PlanResumenPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenApprove(false)}>Cancelar</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleApprove}>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleApprove} disabled={isPending}>
               Confirmar aprobación
             </Button>
           </DialogFooter>
@@ -392,7 +482,7 @@ export default function PlanResumenPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenReject(false)}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleReject} disabled={!rejectReason.trim()}>
+            <Button variant="destructive" onClick={handleReject} disabled={!rejectReason.trim() || isPending}>
               Confirmar rechazo
             </Button>
           </DialogFooter>
@@ -405,17 +495,9 @@ export default function PlanResumenPage() {
             <DialogTitle>Volver a borrador</DialogTitle>
             <DialogDescription>Esta acción desbloqueará la edición del plan y registrará un evento en historial.</DialogDescription>
           </DialogHeader>
-          <div className="space-y-1">
-            <Label>Usuario</Label>
-            <input
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-              value={backToDraftUser}
-              onChange={(e) => setBackToDraftUser(e.target.value)}
-            />
-          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenBackToDraft(false)}>Cancelar</Button>
-            <Button onClick={handleBackToDraft}>Confirmar</Button>
+            <Button onClick={handleBackToDraft} disabled={isPending}>Confirmar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

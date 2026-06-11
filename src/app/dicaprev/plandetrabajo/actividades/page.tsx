@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,26 +14,37 @@ import {
 import { PlanNav } from "../components/plan-nav";
 import { ActivityFormFields, type ActivityFormModel } from "../components/activity-form-fields";
 import { ActivitiesFilters, ActivitiesTable, EstadoBadge } from "../components/plan-ui";
-import { MESES_SHORT, type ActividadPlan, type MesShort } from "../mock-data";
 import {
-  canMutatePlanActivities,
-  getPlanSnapshot,
-  hydratePlanStore,
-  subscribePlan,
-  updatePlanActivity,
-} from "../store";
+  getPlanTrabajo,
+  getActividadesPlan,
+  getEvidencias,
+  getHistorialPlan,
+  actualizarActividad,
+  type ActividadPlanRow,
+  type EvidenciaRow,
+  type HistorialRow,
+  type PlanTrabajoRow,
+  type ActualizarActividadInput,
+  MESES_SHORT,
+} from "@/actions/plandetrabajo";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
-type EditFormState = { id: number } & ActivityFormModel;
+type EditFormState = { id: string } & ActivityFormModel;
 
-function getPrimaryMonth(actividad: ActividadPlan): MesShort {
-  const found = MESES_SHORT.find((m) => actividad.meses[m] !== "no_aplica");
+function getPrimaryMonth(actividad: ActividadPlanRow): ActivityFormModel["mes"] {
+  const found = MESES_SHORT.find((m) => actividad.mesesEstados[m] !== "no_aplica");
   return found ?? "Ene";
 }
 
 export default function ActividadesPlanPage() {
-  const [snapshot, setSnapshot] = useState(getPlanSnapshot());
-  const [anio, setAnio] = useState("2026");
+  const [plan, setPlan] = useState<PlanTrabajoRow | null>(null);
+  const [actividades, setActividades] = useState<ActividadPlanRow[]>([]);
+  const [evidencias, setEvidencias] = useState<EvidenciaRow[]>([]);
+  const [historial, setHistorial] = useState<HistorialRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
+  const [anio, setAnio] = useState(String(new Date().getFullYear()));
   const [estado, setEstado] = useState("todos");
   const [normativa, setNormativa] = useState("todas");
   const [centro, setCentro] = useState("todos");
@@ -43,17 +54,35 @@ export default function ActividadesPlanPage() {
   const [openView, setOpenView] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
-  const [selectedActividadId, setSelectedActividadId] = useState<number | null>(null);
+  const [selectedActividadId, setSelectedActividadId] = useState<string | null>(null);
 
-  useEffect(() => {
-    hydratePlanStore();
-    setSnapshot(getPlanSnapshot());
-    return subscribePlan(() => setSnapshot(getPlanSnapshot()));
+  const loadData = useCallback(async () => {
+    try {
+      const p = await getPlanTrabajo();
+      const acts = await getActividadesPlan(p.id);
+      const hist = await getHistorialPlan(p.id);
+      const allEvidencias: EvidenciaRow[] = [];
+      for (const act of acts) {
+        const evs = await getEvidencias(act.id);
+        allEvidencias.push(...evs);
+      }
+      setPlan(p);
+      setActividades(acts);
+      setHistorial(hist);
+      setEvidencias(allEvidencias);
+    } catch (err) {
+      setInfoMessage(err instanceof Error ? err.message : "Error al cargar el plan.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const actividades = snapshot.actividades;
-  const canEditActivities = canMutatePlanActivities();
-  const blockedByReviewOrApproved = snapshot.estadoPlan === "en_revision" || snapshot.estadoPlan === "aprobado";
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const canEditActivities = plan?.estadoPlan === "borrador";
+  const blockedByReviewOrApproved = plan?.estadoPlan === "en_revision" || plan?.estadoPlan === "aprobado";
 
   const normativas = Array.from(new Set(actividades.map((a) => a.normativa)));
   const centros = Array.from(new Set(actividades.map((a) => a.centroContratista)));
@@ -77,22 +106,22 @@ export default function ActividadesPlanPage() {
 
   const evidenciasActividad = useMemo(() => {
     if (!selectedActividadId) return [];
-    return snapshot.evidencias.filter((e) => e.actividadId === selectedActividadId);
-  }, [selectedActividadId, snapshot.evidencias]);
+    return evidencias.filter((e) => e.actividadId === selectedActividadId);
+  }, [selectedActividadId, evidencias]);
 
   const timelineActividad = useMemo(() => {
     if (!selectedActividadId) return [];
-    return snapshot.historial
+    return historial
       .filter((h) => h.actividadId === selectedActividadId)
-      .sort((a, b) => b.fecha.localeCompare(a.fecha));
-  }, [selectedActividadId, snapshot.historial]);
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [selectedActividadId, historial]);
 
-  function openViewModal(actividad: ActividadPlan) {
+  function openViewModal(actividad: ActividadPlanRow) {
     setSelectedActividadId(actividad.id);
     setOpenView(true);
   }
 
-  function openEditModal(actividad: ActividadPlan) {
+  function openEditModal(actividad: ActividadPlanRow) {
     if (!canEditActivities) {
       setInfoMessage("El plan está bloqueado porque se encuentra en revisión/aprobado.");
       return;
@@ -125,7 +154,7 @@ export default function ActividadesPlanPage() {
   }
 
   function handleSaveEdit() {
-    if (!editForm) return;
+    if (!editForm || !plan) return;
     if (!canEditActivities) {
       setInfoMessage("El plan está bloqueado porque se encuentra en revisión/aprobado.");
       return;
@@ -142,7 +171,7 @@ export default function ActividadesPlanPage() {
       return;
     }
 
-    updatePlanActivity(editForm.id, {
+    const payload: ActualizarActividadInput = {
       actividad: editForm.actividad,
       normativa: editForm.normativa,
       categoria: editForm.categoria,
@@ -152,9 +181,27 @@ export default function ActividadesPlanPage() {
       centroContratista: editForm.centroContratista,
       estado: editForm.estado,
       requiereEvidencia: editForm.requiereEvidencia,
+    };
+
+    startTransition(async () => {
+      try {
+        await actualizarActividad(editForm.id, payload);
+        const acts = await getActividadesPlan(plan.id);
+        setActividades(acts);
+        setOpenEdit(false);
+        setInfoMessage("Actividad actualizada. Cambios sincronizados en Resumen, Matriz y Evidencias.");
+      } catch (err) {
+        setInfoMessage(err instanceof Error ? err.message : "Error al actualizar la actividad.");
+      }
     });
-    setOpenEdit(false);
-    setInfoMessage("Actividad actualizada. Cambios sincronizados en Resumen, Matriz y Evidencias.");
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="text-sm text-slate-500">Cargando actividades...</div>
+      </div>
+    );
   }
 
   return (
@@ -233,7 +280,6 @@ export default function ActividadesPlanPage() {
                   label="Requiere evidencia"
                   value={selectedActividad.requiereEvidencia ? "Si" : "No"}
                 />
-                <DetailField label="Estado de evidencia" value={selectedActividad.evidencia} />
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -265,7 +311,9 @@ export default function ActividadesPlanPage() {
                     {timelineActividad.map((h) => (
                       <li key={h.id} className="rounded-lg border border-slate-200 px-3 py-2">
                         <p className="text-sm font-medium text-slate-800">{h.accion}</p>
-                        <p className="text-xs text-slate-500">{h.fecha} · {h.usuario} · {h.archivo}</p>
+                        <p className="text-xs text-slate-500">
+                          {h.createdAt.slice(0, 10)} · {h.usuario} · {h.archivo ?? "-"}
+                        </p>
                       </li>
                     ))}
                   </ul>
@@ -301,7 +349,7 @@ export default function ActividadesPlanPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpenEdit(false)}>Cancelar</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveEdit} disabled={!canEditActivities}>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSaveEdit} disabled={!canEditActivities || isPending}>
               Guardar cambios
             </Button>
           </DialogFooter>
