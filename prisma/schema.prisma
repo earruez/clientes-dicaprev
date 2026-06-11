@@ -209,6 +209,8 @@ model Empresa {
   mandantesAcreditacion      MandanteAcreditacion[]
   plantillasAcreditacion     PlantillaAcreditacion[]
   acreditaciones             Acreditacion[]
+  // Plan de Trabajo
+  planTrabajo                PlanTrabajo[]
 }
 
 model Usuario {
@@ -1748,4 +1750,91 @@ model GeneracionDocumentosLog {
 
   @@index([empresaId])
   @@index([usuarioId])
+}
+
+// ─────────────────────────────────────────────
+// MÓDULO PLAN DE TRABAJO
+// ─────────────────────────────────────────────
+
+model PlanTrabajo {
+  id                String    @id @default(cuid())
+  empresaId         String
+  anio              Int
+  estadoPlan        String    @default("borrador")
+  version           Int       @default(1)
+  aprobadoPor       String?
+  aprobadoCargo     String?
+  aprobadoEn        DateTime?
+  rechazadoPor      String?
+  rechazadoCargo    String?
+  rechazadoEn       DateTime?
+  motivoRechazo     String?
+  enviadoRevisionEn DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  empresa     Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  actividades ActividadPlanTrabajo[]
+  historial   HistorialPlanTrabajo[]
+
+  @@unique([empresaId, anio])
+  @@index([empresaId])
+  @@index([anio])
+  @@index([estadoPlan])
+}
+
+model ActividadPlanTrabajo {
+  id                String   @id @default(cuid())
+  planId            String
+  actividad         String
+  normativa         String
+  categoria         String
+  periodicidad      String
+  responsable       String
+  centroContratista String
+  requiereEvidencia Boolean  @default(false)
+  estado            String   @default("pendiente")
+  critica           Boolean  @default(false)
+  mesesEstados      Json     @default("{}")
+  orden             Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  plan       PlanTrabajo              @relation(fields: [planId], references: [id], onDelete: Cascade)
+  evidencias EvidenciaActividadPlan[]
+
+  @@index([planId])
+  @@index([estado])
+}
+
+model EvidenciaActividadPlan {
+  id          String   @id @default(cuid())
+  actividadId String
+  archivo     String
+  archivoUrl  String?
+  fecha       DateTime @default(now())
+  estado      String   @default("cargada")
+  observacion String?
+  creadoPorId String?
+  createdAt   DateTime @default(now())
+
+  actividad ActividadPlanTrabajo @relation(fields: [actividadId], references: [id], onDelete: Cascade)
+
+  @@index([actividadId])
+  @@index([estado])
+}
+
+model HistorialPlanTrabajo {
+  id          String   @id @default(cuid())
+  planId      String
+  accion      String
+  usuario     String
+  archivo     String?
+  actividadId String?
+  createdAt   DateTime @default(now())
+
+  plan PlanTrabajo @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+  @@index([createdAt])
 }

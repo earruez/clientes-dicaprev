@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MESES_SHORT, type EstadoActividad, type MesShort } from "../mock-data";
+import { MESES_SHORT, type EstadoActividad, type MesShort } from "@/actions/plandetrabajo";
 
 export type ActivityFormModel = {
   actividad: string;
