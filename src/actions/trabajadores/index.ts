@@ -1,6 +1,7 @@
 "use server";
 
 import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
+import { evaluarCapacitacionesPorEvento } from "@/lib/capacitacion/evaluar-capacitaciones";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { Worker, WorkerContrato, WorkerEstado } from "@/components/trabajadores-v2/types";
@@ -184,6 +185,14 @@ export async function createTrabajador(worker: Worker): Promise<Worker> {
     email,
   });
 
+  evaluarCapacitacionesPorEvento({
+    trabajadorId: created.id,
+    empresaId,
+    cargoId: payload.cargoId ?? null,
+    areaId: payload.areaId ?? null,
+    centroTrabajoId: payload.centroTrabajoId ?? null,
+  }).catch(() => {});
+
   return normalizeWorker(row);
 }
 
@@ -205,6 +214,14 @@ export async function updateTrabajador(worker: Worker): Promise<Worker> {
     usuarioId,
     email,
   });
+
+  evaluarCapacitacionesPorEvento({
+    trabajadorId: worker.id,
+    empresaId,
+    cargoId: payload.cargoId ?? null,
+    areaId: payload.areaId ?? null,
+    centroTrabajoId: payload.centroTrabajoId ?? null,
+  }).catch(() => {});
 
   return normalizeWorker(row);
 }
