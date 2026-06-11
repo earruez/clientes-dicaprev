@@ -343,6 +343,7 @@ export type AsignacionCapacitacion = {
   capacitacionId: string;
   capacitacionNombre: string;
   categoria: string;
+  modalidad?: string;
   generaCertificado: boolean;
   sesionId?: string;
   origen: string;
@@ -546,7 +547,7 @@ function toAsignacionShape(row: {
   createdAt: Date;
   updatedAt: Date;
   trabajador: { nombres: string; apellidos: string };
-  capacitacion: { nombre: string; categoria: string; generaCertificado: boolean };
+  capacitacion: { nombre: string; categoria: string; modalidad: string; generaCertificado: boolean };
 }): AsignacionCapacitacion {
   return {
     id: row.id,
@@ -555,9 +556,10 @@ function toAsignacionShape(row: {
     capacitacionId: row.capacitacionId,
     capacitacionNombre: row.capacitacion.nombre,
     categoria: row.capacitacion.categoria,
+    modalidad: row.capacitacion.modalidad,
     generaCertificado: row.capacitacion.generaCertificado,
     sesionId: row.sesionId ?? undefined,
-    origen: row.origen,
+    origen: row.origen === "automatico" ? "automatica" : row.origen,
     estado: assertEstadoValido(row.estado),
     fechaAsignacion: formatDateOnly(row.fechaAsignacion) ?? "",
     fechaEnvio: formatDateOnly(row.fechaEnvio),
@@ -585,7 +587,7 @@ async function getAsignacionByIdOrThrow(id: string, empresaId: string) {
     where: { id, empresaId },
     include: {
       trabajador: { select: { nombres: true, apellidos: true } },
-      capacitacion: { select: { nombre: true, categoria: true, generaCertificado: true } },
+      capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
     },
   });
 }
@@ -610,7 +612,7 @@ export async function getCapacitacionAsignaciones(
     where,
     include: {
       trabajador: { select: { nombres: true, apellidos: true } },
-      capacitacion: { select: { nombre: true, categoria: true, generaCertificado: true } },
+      capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
     },
     orderBy: [{ fechaAsignacion: "desc" }, { createdAt: "desc" }],
   });
@@ -713,7 +715,7 @@ export async function createCapacitacionAsignacion(
       },
       include: {
         trabajador: { select: { nombres: true, apellidos: true } },
-        capacitacion: { select: { nombre: true, categoria: true, generaCertificado: true } },
+        capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
       },
     });
 
@@ -813,7 +815,7 @@ export async function updateCapacitacionAsignacion(
       where: { id, empresaId },
       include: {
         trabajador: { select: { nombres: true, apellidos: true } },
-        capacitacion: { select: { nombre: true, categoria: true, generaCertificado: true } },
+        capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
       },
     });
 
@@ -927,7 +929,7 @@ export async function cambiarEstadoCapacitacionAsignacion(
       where: { id, empresaId },
       include: {
         trabajador: { select: { nombres: true, apellidos: true } },
-        capacitacion: { select: { nombre: true, categoria: true, generaCertificado: true } },
+        capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
       },
     });
 
@@ -1080,7 +1082,7 @@ export async function avanzarCapacitacionAsignacionPublica(
       where: { id: existing.id },
       include: {
         trabajador: { select: { nombres: true, apellidos: true } },
-        capacitacion: { select: { nombre: true, categoria: true, generaCertificado: true } },
+        capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
       },
     });
 
