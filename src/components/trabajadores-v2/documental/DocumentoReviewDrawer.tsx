@@ -201,7 +201,7 @@ function RiskTableEditor({
   const updateRow = (index: number, patch: Partial<IrlRiesgoFila>) => {
     onChange(rows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
   };
-  const addRow = () => onChange([...rows, { peligro: "", consecuencia: "", medida: "" }]);
+  const addRow = () => onChange([...rows, { peligro: "", consecuencia: "", medida: "", metodo_procedimiento: "" }]);
   const removeRow = (index: number) => onChange(rows.filter((_, rowIndex) => rowIndex !== index));
 
   return (

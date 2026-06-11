@@ -225,6 +225,7 @@ function construirFilaRiesgoDesdeNombre(nombre: string): IrlRiesgoFila {
       peligro: nombre,
       consecuencia: "Contusiones, esguinces o fracturas",
       medida: "Uso de calzado de seguridad y control de superficies de tránsito",
+      metodo_procedimiento: "",
     };
   }
   if (riesgo.includes("elect")) {
@@ -232,6 +233,7 @@ function construirFilaRiesgoDesdeNombre(nombre: string): IrlRiesgoFila {
       peligro: nombre,
       consecuencia: "Quemaduras y lesiones graves",
       medida: "Bloqueo y verificación de energías antes de intervenir equipos",
+      metodo_procedimiento: "",
     };
   }
   if (riesgo.includes("sobrecarga") || riesgo.includes("esfuerzo")) {
@@ -239,12 +241,14 @@ function construirFilaRiesgoDesdeNombre(nombre: string): IrlRiesgoFila {
       peligro: nombre,
       consecuencia: "Lesiones musculoesqueléticas",
       medida: "Pausas activas, técnica de levantamiento y rediseño de tarea",
+      metodo_procedimiento: "",
     };
   }
   return {
     peligro: nombre,
     consecuencia: "Accidente laboral",
     medida: "Aplicar procedimiento seguro y supervisión permanente",
+    metodo_procedimiento: "",
   };
 }
 
@@ -551,6 +555,7 @@ function generarValorCampoIrl(campoId: keyof DocumentoIrlCampos, ctx: ContextoGe
           if (/ruido/.test(n)) return "Protección auditiva obligatoria. Evaluación PREXOR. Rotación de tareas en zonas ruidosas.";
           return "Identificar peligros antes de iniciar. Aplicar controles definidos. Usar EPP asignado. Reportar condiciones inseguras.";
         })(),
+        metodo_procedimiento: "",
       }));
     }
     case "riesgos_lugar_tabla": {
