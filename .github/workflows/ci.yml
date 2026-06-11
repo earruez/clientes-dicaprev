@@ -37,5 +37,8 @@ jobs:
       - name: Revisar tipos
         run: npm run typecheck
 
+      - name: Ejecutar tests
+        run: npm run test:run
+
       - name: Compilar aplicacion
         run: npm run build
