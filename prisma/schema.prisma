@@ -101,6 +101,17 @@ enum EstadoEntregaEpp {
   cancelada
 }
 
+enum EstadoChecklistEjecucion {
+  borrador
+  completada
+}
+
+enum RespuestaChecklistValor {
+  cumple
+  no_cumple
+  no_aplica
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -167,6 +178,8 @@ model Empresa {
   inducciones                 InduccionTrabajador[]
   entregasEpp                 EntregaEpp[]
   eppItems                    EppItem[]
+  checklistTemplates          ChecklistTemplate[]
+  checklistEjecuciones        ChecklistEjecucion[]
   // Acreditaciones
   mandantesAcreditacion      MandanteAcreditacion[]
   plantillasAcreditacion     PlantillaAcreditacion[]
@@ -201,6 +214,8 @@ model Usuario {
   activacionEventosCreados       ActivacionEvento[]             @relation("UsuarioActivacionEvento")
   induccionesCreadas             InduccionTrabajador[]          @relation("UsuarioInduccionCreada")
   entregasEppCreadas             EntregaEpp[]                   @relation("UsuarioEntregaEppCreada")
+  checklistTemplatesCreados      ChecklistTemplate[]            @relation("UsuarioChecklistTemplateCreado")
+  checklistEjecucionesRealizadas ChecklistEjecucion[]           @relation("UsuarioChecklistEjecucion")
   // Acreditaciones
   acreditacionesResponsable      Acreditacion[]
   acreditacionesHistorial        HistorialAcreditacion[]
@@ -369,6 +384,7 @@ model HallazgoCumplimiento {
   empresaId       String
   centroTrabajoId String?
   trabajadorId    String?
+  checklistRespuestaId String?
   obligacionClave String?
   tipo            String
   prioridad       String
@@ -382,15 +398,18 @@ model HallazgoCumplimiento {
   empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   centroTrabajo CentroTrabajo? @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
   trabajador    Trabajador?    @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  checklistRespuesta ChecklistRespuesta? @relation(fields: [checklistRespuestaId], references: [id], onDelete: SetNull)
   creadoPor     Usuario        @relation("UsuarioHallazgoCumplimientoCreado", fields: [creadoPorId], references: [id])
   evidenciasCumplimiento EvidenciaCumplimiento[]
 
   @@index([empresaId])
   @@index([centroTrabajoId])
   @@index([trabajadorId])
+  @@index([checklistRespuestaId])
   @@index([obligacionClave])
   @@index([estado])
   @@index([creadoPorId])
+  @@unique([checklistRespuestaId])
 }
 
 model CentroTrabajo {
@@ -412,6 +431,7 @@ model CentroTrabajo {
   vehiculos                 Vehiculo[]
   hallazgosCumplimiento     HallazgoCumplimiento[]
   evidenciasCumplimiento    EvidenciaCumplimiento[]
+  checklistEjecuciones      ChecklistEjecucion[]
   reglasDocumentoTrabajador ReglaDocumentoTrabajador[]
   planCapacitacionItems     PlanCapacitacionItem[]
   reglasCapacitacionCargo   ReglaCapacitacionCargo[]
@@ -500,6 +520,7 @@ model Trabajador {
   firmasDocumento          FirmaDocumento[]
   inducciones              InduccionTrabajador[]
   entregasEpp              EntregaEpp[]
+  checklistEjecuciones     ChecklistEjecucion[]
   // Acreditaciones
   acreditacionesTrabajador AcreditacionTrabajador[]
 
@@ -1464,6 +1485,89 @@ model EntregaEppDetalle {
 
   @@index([entregaId])
   @@index([eppItemId])
+}
+
+// ─────────────────────────────────────────────
+// MÓDULO CHECKLISTS / INSPECCIONES
+// ─────────────────────────────────────────────
+
+model ChecklistTemplate {
+  id          String   @id @default(cuid())
+  empresaId   String
+  nombre      String
+  descripcion String?
+  activo      Boolean  @default(true)
+  creadoPorId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  empresa     Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  creadoPor   Usuario?             @relation("UsuarioChecklistTemplateCreado", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  preguntas   ChecklistPregunta[]
+  ejecuciones ChecklistEjecucion[]
+
+  @@index([empresaId])
+  @@index([activo])
+}
+
+model ChecklistPregunta {
+  id          String   @id @default(cuid())
+  templateId  String
+  texto       String
+  orden       Int
+  obligatorio Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  template   ChecklistTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  respuestas ChecklistRespuesta[]
+
+  @@index([templateId])
+  @@index([orden])
+}
+
+model ChecklistEjecucion {
+  id              String                   @id @default(cuid())
+  empresaId       String
+  templateId      String
+  ejecutadoPorId  String
+  centroTrabajoId String?
+  trabajadorId    String?
+  estado          EstadoChecklistEjecucion @default(completada)
+  fechaEjecucion  DateTime                 @default(now())
+  observaciones   String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  empresa       Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  template      ChecklistTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  ejecutadoPor  Usuario              @relation("UsuarioChecklistEjecucion", fields: [ejecutadoPorId], references: [id])
+  centroTrabajo CentroTrabajo?       @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+  trabajador    Trabajador?          @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  respuestas    ChecklistRespuesta[]
+
+  @@index([empresaId])
+  @@index([templateId])
+  @@index([estado])
+  @@index([centroTrabajoId])
+  @@index([trabajadorId])
+}
+
+model ChecklistRespuesta {
+  id          String                  @id @default(cuid())
+  ejecucionId String
+  preguntaId  String
+  respuesta   RespuestaChecklistValor
+  comentario  String?
+  createdAt   DateTime                @default(now())
+
+  ejecucion ChecklistEjecucion @relation(fields: [ejecucionId], references: [id], onDelete: Cascade)
+  pregunta  ChecklistPregunta  @relation(fields: [preguntaId], references: [id], onDelete: Cascade)
+  hallazgo  HallazgoCumplimiento?
+
+  @@index([ejecucionId])
+  @@index([preguntaId])
+  @@index([respuesta])
 }
 
 // ─────────────────────────────────────────────
