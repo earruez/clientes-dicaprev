@@ -95,6 +95,12 @@ enum EstadoInduccion {
   cancelada
 }
 
+enum EstadoEntregaEpp {
+  pendiente_firma
+  firmada
+  cancelada
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -159,6 +165,8 @@ model Empresa {
   activacionEventos          ActivacionEvento[]
   firmasDocumento            FirmaDocumento[]
   inducciones                 InduccionTrabajador[]
+  entregasEpp                 EntregaEpp[]
+  eppItems                    EppItem[]
   // Acreditaciones
   mandantesAcreditacion      MandanteAcreditacion[]
   plantillasAcreditacion     PlantillaAcreditacion[]
@@ -192,6 +200,7 @@ model Usuario {
   planesCapacitacionItemsResponsables PlanCapacitacionItem[]     @relation("UsuarioPlanCapacitacionItemResponsable")
   activacionEventosCreados       ActivacionEvento[]             @relation("UsuarioActivacionEvento")
   induccionesCreadas             InduccionTrabajador[]          @relation("UsuarioInduccionCreada")
+  entregasEppCreadas             EntregaEpp[]                   @relation("UsuarioEntregaEppCreada")
   // Acreditaciones
   acreditacionesResponsable      Acreditacion[]
   acreditacionesHistorial        HistorialAcreditacion[]
@@ -490,6 +499,7 @@ model Trabajador {
   capacitacionAsistencias  CapacitacionAsistencia[]
   firmasDocumento          FirmaDocumento[]
   inducciones              InduccionTrabajador[]
+  entregasEpp              EntregaEpp[]
   // Acreditaciones
   acreditacionesTrabajador AcreditacionTrabajador[]
 
@@ -646,10 +656,12 @@ model FirmaDocumento {
   updatedAt       DateTime             @updatedAt
 
   induccionId  String?
+  entregaEppId String?
 
   empresa    Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   trabajador Trabajador?          @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
   induccion  InduccionTrabajador? @relation(fields: [induccionId], references: [id], onDelete: SetNull)
+  entregaEpp EntregaEpp?          @relation(fields: [entregaEppId], references: [id], onDelete: SetNull)
 
   @@index([empresaId])
   @@index([trabajadorId])
@@ -657,6 +669,7 @@ model FirmaDocumento {
   @@index([estado])
   @@index([token])
   @@index([induccionId])
+  @@index([entregaEppId])
 }
 
 model DocumentoTipoTrabajador {
@@ -1390,6 +1403,67 @@ model InduccionTrabajador {
   @@index([trabajadorId])
   @@index([estado])
   @@index([token])
+}
+
+// ─────────────────────────────────────────────
+// MÓDULO EPP
+// ─────────────────────────────────────────────
+
+model EppItem {
+  id          String   @id @default(cuid())
+  empresaId   String
+  nombre      String
+  codigo      String?
+  descripcion String?
+  activo      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  empresa  Empresa             @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  detalles EntregaEppDetalle[]
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@index([activo])
+}
+
+model EntregaEpp {
+  id            String           @id @default(cuid())
+  empresaId     String
+  trabajadorId  String
+  estado        EstadoEntregaEpp @default(pendiente_firma)
+  observaciones String?
+  creadoPorId   String?
+  fechaEntrega  DateTime         @default(now())
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  empresa    Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  creadoPor  Usuario?   @relation("UsuarioEntregaEppCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  detalles   EntregaEppDetalle[]
+  firmas     FirmaDocumento[]
+
+  @@index([empresaId])
+  @@index([trabajadorId])
+  @@index([estado])
+}
+
+model EntregaEppDetalle {
+  id          String   @id @default(cuid())
+  entregaId   String
+  eppItemId   String?
+  nombre      String
+  cantidad    Int      @default(1)
+  talla       String?
+  observacion String?
+  createdAt   DateTime @default(now())
+
+  entrega EntregaEpp @relation(fields: [entregaId], references: [id], onDelete: Cascade)
+  eppItem EppItem?   @relation(fields: [eppItemId], references: [id], onDelete: SetNull)
+
+  @@index([entregaId])
+  @@index([eppItemId])
 }
 
 // ─────────────────────────────────────────────
