@@ -88,6 +88,13 @@ enum EstadoFirmaDocumento {
   expirado
 }
 
+enum EstadoInduccion {
+  pendiente
+  en_progreso
+  completada
+  cancelada
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -151,6 +158,7 @@ model Empresa {
   plantillasDocumentoEmpresa  PlantillaDocumentoEmpresa[]
   activacionEventos          ActivacionEvento[]
   firmasDocumento            FirmaDocumento[]
+  inducciones                 InduccionTrabajador[]
   // Acreditaciones
   mandantesAcreditacion      MandanteAcreditacion[]
   plantillasAcreditacion     PlantillaAcreditacion[]
@@ -183,6 +191,7 @@ model Usuario {
   planesCapacitacionAprobadas    PlanCapacitacion[]             @relation("UsuarioPlanCapacitacionAprobada")
   planesCapacitacionItemsResponsables PlanCapacitacionItem[]     @relation("UsuarioPlanCapacitacionItemResponsable")
   activacionEventosCreados       ActivacionEvento[]             @relation("UsuarioActivacionEvento")
+  induccionesCreadas             InduccionTrabajador[]          @relation("UsuarioInduccionCreada")
   // Acreditaciones
   acreditacionesResponsable      Acreditacion[]
   acreditacionesHistorial        HistorialAcreditacion[]
@@ -480,6 +489,7 @@ model Trabajador {
   capacitacionEvaluaciones CapacitacionEvaluacion[]
   capacitacionAsistencias  CapacitacionAsistencia[]
   firmasDocumento          FirmaDocumento[]
+  inducciones              InduccionTrabajador[]
   // Acreditaciones
   acreditacionesTrabajador AcreditacionTrabajador[]
 
@@ -635,14 +645,18 @@ model FirmaDocumento {
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
-  empresa    Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  trabajador Trabajador? @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  induccionId  String?
+
+  empresa    Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  trabajador Trabajador?          @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  induccion  InduccionTrabajador? @relation(fields: [induccionId], references: [id], onDelete: SetNull)
 
   @@index([empresaId])
   @@index([trabajadorId])
   @@index([documentoId])
   @@index([estado])
   @@index([token])
+  @@index([induccionId])
 }
 
 model DocumentoTipoTrabajador {
@@ -1348,6 +1362,34 @@ model HistorialAcreditacion {
   @@index([acreditacionId])
   @@index([usuarioId])
   @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// MÓDULO INDUCCIÓN DIGITAL
+// ─────────────────────────────────────────────
+
+model InduccionTrabajador {
+  id            String          @id @default(cuid())
+  empresaId     String
+  trabajadorId  String
+  token         String          @unique
+  estado        EstadoInduccion @default(pendiente)
+  fechaInicio   DateTime?
+  fechaTermino  DateTime?
+  creadoPorId   String?
+  observaciones String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  empresa    Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  trabajador Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  creadoPor  Usuario?   @relation("UsuarioInduccionCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  firmas     FirmaDocumento[]
+
+  @@index([empresaId])
+  @@index([trabajadorId])
+  @@index([estado])
+  @@index([token])
 }
 
 // ─────────────────────────────────────────────
