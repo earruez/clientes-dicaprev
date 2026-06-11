@@ -15,6 +15,7 @@ import {
 } from "@/lib/documentacion/documento-estructurado";
 import { REGLAS_DOCUMENTALES, type ReglaDocumentalNextPrev } from "@/lib/documentacion/reglas-documentales";
 import { prisma } from "@/lib/prisma";
+import { crearFirmaDocumento } from "@/actions/firmas";
 import { requirePermission } from "@/server/auth/permissions";
 import type { Worker } from "@/components/trabajadores-v2/types";
 import type {
@@ -2814,7 +2815,7 @@ export async function validarTrabajadorDocumento(
 export async function enviarTrabajadorDocumentoAFirma(
   documentoId: string,
   detalle?: string,
-): Promise<{ id: string }> {
+): Promise<{ id: string; linkFirma: string }> {
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
   const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
   await validateDocumentoReferencesInEmpresa(empresaId, documento);
@@ -2824,26 +2825,39 @@ export async function enviarTrabajadorDocumentoAFirma(
     throw new Error("Solo se puede enviar a firma un documento validado");
   }
 
-  const updated = await prisma.trabajadorDocumento.update({
+  const trabajador = await prisma.trabajador.findFirst({
+    where: { id: documento.trabajadorId, empresaId },
+    select: {
+      id: true,
+      nombres: true,
+      apellidos: true,
+      rut: true,
+      email: true,
+    },
+  });
+
+  if (!trabajador) {
+    throw new Error("Trabajador no encontrado para enviar documento a firma");
+  }
+
+  const firma = await crearFirmaDocumento({
+    empresaId,
+    trabajadorId: trabajador.id,
+    documentoId: documento.id,
+    documentoOrigen: "documento_trabajador",
+    tituloDocumento: documento.nombre,
+    descripcion: detalle?.trim() || `Firma del documento ${documento.nombre}`,
+    nombreFirmante: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
+    emailFirmante: trabajador.email,
+    rutFirmante: trabajador.rut,
+  });
+
+  await prisma.trabajadorDocumento.update({
     where: { id: documento.id },
-    data: {
-      estado: "enviado_firma",
-      subidoPorId: usuarioId,
-    },
-    select: { id: true, version: true },
+    data: { subidoPorId: usuarioId },
   });
 
-  await prisma.trabajadorDocumentoHistorial.create({
-    data: {
-      documentoId: updated.id,
-      usuarioId,
-      accion: "DOCUMENTO_ENVIADO_FIRMA",
-      detalle: detalle?.trim() || "Documento enviado a firma",
-      version: updated.version,
-    },
-  });
-
-  return { id: updated.id };
+  return { id: documento.id, linkFirma: firma.link };
 }
 
 export async function firmarTrabajadorDocumento(

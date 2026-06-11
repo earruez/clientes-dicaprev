@@ -63,6 +63,7 @@ import {
 import { VersionesHistorialDrawer } from "./VersionesHistorialDrawer";
 import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
+import { useToast } from "@/components/ui/use-toast";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
 import { PorVencimientosView } from "./PorVencimientosView";
@@ -107,6 +108,7 @@ export function PendientesPanel({
   documentos,
   onSaved,
 }: PendientesPanelProps) {
+  const { toast } = useToast();
 
   const [mainView, setMainView]                 = useState<MainView>("trabajador");
   const [soloDS44, setSoloDS44]                 = useState(false);
@@ -283,7 +285,11 @@ export function PendientesPanel({
       if (actionModal.accion === "validar") {
         await validarTrabajadorDocumento(actionModal.documentoId, actionMotivo.trim() || undefined);
       } else if (actionModal.accion === "enviar_firma") {
-        await enviarTrabajadorDocumentoAFirma(actionModal.documentoId, actionMotivo.trim() || undefined);
+        const result = await enviarTrabajadorDocumentoAFirma(actionModal.documentoId, actionMotivo.trim() || undefined);
+        toast({
+          title: "Link de firma generado",
+          description: result.linkFirma,
+        });
       } else if (actionModal.accion === "firmar") {
         await firmarTrabajadorDocumento(actionModal.documentoId);
       } else {

@@ -71,6 +71,23 @@ enum Rol {
   LECTURA
 }
 
+enum DocumentoOrigenFirma {
+  documento_trabajador
+  documento_empresa
+  entrega_epp
+  capacitacion
+  induccion
+  acreditacion
+  otro
+}
+
+enum EstadoFirmaDocumento {
+  pendiente
+  firmado
+  rechazado
+  expirado
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -133,6 +150,7 @@ model Empresa {
   plantillasPlanCapacitacion PlantillaPlanCapacitacion[]
   plantillasDocumentoEmpresa  PlantillaDocumentoEmpresa[]
   activacionEventos          ActivacionEvento[]
+  firmasDocumento            FirmaDocumento[]
   // Acreditaciones
   mandantesAcreditacion      MandanteAcreditacion[]
   plantillasAcreditacion     PlantillaAcreditacion[]
@@ -461,6 +479,7 @@ model Trabajador {
   capacitacionHistoriales  CapacitacionHistorial[]
   capacitacionEvaluaciones CapacitacionEvaluacion[]
   capacitacionAsistencias  CapacitacionAsistencia[]
+  firmasDocumento          FirmaDocumento[]
   // Acreditaciones
   acreditacionesTrabajador AcreditacionTrabajador[]
 
@@ -590,6 +609,40 @@ model TrabajadorDocumentoHistorial {
 
   documento TrabajadorDocumento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
   usuario   Usuario?            @relation("UsuarioTrabajadorDocumentoHistorial", fields: [usuarioId], references: [id])
+}
+
+model FirmaDocumento {
+  id              String               @id @default(cuid())
+  empresaId       String
+  trabajadorId    String?
+  documentoId     String
+  documentoOrigen DocumentoOrigenFirma
+  token           String               @unique
+  estado          EstadoFirmaDocumento @default(pendiente)
+  tituloDocumento String
+  descripcion     String?
+  nombreFirmante  String?
+  rutFirmante     String?
+  emailFirmante   String?
+  aceptoLectura   Boolean              @default(false)
+  firmaSvg        String?
+  firmaTexto      String?
+  ipFirma         String?
+  userAgentFirma  String?
+  hashDocumento   String?
+  expiresAt       DateTime?
+  firmadoAt       DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  empresa    Empresa    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  trabajador Trabajador? @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId])
+  @@index([trabajadorId])
+  @@index([documentoId])
+  @@index([estado])
+  @@index([token])
 }
 
 model DocumentoTipoTrabajador {

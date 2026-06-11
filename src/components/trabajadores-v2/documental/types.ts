@@ -99,7 +99,7 @@ export const ESTADO_DOC_CONFIG: Record<DocEstado, { label: string; bg: string; t
   no_aplica:   { label: "No aplica",   bg: "bg-slate-100",   text: "text-slate-500",    ring: "ring-1 ring-slate-200",    dot: "bg-slate-300" },
   en_revision: { label: "En revisión", bg: "bg-blue-50",     text: "text-blue-700",     ring: "ring-1 ring-blue-200",     dot: "bg-blue-400" },
   validado:    { label: "Validado",    bg: "bg-indigo-50",   text: "text-indigo-700",   ring: "ring-1 ring-indigo-200",   dot: "bg-indigo-500" },
-  enviado_firma: { label: "Enviado a firma", bg: "bg-teal-50", text: "text-teal-700", ring: "ring-1 ring-teal-200", dot: "bg-teal-500" },
+  enviado_firma: { label: "Pendiente firma", bg: "bg-teal-50", text: "text-teal-700", ring: "ring-1 ring-teal-200", dot: "bg-teal-500" },
   firmado:     { label: "Firmado",     bg: "bg-emerald-50",  text: "text-emerald-700",  ring: "ring-1 ring-emerald-200",  dot: "bg-emerald-500" },
   rechazado:   { label: "Rechazado",   bg: "bg-rose-50",     text: "text-rose-700",     ring: "ring-1 ring-rose-200",     dot: "bg-rose-500" },
 };
