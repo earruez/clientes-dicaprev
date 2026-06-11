@@ -1,99 +1,109 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import {
-  ShieldAlert,
-  Plus,
-  CheckCircle2,
-  Clock,
-  AlertTriangle,
-  ChevronDown,
-} from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { AlertTriangle, CheckCircle2, Clock, Plus, ShieldAlert, XCircle } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  actualizarEstadoAccionCorrectiva,
   cerrarInvestigacion,
   crearAccidenteInvestigacion,
   crearAccionCorrectiva,
   getAccidenteInvestigaciones,
   getOpcionesAccidentes,
+  actualizarEstadoAccionCorrectiva,
   type AccidenteInvestigacionRow,
-  type EstadoAccionCorrectiva,
+  type EstadoAccionCorrectivaInput,
 } from "@/actions/accidentes";
 
-const ESTADO_INVESTIGACION: Record<
-  string,
-  { label: string; color: string; icon: React.ReactNode }
-> = {
+type OpcionesAccidentes = {
+  trabajadores: { id: string; nombre: string; rut: string | null }[];
+  centros: { id: string; nombre: string }[];
+  responsables: { id: string; nombre: string }[];
+};
+
+const ESTADO_INVESTIGACION: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   abierta: {
     label: "Abierta",
-    color: "text-amber-600",
-    icon: <Clock className="h-3.5 w-3.5 text-amber-500" />,
+    color: "text-amber-700",
+    icon: <Clock className="h-3.5 w-3.5 text-amber-600" />,
   },
   en_investigacion: {
-    label: "En investigación",
-    color: "text-sky-600",
-    icon: <AlertTriangle className="h-3.5 w-3.5 text-sky-500" />,
+    label: "En investigacion",
+    color: "text-sky-700",
+    icon: <AlertTriangle className="h-3.5 w-3.5 text-sky-600" />,
   },
   cerrada: {
     label: "Cerrada",
-    color: "text-emerald-600",
-    icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />,
+    color: "text-emerald-700",
+    icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />,
   },
 };
 
-const GRAVEDAD_CFG: Record<string, string> = {
-  baja: "text-emerald-600",
-  media: "text-amber-600",
-  alta: "text-red-600",
-  critica: "text-red-700",
+const ESTADO_ACCION: Record<
+  EstadoAccionCorrectivaInput,
+  { label: string; color: string; icon: React.ReactNode }
+> = {
+  pendiente: {
+    label: "Pendiente",
+    color: "text-slate-700",
+    icon: <Clock className="h-3.5 w-3.5 text-slate-500" />,
+  },
+  en_proceso: {
+    label: "En proceso",
+    color: "text-amber-700",
+    icon: <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />,
+  },
+  completada: {
+    label: "Completada",
+    color: "text-emerald-700",
+    icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />,
+  },
+  cancelada: {
+    label: "Cancelada",
+    color: "text-red-700",
+    icon: <XCircle className="h-3.5 w-3.5 text-red-600" />,
+  },
 };
-
-const ESTADOS_ACCION: EstadoAccionCorrectiva[] = ["pendiente", "en_progreso", "completada"];
 
 export default function AccidentesPageClient() {
   const [rows, setRows] = useState<AccidenteInvestigacionRow[]>([]);
-  const [opciones, setOpciones] = useState<{
-    trabajadores: { id: string; nombre: string; rut: string | null }[];
-    centros: { id: string; nombre: string }[];
-    usuarios: { id: string; nombre: string; email: string }[];
-  }>({ trabajadores: [], centros: [], usuarios: [] });
+  const [opciones, setOpciones] = useState<OpcionesAccidentes>({
+    trabajadores: [],
+    centros: [],
+    responsables: [],
+  });
 
-  const [isPending, startTransition] = useTransition();
-  const [showInvestigacionForm, setShowInvestigacionForm] = useState(false);
+  const [showAccidenteForm, setShowAccidenteForm] = useState(false);
   const [showAccionForm, setShowAccionForm] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Form investigación
   const [trabajadorId, setTrabajadorId] = useState("");
   const [centroTrabajoId, setCentroTrabajoId] = useState("");
-  const [fecha, setFecha] = useState("");
-  const [tipo, setTipo] = useState("incidente");
-  const [gravedad, setGravedad] = useState("media");
+  const [fechaAccidente, setFechaAccidente] = useState("");
+  const [tipo, setTipo] = useState("accidente");
+  const [gravedad, setGravedad] = useState("leve");
   const [descripcion, setDescripcion] = useState("");
   const [causaProbable, setCausaProbable] = useState("");
 
-  // Form acción correctiva
   const [investigacionId, setInvestigacionId] = useState("");
   const [accionDescripcion, setAccionDescripcion] = useState("");
   const [responsableId, setResponsableId] = useState("");
-  const [responsableNombre, setResponsableNombre] = useState("");
   const [plazo, setPlazo] = useState("");
 
   function loadAll() {
     startTransition(async () => {
       try {
-        const [accidentes, opts] = await Promise.all([
+        const [investigaciones, opts] = await Promise.all([
           getAccidenteInvestigaciones(),
           getOpcionesAccidentes(),
         ]);
-        setRows(accidentes);
+        setRows(investigaciones);
         setOpciones(opts);
       } catch (err) {
         setErrorMsg(err instanceof Error ? err.message : "Error al cargar accidentes");
@@ -105,12 +115,17 @@ export default function AccidentesPageClient() {
     loadAll();
   }, []);
 
-  function resetInvestigacionForm() {
+  const totalPendientes = useMemo(
+    () => rows.reduce((acc, r) => acc + r.accionesPendientes, 0),
+    [rows],
+  );
+
+  function resetAccidenteForm() {
     setTrabajadorId("");
     setCentroTrabajoId("");
-    setFecha("");
-    setTipo("incidente");
-    setGravedad("media");
+    setFechaAccidente("");
+    setTipo("accidente");
+    setGravedad("leve");
     setDescripcion("");
     setCausaProbable("");
   }
@@ -119,11 +134,10 @@ export default function AccidentesPageClient() {
     setInvestigacionId("");
     setAccionDescripcion("");
     setResponsableId("");
-    setResponsableNombre("");
     setPlazo("");
   }
 
-  function submitInvestigacion(e: React.FormEvent) {
+  function submitAccidente(e: React.FormEvent) {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -131,21 +145,21 @@ export default function AccidentesPageClient() {
     startTransition(async () => {
       try {
         await crearAccidenteInvestigacion({
-          trabajadorId: trabajadorId || undefined,
-          centroTrabajoId: centroTrabajoId || undefined,
-          fecha,
+          trabajadorId,
+          centroTrabajoId,
+          fechaAccidente,
           tipo,
           gravedad,
           descripcion,
           causaProbable: causaProbable || undefined,
         });
 
-        setSuccessMsg("Investigación registrada correctamente");
-        setShowInvestigacionForm(false);
-        resetInvestigacionForm();
+        setSuccessMsg("Accidente/incidente registrado correctamente");
+        setShowAccidenteForm(false);
+        resetAccidenteForm();
         loadAll();
       } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : "No fue posible registrar investigación");
+        setErrorMsg(err instanceof Error ? err.message : "No fue posible registrar accidente");
       }
     });
   }
@@ -155,51 +169,47 @@ export default function AccidentesPageClient() {
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    if (!investigacionId) {
-      setErrorMsg("Debe seleccionar una investigación");
-      return;
-    }
-
     startTransition(async () => {
       try {
         await crearAccionCorrectiva({
           investigacionId,
           descripcion: accionDescripcion,
-          responsableId: responsableId || undefined,
-          responsableNombre: responsableNombre || undefined,
+          responsableId,
           plazo,
         });
 
-        setSuccessMsg("Acción correctiva creada");
+        setSuccessMsg("Accion correctiva creada correctamente");
         setShowAccionForm(false);
         resetAccionForm();
         loadAll();
       } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : "No fue posible crear acción");
+        setErrorMsg(err instanceof Error ? err.message : "No fue posible crear accion correctiva");
       }
     });
   }
 
-  function onCambioEstadoAccion(accionId: string, estado: EstadoAccionCorrectiva) {
+  function onCambiarEstadoAccion(accionId: string, estado: EstadoAccionCorrectivaInput) {
     startTransition(async () => {
       try {
         await actualizarEstadoAccionCorrectiva(accionId, estado);
-        setSuccessMsg("Estado de acción actualizado");
         loadAll();
       } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : "No fue posible actualizar estado de acción");
+        setErrorMsg(err instanceof Error ? err.message : "No fue posible actualizar accion");
       }
     });
   }
 
   function onCerrarInvestigacion(id: string) {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
     startTransition(async () => {
       try {
         await cerrarInvestigacion(id);
-        setSuccessMsg("Investigación cerrada");
+        setSuccessMsg("Investigacion cerrada correctamente");
         loadAll();
       } catch (err) {
-        setErrorMsg(err instanceof Error ? err.message : "No fue posible cerrar investigación");
+        setErrorMsg(err instanceof Error ? err.message : "No fue posible cerrar investigacion");
       }
     });
   }
@@ -208,21 +218,21 @@ export default function AccidentesPageClient() {
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
         <StandardPageHeader
-          moduleLabel="Módulo Cumplimiento"
-          title="Investigación de Accidentes"
-          description={`Registro de accidentes e incidentes — ${rows.length} investigación${rows.length !== 1 ? "es" : ""}`}
+          moduleLabel="Modulo SST"
+          title="Investigacion de accidentes"
+          description={`Registro de incidentes y acciones correctivas - ${rows.length} investigacion(es), ${totalPendientes} accion(es) pendiente(s)`}
           icon={<ShieldAlert className="h-6 w-6" />}
           iconWrapClassName="bg-sky-700"
           actions={
             <>
               <Button
                 onClick={() => {
-                  setShowInvestigacionForm((v) => !v);
+                  setShowAccidenteForm((v) => !v);
                   setShowAccionForm(false);
                   setErrorMsg(null);
                   setSuccessMsg(null);
                 }}
-                className="rounded-2xl bg-sky-700 text-white hover:bg-sky-800"
+                className="rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               >
                 <Plus className="mr-2 h-4 w-4" />
                 Registrar accidente/incidente
@@ -230,14 +240,14 @@ export default function AccidentesPageClient() {
               <Button
                 onClick={() => {
                   setShowAccionForm((v) => !v);
-                  setShowInvestigacionForm(false);
+                  setShowAccidenteForm(false);
                   setErrorMsg(null);
                   setSuccessMsg(null);
                 }}
-                className="rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                className="rounded-2xl bg-sky-700 text-white hover:bg-sky-800"
               >
                 <Plus className="mr-2 h-4 w-4" />
-                Nueva acción correctiva
+                Nueva accion correctiva
               </Button>
             </>
           }
@@ -255,108 +265,109 @@ export default function AccidentesPageClient() {
           </div>
         )}
 
-        {showInvestigacionForm && (
+        {showAccidenteForm && (
           <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <CardHeader className="border-b border-slate-100 px-6 py-4">
-              <h2 className="text-base font-semibold text-slate-800">Registrar investigación</h2>
+              <h2 className="text-base font-semibold text-slate-800">Registrar accidente/incidente</h2>
             </CardHeader>
             <CardContent className="px-6 py-5">
-              <form onSubmit={submitInvestigacion} className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <form onSubmit={submitAccidente} className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label>Trabajador</Label>
-                  <div className="relative">
-                    <select
-                      value={trabajadorId}
-                      onChange={(e) => setTrabajadorId(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm"
-                    >
-                      <option value="">No asignar</option>
-                      {opciones.trabajadores.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.nombre}{t.rut ? ` — ${t.rut}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
+                  <Label>Trabajador *</Label>
+                  <select
+                    value={trabajadorId}
+                    onChange={(e) => setTrabajadorId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    required
+                  >
+                    <option value="">Seleccionar...</option>
+                    {opciones.trabajadores.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.nombre}{t.rut ? ` - ${t.rut}` : ""}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label>Centro</Label>
-                  <div className="relative">
-                    <select
-                      value={centroTrabajoId}
-                      onChange={(e) => setCentroTrabajoId(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm"
-                    >
-                      <option value="">No asignar</option>
-                      {opciones.centros.map((c) => (
-                        <option key={c.id} value={c.id}>{c.nombre}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
+                  <Label>Centro de trabajo *</Label>
+                  <select
+                    value={centroTrabajoId}
+                    onChange={(e) => setCentroTrabajoId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    required
+                  >
+                    <option value="">Seleccionar...</option>
+                    {opciones.centros.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
                   <Label>Fecha *</Label>
-                  <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} required />
+                  <Input
+                    type="date"
+                    value={fechaAccidente}
+                    onChange={(e) => setFechaAccidente(e.target.value)}
+                    required
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label>Tipo *</Label>
-                  <div className="relative">
-                    <select
-                      value={tipo}
-                      onChange={(e) => setTipo(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm"
-                    >
-                      <option value="incidente">Incidente</option>
-                      <option value="accidente">Accidente</option>
-                      <option value="cuasi_accidente">Cuasi accidente</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
+                  <select
+                    value={tipo}
+                    onChange={(e) => setTipo(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    required
+                  >
+                    <option value="accidente">Accidente</option>
+                    <option value="incidente">Incidente</option>
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
                   <Label>Gravedad *</Label>
-                  <div className="relative">
-                    <select
-                      value={gravedad}
-                      onChange={(e) => setGravedad(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm"
-                    >
-                      <option value="baja">Baja</option>
-                      <option value="media">Media</option>
-                      <option value="alta">Alta</option>
-                      <option value="critica">Crítica</option>
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
+                  <select
+                    value={gravedad}
+                    onChange={(e) => setGravedad(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    required
+                  >
+                    <option value="leve">Leve</option>
+                    <option value="moderada">Moderada</option>
+                    <option value="grave">Grave</option>
+                    <option value="fatal">Fatal</option>
+                  </select>
                 </div>
 
-                <div className="space-y-1.5 md:col-span-3">
-                  <Label>Descripción *</Label>
-                  <Input value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required />
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label>Descripcion *</Label>
+                  <Input
+                    value={descripcion}
+                    onChange={(e) => setDescripcion(e.target.value)}
+                    required
+                  />
                 </div>
 
-                <div className="space-y-1.5 md:col-span-3">
+                <div className="space-y-1.5 md:col-span-2">
                   <Label>Causa probable</Label>
                   <Input value={causaProbable} onChange={(e) => setCausaProbable(e.target.value)} />
                 </div>
 
-                <div className="flex gap-3 md:col-span-3">
+                <div className="flex items-end gap-3 md:col-span-2">
                   <Button type="submit" className="bg-sky-700 text-white hover:bg-sky-800" disabled={isPending}>
-                    Guardar investigación
+                    Guardar
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => {
-                      setShowInvestigacionForm(false);
-                      resetInvestigacionForm();
+                      setShowAccidenteForm(false);
+                      resetAccidenteForm();
                     }}
+                    disabled={isPending}
                   >
                     Cancelar
                   </Button>
@@ -369,57 +380,49 @@ export default function AccidentesPageClient() {
         {showAccionForm && (
           <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <CardHeader className="border-b border-slate-100 px-6 py-4">
-              <h2 className="text-base font-semibold text-slate-800">Crear acción correctiva</h2>
+              <h2 className="text-base font-semibold text-slate-800">Crear accion correctiva</h2>
             </CardHeader>
             <CardContent className="px-6 py-5">
-              <form onSubmit={submitAccion} className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="space-y-1.5 md:col-span-3">
-                  <Label>Investigación *</Label>
-                  <div className="relative">
-                    <select
-                      value={investigacionId}
-                      onChange={(e) => setInvestigacionId(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm"
-                      required
-                    >
-                      <option value="">Seleccionar…</option>
-                      {rows
-                        .filter((r) => r.estado !== "cerrada")
-                        .map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {new Date(r.fecha).toLocaleDateString("es-CL")} — {r.tipo} — {r.descripcion.slice(0, 60)}
-                          </option>
-                        ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
+              <form onSubmit={submitAccion} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label>Investigacion *</Label>
+                  <select
+                    value={investigacionId}
+                    onChange={(e) => setInvestigacionId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    required
+                  >
+                    <option value="">Seleccionar...</option>
+                    {rows.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {new Date(r.fechaAccidente).toLocaleDateString("es-CL")} - {r.trabajador} ({r.tipo})
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
-                <div className="space-y-1.5 md:col-span-3">
-                  <Label>Descripción de la acción *</Label>
-                  <Input value={accionDescripcion} onChange={(e) => setAccionDescripcion(e.target.value)} required />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label>Responsable (usuario)</Label>
-                  <div className="relative">
-                    <select
-                      value={responsableId}
-                      onChange={(e) => setResponsableId(e.target.value)}
-                      className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm"
-                    >
-                      <option value="">No asignar</option>
-                      {opciones.usuarios.map((u) => (
-                        <option key={u.id} value={u.id}>{u.nombre}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-slate-400" />
-                  </div>
+                <div className="space-y-1.5 md:col-span-2">
+                  <Label>Descripcion accion *</Label>
+                  <Input
+                    value={accionDescripcion}
+                    onChange={(e) => setAccionDescripcion(e.target.value)}
+                    required
+                  />
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label>Responsable (texto)</Label>
-                  <Input value={responsableNombre} onChange={(e) => setResponsableNombre(e.target.value)} />
+                  <Label>Responsable *</Label>
+                  <select
+                    value={responsableId}
+                    onChange={(e) => setResponsableId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    required
+                  >
+                    <option value="">Seleccionar...</option>
+                    {opciones.responsables.map((u) => (
+                      <option key={u.id} value={u.id}>{u.nombre}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1.5">
@@ -427,9 +430,9 @@ export default function AccidentesPageClient() {
                   <Input type="date" value={plazo} onChange={(e) => setPlazo(e.target.value)} required />
                 </div>
 
-                <div className="flex gap-3 md:col-span-3">
+                <div className="flex items-end gap-3 md:col-span-2">
                   <Button type="submit" className="bg-sky-700 text-white hover:bg-sky-800" disabled={isPending}>
-                    Guardar acción
+                    Guardar accion
                   </Button>
                   <Button
                     type="button"
@@ -438,6 +441,7 @@ export default function AccidentesPageClient() {
                       setShowAccionForm(false);
                       resetAccionForm();
                     }}
+                    disabled={isPending}
                   >
                     Cancelar
                   </Button>
@@ -447,103 +451,107 @@ export default function AccidentesPageClient() {
           </Card>
         )}
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50 text-left">
-                <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Fecha / Tipo</th>
-                <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Descripción</th>
-                <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Estado / Gravedad</th>
-                <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones correctivas</th>
-                <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Cierre</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-sm text-slate-500">
-                    No hay investigaciones registradas.
-                  </td>
-                </tr>
-              )}
+        <div className="space-y-4">
+          {rows.map((row) => {
+            const estadoInv = ESTADO_INVESTIGACION[row.estado];
+            const canClose = row.accionesPendientes === 0 && row.estado !== "cerrada";
 
-              {rows.map((r) => {
-                const cfg = ESTADO_INVESTIGACION[r.estado] || ESTADO_INVESTIGACION.abierta;
-                return (
-                  <tr key={r.id} className="align-top hover:bg-slate-50">
-                    <td className="px-5 py-3.5">
-                      <p className="font-medium text-slate-900">{new Date(r.fecha).toLocaleDateString("es-CL")}</p>
-                      <p className="text-xs text-slate-500">{r.tipo}</p>
-                      {r.trabajador && <p className="text-xs text-slate-500">{r.trabajador.nombre}</p>}
-                      {r.centroTrabajo && <p className="text-xs text-slate-400">{r.centroTrabajo.nombre}</p>}
-                    </td>
-
-                    <td className="px-5 py-3.5">
-                      <p className="text-sm text-slate-700">{r.descripcion}</p>
-                      {r.causaProbable && <p className="mt-1 text-xs text-slate-500">Causa: {r.causaProbable}</p>}
-                    </td>
-
-                    <td className="px-5 py-3.5">
-                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${cfg.color}`}>
-                        {cfg.icon}
-                        {cfg.label}
-                      </span>
-                      <p className={`mt-1 text-xs font-semibold ${GRAVEDAD_CFG[r.gravedad] || "text-slate-600"}`}>
-                        Gravedad: {r.gravedad}
+            return (
+              <Card key={row.id} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <CardHeader className="border-b border-slate-100 px-6 py-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm text-slate-500">
+                        {new Date(row.fechaAccidente).toLocaleDateString("es-CL")} - {row.tipo}
                       </p>
-                    </td>
-
-                    <td className="px-5 py-3.5">
-                      <p className="mb-1 text-xs text-slate-600">Pendientes: {r.accionesPendientes}</p>
-                      <div className="max-h-28 space-y-1 overflow-y-auto pr-1">
-                        {r.acciones.map((a) => (
-                          <div key={a.id} className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5">
-                            <p className="text-xs text-slate-700">{a.descripcion}</p>
-                            <p className="text-[11px] text-slate-500">
-                              {a.responsableNombre || "Sin responsable"} · Plazo {new Date(a.plazo).toLocaleDateString("es-CL")}
-                            </p>
-                            <div className="mt-1 flex items-center gap-2">
-                              <span className="text-[11px] text-slate-500">Estado:</span>
+                      <h3 className="text-base font-semibold text-slate-800">
+                        {row.trabajador} - {row.centroTrabajo}
+                      </h3>
+                      <p className="text-sm text-slate-600">{row.descripcion}</p>
+                      {row.causaProbable && (
+                        <p className="text-xs text-slate-500">Causa probable: {row.causaProbable}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
+                        Gravedad: {row.gravedad}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 text-xs font-semibold ${estadoInv.color}`}>
+                        {estadoInv.icon}
+                        {estadoInv.label}
+                      </span>
+                      <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                        Pendientes: {row.accionesPendientes}
+                      </span>
+                      <Button
+                        size="sm"
+                        onClick={() => onCerrarInvestigacion(row.id)}
+                        disabled={!canClose || isPending}
+                        className="bg-emerald-700 text-white hover:bg-emerald-800"
+                      >
+                        Cerrar investigacion
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="px-6 py-5">
+                  {row.acciones.length === 0 ? (
+                    <p className="text-sm text-slate-500">Sin acciones correctivas registradas.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {row.acciones.map((accion) => {
+                        const estadoAccion = ESTADO_ACCION[accion.estado];
+                        return (
+                          <div
+                            key={accion.id}
+                            className="grid grid-cols-1 gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-12 md:items-center"
+                          >
+                            <div className="md:col-span-5">
+                              <p className="text-sm font-medium text-slate-800">{accion.descripcion}</p>
+                              <p className="text-xs text-slate-500">Responsable: {accion.responsable}</p>
+                            </div>
+                            <div className="md:col-span-3 text-xs text-slate-600">
+                              Plazo: {new Date(accion.plazo).toLocaleDateString("es-CL")}
+                            </div>
+                            <div className={`md:col-span-2 inline-flex items-center gap-1 text-xs font-semibold ${estadoAccion.color}`}>
+                              {estadoAccion.icon}
+                              {estadoAccion.label}
+                            </div>
+                            <div className="md:col-span-2">
                               <select
-                                value={a.estado}
-                                onChange={(e) => onCambioEstadoAccion(a.id, e.target.value as EstadoAccionCorrectiva)}
-                                className="rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px]"
+                                value={accion.estado}
+                                onChange={(e) =>
+                                  onCambiarEstadoAccion(
+                                    accion.id,
+                                    e.target.value as EstadoAccionCorrectivaInput,
+                                  )
+                                }
+                                className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                                disabled={isPending || row.estado === "cerrada"}
                               >
-                                {ESTADOS_ACCION.map((st) => (
-                                  <option key={st} value={st}>{st}</option>
-                                ))}
+                                <option value="pendiente">Pendiente</option>
+                                <option value="en_proceso">En proceso</option>
+                                <option value="completada">Completada</option>
+                                <option value="cancelada">Cancelada</option>
                               </select>
                             </div>
                           </div>
-                        ))}
-                        {r.acciones.length === 0 && (
-                          <p className="text-xs text-slate-400">Sin acciones registradas</p>
-                        )}
-                      </div>
-                    </td>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
 
-                    <td className="px-5 py-3.5">
-                      {r.estado === "cerrada" ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Cerrada
-                        </span>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => onCerrarInvestigacion(r.id)}
-                          className="h-7 rounded-lg px-2 text-xs"
-                        >
-                          Cerrar
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {rows.length === 0 && (
+            <Card className="rounded-2xl border border-dashed border-slate-300 bg-white">
+              <CardContent className="px-6 py-10 text-center text-sm text-slate-500">
+                No hay investigaciones registradas.
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </main>
