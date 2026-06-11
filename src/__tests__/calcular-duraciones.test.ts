@@ -17,12 +17,6 @@ function diasAntes(base: string, dias: number): string {
   return d.toISOString();
 }
 
-function diasDespues(base: string, dias: number): string {
-  const d = new Date(base);
-  d.setDate(d.getDate() + dias);
-  return d.toISOString();
-}
-
 function acreditacionBase(
   overrides: Partial<Acreditacion> = {}
 ): Acreditacion {

@@ -11,12 +11,6 @@ import {
   type ActividadPlanRow,
 } from "@/actions/plandetrabajo";
 
-function calcCumplimiento(actividades: ActividadPlanRow[]): number {
-  if (!actividades.length) return 0;
-  const realizadas = actividades.filter((a) => a.estado === "realizada").length;
-  return Math.round((realizadas / actividades.length) * 100);
-}
-
 function agruparCumplimiento(
   actividades: ActividadPlanRow[],
   key: keyof Pick<ActividadPlanRow, "normativa" | "categoria" | "centroContratista" | "responsable">
