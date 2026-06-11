@@ -95,6 +95,51 @@ const workerDocumentTypesBase = [
     vigenciaDias: 1825,
     activo: true,
   },
+  {
+    codigo: "PREXOR_AUDIOMETRIA",
+    nombre: "Evaluacion PREXOR / Audiometria",
+    descripcion: "Evaluacion audiometrica requerida para trabajadores expuestos a ruido igual o mayor a 85 dB.",
+    requiereArchivo: true,
+    requiereVencimiento: true,
+    vigenciaDias: 365,
+    activo: true,
+  },
+  {
+    codigo: "PLANESI_SILICOSIS",
+    nombre: "Evaluacion PLANESI / Silicosis",
+    descripcion: "Evaluacion de salud requerida para trabajadores expuestos a silice cristalina.",
+    requiereArchivo: true,
+    requiereVencimiento: true,
+    vigenciaDias: 365,
+    activo: true,
+  },
+  {
+    codigo: "TMERT_EVALUACION",
+    nombre: "Evaluacion TMERT",
+    descripcion: "Evaluacion de trastornos musculoesqueleticos por movimientos repetitivos y riesgo ergonomico.",
+    requiereArchivo: true,
+    requiereVencimiento: true,
+    vigenciaDias: 730,
+    activo: true,
+  },
+  {
+    codigo: "DJ_ALCOHOL_DROGAS",
+    nombre: "Declaracion Jurada Alcohol y Drogas",
+    descripcion: "Declaracion jurada de abstinencia de alcohol y drogas, requerida para conductores, operadores y trabajos en altura.",
+    requiereArchivo: true,
+    requiereVencimiento: true,
+    vigenciaDias: 365,
+    activo: true,
+  },
+  {
+    codigo: "CONSTANCIA_CAPACITACION",
+    nombre: "Constancia de Capacitacion",
+    descripcion: "Registro de constancia de capacitacion segun programa anual de la empresa.",
+    requiereArchivo: true,
+    requiereVencimiento: true,
+    vigenciaDias: 365,
+    activo: true,
+  },
 ];
 
 async function upsertWorkerDocumentRule(data) {
@@ -125,6 +170,15 @@ async function upsertWorkerDocumentRule(data) {
   return "updated";
 }
 
+// Detect if a cargo is critical based on name / perfilSST / descripcion keywords (DS44 high-risk roles)
+function esCargoCritico(cargo) {
+  if (cargo.esCritico) return true;
+  const source = `${cargo.nombre ?? ""} ${cargo.perfilSST ?? ""} ${cargo.descripcion ?? ""}`.toLowerCase();
+  return /(altura|electr|maquinaria|conductor|chofer|operador|soldad|faena|obra|minero|perforador|tronador|confinado|andamio|gruero|maquinista|izaje|explosiv|izadora)/i.test(
+    source,
+  );
+}
+
 async function seedForEmpresa(empresaId) {
   const counters = {
     tiposCreados: 0,
@@ -132,6 +186,14 @@ async function seedForEmpresa(empresaId) {
     reglasCreadas: 0,
     reglasActualizadas: 0,
   };
+
+  // Fetch empresa to get cantidadTrabajadores for DS44-based thresholds
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { id: true, cantidadTrabajadores: true },
+  });
+
+  const cantidadTrabajadores = empresa?.cantidadTrabajadores ?? 1;
 
   const tipoIdsByCode = new Map();
 
@@ -174,25 +236,24 @@ async function seedForEmpresa(empresaId) {
     tipoIdsByCode.set(saved.codigo, saved.id);
   }
 
-  const [cargos, areas, centros] = await Promise.all([
+  const [cargos, areas] = await Promise.all([
     prisma.cargo.findMany({
       where: { empresaId, estado: "activo" },
-      select: { id: true, nombre: true, esCritico: true, perfilSST: true, descripcion: true },
+      select: { id: true, nombre: true, areaId: true, esCritico: true, perfilSST: true, descripcion: true },
     }),
     prisma.area.findMany({
       where: { empresaId, estado: "activa" },
       select: { id: true, nombre: true },
     }),
-    prisma.centroTrabajo.findMany({
-      where: { empresaId, estado: "activo" },
-      select: { id: true, nombre: true },
-    }),
   ]);
 
+  // Build a quick lookup of areaId -> area name
+  const areaNameById = new Map(areas.map((a) => [a.id, a.nombre]));
+
+  // ── DS44 threshold ≥1: always-required general codes ──────────────────── //
   const generalCodes = [
     "CONTRATO_TRABAJO",
     "CEDULA_IDENTIDAD",
-    "REGLAMENTO_INTERNO_RECIBIDO",
     "ODI_OBLIGACION_INFORMAR",
     "IRL_RIESGOS",
     "ENTREGA_EPP",
@@ -218,13 +279,33 @@ async function seedForEmpresa(empresaId) {
     else counters.reglasActualizadas += 1;
   }
 
+  // ── DS44 threshold ≥10: Reglamento Interno obligatorio (DS44 art. 67) ─── //
+  if (cantidadTrabajadores >= 10) {
+    const reglamentoTipoId = tipoIdsByCode.get("REGLAMENTO_INTERNO_RECIBIDO");
+    if (reglamentoTipoId) {
+      const res = await upsertWorkerDocumentRule({
+        empresaId,
+        tipoDocumentoId: reglamentoTipoId,
+        cargoId: null,
+        areaId: null,
+        centroTrabajoId: null,
+        tipoContrato: null,
+        obligatorio: true,
+        activo: true,
+      });
+      if (res === "created") counters.reglasCreadas += 1;
+      else counters.reglasActualizadas += 1;
+    }
+  }
+
+  // ── LICENCIA_HABILITANTE: apply to ALL cargos requiring license ────────── //
   const licenciaTipoId = tipoIdsByCode.get("LICENCIA_HABILITANTE");
   if (licenciaTipoId) {
-    const cargoLicenciable = cargos.find((cargo) =>
+    const cargosLicenciables = cargos.filter((cargo) =>
       /(conductor|chofer|operador|maquinaria|camion|vehiculo)/i.test(cargo.nombre),
     );
 
-    if (cargoLicenciable) {
+    for (const cargoLicenciable of cargosLicenciables) {
       const res = await upsertWorkerDocumentRule({
         empresaId,
         tipoDocumentoId: licenciaTipoId,
@@ -241,6 +322,7 @@ async function seedForEmpresa(empresaId) {
     }
   }
 
+  // ── ENTREGA_EPP: also per area (operational/field areas) ──────────────── //
   const areaTerreno = areas.find((area) =>
     /(produccion|operacion|instalacion|terreno|obra)/i.test(area.nombre),
   );
@@ -261,29 +343,31 @@ async function seedForEmpresa(empresaId) {
     else counters.reglasActualizadas += 1;
   }
 
+  // ── EXAMEN_OCUPACIONAL: per critical cargos (not per centro de trabajo) ── //
   const examenTipoId = tipoIdsByCode.get("EXAMEN_OCUPACIONAL");
-  if (centros.length > 0 && examenTipoId) {
-    const res = await upsertWorkerDocumentRule({
-      empresaId,
-      tipoDocumentoId: examenTipoId,
-      cargoId: null,
-      areaId: null,
-      centroTrabajoId: centros[0].id,
-      tipoContrato: null,
-      obligatorio: false,
-      activo: true,
-    });
+  if (examenTipoId) {
+    const cargosCriticos = cargos.filter(esCargoCritico);
 
-    if (res === "created") counters.reglasCreadas += 1;
-    else counters.reglasActualizadas += 1;
+    for (const cargo of cargosCriticos) {
+      const res = await upsertWorkerDocumentRule({
+        empresaId,
+        tipoDocumentoId: examenTipoId,
+        cargoId: cargo.id,
+        areaId: null,
+        centroTrabajoId: null,
+        tipoContrato: null,
+        obligatorio: true,
+        activo: true,
+      });
+
+      if (res === "created") counters.reglasCreadas += 1;
+      else counters.reglasActualizadas += 1;
+    }
   }
 
+  // ── Critical cargo docs (EPP + Capacitacion + Examen) ────────────────── //
   const cargoCriticoDocs = ["ENTREGA_EPP", "CAPACITACION_INICIAL", "EXAMEN_OCUPACIONAL"];
-  const cargosCriticos = cargos.filter((cargo) => {
-    if (cargo.esCritico) return true;
-    const source = `${cargo.nombre ?? ""} ${cargo.perfilSST ?? ""} ${cargo.descripcion ?? ""}`.toLowerCase();
-    return /(ds44|riesgo|critico|altura|electr|maquinaria|conductor|operador|soldad|faena|obra)/i.test(source);
-  });
+  const cargosCriticos = cargos.filter(esCargoCritico);
 
   for (const cargo of cargosCriticos) {
     for (const code of cargoCriticoDocs) {
@@ -304,6 +388,132 @@ async function seedForEmpresa(empresaId) {
       if (res === "created") counters.reglasCreadas += 1;
       else counters.reglasActualizadas += 1;
     }
+  }
+
+  // ── PREXOR_AUDIOMETRIA: noise-exposed cargos ──────────────────────────── //
+  const prexorTipoId = tipoIdsByCode.get("PREXOR_AUDIOMETRIA");
+  if (prexorTipoId) {
+    const cargosProxor = cargos.filter((cargo) => {
+      const areaNombre = (areaNameById.get(cargo.areaId) ?? "").toLowerCase();
+      const cargoNombre = cargo.nombre.toLowerCase();
+      const areaMatch = /(produccion|manufactura|planta|bodega|construccion|operaciones)/i.test(areaNombre);
+      const cargoMatch = /(operador|mecanico|soldador|carpintero|maestro)/i.test(cargoNombre);
+      return areaMatch || cargoMatch;
+    });
+
+    for (const cargo of cargosProxor) {
+      const res = await upsertWorkerDocumentRule({
+        empresaId,
+        tipoDocumentoId: prexorTipoId,
+        cargoId: cargo.id,
+        areaId: null,
+        centroTrabajoId: null,
+        tipoContrato: null,
+        obligatorio: false,
+        activo: true,
+      });
+
+      if (res === "created") counters.reglasCreadas += 1;
+      else counters.reglasActualizadas += 1;
+    }
+  }
+
+  // ── PLANESI_SILICOSIS: silica-exposed cargos ──────────────────────────── //
+  const planesiTipoId = tipoIdsByCode.get("PLANESI_SILICOSIS");
+  if (planesiTipoId) {
+    const cargosPlanes = cargos.filter((cargo) => {
+      const areaNombre = (areaNameById.get(cargo.areaId) ?? "").toLowerCase();
+      const cargoNombre = cargo.nombre.toLowerCase();
+      const areaMatch = /(construccion|mina|tunel|cantera)/i.test(areaNombre);
+      const cargoMatch = /(perforador|tronador|minero)/i.test(cargoNombre);
+      return areaMatch || cargoMatch;
+    });
+
+    for (const cargo of cargosPlanes) {
+      const res = await upsertWorkerDocumentRule({
+        empresaId,
+        tipoDocumentoId: planesiTipoId,
+        cargoId: cargo.id,
+        areaId: null,
+        centroTrabajoId: null,
+        tipoContrato: null,
+        obligatorio: false,
+        activo: true,
+      });
+
+      if (res === "created") counters.reglasCreadas += 1;
+      else counters.reglasActualizadas += 1;
+    }
+  }
+
+  // ── TMERT_EVALUACION: repetitive movement / ergonomic risk cargos ─────── //
+  const tmertTipoId = tipoIdsByCode.get("TMERT_EVALUACION");
+  if (tmertTipoId) {
+    const cargosTmert = cargos.filter((cargo) => {
+      const areaNombre = (areaNameById.get(cargo.areaId) ?? "").toLowerCase();
+      const cargoNombre = cargo.nombre.toLowerCase();
+      const areaMatch = /(produccion|manufactura|envasado|bodega|logistica|atencion)/i.test(areaNombre);
+      const cargoMatch = /(digitador|cajero|operador de linea|envasador|reponedor)/i.test(cargoNombre);
+      return areaMatch || cargoMatch;
+    });
+
+    for (const cargo of cargosTmert) {
+      const res = await upsertWorkerDocumentRule({
+        empresaId,
+        tipoDocumentoId: tmertTipoId,
+        cargoId: cargo.id,
+        areaId: null,
+        centroTrabajoId: null,
+        tipoContrato: null,
+        obligatorio: false,
+        activo: true,
+      });
+
+      if (res === "created") counters.reglasCreadas += 1;
+      else counters.reglasActualizadas += 1;
+    }
+  }
+
+  // ── DJ_ALCOHOL_DROGAS: high-risk / driving / height cargos ───────────── //
+  const djTipoId = tipoIdsByCode.get("DJ_ALCOHOL_DROGAS");
+  if (djTipoId) {
+    const cargosDJ = cargos.filter((cargo) =>
+      /(conductor|chofer|operador|maquinista|altura|andamio|gruero)/i.test(cargo.nombre),
+    );
+
+    for (const cargo of cargosDJ) {
+      const res = await upsertWorkerDocumentRule({
+        empresaId,
+        tipoDocumentoId: djTipoId,
+        cargoId: cargo.id,
+        areaId: null,
+        centroTrabajoId: null,
+        tipoContrato: null,
+        obligatorio: true,
+        activo: true,
+      });
+
+      if (res === "created") counters.reglasCreadas += 1;
+      else counters.reglasActualizadas += 1;
+    }
+  }
+
+  // ── CONSTANCIA_CAPACITACION: applies to ALL workers (empresa-wide rule) ─ //
+  const constanciaTipoId = tipoIdsByCode.get("CONSTANCIA_CAPACITACION");
+  if (constanciaTipoId) {
+    const res = await upsertWorkerDocumentRule({
+      empresaId,
+      tipoDocumentoId: constanciaTipoId,
+      cargoId: null,
+      areaId: null,
+      centroTrabajoId: null,
+      tipoContrato: null,
+      obligatorio: true,
+      activo: true,
+    });
+
+    if (res === "created") counters.reglasCreadas += 1;
+    else counters.reglasActualizadas += 1;
   }
 
   return counters;
