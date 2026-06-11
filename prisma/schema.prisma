@@ -120,6 +120,18 @@ enum RespuestaChecklistValor {
   no_aplica
 }
 
+enum EstadoAccidenteInvestigacion {
+  abierta
+  en_investigacion
+  cerrada
+}
+
+enum EstadoAccionCorrectiva {
+  pendiente
+  en_progreso
+  completada
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -188,6 +200,8 @@ model Empresa {
   eppItems                    EppItem[]
   checklistTemplates          ChecklistTemplate[]
   checklistEjecuciones        ChecklistEjecucion[]
+  accidenteInvestigaciones    AccidenteInvestigacion[]
+  accidenteAccionesCorrectivas AccidenteAccionCorrectiva[]
   contratistas                Contratista[]
   contratistaDocumentos       ContratistaDocumento[]
   contratistaTrabajadores     ContratistaTrabajador[]
@@ -227,6 +241,7 @@ model Usuario {
   entregasEppCreadas             EntregaEpp[]                   @relation("UsuarioEntregaEppCreada")
   checklistTemplatesCreados      ChecklistTemplate[]            @relation("UsuarioChecklistTemplateCreado")
   checklistEjecucionesRealizadas ChecklistEjecucion[]           @relation("UsuarioChecklistEjecucion")
+  accionesCorrectivasAsignadas   AccidenteAccionCorrectiva[]    @relation("UsuarioAccidenteAccionResponsable")
   contratistaDocumentosRevisados ContratistaDocumento[]         @relation("UsuarioContratistaDocumentoRevisado")
   // Acreditaciones
   acreditacionesResponsable      Acreditacion[]
@@ -444,6 +459,7 @@ model CentroTrabajo {
   hallazgosCumplimiento     HallazgoCumplimiento[]
   evidenciasCumplimiento    EvidenciaCumplimiento[]
   checklistEjecuciones      ChecklistEjecucion[]
+  accidenteInvestigaciones  AccidenteInvestigacion[]
   reglasDocumentoTrabajador ReglaDocumentoTrabajador[]
   planCapacitacionItems     PlanCapacitacionItem[]
   reglasCapacitacionCargo   ReglaCapacitacionCargo[]
@@ -533,6 +549,7 @@ model Trabajador {
   inducciones              InduccionTrabajador[]
   entregasEpp              EntregaEpp[]
   checklistEjecuciones     ChecklistEjecucion[]
+  accidenteInvestigaciones AccidenteInvestigacion[]
   contratistaVinculos      ContratistaTrabajador[]
   // Acreditaciones
   acreditacionesTrabajador AcreditacionTrabajador[]
@@ -1190,6 +1207,61 @@ model VehiculoMantencion {
   vehiculo Vehiculo @relation(fields: [vehiculoId], references: [id], onDelete: Cascade)
 
   @@index([vehiculoId])
+}
+
+// ─────────────────────────────────────────────
+// MÓDULO ACCIDENTES / INVESTIGACIÓN
+// ─────────────────────────────────────────────
+
+model AccidenteInvestigacion {
+  id              String                       @id @default(cuid())
+  empresaId       String
+  trabajadorId    String?
+  centroTrabajoId String?
+  fecha           DateTime
+  tipo            String
+  gravedad        String
+  descripcion     String
+  causaProbable   String?
+  estado          EstadoAccidenteInvestigacion @default(abierta)
+  cerradaAt       DateTime?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  empresa       Empresa                    @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  trabajador    Trabajador?                @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  centroTrabajo CentroTrabajo?             @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+  acciones      AccidenteAccionCorrectiva[]
+
+  @@index([empresaId])
+  @@index([trabajadorId])
+  @@index([centroTrabajoId])
+  @@index([estado])
+  @@index([fecha])
+}
+
+model AccidenteAccionCorrectiva {
+  id               String                  @id @default(cuid())
+  empresaId        String
+  investigacionId  String
+  descripcion      String
+  responsableId    String?
+  responsableNombre String?
+  plazo            DateTime
+  estado           EstadoAccionCorrectiva  @default(pendiente)
+  completadaAt     DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  empresa       Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  investigacion AccidenteInvestigacion @relation(fields: [investigacionId], references: [id], onDelete: Cascade)
+  responsable   Usuario?              @relation("UsuarioAccidenteAccionResponsable", fields: [responsableId], references: [id], onDelete: SetNull)
+
+  @@index([empresaId])
+  @@index([investigacionId])
+  @@index([responsableId])
+  @@index([estado])
+  @@index([plazo])
 }
 
 // ─────────────────────────────────────────────
