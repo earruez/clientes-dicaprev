@@ -3,11 +3,18 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 import { getDocumentoExtension, validarArchivoDocumento } from "@/lib/documentacion/archivo-documento";
+import { requireAuth } from "@/server/auth/permissions";
 
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads", "documentos");
 const PUBLIC_UPLOADS_PATH = "/uploads/documentos";
 
 export async function POST(request: Request) {
+  try {
+    await requireAuth();
+  } catch {
+    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
 
