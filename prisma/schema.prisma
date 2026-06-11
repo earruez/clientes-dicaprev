@@ -101,6 +101,14 @@ enum EstadoEntregaEpp {
   cancelada
 }
 
+enum EstadoContratistaDocumento {
+  pendiente
+  en_revision
+  aprobado
+  rechazado
+  vencido
+}
+
 enum EstadoChecklistEjecucion {
   borrador
   completada
@@ -180,6 +188,9 @@ model Empresa {
   eppItems                    EppItem[]
   checklistTemplates          ChecklistTemplate[]
   checklistEjecuciones        ChecklistEjecucion[]
+  contratistas                Contratista[]
+  contratistaDocumentos       ContratistaDocumento[]
+  contratistaTrabajadores     ContratistaTrabajador[]
   // Acreditaciones
   mandantesAcreditacion      MandanteAcreditacion[]
   plantillasAcreditacion     PlantillaAcreditacion[]
@@ -216,6 +227,7 @@ model Usuario {
   entregasEppCreadas             EntregaEpp[]                   @relation("UsuarioEntregaEppCreada")
   checklistTemplatesCreados      ChecklistTemplate[]            @relation("UsuarioChecklistTemplateCreado")
   checklistEjecucionesRealizadas ChecklistEjecucion[]           @relation("UsuarioChecklistEjecucion")
+  contratistaDocumentosRevisados ContratistaDocumento[]         @relation("UsuarioContratistaDocumentoRevisado")
   // Acreditaciones
   acreditacionesResponsable      Acreditacion[]
   acreditacionesHistorial        HistorialAcreditacion[]
@@ -521,6 +533,7 @@ model Trabajador {
   inducciones              InduccionTrabajador[]
   entregasEpp              EntregaEpp[]
   checklistEjecuciones     ChecklistEjecucion[]
+  contratistaVinculos      ContratistaTrabajador[]
   // Acreditaciones
   acreditacionesTrabajador AcreditacionTrabajador[]
 
@@ -1180,6 +1193,77 @@ model VehiculoMantencion {
 }
 
 // ─────────────────────────────────────────────
+// MÓDULO CONTRATISTAS
+// ─────────────────────────────────────────────
+
+model Contratista {
+  id            String   @id @default(cuid())
+  empresaId     String
+  nombre        String
+  rut           String?
+  razonSocial   String?
+  email         String?
+  telefono      String?
+  observaciones String?
+  activo        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  empresa       Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  documentos    ContratistaDocumento[]
+  trabajadores  ContratistaTrabajador[]
+  acreditaciones Acreditacion[]
+
+  @@index([empresaId])
+  @@index([activo])
+  @@index([rut])
+}
+
+model ContratistaDocumento {
+  id            String                     @id @default(cuid())
+  contratistaId String
+  empresaId     String
+  nombre        String
+  tipo          String?
+  estado        EstadoContratistaDocumento @default(pendiente)
+  archivoUrl    String?
+  archivoNombre String?
+  fechaEmision  DateTime?
+  fechaVencimiento DateTime?
+  observaciones String?
+  revisadoPorId String?
+  revisadoAt    DateTime?
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  contratista Contratista @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
+  empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  revisadoPor Usuario?    @relation("UsuarioContratistaDocumentoRevisado", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([contratistaId])
+  @@index([empresaId])
+  @@index([estado])
+  @@index([fechaVencimiento])
+}
+
+model ContratistaTrabajador {
+  id            String   @id @default(cuid())
+  empresaId     String
+  contratistaId String
+  trabajadorId  String
+  createdAt     DateTime @default(now())
+
+  empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  contratista Contratista @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
+  trabajador  Trabajador  @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+
+  @@unique([contratistaId, trabajadorId])
+  @@index([empresaId])
+  @@index([contratistaId])
+  @@index([trabajadorId])
+}
+
+// ─────────────────────────────────────────────
 // ACREDITACIONES — MODELOS PRISMA
 // ─────────────────────────────────────────────
 
@@ -1291,6 +1375,7 @@ model Acreditacion {
   empresaId           String
   mandanteId          String
   plantillaId         String
+  contratistaId       String?
   nombreProyecto      String?
   obraFaena           String?
   estado              String   @default("en_preparacion") // "en_preparacion" | "listo_para_enviar" | "enviado" | "observada" | "aprobado" | "rechazado" | "cerrada" | "vencido"
@@ -1305,6 +1390,7 @@ model Acreditacion {
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   mandante MandanteAcreditacion @relation(fields: [mandanteId], references: [id], onDelete: Cascade)
   plantilla PlantillaAcreditacion @relation(fields: [plantillaId], references: [id], onDelete: Cascade)
+  contratista Contratista? @relation(fields: [contratistaId], references: [id], onDelete: SetNull)
   responsable Usuario? @relation(fields: [responsableId], references: [id], onDelete: SetNull)
 
   trabajadores  AcreditacionTrabajador[]
@@ -1315,6 +1401,7 @@ model Acreditacion {
   @@index([empresaId])
   @@index([mandanteId])
   @@index([plantillaId])
+  @@index([contratistaId])
   @@index([estado])
   @@index([responsableId])
   @@index([fechaVencimiento])
