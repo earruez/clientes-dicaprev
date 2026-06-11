@@ -4,6 +4,7 @@ export type IrlRiesgoFila = {
   peligro: string;
   consecuencia: string;
   medida: string;
+  metodo_procedimiento: string; // "Métodos o Procedimientos de Trabajo Correctos"
 };
 
 /** Ítem de EPP resumido que aparece dentro de la sección de resumen del IRL */
@@ -287,11 +288,12 @@ function anioActual(): string {
   return String(new Date().getFullYear());
 }
 
-function crearFilaRiesgo(peligro: string, consecuencia = "", medida = ""): IrlRiesgoFila {
+function crearFilaRiesgo(peligro: string, consecuencia = "", medida = "", metodo_procedimiento = ""): IrlRiesgoFila {
   return {
     peligro: normalizarTexto(peligro),
     consecuencia: normalizarTexto(consecuencia),
     medida: normalizarTexto(medida),
+    metodo_procedimiento: normalizarTexto(metodo_procedimiento),
   };
 }
 

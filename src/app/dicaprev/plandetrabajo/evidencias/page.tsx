@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,36 +13,62 @@ import {
 } from "@/components/ui/select";
 import { PlanNav } from "../components/plan-nav";
 import {
-  canUploadPlanEvidence,
-  getPlanSnapshot,
-  hydratePlanStore,
-  subscribePlan,
+  getPlanTrabajo,
+  getActividadesPlan,
+  getEvidencias,
+  getHistorialPlan,
   uploadEvidencia,
-} from "../store";
+  type ActividadPlanRow,
+  type EvidenciaRow,
+  type HistorialRow,
+  type PlanTrabajoRow,
+} from "@/actions/plandetrabajo";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 
 export default function EvidenciasPlanPage() {
-  const [snapshot, setSnapshot] = useState(getPlanSnapshot());
+  const [plan, setPlan] = useState<PlanTrabajoRow | null>(null);
+  const [actividades, setActividades] = useState<ActividadPlanRow[]>([]);
+  const [evidencias, setEvidencias] = useState<EvidenciaRow[]>([]);
+  const [historial, setHistorial] = useState<HistorialRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
   const [selectedActividad, setSelectedActividad] = useState<string>("");
   const [selectedFileName, setSelectedFileName] = useState<string>("");
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    hydratePlanStore();
-    setSnapshot(getPlanSnapshot());
-    return subscribePlan(() => setSnapshot(getPlanSnapshot()));
+  const loadData = useCallback(async () => {
+    try {
+      const p = await getPlanTrabajo();
+      const acts = await getActividadesPlan(p.id);
+      const hist = await getHistorialPlan(p.id);
+      const allEvidencias: EvidenciaRow[] = [];
+      for (const act of acts) {
+        const evs = await getEvidencias(act.id);
+        allEvidencias.push(...evs);
+      }
+      setPlan(p);
+      setActividades(acts);
+      setHistorial(hist);
+      setEvidencias(allEvidencias);
+    } catch (err) {
+      setInfoMessage(err instanceof Error ? err.message : "Error al cargar el plan.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const actividades = snapshot.actividades;
-  const evidencias = snapshot.evidencias;
-  const historial = snapshot.historial;
-  const canUploadEvidence = canUploadPlanEvidence();
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  const canUploadEvidence = plan?.estadoPlan !== "aprobado";
 
   const stats = useMemo(() => {
     const cargadas = evidencias.filter((e) => e.estado === "cargada").length;
     const rechazadas = evidencias.filter((e) => e.estado === "rechazada").length;
-    const pendientes = actividades.filter((a) => a.requiereEvidencia && a.evidencia === "pendiente").length;
+    const pendientes = actividades.filter((a) => a.requiereEvidencia && !evidencias.some((e) => e.actividadId === a.id && e.estado === "cargada")).length;
     return { cargadas, rechazadas, pendientes };
   }, [actividades, evidencias]);
 
@@ -71,10 +97,35 @@ export default function EvidenciasPlanPage() {
       return;
     }
 
-    const ok = uploadEvidencia(Number(selectedActividad), selectedFileName);
-    setInfoMessage(ok ? "Evidencia cargada correctamente." : "No se pudo cargar evidencia en el estado actual del plan.");
-    setSelectedFileName("");
-    if (uploadRef.current) uploadRef.current.value = "";
+    startTransition(async () => {
+      try {
+        await uploadEvidencia(selectedActividad, selectedFileName);
+        // Refresh evidencias
+        const acts = await getActividadesPlan(plan!.id);
+        const hist = await getHistorialPlan(plan!.id);
+        const allEvidencias: EvidenciaRow[] = [];
+        for (const act of acts) {
+          const evs = await getEvidencias(act.id);
+          allEvidencias.push(...evs);
+        }
+        setActividades(acts);
+        setHistorial(hist);
+        setEvidencias(allEvidencias);
+        setInfoMessage("Evidencia cargada correctamente.");
+        setSelectedFileName("");
+        if (uploadRef.current) uploadRef.current.value = "";
+      } catch (err) {
+        setInfoMessage(err instanceof Error ? err.message : "No se pudo cargar evidencia en el estado actual del plan.");
+      }
+    });
+  }
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="text-sm text-slate-500">Cargando evidencias...</div>
+      </div>
+    );
   }
 
   return (
@@ -108,7 +159,7 @@ export default function EvidenciasPlanPage() {
             </SelectTrigger>
             <SelectContent>
               {actividades.map((a) => (
-                <SelectItem key={a.id} value={String(a.id)}>
+                <SelectItem key={a.id} value={a.id}>
                   {a.actividad}
                 </SelectItem>
               ))}
@@ -117,11 +168,11 @@ export default function EvidenciasPlanPage() {
 
           <input ref={uploadRef} type="file" className="hidden" onChange={onFileSelected} />
 
-          <Button variant="outline" onClick={onPickFile} disabled={!canUploadEvidence}>Seleccionar archivo</Button>
+          <Button variant="outline" onClick={onPickFile} disabled={!canUploadEvidence || isPending}>Seleccionar archivo</Button>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
             {selectedFileName || "Sin archivo"}
           </div>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={onUpload} disabled={!canUploadEvidence}>Subir evidencia</Button>
+          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={onUpload} disabled={!canUploadEvidence || isPending}>Subir evidencia</Button>
         </div>
       </div>
 
@@ -162,12 +213,12 @@ export default function EvidenciasPlanPage() {
                   <td className="px-4 py-3">
                     <Badge variant={e.estado === "cargada" ? "default" : "destructive"}>{e.estado}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-slate-600">{e.observacion}</td>
+                  <td className="px-4 py-3 text-slate-600">{e.observacion ?? "-"}</td>
                 </tr>
               );
             })}
 
-            {actividades.filter((a) => a.requiereEvidencia && a.evidencia === "pendiente").map((a) => (
+            {actividades.filter((a) => a.requiereEvidencia && !evidencias.some((e) => e.actividadId === a.id && e.estado === "cargada")).map((a) => (
               <tr key={`pend-${a.id}`} className="bg-amber-50/40">
                 <td className="px-4 py-3 font-medium text-slate-800">{a.actividad}</td>
                 <td className="px-4 py-3 text-slate-500">Sin archivo</td>
@@ -193,10 +244,10 @@ export default function EvidenciasPlanPage() {
           <tbody className="divide-y divide-slate-100">
             {historial.map((h) => (
               <tr key={h.id} className="hover:bg-slate-50">
-                <td className="px-4 py-3 text-slate-600">{h.fecha}</td>
+                <td className="px-4 py-3 text-slate-600">{h.createdAt.slice(0, 10)}</td>
                 <td className="px-4 py-3 text-slate-600">{h.usuario}</td>
                 <td className="px-4 py-3 text-slate-800">{h.accion}</td>
-                <td className="px-4 py-3 text-slate-600">{h.archivo}</td>
+                <td className="px-4 py-3 text-slate-600">{h.archivo ?? "-"}</td>
               </tr>
             ))}
           </tbody>
