@@ -70,7 +70,26 @@ interface FormSesion {
   ubicacion: string;
   relator: string;
   cupos: string;
+  videoUrl: string;
+  videoDuracionSegundos: string;
+  minimoVisualizacionPct: string;
+  evaluacionMinimoAprobacion: string;
+  preguntas: Array<{
+    id: string;
+    texto: string;
+    opciones: [string, string, string, string];
+    correcta: number;
+  }>;
   estado: EstadoCapacitacionSesion;
+}
+
+function defaultPreguntas() {
+  return [1, 2, 3, 4].map((n) => ({
+    id: `p${n}`,
+    texto: "",
+    opciones: ["", "", "", ""] as [string, string, string, string],
+    correcta: 0,
+  }));
 }
 
 const EMPTY_FORM: FormSesion = {
@@ -83,6 +102,11 @@ const EMPTY_FORM: FormSesion = {
   ubicacion: "",
   relator: "",
   cupos: "",
+  videoUrl: "",
+  videoDuracionSegundos: "600",
+  minimoVisualizacionPct: "85",
+  evaluacionMinimoAprobacion: "70",
+  preguntas: defaultPreguntas(),
   estado: "programada",
 };
 
@@ -160,6 +184,24 @@ export default function TabCalendario() {
       ubicacion: s.ubicacion ?? "",
       relator: s.relator ?? "",
       cupos: s.cupos ? String(s.cupos) : "",
+      videoUrl: s.videoUrl ?? "",
+      videoDuracionSegundos: s.videoDuracionSegundos ? String(s.videoDuracionSegundos) : "600",
+      minimoVisualizacionPct: String(s.minimoVisualizacionPct ?? 85),
+      evaluacionMinimoAprobacion: String(s.evaluacionMinimoAprobacion ?? 70),
+      preguntas:
+        s.evaluacionPreguntas?.length > 0
+          ? s.evaluacionPreguntas.slice(0, 4).map((p, i) => ({
+              id: p.id || `p${i + 1}`,
+              texto: p.texto,
+              opciones: [
+                p.opciones[0] ?? "",
+                p.opciones[1] ?? "",
+                p.opciones[2] ?? "",
+                p.opciones[3] ?? "",
+              ] as [string, string, string, string],
+              correcta: p.correcta,
+            }))
+          : defaultPreguntas(),
       estado: s.estado,
     });
     setModal("editar");
@@ -168,6 +210,26 @@ export default function TabCalendario() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const cap = catalogo.find((c) => c.id === form.capacitacionId);
+
+    const preguntasNormalizadas = form.preguntas
+      .map((p, i) => ({
+        id: p.id || `p${i + 1}`,
+        texto: p.texto.trim(),
+        opciones: p.opciones.map((o) => o.trim()),
+        correcta: p.correcta,
+      }))
+      .filter((p) => p.texto.length > 0)
+      .map((p) => ({
+        ...p,
+        opciones: p.opciones.filter((o) => o.length > 0),
+      }))
+      .filter((p) => p.opciones.length === 4 && p.correcta >= 0 && p.correcta < 4);
+
+    if ((cap?.requiereEvaluacion ?? false) && preguntasNormalizadas.length !== 4) {
+      setError("Debes cargar 4 preguntas válidas para esta capacitación.");
+      return;
+    }
+
     const payload = {
       capacitacionId: form.capacitacionId,
       titulo: form.titulo || (cap?.nombre ?? "Sesión sin título"),
@@ -178,6 +240,11 @@ export default function TabCalendario() {
       ubicacion: form.ubicacion || undefined,
       relator: form.relator || undefined,
       cupos: form.cupos ? Number(form.cupos) : undefined,
+      videoUrl: form.videoUrl || undefined,
+      videoDuracionSegundos: form.videoUrl ? Number(form.videoDuracionSegundos || 600) : undefined,
+      minimoVisualizacionPct: form.videoUrl ? Number(form.minimoVisualizacionPct || 85) : undefined,
+      evaluacionPreguntas: preguntasNormalizadas,
+      evaluacionMinimoAprobacion: Number(form.evaluacionMinimoAprobacion || 70),
     };
 
     setSaving(true);
@@ -280,6 +347,18 @@ export default function TabCalendario() {
                         </span>
                       </div>
                       {cap && <p className="text-xs text-slate-400 mt-0.5">{cap.nombre}</p>}
+                      <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+                        {s.videoUrl ? (
+                          <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-cyan-700">
+                            Video configurado
+                          </span>
+                        ) : null}
+                        {s.evaluacionPreguntas.length > 0 ? (
+                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-blue-700">
+                            {s.evaluacionPreguntas.length} preguntas
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="flex items-center gap-4 mt-1.5 text-xs text-slate-500 flex-wrap">
                         {s.horaInicio && (
                           <span className="flex items-center gap-1">
@@ -407,6 +486,119 @@ export default function TabCalendario() {
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="col-span-2 mt-2 border-t border-slate-200 pt-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Contenido virtual</p>
+              </div>
+
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs font-medium text-slate-600">URL video</Label>
+                <Input
+                  value={form.videoUrl}
+                  onChange={(e) => setForm((p) => ({ ...p, videoUrl: e.target.value }))}
+                  placeholder="https://youtu.be/... o https://.../video.mp4"
+                  className="rounded-xl border-slate-200 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-slate-600">Duración video (seg)</Label>
+                <Input
+                  type="number"
+                  min={30}
+                  value={form.videoDuracionSegundos}
+                  onChange={(e) => setForm((p) => ({ ...p, videoDuracionSegundos: e.target.value }))}
+                  className="rounded-xl border-slate-200 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-slate-600">% mínimo visualización</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.minimoVisualizacionPct}
+                  onChange={(e) => setForm((p) => ({ ...p, minimoVisualizacionPct: e.target.value }))}
+                  className="rounded-xl border-slate-200 text-sm"
+                />
+              </div>
+
+              <div className="col-span-2 mt-2 border-t border-slate-200 pt-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mini test (4 preguntas)</p>
+              </div>
+
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs font-medium text-slate-600">% mínimo aprobación</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={form.evaluacionMinimoAprobacion}
+                  onChange={(e) => setForm((p) => ({ ...p, evaluacionMinimoAprobacion: e.target.value }))}
+                  className="rounded-xl border-slate-200 text-sm"
+                />
+              </div>
+
+              {form.preguntas.map((pregunta, idx) => (
+                <div key={pregunta.id} className="col-span-2 rounded-xl border border-slate-200 p-3 space-y-2">
+                  <Label className="text-xs font-medium text-slate-600">Pregunta {idx + 1}</Label>
+                  <Input
+                    value={pregunta.texto}
+                    onChange={(e) =>
+                      setForm((prev) => {
+                        const next = [...prev.preguntas];
+                        next[idx] = { ...next[idx], texto: e.target.value };
+                        return { ...prev, preguntas: next };
+                      })
+                    }
+                    placeholder="Escribe la pregunta"
+                    className="rounded-xl border-slate-200 text-sm"
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    {pregunta.opciones.map((opcion, optIdx) => (
+                      <Input
+                        key={`${pregunta.id}-${optIdx}`}
+                        value={opcion}
+                        onChange={(e) =>
+                          setForm((prev) => {
+                            const next = [...prev.preguntas];
+                            const opciones = [...next[idx].opciones] as [string, string, string, string];
+                            opciones[optIdx] = e.target.value;
+                            next[idx] = { ...next[idx], opciones };
+                            return { ...prev, preguntas: next };
+                          })
+                        }
+                        placeholder={`Opción ${optIdx + 1}`}
+                        className="rounded-xl border-slate-200 text-sm"
+                      />
+                    ))}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium text-slate-600">Respuesta correcta</Label>
+                    <Select
+                      value={String(pregunta.correcta)}
+                      onValueChange={(v) =>
+                        setForm((prev) => {
+                          const next = [...prev.preguntas];
+                          next[idx] = { ...next[idx], correcta: Number(v) };
+                          return { ...prev, preguntas: next };
+                        })
+                      }
+                    >
+                      <SelectTrigger className="rounded-xl border-slate-200 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Opción 1</SelectItem>
+                        <SelectItem value="1">Opción 2</SelectItem>
+                        <SelectItem value="2">Opción 3</SelectItem>
+                        <SelectItem value="3">Opción 4</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <DialogFooter>

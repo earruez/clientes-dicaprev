@@ -10,6 +10,7 @@ import { ReglasPanel }      from "@/components/trabajadores-v2/documental/Reglas
 import { PendientesPanel }  from "@/components/trabajadores-v2/documental/PendientesPanel";
 import { VencimientosPanel } from "@/components/trabajadores-v2/documental/VencimientosPanel";
 import { BulkUploadDrawer } from "@/components/trabajadores-v2/documental/BulkUploadDrawer";
+import { AlertasVencimientosWidget } from "@/components/trabajadores-v2/documental/AlertasVencimientosWidget";
 import {
   getControlDocumentalTrabajadores,
   evaluarReglasDocumentalesEmpresa,
@@ -187,6 +188,13 @@ export default function ControlDocumentalClient({
             </div>
           ))}
         </div>
+
+        {/* ── Alertas de vencimientos ── */}
+        <AlertasVencimientosWidget
+          workers={documentalData.workers}
+          documentos={documentalData.documentos}
+          tipos={documentalData.tipos}
+        />
 
         {/* ── Tab section ── */}
         <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-sm">

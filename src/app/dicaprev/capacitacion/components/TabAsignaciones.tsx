@@ -7,6 +7,7 @@ import {
   createCapacitacionAsignacion,
   updateCapacitacionAsignacion,
   cambiarEstadoCapacitacionAsignacion,
+  enviarCapacitacionAsignacion,
   deleteCapacitacionAsignacion,
   type AsignacionCapacitacion,
   type CapacitacionCatalogo,
@@ -540,7 +541,7 @@ export default function TabAsignaciones() {
       switch (accion) {
         case "enviar":
         case "reenviar":
-          await cambiarEstadoCapacitacionAsignacion(item.id, { estado: "enviada" });
+          await enviarCapacitacionAsignacion(item.id, { reenviar: accion === "reenviar" });
           registrarAccion({
             accion: "enviar", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: item.id,
             descripcion: `${accion === "reenviar" ? "Reenvió" : "Envió"} enlace de '${item.capacitacionNombre}' a ${item.trabajadorNombre}`,

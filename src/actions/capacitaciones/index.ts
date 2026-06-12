@@ -492,6 +492,83 @@ function buildToken(): string {
   return crypto.randomUUID().replaceAll("-", "");
 }
 
+function normalizeEmail(value?: string | null): string | null {
+  if (!value) return null;
+  const email = value.trim().toLowerCase();
+  if (!email) return null;
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return valid ? email : null;
+}
+
+function resolvePublicBaseUrl(): string {
+  return (
+    process.env.APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "http://localhost:3000"
+  ).replace(/\/$/, "");
+}
+
+async function sendCapacitacionEmail(input: {
+  to: string;
+  trabajadorNombre: string;
+  capacitacionNombre: string;
+  capacitacionCodigo?: string;
+  modalidad?: string;
+  url: string;
+}): Promise<"resend" | "dev-log"> {
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const fromEmail =
+    process.env.CAPACITACION_FROM_EMAIL ||
+    process.env.FROM_EMAIL ||
+    "onboarding@resend.dev";
+
+  const subject = `Capacitación asignada: ${input.capacitacionNombre}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">
+      <h2 style="margin-bottom: 8px;">Nueva capacitación asignada</h2>
+      <p>Hola <strong>${input.trabajadorNombre}</strong>,</p>
+      <p>Se te ha asignado la capacitación <strong>${input.capacitacionNombre}</strong>${
+        input.capacitacionCodigo ? ` (${input.capacitacionCodigo})` : ""
+      }.</p>
+      <p>Modalidad: <strong>${input.modalidad || "No definida"}</strong></p>
+      <p>Para iniciar, abre el siguiente enlace:</p>
+      <p><a href="${input.url}">${input.url}</a></p>
+      <p style="margin-top: 18px; font-size: 12px; color: #64748b;">Correo enviado por NEXTPREV.</p>
+    </div>
+  `;
+
+  if (!resendApiKey) {
+    console.info("[capacitacion-email][dev-log]", {
+      to: input.to,
+      subject,
+      url: input.url,
+      modalidad: input.modalidad,
+    });
+    return "dev-log";
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: fromEmail,
+      to: [input.to],
+      subject,
+      html,
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.text();
+    throw new Error(`No fue posible enviar correo de capacitación: ${payload}`);
+  }
+
+  return "resend";
+}
+
 async function createHistorialCapacitacion(
   tx: Prisma.TransactionClient,
   input: {
@@ -984,11 +1061,106 @@ export async function deleteCapacitacionAsignacion(id: string): Promise<Asignaci
   return toAsignacionShape(updated);
 }
 
+export async function enviarCapacitacionAsignacion(
+  id: string,
+  input?: { reenviar?: boolean },
+): Promise<AsignacionCapacitacion> {
+  const { empresaId, usuarioId } = await requirePermission("canManageCapacitaciones");
+
+  const result = await prisma.$transaction(async (tx) => {
+    const existing = await tx.capacitacionAsignacion.findFirst({
+      where: { id, empresaId },
+      include: {
+        trabajador: { select: { nombres: true, apellidos: true, email: true } },
+        capacitacion: {
+          select: {
+            nombre: true,
+            codigo: true,
+            modalidad: true,
+            categoria: true,
+            generaCertificado: true,
+          },
+        },
+      },
+    });
+
+    if (!existing) throw new Error("Asignacion no encontrada");
+    if (existing.estado === "cancelada") {
+      throw new Error("No se puede enviar una asignación cancelada");
+    }
+
+    const email = normalizeEmail(existing.trabajador.email);
+    if (!email) {
+      throw new Error("El trabajador no tiene correo válido para recibir la capacitación");
+    }
+
+    const token = existing.token || buildToken();
+    if (!existing.token) {
+      await tx.capacitacionAsignacion.update({
+        where: { id: existing.id },
+        data: { token },
+      });
+    }
+
+    const url = `${resolvePublicBaseUrl()}/capacitacion/externa/${token}`;
+    const provider = await sendCapacitacionEmail({
+      to: email,
+      trabajadorNombre: `${existing.trabajador.nombres} ${existing.trabajador.apellidos}`.trim(),
+      capacitacionNombre: existing.capacitacion.nombre,
+      capacitacionCodigo: existing.capacitacion.codigo,
+      modalidad: existing.capacitacion.modalidad,
+      url,
+    });
+
+    const now = new Date();
+    const updated = await tx.capacitacionAsignacion.update({
+      where: { id: existing.id },
+      data: {
+        estado: "enviada",
+        fechaEnvio: now,
+        token,
+      },
+      include: {
+        trabajador: { select: { nombres: true, apellidos: true } },
+        capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
+      },
+    });
+
+    await createHistorialCapacitacion(tx, {
+      empresaId,
+      usuarioId,
+      trabajadorId: updated.trabajadorId,
+      capacitacionId: updated.capacitacionId,
+      asignacionId: updated.id,
+      sesionId: updated.sesionId,
+      tipoEvento: input?.reenviar ? "asignacion_reenviada_email" : "asignacion_enviada_email",
+      detalle: `Correo ${input?.reenviar ? "reenviado" : "enviado"} vía ${provider}`,
+      estado: updated.estado,
+      vigenciaHasta: updated.fechaVencimiento,
+      fechaEvento: now,
+    });
+
+    return updated;
+  });
+
+  return toAsignacionShape(result);
+}
+
 // ─── Flujo público por token ───────────────────────────────────────────────
 
 export async function getCapacitacionAsignacionPublica(token: string): Promise<{
   asignacion: AsignacionCapacitacion;
   capacitacion: CapacitacionCatalogo;
+  sesion: {
+    id: string;
+    titulo: string;
+    modalidad: string;
+    videoUrl?: string;
+    videoDuracionSegundos?: number;
+    minimoVisualizacionPct: number;
+    evaluacionPreguntas: CapacitacionSesionPregunta[];
+    evaluacionMinimoAprobacion: number;
+  } | null;
 } | null> {
   const cleanToken = token.trim();
   if (!cleanToken) return null;
@@ -1001,6 +1173,18 @@ export async function getCapacitacionAsignacionPublica(token: string): Promise<{
     include: {
       trabajador: { select: { nombres: true, apellidos: true } },
       capacitacion: true,
+      sesion: {
+        select: {
+          id: true,
+          titulo: true,
+          modalidad: true,
+          videoUrl: true,
+          videoDuracionSegundos: true,
+          minimoVisualizacionPct: true,
+          evaluacionPreguntas: true,
+          evaluacionMinimoAprobacion: true,
+        },
+      },
     },
   });
 
@@ -1009,6 +1193,18 @@ export async function getCapacitacionAsignacionPublica(token: string): Promise<{
   return {
     asignacion: toAsignacionShape(row),
     capacitacion: toCatalogoShape(row.capacitacion),
+    sesion: row.sesion
+      ? {
+          id: row.sesion.id,
+          titulo: row.sesion.titulo,
+          modalidad: row.sesion.modalidad,
+          videoUrl: row.sesion.videoUrl ?? undefined,
+          videoDuracionSegundos: row.sesion.videoDuracionSegundos ?? undefined,
+          minimoVisualizacionPct: clampPercentage(row.sesion.minimoVisualizacionPct, 85),
+          evaluacionPreguntas: normalizePreguntasSesion(row.sesion.evaluacionPreguntas),
+          evaluacionMinimoAprobacion: clampPercentage(row.sesion.evaluacionMinimoAprobacion, 70),
+        }
+      : null,
   };
 }
 
@@ -1018,6 +1214,7 @@ export async function avanzarCapacitacionAsignacionPublica(
     estado: "en_progreso" | "completada";
     nota?: number | null;
     aprobado?: boolean | null;
+    videoWatchPercent?: number | null;
     observacion?: string | null;
   },
 ): Promise<AsignacionCapacitacion> {
@@ -1045,6 +1242,12 @@ export async function avanzarCapacitacionAsignacionPublica(
         fechaInicio: true,
         fechaCompletada: true,
         fechaVencimiento: true,
+        sesion: {
+          select: {
+            videoUrl: true,
+            minimoVisualizacionPct: true,
+          },
+        },
       },
     });
 
@@ -1062,6 +1265,14 @@ export async function avanzarCapacitacionAsignacionPublica(
     }
 
     if (nextEstado === "completada") {
+      if (existing.sesion?.videoUrl) {
+        const watchPercent = clampPercentage(input.videoWatchPercent ?? 0, 0);
+        const minPct = clampPercentage(existing.sesion.minimoVisualizacionPct, 85);
+        if (watchPercent < minPct) {
+          throw new Error("Debes completar la visualizacion minima del video antes de finalizar.");
+        }
+      }
+
       if (!existing.fechaCompletada) {
         patch.fechaCompletada = fechaEvento;
       }
@@ -1124,6 +1335,13 @@ export type EstadoAsistencia =
   | "justificado"
   | "parcial";
 
+export type CapacitacionSesionPregunta = {
+  id: string;
+  texto: string;
+  opciones: string[];
+  correcta: number;
+};
+
 export type CapacitacionSesion = {
   id: string;
   empresaId: string;
@@ -1137,6 +1355,11 @@ export type CapacitacionSesion = {
   ubicacion?: string;
   relator?: string;
   cupos?: number;
+  videoUrl?: string;
+  videoDuracionSegundos?: number;
+  minimoVisualizacionPct: number;
+  evaluacionPreguntas: CapacitacionSesionPregunta[];
+  evaluacionMinimoAprobacion: number;
   asistentesConfirmados?: number;
   estado: EstadoCapacitacionSesion;
   createdAt: string;
@@ -1164,6 +1387,11 @@ export type CreateCapacitacionSesionInput = {
   ubicacion?: string | null;
   relator?: string | null;
   cupos?: number | null;
+  videoUrl?: string | null;
+  videoDuracionSegundos?: number | null;
+  minimoVisualizacionPct?: number | null;
+  evaluacionPreguntas?: CapacitacionSesionPregunta[] | null;
+  evaluacionMinimoAprobacion?: number | null;
 };
 
 export type UpdateCapacitacionSesionInput = {
@@ -1175,6 +1403,11 @@ export type UpdateCapacitacionSesionInput = {
   ubicacion?: string | null;
   relator?: string | null;
   cupos?: number | null;
+  videoUrl?: string | null;
+  videoDuracionSegundos?: number | null;
+  minimoVisualizacionPct?: number | null;
+  evaluacionPreguntas?: CapacitacionSesionPregunta[] | null;
+  evaluacionMinimoAprobacion?: number | null;
 };
 
 export type CambiarEstadoCapacitacionSesionInput = {
@@ -1226,6 +1459,43 @@ function formatTimeFromDate(value: Date | null | undefined): string | undefined 
   return value ? value.toISOString().slice(11, 16) : undefined;
 }
 
+function clampPercentage(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function normalizePreguntasSesion(
+  value: CapacitacionSesionPregunta[] | Prisma.JsonValue | null | undefined,
+): CapacitacionSesionPregunta[] {
+  if (!Array.isArray(value)) return [];
+
+  const parsed: CapacitacionSesionPregunta[] = [];
+  for (let i = 0; i < value.length; i += 1) {
+    const item = value[i] as unknown as Record<string, unknown>;
+    const texto = typeof item?.texto === "string" ? item.texto.trim() : "";
+    const opcionesRaw = Array.isArray(item?.opciones) ? item.opciones : [];
+    const opciones = opcionesRaw
+      .map((op) => (typeof op === "string" ? op.trim() : ""))
+      .filter((op) => op.length > 0)
+      .slice(0, 4);
+    const correctaRaw = Number(item?.correcta);
+    const correcta = Number.isInteger(correctaRaw) ? correctaRaw : -1;
+
+    if (!texto || opciones.length < 2 || correcta < 0 || correcta >= opciones.length) {
+      continue;
+    }
+
+    parsed.push({
+      id: typeof item?.id === "string" && item.id.trim() ? item.id.trim() : `p${i + 1}`,
+      texto,
+      opciones,
+      correcta,
+    });
+  }
+
+  return parsed;
+}
+
 function toSesionShape(row: {
   id: string;
   empresaId: string;
@@ -1238,12 +1508,18 @@ function toSesionShape(row: {
   ubicacion: string | null;
   relator: string | null;
   cupos: number | null;
+  videoUrl: string | null;
+  videoDuracionSegundos: number | null;
+  minimoVisualizacionPct: number;
+  evaluacionPreguntas: Prisma.JsonValue | null;
+  evaluacionMinimoAprobacion: number;
   estado: string;
   createdAt: Date;
   updatedAt: Date;
   capacitacion: { nombre: string };
   asistencias: { id: string }[];
 }): CapacitacionSesion {
+  const preguntas = normalizePreguntasSesion(row.evaluacionPreguntas);
   return {
     id: row.id,
     empresaId: row.empresaId,
@@ -1257,6 +1533,11 @@ function toSesionShape(row: {
     ubicacion: row.ubicacion ?? undefined,
     relator: row.relator ?? undefined,
     cupos: row.cupos ?? undefined,
+    videoUrl: row.videoUrl ?? undefined,
+    videoDuracionSegundos: row.videoDuracionSegundos ?? undefined,
+    minimoVisualizacionPct: clampPercentage(row.minimoVisualizacionPct, 85),
+    evaluacionPreguntas: preguntas,
+    evaluacionMinimoAprobacion: clampPercentage(row.evaluacionMinimoAprobacion, 70),
     asistentesConfirmados: row.asistencias?.length ?? 0,
     estado: assertEstadoSesionValido(row.estado),
     createdAt: row.createdAt.toISOString(),
@@ -1438,6 +1719,7 @@ export async function createCapacitacionSesion(
   const titulo = normalizeText(input.titulo);
   const modalidad = normalizeText(input.modalidad);
   const fecha = parseOptionalDate(input.fecha, "fecha");
+  const preguntas = normalizePreguntasSesion(input.evaluacionPreguntas ?? []);
 
   if (!capacitacionId) throw new Error("capacitacionId es requerido");
   if (!titulo) throw new Error("titulo es requerido");
@@ -1466,6 +1748,11 @@ export async function createCapacitacionSesion(
         ubicacion: normalizeNullableText(input.ubicacion) ?? null,
         relator: normalizeNullableText(input.relator) ?? null,
         cupos: input.cupos ?? null,
+        videoUrl: normalizeNullableText(input.videoUrl) ?? null,
+        videoDuracionSegundos: input.videoDuracionSegundos ?? null,
+        minimoVisualizacionPct: clampPercentage(input.minimoVisualizacionPct ?? 85, 85),
+        evaluacionPreguntas: preguntas as unknown as Prisma.InputJsonValue,
+        evaluacionMinimoAprobacion: clampPercentage(input.evaluacionMinimoAprobacion ?? 70, 70),
         estado: "programada",
         creadoPorId: undefined,
       },
@@ -1512,6 +1799,11 @@ export async function updateCapacitacionSesion(
         ubicacion: true,
         relator: true,
         cupos: true,
+        videoUrl: true,
+        videoDuracionSegundos: true,
+        minimoVisualizacionPct: true,
+        evaluacionPreguntas: true,
+        evaluacionMinimoAprobacion: true,
         estado: true,
       },
     });
@@ -1534,6 +1826,25 @@ export async function updateCapacitacionSesion(
     if (input.ubicacion !== undefined && input.ubicacion !== existing.ubicacion) updates.push("ubicacion");
     if (input.relator !== undefined && input.relator !== existing.relator) updates.push("relator");
     if (input.cupos !== undefined && input.cupos !== existing.cupos) updates.push("cupos");
+    if (input.videoUrl !== undefined && (normalizeNullableText(input.videoUrl) ?? null) !== existing.videoUrl) {
+      updates.push("videoUrl");
+    }
+    if (input.videoDuracionSegundos !== undefined && input.videoDuracionSegundos !== existing.videoDuracionSegundos) {
+      updates.push("videoDuracionSegundos");
+    }
+    if (
+      input.minimoVisualizacionPct !== undefined &&
+      clampPercentage(input.minimoVisualizacionPct ?? 85, 85) !== existing.minimoVisualizacionPct
+    ) {
+      updates.push("minimoVisualizacionPct");
+    }
+    if (
+      input.evaluacionMinimoAprobacion !== undefined &&
+      clampPercentage(input.evaluacionMinimoAprobacion ?? 70, 70) !== existing.evaluacionMinimoAprobacion
+    ) {
+      updates.push("evaluacionMinimoAprobacion");
+    }
+    if (input.evaluacionPreguntas !== undefined) updates.push("evaluacionPreguntas");
 
     const updateData: Prisma.CapacitacionSesionUpdateInput = {};
     if (input.titulo !== undefined) updateData.titulo = normalizeText(input.titulo);
@@ -1551,6 +1862,20 @@ export async function updateCapacitacionSesion(
     if (input.ubicacion !== undefined) updateData.ubicacion = normalizeNullableText(input.ubicacion) ?? null;
     if (input.relator !== undefined) updateData.relator = normalizeNullableText(input.relator) ?? null;
     if (input.cupos !== undefined) updateData.cupos = input.cupos;
+    if (input.videoUrl !== undefined) updateData.videoUrl = normalizeNullableText(input.videoUrl) ?? null;
+    if (input.videoDuracionSegundos !== undefined) {
+      updateData.videoDuracionSegundos = input.videoDuracionSegundos ?? null;
+    }
+    if (input.minimoVisualizacionPct !== undefined) {
+      updateData.minimoVisualizacionPct = clampPercentage(input.minimoVisualizacionPct ?? 85, 85);
+    }
+    if (input.evaluacionPreguntas !== undefined) {
+      const preguntas = normalizePreguntasSesion(input.evaluacionPreguntas);
+      updateData.evaluacionPreguntas = preguntas as unknown as Prisma.InputJsonValue;
+    }
+    if (input.evaluacionMinimoAprobacion !== undefined) {
+      updateData.evaluacionMinimoAprobacion = clampPercentage(input.evaluacionMinimoAprobacion ?? 70, 70);
+    }
 
     await tx.capacitacionSesion.update({
       where: { id },
