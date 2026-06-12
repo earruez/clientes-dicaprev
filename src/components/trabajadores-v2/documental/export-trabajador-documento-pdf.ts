@@ -436,6 +436,27 @@ function drawSectionTitle(
   layout.y += 10;
 }
 
+function drawFirmaTrazabilidad(
+  doc: jsPDF,
+  layout: Layout,
+  params: ExportTrabajadorDocumentoPdfParams,
+) {
+  if (params.estado !== "firmado" || !params.firmadoPor) return;
+
+  const boxHeight = 34;
+  ensurePage(doc, layout, boxHeight + 6);
+  doc.setDrawColor(160, 160, 160);
+  doc.rect(layout.margin, layout.y, layout.width, boxHeight);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.text("Trazabilidad de firma", layout.margin + 6, layout.y + 11);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`Firmado por: ${safeText(params.firmadoPor)}`, layout.margin + 6, layout.y + 21);
+  doc.text(`Fecha firma: ${formatDate(params.firmadoEn)}`, layout.margin + 6, layout.y + 30);
+  layout.y += boxHeight + 6;
+}
+
 function drawPuesto3Section(
   doc: jsPDF,
   layout: Layout,
@@ -1051,6 +1072,7 @@ async function renderStructuredIrlPdf(
   drawAntecedentes6Section(doc, layout, c);
   drawMaterial7Section(doc, layout, c);
   drawConsentimiento8Section(doc, layout, c, params);
+  drawFirmaTrazabilidad(doc, layout, params);
 
   // ===== FOOTER =====
   const totalPages = doc.getNumberOfPages();
@@ -1111,6 +1133,8 @@ async function renderStructuredEppPdf(
   doc.setFontSize(8);
   doc.text(`Firma trabajador\n${safeText(c.firma_trabajador)}`, layout.margin + 6, layout.y + 14);
   doc.text(`Entregado por\n${safeText(c.entregado_por)}`, layout.margin + sigW + 6, layout.y + 14);
+
+  drawFirmaTrazabilidad(doc, layout, params);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
@@ -1180,6 +1204,20 @@ function renderGenericPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams
   doc.setFont("helvetica", "normal");
   const lines = doc.splitTextToSize(params.contenido || "Sin contenido", contentWidth) as string[];
   doc.text(lines, margin, y);
+  
+  // Firma section if signed
+  if (params.estado === "firmado" && params.firmadoPor) {
+    y = pageHeight - 60;
+    doc.setDrawColor(100, 100, 100);
+    doc.rect(margin, y, contentWidth, 40);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(9);
+    doc.text("INFORMACIÓN DE FIRMA", margin + 6, y + 12);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(`Firmado por: ${params.firmadoPor}`, margin + 6, y + 24);
+    doc.text(`Fecha y hora: ${formatDate(params.firmadoEn)}`, margin + 6, y + 34);
+  }
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);

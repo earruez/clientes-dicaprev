@@ -2880,6 +2880,21 @@ export async function firmarTrabajadorDocumento(
   const firmadoEn = new Date();
   const firmadoPor = usuario?.nombre ?? usuario?.email ?? usuarioId;
 
+  // Marcar documentos anteriores del mismo tipo como no vigentes
+  await prisma.trabajadorDocumento.updateMany({
+    where: {
+      trabajadorId: documento.trabajadorId,
+      tipo: documento.tipo,
+      id: { not: documento.id },
+      esVigente: true,
+    },
+    data: {
+      esVigente: false,
+      reemplazadoPorId: documento.id,
+      motivoReemplazo: "Reemplazado por documento firmado",
+    },
+  });
+
   const updated = await prisma.trabajadorDocumento.update({
     where: { id: documento.id },
     data: {
@@ -2887,6 +2902,7 @@ export async function firmarTrabajadorDocumento(
       firmado: true,
       firmadoPor,
       firmadoEn,
+      esVigente: true,
       subidoPorId: usuarioId,
     },
     select: { id: true, version: true },

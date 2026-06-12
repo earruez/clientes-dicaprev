@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,12 +27,16 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Download,
   Eye,
+  File,
   Plus,
   Search,
   Sparkles,
   User,
+  FileText,
 } from "lucide-react";
+import { jsPDF } from "jspdf";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { cn } from "@/lib/utils";
 import type {
@@ -45,6 +49,8 @@ import {
   actualizarHallazgo,
   actualizarEstadoMedidaCorrectiva,
   cerrarHallazgo,
+  eliminarHallazgo,
+  eliminarHallazgos,
   crearHallazgo,
   getHallazgoDetalle,
   getHallazgos,
@@ -116,6 +122,7 @@ type HallazgoFormData = {
   descripcion: string;
   centroTrabajoId: string;
   trabajadorId: string;
+  responsableId: string;
   obligacionClave: string;
   prioridad: PrioridadHallazgo;
   fechaCompromiso: string;
@@ -133,6 +140,121 @@ function fmtFecha(iso: string): string {
   return d.toLocaleDateString("es-CL");
 }
 
+function toAbsoluteUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  const normalized = url.startsWith("/") ? url : `/${url}`;
+  return `${window.location.origin}${normalized}`;
+}
+
+async function imageUrlToDataUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(toAbsoluteUrl(url));
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    const rawDataUrl = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+
+    if (!rawDataUrl) return null;
+
+    return await new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxWidth = 1280;
+        const maxHeight = 1280;
+        const ratio = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+        const width = Math.max(1, Math.round(img.width * ratio));
+        const height = Math.max(1, Math.round(img.height * ratio));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve(rawDataUrl);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      };
+      img.onerror = () => resolve(rawDataUrl);
+      img.src = rawDataUrl;
+    });
+  } catch {
+    return null;
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+async function renderStyledPdfFromHtml(html: string, filename: string) {
+  const htmlWidth = 720;
+  const pdfContentWidth = 559;
+  const mount = document.createElement("div");
+  mount.style.position = "fixed";
+  mount.style.left = "0";
+  mount.style.top = "0";
+  mount.style.width = `${htmlWidth}px`;
+  mount.style.maxWidth = `${htmlWidth}px`;
+  mount.style.pointerEvents = "none";
+  mount.style.zIndex = "-1";
+  mount.style.background = "#ffffff";
+  mount.innerHTML = html;
+  document.body.appendChild(mount);
+
+  try {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    if (document.fonts?.ready) {
+      await document.fonts.ready;
+    }
+
+    const images = Array.from(mount.querySelectorAll("img"));
+    await Promise.all(
+      images.map(
+        (img) =>
+          new Promise<void>((resolve) => {
+            if (img.complete) return resolve();
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+          }),
+      ),
+    );
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
+    await doc.html(mount, {
+      margin: [18, 18, 18, 18],
+      autoPaging: "text",
+      width: pdfContentWidth,
+      windowWidth: htmlWidth,
+      html2canvas: {
+        scale: 0.72,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+      },
+    });
+    doc.save(filename);
+  } finally {
+    document.body.removeChild(mount);
+  }
+}
+
+function esJefatura(cargoNombre: string | null | undefined): boolean {
+  const token = (cargoNombre ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return ["jefe", "supervisor", "encargado", "coordinador", "lider", "gerente"].some((item) => token.includes(item));
+}
+
 function FORM_EMPTY(): HallazgoFormData {
   return {
     plantillaClave: "manual",
@@ -140,6 +262,7 @@ function FORM_EMPTY(): HallazgoFormData {
     descripcion: "",
     centroTrabajoId: "",
     trabajadorId: "none",
+    responsableId: "none",
     obligacionClave: "none",
     prioridad: "media",
     fechaCompromiso: "",
@@ -157,12 +280,17 @@ export default function HallazgosClient({
   iaConfigurada: boolean;
 }) {
   const [hallazgos, setHallazgos] = useState<Hallazgo[]>(initialHallazgos);
+  const [hallazgosSeleccionados, setHallazgosSeleccionados] = useState<Set<string>>(new Set());
+  const [generandoInforme, setGenerandoInforme] = useState(false);
+  const [eliminandoMasivo, setEliminandoMasivo] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoHallazgo | "todos">("todos");
   const [filtroTipo, setFiltroTipo] = useState<string | "todos">("todos");
   const [filtroCentro, setFiltroCentro] = useState<string>("todos");
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -174,18 +302,101 @@ export default function HallazgosClient({
   const [detalle, setDetalle] = useState<HallazgoDetalle | null>(null);
   const [detalleLoading, setDetalleLoading] = useState(false);
   const [detalleError, setDetalleError] = useState<string | null>(null);
+  const [detalleAreaId, setDetalleAreaId] = useState("");
+  const [detalleResponsableId, setDetalleResponsableId] = useState("none");
   const [comentarioCierre, setComentarioCierre] = useState("");
   const [cierreError, setCierreError] = useState<string | null>(null);
   const [evidenciaCierreTexto, setEvidenciaCierreTexto] = useState("");
   const [medidaCorrectivaTexto, setMedidaCorrectivaTexto] = useState("");
+  const [evidenciaCierreArchivo, setEvidenciaCierreArchivo] = useState<File | null>(null);
+  const [uploadingEvidencia, setUploadingEvidencia] = useState(false);
 
   const obligacionesMap = useMemo(() => {
     return new Map(opciones.obligaciones.map((o) => [o.clave, o.nombre]));
   }, [opciones.obligaciones]);
 
+  const trabajadoresMap = useMemo(() => {
+    return new Map(opciones.trabajadores.map((trabajador) => [trabajador.id, trabajador]));
+  }, [opciones.trabajadores]);
+
+  const responsablesFormulario = useMemo(() => {
+    const trabajadorSeleccionado = form.trabajadorId !== "none" ? trabajadoresMap.get(form.trabajadorId) : undefined;
+    return opciones.trabajadores.filter((trabajador) => {
+      if (trabajadorSeleccionado?.areaId) {
+        return trabajador.areaId === trabajadorSeleccionado.areaId;
+      }
+      if (form.centroTrabajoId) {
+        return trabajador.centroTrabajoId === form.centroTrabajoId;
+      }
+      return true;
+    });
+  }, [form.centroTrabajoId, form.trabajadorId, opciones.trabajadores, trabajadoresMap]);
+
+  const responsablesDetalle = useMemo(() => {
+    if (!selected) return [];
+    return opciones.trabajadores.filter((trabajador) => {
+      if (detalleAreaId) {
+        return trabajador.areaId === detalleAreaId;
+      }
+      if (selected.centroTrabajoId) {
+        return trabajador.centroTrabajoId === selected.centroTrabajoId;
+      }
+      return true;
+    });
+  }, [detalleAreaId, opciones.trabajadores, selected]);
+
+  useEffect(() => {
+    const vigente = responsablesFormulario.some((trabajador) => trabajador.id === form.responsableId);
+    if (vigente) return;
+
+    const sugerido = responsablesFormulario.find((trabajador) => esJefatura(trabajador.cargoNombre))?.id
+      ?? responsablesFormulario[0]?.id
+      ?? "none";
+
+    if (sugerido !== form.responsableId) {
+      setForm((prev) => ({ ...prev, responsableId: sugerido }));
+    }
+  }, [form.responsableId, responsablesFormulario]);
+
+  useEffect(() => {
+    if (!selected) return;
+
+    const vigente = responsablesDetalle.some((trabajador) => trabajador.id === detalleResponsableId);
+    if (vigente) return;
+
+    const sugerido = (detalle?.responsable?.id && responsablesDetalle.some((trabajador) => trabajador.id === detalle?.responsable?.id)
+      ? detalle.responsable.id
+      : undefined)
+      ?? responsablesDetalle.find((trabajador) => esJefatura(trabajador.cargoNombre))?.id
+      ?? responsablesDetalle[0]?.id
+      ?? "none";
+
+    if (sugerido !== detalleResponsableId) {
+      setDetalleResponsableId(sugerido);
+    }
+  }, [detalle?.responsable?.id, detalleResponsableId, responsablesDetalle, selected]);
+
   async function reloadHallazgos() {
     const latest = await getHallazgos();
     setHallazgos(latest);
+    return latest;
+  }
+
+  async function subirArchivo(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/dicaprev/documentacion/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    const payload = (await response.json()) as { archivoUrl?: string; archivoNombre?: string; error?: string } | null;
+    if (!response.ok) {
+      throw new Error("error" in (payload ?? {}) && payload?.error ? payload.error : "No se pudo guardar el archivo.");
+    }
+
+    return payload as { archivoUrl: string; archivoNombre: string };
   }
 
   function applyTemplate(plantilla: PlantillaHallazgo) {
@@ -218,6 +429,7 @@ export default function HallazgosClient({
       descripcion: h.descripcion,
       centroTrabajoId: h.centroTrabajoId ?? h.centroId,
       trabajadorId: h.trabajadorId ?? "none",
+      responsableId: h.responsableId ?? "none",
       obligacionClave: h.obligacionClave ?? h.obligacionId ?? "none",
       prioridad: h.prioridad,
       fechaCompromiso: h.fechaCompromiso,
@@ -234,6 +446,7 @@ export default function HallazgosClient({
         await crearHallazgo({
           centroTrabajoId: form.centroTrabajoId,
           trabajadorId: form.trabajadorId === "none" ? null : form.trabajadorId,
+          responsableId: form.responsableId === "none" ? null : form.responsableId,
           obligacionClave: form.obligacionClave === "none" ? null : form.obligacionClave,
           tipo: form.tipo,
           prioridad: form.prioridad,
@@ -245,6 +458,7 @@ export default function HallazgosClient({
         await actualizarHallazgo(editId, {
           centroTrabajoId: form.centroTrabajoId,
           trabajadorId: form.trabajadorId === "none" ? null : form.trabajadorId,
+          responsableId: form.responsableId === "none" ? null : form.responsableId,
           obligacionClave: form.obligacionClave === "none" ? null : form.obligacionClave,
           tipo: form.tipo,
           prioridad: form.prioridad,
@@ -263,6 +477,8 @@ export default function HallazgosClient({
     setSelected(h);
     setDetalle(null);
     setDetalleError(null);
+    setDetalleAreaId(trabajadoresMap.get(h.trabajadorId ?? "")?.areaId ?? "");
+    setDetalleResponsableId(h.responsableId ?? "none");
     setComentarioCierre("");
     setEvidenciaCierreTexto("");
     setMedidaCorrectivaTexto("");
@@ -275,8 +491,33 @@ export default function HallazgosClient({
         return;
       }
       setDetalle(detalleHallazgo);
+      if (detalleHallazgo.responsable?.id) {
+        setDetalleResponsableId(detalleHallazgo.responsable.id);
+      }
     } finally {
       setDetalleLoading(false);
+    }
+  }
+
+  async function onActualizarResponsable(hallazgo: Hallazgo) {
+    if (!opciones.puedeEditar) return;
+    try {
+      setSaving(true);
+      setCierreError(null);
+      await actualizarHallazgo(hallazgo.id, {
+        centroTrabajoId: hallazgo.centroTrabajoId ?? hallazgo.centroId,
+        trabajadorId: hallazgo.trabajadorId ?? null,
+        responsableId: detalleResponsableId === "none" ? null : detalleResponsableId,
+      });
+      const latest = await reloadHallazgos();
+      const actualizado = latest.find((item) => item.id === hallazgo.id) ?? hallazgo;
+      setSelected(actualizado);
+      const detalleHallazgo = await getHallazgoDetalle(hallazgo.id);
+      if (detalleHallazgo) setDetalle(detalleHallazgo);
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible actualizar el responsable.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -295,6 +536,66 @@ export default function HallazgosClient({
       setCierreError(error instanceof Error ? error.message : "No fue posible cerrar el hallazgo.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onEliminar(h: Hallazgo) {
+    if (!opciones.puedeEditar) return;
+    const ok = window.confirm("¿Seguro que deseas eliminar este hallazgo? Esta acción no se puede deshacer.");
+    if (!ok) return;
+
+    try {
+      setSaving(true);
+      setCierreError(null);
+      await eliminarHallazgo(h.id);
+      await reloadHallazgos();
+      setSelected(null);
+      setDetalle(null);
+      setDetalleError(null);
+      setDetalleAreaId("");
+      setDetalleResponsableId("none");
+      setComentarioCierre("");
+      setEvidenciaCierreTexto("");
+      setMedidaCorrectivaTexto("");
+      setEvidenciaCierreArchivo(null);
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible eliminar el hallazgo.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onEliminarSeleccionados() {
+    if (!opciones.puedeEditar || hallazgosSeleccionados.size === 0) return;
+
+    const total = hallazgosSeleccionados.size;
+    const ok = window.confirm(
+      `¿Seguro que deseas eliminar ${total} hallazgo${total === 1 ? "" : "s"}? Esta acción no se puede deshacer.`,
+    );
+    if (!ok) return;
+
+    try {
+      setEliminandoMasivo(true);
+      setCierreError(null);
+      await eliminarHallazgos(Array.from(hallazgosSeleccionados));
+      await reloadHallazgos();
+      setHallazgosSeleccionados(new Set());
+
+      if (selected && hallazgosSeleccionados.has(selected.id)) {
+        setSelected(null);
+        setDetalle(null);
+        setDetalleError(null);
+        setDetalleAreaId("");
+        setDetalleResponsableId("none");
+        setComentarioCierre("");
+        setEvidenciaCierreTexto("");
+        setMedidaCorrectivaTexto("");
+        setEvidenciaCierreArchivo(null);
+      }
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible eliminar los hallazgos seleccionados.");
+    } finally {
+      setEliminandoMasivo(false);
     }
   }
 
@@ -355,9 +656,18 @@ export default function HallazgosClient({
     if (!opciones.puedeEditar) return;
     try {
       setSaving(true);
+      setUploadingEvidencia(true);
       setCierreError(null);
-      await agregarEvidenciaCierreHallazgo(hallazgoId, evidenciaCierreTexto);
+      
+      let archivoUrl: string | undefined;
+      if (evidenciaCierreArchivo) {
+        const archivoSubido = await subirArchivo(evidenciaCierreArchivo);
+        archivoUrl = archivoSubido.archivoUrl;
+      }
+      
+      await agregarEvidenciaCierreHallazgo(hallazgoId, evidenciaCierreTexto, archivoUrl);
       setEvidenciaCierreTexto("");
+      setEvidenciaCierreArchivo(null);
       const detalleHallazgo = await getHallazgoDetalle(hallazgoId);
       if (detalleHallazgo) setDetalle(detalleHallazgo);
       await reloadHallazgos();
@@ -365,6 +675,381 @@ export default function HallazgosClient({
       setCierreError(error instanceof Error ? error.message : "No fue posible registrar evidencia de cierre.");
     } finally {
       setSaving(false);
+      setUploadingEvidencia(false);
+    }
+  }
+
+  async function descargarPDFHallazgo() {
+    if (!selected) return;
+    try {
+      const fotos = (detalle?.evidencias ?? []).filter(
+        (e) => e.tipo === "fotografia" || e.archivoUrl?.match(/\.(jpg|jpeg|png|webp)$/i),
+      );
+      const fotosConSrc = await Promise.all(
+        fotos.map(async (foto) => ({
+          ...foto,
+          src: foto.archivoUrl ? await imageUrlToDataUrl(foto.archivoUrl) : null,
+        })),
+      );
+
+      const html = `
+        <style>
+          :root {
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --paper: #ffffff;
+            --paper-soft: #f9fafb;
+            --line: #e5e7eb;
+            --accent: #0f766e;
+            --accent-soft: #ecfdf5;
+          }
+          * { box-sizing: border-box; }
+          body { font-family: "Georgia", "Times New Roman", serif; color: var(--ink); background: #ffffff; margin: 0; padding: 0; }
+          .report-shell { width: 100%; max-width: 680px; margin: 0 auto; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+          .header { background: #ffffff; color: var(--ink); padding: 0 0 14px; border-bottom: 2px solid var(--line); }
+          .header h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: 0.01em; font-weight: 700; }
+          .header p { margin: 0; font-size: 11px; color: var(--muted); }
+          .header-sub { margin-top: 8px; font-size: 13px; color: #374151; }
+          .header-chips { margin-top: 12px; }
+          .chip { display: inline-block; margin: 0 8px 6px 0; padding: 4px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; border: 1px solid #d1d5db; background: #f9fafb; color: #374151; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .section { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--paper); }
+          .section-title { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+          .item { background: var(--paper-soft); border: 1px solid var(--line); border-radius: 8px; padding: 9px; }
+          .label { font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.05em; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .value { font-size: 12px; color: #111827; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .desc { background: var(--paper-soft); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px; font-size: 12px; line-height: 1.55; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .hero { margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--paper); }
+          .hero-top { display: flex; }
+          .hero-accent { width: 8px; }
+          .hero-critical { background: #b91c1c; }
+          .hero-high { background: #be123c; }
+          .hero-medium { background: #b45309; }
+          .hero-low { background: #0369a1; }
+          .hero-content { flex: 1; padding: 12px; background: #ffffff; }
+          .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 9px; font-weight: 700; margin-right: 6px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .pill-state { background: #ecfeff; color: #155e75; border: 1px solid #bae6fd; }
+          .pill-prio { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+          .photo { margin-bottom: 12px; }
+          .photo img { width: 100%; max-height: 300px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+          .photo-meta { margin-top: 5px; font-size: 10px; color: #4b5563; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .mc { font-size: 10px; border: 1px solid var(--line); background: var(--paper-soft); padding: 9px; border-radius: 8px; margin-bottom: 7px; line-height: 1.45; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted); text-align: center; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+        </style>
+        <div class="report-shell">
+        <div class="header">
+          <h1>Reporte de Hallazgo</h1>
+          <p>${escapeHtml(new Date().toLocaleString("es-CL"))}</p>
+          <div class="header-sub">Informe ejecutivo de cumplimiento y control operacional</div>
+          <div class="header-chips">
+            <span class="chip">Centro ${escapeHtml(selected.centroNombre)}</span>
+            <span class="chip">Estado ${escapeHtml(ESTADO_CFG[selected.estado as EstadoHallazgo]?.label || selected.estado)}</span>
+            <span class="chip">Prioridad ${escapeHtml(PRIORIDAD_CFG[selected.prioridad]?.label || selected.prioridad)}</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3 class="section-title">Información general</h3>
+          <div class="grid">
+            <div class="item"><div class="label">Estado</div><div class="value">${escapeHtml(ESTADO_CFG[selected.estado as EstadoHallazgo]?.label || selected.estado)}</div></div>
+            <div class="item"><div class="label">Tipo</div><div class="value">${escapeHtml(TIPO_CFG[selected.tipo]?.label || selected.tipo)}</div></div>
+            <div class="item"><div class="label">Centro</div><div class="value">${escapeHtml(selected.centroNombre)}</div></div>
+            <div class="item"><div class="label">Trabajador</div><div class="value">${escapeHtml(selected.trabajadorNombre || "No asociado")}</div></div>
+            <div class="item"><div class="label">Responsable</div><div class="value">${escapeHtml(selected.responsableNombre || detalle?.responsable?.nombre || "Por asignar")}</div></div>
+            <div class="item"><div class="label">Prioridad</div><div class="value">${escapeHtml(PRIORIDAD_CFG[selected.prioridad]?.label || selected.prioridad)}</div></div>
+            <div class="item"><div class="label">Compromiso</div><div class="value">${escapeHtml(fmtFecha(selected.fechaCompromiso))}</div></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3 class="section-title">Descripción</h3>
+          <div class="hero">
+            <div class="hero-top">
+              <div class="hero-accent ${selected.prioridad === "critica" ? "hero-critical" : selected.prioridad === "alta" ? "hero-high" : selected.prioridad === "media" ? "hero-medium" : "hero-low"}"></div>
+              <div class="hero-content">
+                <span class="pill pill-state">${escapeHtml(ESTADO_CFG[selected.estado as EstadoHallazgo]?.label || selected.estado)}</span>
+                <span class="pill pill-prio">Prioridad ${escapeHtml(PRIORIDAD_CFG[selected.prioridad]?.label || selected.prioridad)}</span>
+                <div class="desc" style="margin-top:10px;">${escapeHtml(selected.descripcion)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        ${fotosConSrc.some((f) => f.src) ? `
+          <div class="section">
+            <h3 class="section-title">Fotografías del hallazgo</h3>
+            ${fotosConSrc
+              .filter((f) => f.src)
+              .map((foto) => `
+                <div class="photo">
+                  <img src="${foto.src}" alt="${escapeHtml(foto.titulo)}" />
+                  <div class="photo-meta">${escapeHtml(foto.titulo)} - ${escapeHtml(fmtFecha(foto.fechaEvidencia))}</div>
+                </div>
+              `)
+              .join("")}
+          </div>
+        ` : ""}
+
+        ${detalle?.medidasCorrectivas?.length ? `
+          <div class="section">
+            <h3 class="section-title">Medidas correctivas</h3>
+            ${detalle.medidasCorrectivas
+              .map(
+                (m) => `<div class="mc"><strong>${escapeHtml(m.descripcion)}</strong><br/>Responsable: ${escapeHtml(m.responsable)} | Estado: ${escapeHtml(m.estado)} | Compromiso: ${escapeHtml(fmtFecha(m.fechaCompromiso))}</div>`,
+              )
+              .join("")}
+          </div>
+        ` : ""}
+
+        <div class="footer">Generado por NextPrev</div>
+        </div>
+      `;
+
+      await renderStyledPdfFromHtml(html, `Hallazgo_${selected.id}_${new Date().getTime()}.pdf`);
+    } catch (error) {
+      setCierreError("No fue posible descargar el PDF del hallazgo.");
+    }
+  }
+
+  async function descargarInformeMasivo() {
+    if (hallazgosSeleccionados.size === 0) {
+      return;
+    }
+
+    try {
+      setGenerandoInforme(true);
+      
+      // Cargar detalles de todos los hallazgos seleccionados
+      const hallazgosConDetalle = [];
+      for (const id of hallazgosSeleccionados) {
+        const h = hallazgos.find((h) => h.id === id);
+        if (h) {
+          const detalleHallazgo = await getHallazgoDetalle(id);
+          hallazgosConDetalle.push({ hall: h, detalle: detalleHallazgo });
+        }
+      }
+
+      const hallazgosConDetalleFotos = await Promise.all(
+        hallazgosConDetalle.map(async (item) => {
+          const fotos = (item.detalle?.evidencias ?? []).filter(
+            (e) => e.tipo === "fotografia" || e.archivoUrl?.match(/\.(jpg|jpeg|png|webp)$/i),
+          );
+
+          const fotosConSrc = await Promise.all(
+            fotos.map(async (foto) => ({
+              ...foto,
+              src: foto.archivoUrl ? await imageUrlToDataUrl(foto.archivoUrl) : null,
+            })),
+          );
+
+          return { ...item, fotosConSrc };
+        }),
+      );
+
+      const html = `
+        <style>
+          :root {
+            --ink: #1f2937;
+            --muted: #6b7280;
+            --paper: #ffffff;
+            --paper-soft: #f9fafb;
+            --line: #e5e7eb;
+            --accent: #0f766e;
+          }
+          * { box-sizing: border-box; }
+          body { font-family: "Georgia", "Times New Roman", serif; color: var(--ink); background: #ffffff; margin: 0; padding: 0; }
+          .report-shell { width: 100%; max-width: 680px; margin: 0 auto; background: var(--paper); border: 1px solid #d1d5db; border-radius: 12px; padding: 16px; overflow: hidden; }
+          .header { background: #ffffff; color: var(--ink); padding: 0 0 14px; border-bottom: 2px solid var(--line); margin-bottom: 14px; }
+          .header h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: 0.01em; font-weight: 700; }
+          .header p { margin: 0; font-size: 11px; color: var(--muted); }
+          .header-sub { margin-top: 8px; font-size: 13px; color: #374151; }
+          .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+          .kpi { border-radius: 8px; padding: 9px; border: 1px solid #d6dbe1; }
+          .kpi-label { font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .kpi-value { font-size: 20px; color: #111827; font-weight: 700; margin-top: 2px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .kpi-abiertos { background: #fff7ed; }
+          .kpi-proceso { background: #eff6ff; }
+          .kpi-resueltos { background: #f0fdfa; }
+          .kpi-cerrados { background: #ecfdf5; }
+          .cover-page { min-height: 980px; }
+          .summary-page { page-break-before: always; break-before: page; min-height: 980px; }
+          .section { margin-top: 14px; border: 1px solid #d6dbe1; border-radius: 10px; padding: 12px; background: #ffffff; }
+          .section-title { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          table { width: 100%; border-collapse: collapse; font-size: 9px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; table-layout: fixed; }
+          th { background: #0f766e; color: #fff; padding: 7px 6px; text-align: left; font-weight: 700; }
+          td { border: 1px solid var(--line); padding: 6px; vertical-align: top; }
+          th, td { word-break: break-word; overflow-wrap: anywhere; }
+          th:nth-child(1), td:nth-child(1) { width: 13%; }
+          th:nth-child(2), td:nth-child(2) { width: 39%; }
+          th:nth-child(3), td:nth-child(3) { width: 24%; }
+          th:nth-child(4), td:nth-child(4) { width: 24%; }
+          .summary-main { font-weight: 600; color: #111827; }
+          .summary-sub { margin-top: 3px; color: #6b7280; font-size: 8px; line-height: 1.35; }
+          .hallazgo-page { page-break-before: always; break-before: page; min-height: 980px; }
+          .card { margin-top: 0; border: 1px solid #d1d5db; border-radius: 10px; padding: 0; page-break-inside: avoid; overflow: hidden; background: #ffffff; }
+          .card-wrap { display: flex; }
+          .card-band { width: 8px; }
+          .band-critical { background: #b91c1c; }
+          .band-high { background: #be123c; }
+          .band-medium { background: #b45309; }
+          .band-low { background: #0369a1; }
+          .card-main { flex: 1; padding: 10px; }
+          .card h3 { margin: 0 0 8px; color: #111827; font-size: 13px; }
+          .card-responsable { margin: 0 0 10px; font-size: 10px; color: #374151; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .desc { background: var(--paper-soft); border-left: 3px solid #0f766e; border-radius: 8px; padding: 9px; font-size: 11px; margin-bottom: 10px; line-height: 1.45; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+          .meta-item { border: 1px solid #d6dbe1; background: var(--paper-soft); border-radius: 8px; padding: 7px; }
+          .meta-label { font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .meta-value { font-size: 10px; color: #111827; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
+          .detail-col { min-width: 0; }
+          .detail-block-title { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .photo { margin-bottom: 10px; }
+          .photo img { width: 100%; max-height: 170px; object-fit: contain; border: 1px solid #d6dbe1; border-radius: 8px; background: #fff; }
+          .photo-meta { margin-top: 4px; font-size: 10px; color: #4b5563; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .mc { font-size: 10px; border: 1px solid #d6dbe1; background: var(--paper-soft); padding: 8px; border-radius: 8px; margin-bottom: 6px; line-height: 1.45; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+          .photo, .desc, .meta, .mc { page-break-inside: avoid; break-inside: avoid; }
+          .page-break { page-break-after: always; }
+          .footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid #d6dbe1; font-size: 10px; color: var(--muted); text-align: center; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
+        </style>
+        <div class="report-shell">
+        <div class="cover-page">
+          <div class="header">
+            <h1>Informe de Hallazgos</h1>
+            <p>${escapeHtml(new Date().toLocaleString("es-CL"))}</p>
+            <div class="header-sub">Dashboard ejecutivo de cumplimiento por hallazgos seleccionados</div>
+          </div>
+
+          <div class="kpis">
+            <div class="kpi kpi-abiertos"><div class="kpi-label">Abiertos</div><div class="kpi-value">${hallazgosConDetalleFotos.filter((h) => h.hall.estado === "abierto").length}</div></div>
+            <div class="kpi kpi-proceso"><div class="kpi-label">En proceso</div><div class="kpi-value">${hallazgosConDetalleFotos.filter((h) => h.hall.estado === "en_proceso" || h.hall.estado === "en_seguimiento").length}</div></div>
+            <div class="kpi kpi-resueltos"><div class="kpi-label">Resueltos</div><div class="kpi-value">${hallazgosConDetalleFotos.filter((h) => h.hall.estado === "resuelto").length}</div></div>
+            <div class="kpi kpi-cerrados"><div class="kpi-label">Cerrados</div><div class="kpi-value">${hallazgosConDetalleFotos.filter((h) => h.hall.estado === "cerrado").length}</div></div>
+          </div>
+        </div>
+
+        <div class="summary-page">
+          <div class="header">
+            <h1>Resumen de Hallazgos</h1>
+            <p>${escapeHtml(new Date().toLocaleString("es-CL"))}</p>
+            <div class="header-sub">Vista consolidada para revisión y trazabilidad</div>
+          </div>
+
+          <div class="section">
+            <h3 class="section-title">Resumen de Hallazgos</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Estado</th>
+                  <th>Hallazgo</th>
+                  <th>Centro</th>
+                  <th>Gestión</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${hallazgosConDetalleFotos
+                  .map(
+                    (item) => `
+                      <tr>
+                        <td>${escapeHtml(ESTADO_CFG[item.hall.estado as EstadoHallazgo]?.label || item.hall.estado)}</td>
+                        <td>
+                          <div class="summary-main">${escapeHtml(item.hall.descripcion)}</div>
+                          <div class="summary-sub">Tipo: ${escapeHtml(TIPO_CFG[item.hall.tipo]?.label || item.hall.tipo)}</div>
+                        </td>
+                        <td>
+                          <div class="summary-main">${escapeHtml(item.hall.centroNombre)}</div>
+                          <div class="summary-sub">Trabajador: ${escapeHtml(item.hall.trabajadorNombre || "No asociado")}</div>
+                        </td>
+                        <td>
+                          <div class="summary-main">${escapeHtml(item.hall.responsableNombre || item.detalle?.responsable?.nombre || "Por asignar")}</div>
+                          <div class="summary-sub">Prioridad: ${escapeHtml(PRIORIDAD_CFG[item.hall.prioridad]?.label || item.hall.prioridad)} · Compromiso: ${escapeHtml(fmtFecha(item.hall.fechaCompromiso))}</div>
+                        </td>
+                      </tr>
+                    `,
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        ${hallazgosConDetalleFotos
+          .map(
+            (item, idx) => `
+              <div class="hallazgo-page">
+                <div class="card">
+                  <div class="card-wrap">
+                    <div class="card-band ${item.hall.prioridad === "critica" ? "band-critical" : item.hall.prioridad === "alta" ? "band-high" : item.hall.prioridad === "media" ? "band-medium" : "band-low"}"></div>
+                    <div class="card-main">
+                      <h3>${idx + 1}. ${escapeHtml(item.hall.descripcion)}</h3>
+                      <div class="card-responsable">Responsable: <strong>${escapeHtml(item.hall.responsableNombre || item.detalle?.responsable?.nombre || "Por asignar")}</strong></div>
+                      <div class="desc">${escapeHtml(item.hall.descripcion)}</div>
+
+                      <div class="detail-grid">
+                        <div class="detail-col">
+                          <div class="meta">
+                            <div class="meta-item"><div class="meta-label">Estado</div><div class="meta-value">${escapeHtml(ESTADO_CFG[item.hall.estado as EstadoHallazgo]?.label || item.hall.estado)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Tipo</div><div class="meta-value">${escapeHtml(TIPO_CFG[item.hall.tipo]?.label || item.hall.tipo)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Centro</div><div class="meta-value">${escapeHtml(item.hall.centroNombre)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Trabajador</div><div class="meta-value">${escapeHtml(item.hall.trabajadorNombre || "No asociado")}</div></div>
+                            <div class="meta-item"><div class="meta-label">Responsable</div><div class="meta-value">${escapeHtml(item.hall.responsableNombre || item.detalle?.responsable?.nombre || "Por asignar")}</div></div>
+                            <div class="meta-item"><div class="meta-label">Prioridad</div><div class="meta-value">${escapeHtml(PRIORIDAD_CFG[item.hall.prioridad]?.label || item.hall.prioridad)}</div></div>
+                            <div class="meta-item"><div class="meta-label">Compromiso</div><div class="meta-value">${escapeHtml(fmtFecha(item.hall.fechaCompromiso))}</div></div>
+                          </div>
+
+                          ${item.detalle?.medidasCorrectivas?.length
+                            ? `
+                              <div class="detail-block-title">Medidas correctivas</div>
+                              ${item.detalle.medidasCorrectivas
+                                .slice(0, 3)
+                                .map(
+                                  (m) => `<div class="mc"><strong>${escapeHtml(m.descripcion)}</strong><br/>Responsable: ${escapeHtml(m.responsable)} | Estado: ${escapeHtml(m.estado)} | Compromiso: ${escapeHtml(fmtFecha(m.fechaCompromiso))}</div>`,
+                                )
+                                .join("")}
+                            `
+                            : ""}
+                        </div>
+
+                        <div class="detail-col">
+                          ${item.fotosConSrc.some((foto) => foto.src)
+                            ? `
+                              <div class="detail-block-title">Fotografías</div>
+                              ${item.fotosConSrc
+                                .filter((foto) => foto.src)
+                                .slice(0, 2)
+                                .map(
+                                  (foto) => `
+                                    <div class="photo">
+                                      <img src="${foto.src}" alt="${escapeHtml(foto.titulo)}" />
+                                      <div class="photo-meta">${escapeHtml(foto.titulo)} - ${escapeHtml(fmtFecha(foto.fechaEvidencia))}</div>
+                                    </div>
+                                  `,
+                                )
+                                .join("")}
+                            `
+                            : `<div class="detail-block-title">Fotografías</div><div class="mc">Sin fotografías asociadas.</div>`}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            `,
+          )
+          .join("")}
+
+        <div class="footer">Total de hallazgos: ${hallazgosConDetalleFotos.length} · Generado por NextPrev</div>
+        </div>
+      `;
+
+      await renderStyledPdfFromHtml(html, `Informe_Hallazgos_${new Date().getTime()}.pdf`);
+
+      // Limpiar selección
+      setHallazgosSeleccionados(new Set());
+    } catch (error) {
+      console.error("Error al generar informe:", error);
+    } finally {
+      setGenerandoInforme(false);
     }
   }
 
@@ -398,9 +1083,11 @@ export default function HallazgosClient({
       const matchEstado = filtroEstado === "todos" || h.estado === filtroEstado;
       const matchTipo = filtroTipo === "todos" || h.tipo === filtroTipo;
       const matchCentro = filtroCentro === "todos" || h.centroId === filtroCentro || h.centroTrabajoId === filtroCentro;
-      return matchText && matchEstado && matchTipo && matchCentro;
+      const matchFechaDesde = !filtroFechaDesde || h.fechaCompromiso >= filtroFechaDesde;
+      const matchFechaHasta = !filtroFechaHasta || h.fechaCompromiso <= filtroFechaHasta;
+      return matchText && matchEstado && matchTipo && matchCentro && matchFechaDesde && matchFechaHasta;
     });
-  }, [hallazgos, search, filtroEstado, filtroTipo, filtroCentro]);
+  }, [hallazgos, search, filtroEstado, filtroTipo, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
 
   return (
     <div className="min-h-screen bg-slate-50/80 py-10">
@@ -429,6 +1116,26 @@ export default function HallazgosClient({
                   Nuevo hallazgo
                 </Button>
               ) : null}
+              {hallazgosSeleccionados.size > 0 ? (
+                <Button
+                  onClick={() => void onEliminarSeleccionados()}
+                  disabled={eliminandoMasivo || generandoInforme}
+                  variant="destructive"
+                  className="rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
+                >
+                  Eliminar seleccionados ({hallazgosSeleccionados.size})
+                </Button>
+              ) : null}
+              {hallazgosSeleccionados.size > 0 ? (
+                <Button
+                  onClick={() => void descargarInformeMasivo()}
+                  disabled={generandoInforme || eliminandoMasivo}
+                  className="bg-sky-600 hover:bg-sky-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
+                >
+                  <FileText className="mr-2 h-4 w-4" />
+                  Generar informe ({hallazgosSeleccionados.size})
+                </Button>
+              ) : null}
             </div>
           }
         />
@@ -454,7 +1161,9 @@ export default function HallazgosClient({
           onOpenChange={setModalIAOpen}
           opciones={{ centros: opciones.centros, areas: opciones.areas }}
           iaConfigurada={iaConfigurada}
-          onConfirmed={reloadHallazgos}
+          onConfirmed={async () => {
+            await reloadHallazgos();
+          }}
         />
 
         <Card className="border-none shadow-sm bg-white">
@@ -500,6 +1209,23 @@ export default function HallazgosClient({
                   ))}
                 </SelectContent>
               </Select>
+
+              <div className="flex items-center gap-2">
+                <Input
+                  type="date"
+                  value={filtroFechaDesde}
+                  onChange={(e) => setFiltroFechaDesde(e.target.value)}
+                  className="w-44 text-sm"
+                  aria-label="Fecha compromiso desde"
+                />
+                <Input
+                  type="date"
+                  value={filtroFechaHasta}
+                  onChange={(e) => setFiltroFechaHasta(e.target.value)}
+                  className="w-44 text-sm"
+                  aria-label="Fecha compromiso hasta"
+                />
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -510,6 +1236,18 @@ export default function HallazgosClient({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    <th className="py-3 pl-2 w-8">
+                      <Checkbox
+                        checked={hallazgosFiltrados.length > 0 && hallazgosFiltrados.every((h) => hallazgosSeleccionados.has(h.id))}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setHallazgosSeleccionados(new Set(hallazgosFiltrados.map((h) => h.id)));
+                          } else {
+                            setHallazgosSeleccionados(new Set());
+                          }
+                        }}
+                      />
+                    </th>
                     <th className="py-3 text-left pl-2">Estado</th>
                     <th className="py-3 text-left">Tipo</th>
                     <th className="py-3 text-left">Hallazgo</th>
@@ -522,7 +1260,21 @@ export default function HallazgosClient({
                 </thead>
                 <tbody>
                   {hallazgosFiltrados.map((h) => (
-                    <tr key={h.id} className="border-b last:border-0 hover:bg-slate-50/60 transition-colors">
+                    <tr key={h.id} className={cn("border-b last:border-0 transition-colors", hallazgosSeleccionados.has(h.id) ? "bg-emerald-50" : "hover:bg-slate-50/60")}>
+                      <td className="py-3 pl-2 w-8">
+                        <Checkbox
+                          checked={hallazgosSeleccionados.has(h.id)}
+                          onCheckedChange={(checked) => {
+                            const nuevo = new Set(hallazgosSeleccionados);
+                            if (checked) {
+                              nuevo.add(h.id);
+                            } else {
+                              nuevo.delete(h.id);
+                            }
+                            setHallazgosSeleccionados(nuevo);
+                          }}
+                        />
+                      </td>
                       <td className="py-3 pl-2">
                         <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium", ESTADO_CFG[h.estado].cls)}>
                           {ESTADO_CFG[h.estado].icon}
@@ -552,7 +1304,7 @@ export default function HallazgosClient({
                   ))}
                   {hallazgosFiltrados.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-16 text-center text-slate-500">
+                      <td colSpan={9} className="py-16 text-center text-slate-500">
                         Sin hallazgos que coincidan.
                       </td>
                     </tr>
@@ -635,7 +1387,7 @@ export default function HallazgosClient({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label>Centro de trabajo</Label>
-                <Select value={form.centroTrabajoId} onValueChange={(v) => setForm((prev) => ({ ...prev, centroTrabajoId: v, trabajadorId: "none" }))}>
+                <Select value={form.centroTrabajoId} onValueChange={(v) => setForm((prev) => ({ ...prev, centroTrabajoId: v, trabajadorId: "none", responsableId: "none" }))}>
                   <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                   <SelectContent>
                     {opciones.centros.map((c) => (
@@ -657,6 +1409,24 @@ export default function HallazgosClient({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label>Responsable</Label>
+              <Select value={form.responsableId} onValueChange={(v) => setForm((prev) => ({ ...prev, responsableId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar responsable" /></SelectTrigger>
+                <SelectContent>
+                  {responsablesFormulario.length === 0 ? (
+                    <SelectItem value="none">Sin responsable sugerido</SelectItem>
+                  ) : (
+                    responsablesFormulario.map((trabajador) => (
+                      <SelectItem key={trabajador.id} value={trabajador.id}>
+                        {trabajador.nombreCompleto}{trabajador.cargoNombre ? ` · ${trabajador.cargoNombre}` : ""}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -723,25 +1493,100 @@ export default function HallazgosClient({
           setSelected(null);
           setDetalle(null);
           setDetalleError(null);
+          setDetalleAreaId("");
+          setDetalleResponsableId("none");
           setComentarioCierre("");
           setEvidenciaCierreTexto("");
           setMedidaCorrectivaTexto("");
+          setEvidenciaCierreArchivo(null);
           setCierreError(null);
         }
       }}>
-        <DialogContent className="max-w-xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Detalle del hallazgo</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>Detalle del hallazgo</DialogTitle>
+              <div className="flex items-center gap-2">
+                {selected && selected.estado !== "cerrado" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={descargarPDFHallazgo}
+                    className="gap-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    Descargar PDF
+                  </Button>
+                )}
+                {selected && opciones.puedeEditar ? (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => void onEliminar(selected)}
+                    disabled={saving}
+                  >
+                    Eliminar hallazgo
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </DialogHeader>
-          {selected ? (
-            <div className="space-y-3 text-sm">
+          <div className="flex-1 overflow-y-auto">
+            {selected ? (
+              <div className="space-y-3 text-sm px-6 pr-4">
               <p className="font-medium text-slate-900">{selected.descripcion}</p>
               <div className="grid grid-cols-2 gap-2 text-slate-600">
                 <div className="flex items-center gap-1"><User className="h-3.5 w-3.5" /> {selected.trabajadorNombre ?? "No asociado"}</div>
                 <div className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> {fmtFecha(selected.fechaCompromiso)}</div>
                 <div>Centro: {selected.centroNombre}</div>
                 <div>Obligación: {selected.obligacionClave ? (obligacionesMap.get(selected.obligacionClave) ?? selected.obligacionClave) : "Sin asociar"}</div>
+                <div className="col-span-2">Responsable actual: {selected.responsableNombre ?? detalle?.responsable?.nombre ?? "Por asignar"}</div>
               </div>
+
+              {opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Responsable del hallazgo</p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label>Área de referencia</Label>
+                      <Select value={detalleAreaId || "todas"} onValueChange={(value) => setDetalleAreaId(value === "todas" ? "" : value)}>
+                        <SelectTrigger><SelectValue placeholder="Todas las áreas" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="todas">Todas las áreas</SelectItem>
+                          {opciones.areas.map((area) => (
+                            <SelectItem key={area.id} value={area.id}>{area.nombre}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Responsable</Label>
+                      <Select value={detalleResponsableId} onValueChange={setDetalleResponsableId}>
+                        <SelectTrigger><SelectValue placeholder="Seleccionar responsable" /></SelectTrigger>
+                        <SelectContent>
+                          {responsablesDetalle.length === 0 ? (
+                            <SelectItem value="none">Sin personal disponible</SelectItem>
+                          ) : (
+                            responsablesDetalle.map((trabajador) => (
+                              <SelectItem key={trabajador.id} value={trabajador.id}>
+                                {trabajador.nombreCompleto}{trabajador.cargoNombre ? ` · ${trabajador.cargoNombre}` : ""}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void onActualizarResponsable(selected)}
+                    disabled={saving || detalleResponsableId === "none"}
+                  >
+                    Guardar responsable
+                  </Button>
+                </div>
+              ) : null}
 
               {detalleLoading ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600">
@@ -858,13 +1703,36 @@ export default function HallazgosClient({
                     onChange={(e) => setEvidenciaCierreTexto(e.target.value)}
                     placeholder="Describe la evidencia de cierre asociada a la medida correctiva"
                   />
+                  
+                  <div className="mt-2 space-y-1">
+                    <Label htmlFor="cierre-archivo" className="text-sm">Adjuntar archivo (opcional)</Label>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        id="cierre-archivo"
+                        type="file"
+                        onChange={(e) => setEvidenciaCierreArchivo(e.target.files?.[0] ?? null)}
+                        className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
+                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx"
+                      />
+                      {evidenciaCierreArchivo && (
+                        <div className="text-xs text-emerald-700 flex items-center gap-1">
+                          <File className="h-3 w-3" />
+                          {evidenciaCierreArchivo.name}
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Permitidos: PDF, DOC, DOCX, JPG, PNG, XLSX. Máx. 10 MB.
+                    </p>
+                  </div>
+
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => void onAgregarEvidenciaCierre(selected.id)}
-                    disabled={saving || !evidenciaCierreTexto.trim()}
+                    disabled={saving || uploadingEvidencia || !evidenciaCierreTexto.trim()}
                   >
-                    Agregar evidencia de cierre
+                    {uploadingEvidencia ? "Cargando archivo..." : "Agregar evidencia de cierre"}
                   </Button>
 
                   <Label>Comentario de cierre (complementario)</Label>
@@ -880,8 +1748,9 @@ export default function HallazgosClient({
                 </div>
               ) : null}
             </div>
-          ) : null}
-          <DialogFooter>
+            ) : null}
+          </div>
+          <DialogFooter className="border-t pt-4">
             {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
               <>
                 <Button variant="outline" onClick={() => selected && openEdit(selected)}>Editar</Button>

@@ -84,6 +84,8 @@ export interface Hallazgo {
   trabajadorNombre?: string;
   obligacionId?: string;
   obligacionNombre?: string;
+  responsableId?: string;
+  responsableNombre?: string;
   estado: EstadoHallazgo;
   prioridad: PrioridadHallazgo;
   fechaCompromiso: string;
