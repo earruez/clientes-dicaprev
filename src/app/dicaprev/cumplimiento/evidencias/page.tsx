@@ -262,32 +262,43 @@ export default async function EvidenciasPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs min-w-[230px]">
-                        <div className="flex flex-col gap-2">
-                          <form action={actionValidar} className="flex gap-2">
-                            <input type="hidden" name="evidenciaId" value={row.id} />
-                            <input
-                              name="observacionRevision"
-                              placeholder="Obs. validacion"
-                              className="h-8 flex-1 rounded-md border border-slate-200 px-2 text-[11px]"
-                            />
-                            <Button type="submit" variant="outline" className="h-8 px-2 text-[11px]">
-                              <ShieldCheck className="h-3.5 w-3.5 mr-1" />
-                              Validar
-                            </Button>
-                          </form>
-                          <form action={actionRechazar} className="flex gap-2">
-                            <input type="hidden" name="evidenciaId" value={row.id} />
-                            <input
-                              name="observacionRevision"
-                              placeholder="Obs. rechazo"
-                              className="h-8 flex-1 rounded-md border border-slate-200 px-2 text-[11px]"
-                            />
-                            <Button type="submit" variant="outline" className="h-8 px-2 text-[11px]">
-                              <XCircle className="h-3.5 w-3.5 mr-1" />
-                              Rechazar
-                            </Button>
-                          </form>
-                        </div>
+                        {row.estado === "pendiente" ? (
+                          <div className="flex flex-col gap-2">
+                            <form action={actionValidar} className="flex gap-2">
+                              <input type="hidden" name="evidenciaId" value={row.id} />
+                              <input
+                                name="observacionRevision"
+                                placeholder="Obs. validacion"
+                                className="h-8 flex-1 rounded-md border border-slate-200 px-2 text-[11px]"
+                              />
+                              <Button type="submit" variant="outline" className="h-8 px-2 text-[11px]">
+                                <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+                                Validar
+                              </Button>
+                            </form>
+                            <form action={actionRechazar} className="flex gap-2">
+                              <input type="hidden" name="evidenciaId" value={row.id} />
+                              <input
+                                name="observacionRevision"
+                                placeholder="Obs. rechazo"
+                                className="h-8 flex-1 rounded-md border border-slate-200 px-2 text-[11px]"
+                              />
+                              <Button type="submit" variant="outline" className="h-8 px-2 text-[11px]">
+                                <XCircle className="h-3.5 w-3.5 mr-1" />
+                                Rechazar
+                              </Button>
+                            </form>
+                          </div>
+                        ) : row.estado === "valida" ? (
+                          <div className="space-y-1 text-emerald-700">
+                            <p className="font-medium">Validada</p>
+                            {row.fechaValidacion ? (
+                              <p className="text-[11px] text-slate-500">{fmt(row.fechaValidacion)}</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-slate-500">Sin acciones</p>
+                        )}
                       </td>
                     </tr>
                   ))}
