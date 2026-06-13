@@ -120,6 +120,13 @@ enum RespuestaChecklistValor {
   no_aplica
 }
 
+enum EstadoEvidenciaCumplimiento {
+  pendiente
+  valida
+  rechazada
+  vencida
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -219,6 +226,7 @@ model Usuario {
   obligacionesEstadoActualizadas ObligacionEmpresaEstado[]      @relation("UsuarioObligacionEmpresaEstado")
   hallazgosCumplimientoCreados   HallazgoCumplimiento[]         @relation("UsuarioHallazgoCumplimientoCreado")
   evidenciasCumplimientoCreadas  EvidenciaCumplimiento[]        @relation("UsuarioEvidenciaCumplimientoCreada")
+  evidenciasCumplimientoValidadas EvidenciaCumplimiento[]       @relation("UsuarioEvidenciaCumplimientoValidada")
   evidenciasCumplimientoHistorial EvidenciaCumplimientoHistorial[] @relation("UsuarioEvidenciaCumplimientoHistorial")
   capacitacionSesionesCreadas    CapacitacionSesion[]           @relation("UsuarioCapacitacionSesionCreada")
   capacitacionHistorialEventos   CapacitacionHistorial[]
@@ -315,6 +323,7 @@ model DocumentoEmpresa {
   subidoPor          Usuario                     @relation("UsuarioDocumentosSubidos", fields: [subidoPorId], references: [id])
   documentoRequerido DocumentoRequeridoEmpresa?  @relation(fields: [documentoRequeridoId], references: [id])
   historial          DocumentoEmpresaHistorial[]
+  evidenciasCumplimiento EvidenciaCumplimiento[]
 
   @@unique([empresaId, documentoRequeridoId])
 }
@@ -387,6 +396,7 @@ model ObligacionEmpresaEstado {
 
   empresa        Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   actualizadoPor Usuario? @relation("UsuarioObligacionEmpresaEstado", fields: [actualizadoPorId], references: [id])
+  evidenciasCumplimiento EvidenciaCumplimiento[] @relation("EvidenciaObligacionEstado")
 
   @@unique([empresaId, obligacionClave])
   @@index([empresaId])
@@ -555,8 +565,10 @@ model EvidenciaCumplimiento {
   id              String   @id @default(uuid())
   empresaId       String
   titulo          String
+  descripcion     String   @default("")
+  origen          String   @default("manual")
   tipo            String
-  estado          String
+  estado          EstadoEvidenciaCumplimiento
   fechaEvidencia  DateTime
   observacion     String?
   archivoNombre   String?
@@ -565,25 +577,44 @@ model EvidenciaCumplimiento {
   archivoPeso     Int?
   hallazgoId      String?
   obligacionClave String?
+  documentoTrabajadorId String?
+  documentoEmpresaId String?
+  checklistEjecucionId String?
+  entregaEppId   String?
   accionPlanId    String?
   centroTrabajoId String?
   trabajadorId    String?
   creadoPorId     String?
+  validadoPorId   String?
+  validadoAt      DateTime?
+  observacionRevision String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  empresa       Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  hallazgo      HallazgoCumplimiento? @relation(fields: [hallazgoId], references: [id], onDelete: SetNull)
-  centroTrabajo CentroTrabajo?        @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
-  trabajador    Trabajador?           @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
-  creadoPor     Usuario?              @relation("UsuarioEvidenciaCumplimientoCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  empresa       Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  hallazgo      HallazgoCumplimiento?   @relation(fields: [hallazgoId], references: [id], onDelete: SetNull)
+  obligacionEstado ObligacionEmpresaEstado? @relation("EvidenciaObligacionEstado", fields: [empresaId, obligacionClave], references: [empresaId, obligacionClave])
+  documentoTrabajador TrabajadorDocumento? @relation(fields: [documentoTrabajadorId], references: [id], onDelete: SetNull)
+  documentoEmpresa DocumentoEmpresa?    @relation(fields: [documentoEmpresaId], references: [id], onDelete: SetNull)
+  checklistEjecucion ChecklistEjecucion? @relation(fields: [checklistEjecucionId], references: [id], onDelete: SetNull)
+  entregaEpp    EntregaEpp?             @relation(fields: [entregaEppId], references: [id], onDelete: SetNull)
+  centroTrabajo CentroTrabajo?          @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+  trabajador    Trabajador?             @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  creadoPor     Usuario?                @relation("UsuarioEvidenciaCumplimientoCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  validadoPor   Usuario?                @relation("UsuarioEvidenciaCumplimientoValidada", fields: [validadoPorId], references: [id], onDelete: SetNull)
   historial     EvidenciaCumplimientoHistorial[]
 
   @@index([empresaId])
   @@index([hallazgoId])
   @@index([obligacionClave])
+  @@index([documentoTrabajadorId])
+  @@index([documentoEmpresaId])
+  @@index([checklistEjecucionId])
+  @@index([entregaEppId])
   @@index([centroTrabajoId])
   @@index([trabajadorId])
+  @@index([validadoPorId])
+  @@index([validadoAt])
   @@index([estado])
   @@index([fechaEvidencia])
 }
@@ -645,6 +676,7 @@ model TrabajadorDocumento {
   capacitacionAsignacionesEvidencia   CapacitacionAsignacion[]       @relation("CapAsignacionEvidenciaDocumento")
   capacitacionAsignacionesCertificado CapacitacionAsignacion[]       @relation("CapAsignacionCertificadoDocumento")
   capacitacionEvaluacionesEvidencia   CapacitacionEvaluacion[]       @relation("CapEvaluacionEvidenciaDocumento")
+  evidenciasCumplimiento              EvidenciaCumplimiento[]
 
   @@index([trabajadorId, tipo, esVigente])
   @@index([trabajadorId])
@@ -1562,6 +1594,7 @@ model EntregaEpp {
   trabajador Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
   creadoPor  Usuario?   @relation("UsuarioEntregaEppCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
   detalles   EntregaEppDetalle[]
+  evidenciasCumplimiento EvidenciaCumplimiento[]
   firmas     FirmaDocumento[]
 
   @@index([empresaId])
@@ -1644,6 +1677,7 @@ model ChecklistEjecucion {
   centroTrabajo CentroTrabajo?       @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
   trabajador    Trabajador?          @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
   respuestas    ChecklistRespuesta[]
+  evidenciasCumplimiento EvidenciaCumplimiento[]
 
   @@index([empresaId])
   @@index([templateId])
