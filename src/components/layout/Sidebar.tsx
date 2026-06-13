@@ -84,6 +84,8 @@ const MODULES: ModuleItem[] = [
       { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
       { href: "/dicaprev/cumplimiento/hallazgos", label: "Hallazgos" },
       { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias" },
+      { href: "/dicaprev/checklists", label: "Checklists / Inspecciones" },
+      { href: "/dicaprev/accidentes", label: "Accidentes" },
       { href: "/dicaprev/cumplimiento/plan-trabajo", label: "Plan de trabajo" },
     ],
   },
