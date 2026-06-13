@@ -7,3 +7,6 @@ node_modules
 .vscode
 .claude/
 tsconfig.tsbuildinfo
+
+# Archivos subidos por usuarios (generados en runtime)
+public/uploads/documentos/
