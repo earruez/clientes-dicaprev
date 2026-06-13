@@ -16,6 +16,7 @@
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
+    "seed": "node prisma/seed-superadmin-local.mjs",
     "prisma:seed": "node prisma/seed.mjs",
     "prisma:seed:reglas-trabajador": "node prisma/seed-reglas-documentales-trabajador.mjs",
     "documentos:reconciliar-trabajador": "node prisma/reconciliar-documentos-trabajador.mjs",
