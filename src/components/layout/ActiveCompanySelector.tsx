@@ -16,12 +16,39 @@ type PermissionsPayload = {
   empresas?: EmpresaOption[];
 };
 
+const PERMISSIONS_RETRY_DELAYS_MS = [300, 900, 1800] as const;
+
 async function fetchPermissions(): Promise<PermissionsPayload> {
   const response = await fetch("/api/dicaprev/me/permissions", { cache: "no-store" });
   if (!response.ok) {
     throw new Error("No se pudo obtener el contexto de empresa");
   }
   return (await response.json()) as PermissionsPayload;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function fetchPermissionsWithRetry(): Promise<PermissionsPayload> {
+  let lastError: unknown = null;
+
+  for (const delayMs of PERMISSIONS_RETRY_DELAYS_MS) {
+    try {
+      return await fetchPermissions();
+    } catch (error) {
+      lastError = error;
+      await wait(delayMs);
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error("No se pudo obtener el contexto de empresa");
 }
 
 export default function ActiveCompanySelector() {
@@ -35,7 +62,7 @@ export default function ActiveCompanySelector() {
   useEffect(() => {
     let mounted = true;
 
-    fetchPermissions()
+    fetchPermissionsWithRetry()
       .then((data) => {
         if (!mounted) {
           return;
