@@ -368,7 +368,8 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
           titulo: true,
           tipo: true,
           estado: true,
-          observacion: true,
+          descripcion: true,
+          observacionRevision: true,
           archivoUrl: true,
           archivoNombre: true,
           fechaEvidencia: true,
@@ -388,13 +389,13 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
       const estado = normalizeEstadoMedida(ev.estado);
       return {
         id: ev.id,
-        descripcion: ev.observacion ?? "Sin descripcion",
+        descripcion: ev.descripcion || "Sin descripcion",
         responsable: ev.creadoPor?.nombre ?? "Por asignar",
         fechaCompromiso: hallazgo.fechaCompromiso.toISOString().slice(0, 10),
         estado,
         evidenciaCierre: hallazgo.evidenciasCumplimiento.some((cierre) => {
           const tipo = normalizeToken(cierre.tipo);
-          return tipo === "cierre" || normalizeToken(cierre.observacion).includes("cierre");
+          return tipo === "cierre" || normalizeToken(cierre.descripcion).includes("cierre");
         }),
       };
     });
@@ -414,7 +415,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
       titulo: ev.titulo,
       tipo: ev.tipo,
       estado: ev.estado,
-      observacion: ev.observacion,
+      observacion: ev.descripcion || ev.observacionRevision,
       archivoUrl: ev.archivoUrl,
       archivoNombre: ev.archivoNombre,
       fechaEvidencia: ev.fechaEvidencia.toISOString(),
@@ -527,7 +528,7 @@ export async function crearHallazgo(data: HallazgoInput): Promise<{ id: string }
           tipo: "accion_correctiva",
           estado: "pendiente",
           fechaEvidencia: new Date(),
-          observacion: data.medidaCorrectivaSugerida.trim(),
+          descripcion: data.medidaCorrectivaSugerida.trim(),
           hallazgoId: hallazgo.id,
           centroTrabajoId: data.centroTrabajoId,
           trabajadorId: data.trabajadorId,
@@ -617,7 +618,8 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
           id: true,
           tipo: true,
           estado: true,
-          observacion: true,
+          descripcion: true,
+          observacionRevision: true,
         },
       },
     },
@@ -636,7 +638,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
 
   const evidenciaCierre = hallazgo.evidenciasCumplimiento.some((ev) => {
     const tipo = normalizeToken(ev.tipo);
-    return tipo === "cierre" || normalizeToken(ev.observacion).includes("cierre");
+    return tipo === "cierre" || normalizeToken(ev.descripcion).includes("cierre");
   });
 
   if (!tieneMedidaRegistrada || !medidaCompleta || (!evidenciaCierre && !comentario)) {
@@ -652,7 +654,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
           tipo: "cierre",
           estado: "valida",
           fechaEvidencia: new Date(),
-          observacion: comentario,
+          descripcion: comentario,
           hallazgoId: hallazgo.id,
           centroTrabajoId: hallazgo.centroTrabajoId,
           trabajadorId: hallazgo.trabajadorId,
@@ -725,6 +727,8 @@ export async function actualizarEstadoMedidaCorrectiva(
     throw new Error("Hallazgo no encontrado para la empresa activa.");
   }
 
+  const estadoEvidencia = estado === "completada" ? "valida" : estado === "descartada" ? "rechazada" : "pendiente";
+
   await prisma.evidenciaCumplimiento.updateMany({
     where: {
       id: medidaId,
@@ -733,7 +737,9 @@ export async function actualizarEstadoMedidaCorrectiva(
       tipo: "accion_correctiva",
     },
     data: {
-      estado,
+      estado: estadoEvidencia,
+      validadoAt: estado === "completada" ? new Date() : null,
+      validadoPorId: estado === "completada" ? context.usuarioId : null,
     },
   });
 }
@@ -775,7 +781,7 @@ export async function registrarMedidaCorrectivaHallazgo(
       tipo: "accion_correctiva",
       estado: "pendiente",
       fechaEvidencia: new Date(),
-      observacion: descripcionNormalizada,
+      descripcion: descripcionNormalizada,
       hallazgoId: hallazgo.id,
       centroTrabajoId: hallazgo.centroTrabajoId,
       trabajadorId: hallazgo.trabajadorId,
@@ -822,12 +828,14 @@ export async function agregarEvidenciaCierreHallazgo(
       tipo: "cierre",
       estado: "valida",
       fechaEvidencia: new Date(),
-      observacion: obs,
+      descripcion: obs,
       archivoUrl: archivoUrl || null,
       hallazgoId: hallazgo.id,
       centroTrabajoId: hallazgo.centroTrabajoId,
       trabajadorId: hallazgo.trabajadorId,
       creadoPorId: context.usuarioId,
+      validadoPorId: context.usuarioId,
+      validadoAt: new Date(),
     },
   });
 }

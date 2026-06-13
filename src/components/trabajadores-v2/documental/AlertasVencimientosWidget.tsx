@@ -3,7 +3,6 @@
 import { AlertCircle, CalendarClock, Bell } from "lucide-react";
 import type { DocumentoTrabajador, DocTrabajadorView } from "./types";
 import type { Worker } from "../types";
-import {  ESTADO_DOC_CONFIG } from "./types";
 import { formatDate } from "../types";
 
 interface AlertasVencimientosWidgetProps {
@@ -41,7 +40,7 @@ export function AlertasVencimientosWidget({
 
     const docView: DocumentoConTrabajador = {
       documentoId: doc.id,
-      tipo: tipo as any,
+      tipo: tipo as DocTrabajadorView["tipo"],
       estado: doc.estado,
       fechaVencimiento: doc.fechaVencimiento,
       diasParaVencer,

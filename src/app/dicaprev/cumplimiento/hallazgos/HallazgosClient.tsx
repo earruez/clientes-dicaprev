@@ -806,7 +806,7 @@ export default function HallazgosClient({
       `;
 
       await renderStyledPdfFromHtml(html, `Hallazgo_${selected.id}_${new Date().getTime()}.pdf`);
-    } catch (error) {
+    } catch {
       setCierreError("No fue posible descargar el PDF del hallazgo.");
     }
   }
