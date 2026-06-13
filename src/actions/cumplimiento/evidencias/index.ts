@@ -13,6 +13,7 @@ export type EvidenciaRow = {
   relacionadoCon: string;
   estado: EstadoEvidencia;
   fecha: string;
+  fechaValidacion: string | null;
   archivoUrl: string | null;
   archivoNombre: string | null;
 };
@@ -59,6 +60,43 @@ function toDisplayOrigen(value: string | null | undefined): string {
   return token.replace(/_/g, " ");
 }
 
+function normalizeToken(value: string | null | undefined): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function isOrigenAutoValidable(value: string | null | undefined): boolean {
+  const token = normalizeToken(value);
+  if (!token) return false;
+  return ["firma", "firmado", "documento_firmado", "epp_firmado", "entrega_epp"].some((key) => token.includes(key));
+}
+
+function resolveEstadoEvidencia(input: {
+  estado: string | null | undefined;
+  origen: string | null | undefined;
+  hallazgoEstado: string | null | undefined;
+  documentoTrabajadorFirmado: boolean | null | undefined;
+  documentoEmpresaFirmado: boolean | null | undefined;
+  entregaEppEstado: string | null | undefined;
+}): EstadoEvidencia {
+  const estadoActual = normalizeEstado(input.estado);
+  if (estadoActual === "rechazada" || estadoActual === "vencida") return estadoActual;
+
+  const hallazgoCerrado = normalizeToken(input.hallazgoEstado) === "cerrado";
+  const documentoFirmado = Boolean(input.documentoTrabajadorFirmado) || Boolean(input.documentoEmpresaFirmado);
+  const eppFirmado = normalizeToken(input.entregaEppEstado) === "firmada";
+  const origenAuto = isOrigenAutoValidable(input.origen);
+
+  if (hallazgoCerrado || documentoFirmado || eppFirmado || origenAuto) {
+    return "valida";
+  }
+
+  return estadoActual;
+}
+
 function buildRelacionadoCon(input: {
   hallazgoDescripcion: string | null;
   obligacionClave: string | null;
@@ -83,14 +121,15 @@ export async function getEvidenciasDashboard(): Promise<EvidenciasDashboard> {
     prisma.evidenciaCumplimiento.findMany({
       where: { empresaId },
       include: {
-        hallazgo: { select: { descripcion: true } },
+        hallazgo: { select: { descripcion: true, estado: true } },
         checklistEjecucion: {
           include: {
             template: { select: { nombre: true } },
           },
         },
-        documentoTrabajador: { select: { nombre: true } },
-        documentoEmpresa: { select: { nombre: true } },
+        documentoTrabajador: { select: { nombre: true, firmado: true } },
+        documentoEmpresa: { select: { nombre: true, firmado: true } },
+        entregaEpp: { select: { estado: true } },
       },
       orderBy: { createdAt: "desc" },
     }),
@@ -107,24 +146,36 @@ export async function getEvidenciasDashboard(): Promise<EvidenciasDashboard> {
     }),
   ]);
 
-  const mappedRows: EvidenciaRow[] = rows.map((row) => ({
-    id: row.id,
-    origen: toDisplayOrigen(row.origen),
-    titulo: row.titulo,
-    descripcion: row.descripcion,
-    relacionadoCon: buildRelacionadoCon({
-      hallazgoDescripcion: row.hallazgo?.descripcion ?? null,
-      obligacionClave: row.obligacionClave,
-      checklistNombre: row.checklistEjecucion?.template?.nombre ?? null,
-      documentoTrabajadorNombre: row.documentoTrabajador?.nombre ?? null,
-      documentoEmpresaNombre: row.documentoEmpresa?.nombre ?? null,
-      entregaEppId: row.entregaEppId,
-    }),
-    estado: normalizeEstado(row.estado),
-    fecha: row.createdAt.toISOString(),
-    archivoUrl: row.archivoUrl,
-    archivoNombre: row.archivoNombre,
-  }));
+  const mappedRows: EvidenciaRow[] = rows.map((row) => {
+    const estadoResuelto = resolveEstadoEvidencia({
+      estado: row.estado,
+      origen: row.origen,
+      hallazgoEstado: row.hallazgo?.estado ?? null,
+      documentoTrabajadorFirmado: row.documentoTrabajador?.firmado,
+      documentoEmpresaFirmado: row.documentoEmpresa?.firmado,
+      entregaEppEstado: row.entregaEpp?.estado ?? null,
+    });
+
+    return {
+      id: row.id,
+      origen: toDisplayOrigen(row.origen),
+      titulo: row.titulo,
+      descripcion: row.descripcion,
+      relacionadoCon: buildRelacionadoCon({
+        hallazgoDescripcion: row.hallazgo?.descripcion ?? null,
+        obligacionClave: row.obligacionClave,
+        checklistNombre: row.checklistEjecucion?.template?.nombre ?? null,
+        documentoTrabajadorNombre: row.documentoTrabajador?.nombre ?? null,
+        documentoEmpresaNombre: row.documentoEmpresa?.nombre ?? null,
+        entregaEppId: row.entregaEppId,
+      }),
+      estado: estadoResuelto,
+      fecha: row.createdAt.toISOString(),
+      fechaValidacion: row.validadoAt ? row.validadoAt.toISOString() : null,
+      archivoUrl: row.archivoUrl,
+      archivoNombre: row.archivoNombre,
+    };
+  });
 
   const total = mappedRows.length;
   const validas = mappedRows.filter((r) => r.estado === "valida").length;
@@ -199,11 +250,32 @@ export async function revisarEvidencia(input: RevisarEvidenciaInput): Promise<vo
 
   const evidencia = await prisma.evidenciaCumplimiento.findFirst({
     where: { id: input.evidenciaId, empresaId },
-    select: { id: true, estado: true },
+    select: {
+      id: true,
+      estado: true,
+      origen: true,
+      hallazgo: { select: { estado: true } },
+      documentoTrabajador: { select: { firmado: true } },
+      documentoEmpresa: { select: { firmado: true } },
+      entregaEpp: { select: { estado: true } },
+    },
   });
 
   if (!evidencia) {
     throw new Error("Evidencia no encontrada para la empresa activa.");
+  }
+
+  const estadoResuelto = resolveEstadoEvidencia({
+    estado: evidencia.estado,
+    origen: evidencia.origen,
+    hallazgoEstado: evidencia.hallazgo?.estado ?? null,
+    documentoTrabajadorFirmado: evidencia.documentoTrabajador?.firmado,
+    documentoEmpresaFirmado: evidencia.documentoEmpresa?.firmado,
+    entregaEppEstado: evidencia.entregaEpp?.estado ?? null,
+  });
+
+  if (estadoResuelto !== "pendiente") {
+    throw new Error("Esta evidencia ya está resuelta y no requiere revisión adicional.");
   }
 
   const observacionRevision = input.observacionRevision?.trim() || null;
