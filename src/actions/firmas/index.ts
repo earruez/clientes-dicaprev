@@ -239,6 +239,17 @@ export async function completarFirmaDocumento(input: CompletarFirmaDocumentoInpu
     );
   }
 
+  if (firma.documentoOrigen === "induccion") {
+    await prisma.documentoInduccionGenerado.updateMany({
+      where: { id: firma.documentoId },
+      data: {
+        estado: "firmado",
+        firmadoPor: input.nombreFirmante.trim(),
+        firmadoEn: firmadoAt,
+      },
+    });
+  }
+
   return { ok: true, firmadoAt: firmadoAt.toISOString() };
 }
 

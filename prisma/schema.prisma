@@ -197,6 +197,7 @@ model Empresa {
   activacionEventos          ActivacionEvento[]
   firmasDocumento            FirmaDocumento[]
   inducciones                 InduccionTrabajador[]
+  documentosInduccionGenerados DocumentoInduccionGenerado[]
   entregasEpp                 EntregaEpp[]
   eppItems                    EppItem[]
   checklistTemplates          ChecklistTemplate[]
@@ -551,6 +552,7 @@ model Trabajador {
   capacitacionAsistencias  CapacitacionAsistencia[]
   firmasDocumento          FirmaDocumento[]
   inducciones              InduccionTrabajador[]
+  documentosInduccionGenerados DocumentoInduccionGenerado[]
   entregasEpp              EntregaEpp[]
   checklistEjecuciones     ChecklistEjecucion[]
   accidenteInvestigaciones AccidenteInvestigacion[]
@@ -1542,11 +1544,37 @@ model InduccionTrabajador {
   trabajador Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
   creadoPor  Usuario?   @relation("UsuarioInduccionCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
   firmas     FirmaDocumento[]
+  documentosGenerados DocumentoInduccionGenerado[]
 
   @@index([empresaId])
   @@index([trabajadorId])
   @@index([estado])
   @@index([token])
+}
+
+model DocumentoInduccionGenerado {
+  id                String               @id @default(cuid())
+  empresaId         String
+  trabajadorId      String
+  induccionId       String
+  tipo              String
+  titulo            String
+  contenidoMarkdown String
+  estado            EstadoFirmaDocumento @default(pendiente)
+  firmadoPor        String?
+  firmadoEn         DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  empresa    Empresa            @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  trabajador Trabajador         @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
+  induccion  InduccionTrabajador @relation(fields: [induccionId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@index([trabajadorId])
+  @@index([induccionId])
+  @@index([estado])
+  @@index([tipo])
 }
 
 // ─────────────────────────────────────────────

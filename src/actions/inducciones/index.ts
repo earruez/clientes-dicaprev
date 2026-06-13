@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
 import { requirePermission } from "@/server/auth/permissions";
+import { generarDocumentosInduccionDesdePlantillasTx } from "@/actions/inducciones/documentos-generados";
 
 export type CrearInduccionTrabajadorInput = {
   empresaId: string;
@@ -36,6 +37,18 @@ export type InduccionPublicaView = {
   cargoTrabajador: string | null;
   fechaInicio: string | null;
   fechaTermino: string | null;
+  documentosGenerados: {
+    id: string;
+    tipo: string;
+    titulo: string;
+    contenidoMarkdown: string;
+    estado: string;
+    firma: {
+      token: string;
+      estado: string;
+      firmadoAt: string | null;
+    } | null;
+  }[];
   firmas: {
     id: string;
     token: string;
@@ -67,56 +80,36 @@ export async function crearInduccionTrabajador(input: CrearInduccionTrabajadorIn
 
   if (!trabajador) throw new Error("Trabajador no encontrado");
 
-  // Documentos con archivo que aún no están firmados
-  const documentosPendientes = await prisma.trabajadorDocumento.findMany({
-    where: {
-      trabajadorId: input.trabajadorId,
-      empresaId: input.empresaId,
-      esVigente: true,
-      archivoUrl: { not: null },
-      firmado: false,
-    },
-    select: { id: true, nombre: true, tipo: true },
-  });
-
   const token = generarTokenFirma();
 
-  const induccion = await prisma.induccionTrabajador.create({
-    data: {
-      empresaId: input.empresaId,
-      trabajadorId: input.trabajadorId,
-      token,
-      estado: "pendiente",
-      creadoPorId: usuarioId,
-      observaciones: input.observaciones?.trim() || null,
-    },
-    select: { id: true, token: true },
-  });
-
-  // Crear FirmaDocumento para cada documento pendiente
-  if (documentosPendientes.length > 0) {
-    await prisma.firmaDocumento.createMany({
-      data: documentosPendientes.map((doc) => ({
+  const { induccion, documentosGenerados } = await prisma.$transaction(async (tx) => {
+    const creada = await tx.induccionTrabajador.create({
+      data: {
         empresaId: input.empresaId,
         trabajadorId: input.trabajadorId,
-        documentoId: doc.id,
-        documentoOrigen: "induccion" as const,
-        token: generarTokenFirma(),
-        estado: "pendiente" as const,
-        tituloDocumento: doc.nombre,
-        descripcion: `Inducción digital — ${doc.tipo}`,
-        nombreFirmante: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
-        rutFirmante: trabajador.rut ?? null,
-        induccionId: induccion.id,
-      })),
+        token,
+        estado: "pendiente",
+        creadoPorId: usuarioId,
+        observaciones: input.observaciones?.trim() || null,
+      },
+      select: { id: true, token: true },
     });
-  }
+
+    const docs = await generarDocumentosInduccionDesdePlantillasTx(tx, {
+      empresaId: input.empresaId,
+      trabajadorId: input.trabajadorId,
+      induccionId: creada.id,
+      generadoPor: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
+    });
+
+    return { induccion: creada, documentosGenerados: docs.documentosGenerados };
+  });
 
   return {
     id: induccion.id,
     token: induccion.token,
     link: `/induccion/${induccion.token}`,
-    firmasCreadas: documentosPendientes.length,
+    firmasCreadas: documentosGenerados,
   };
 }
 
@@ -192,12 +185,23 @@ export async function getInduccionPorToken(token: string): Promise<InduccionPubl
         orderBy: { createdAt: "asc" },
         select: {
           id: true,
+          documentoId: true,
           token: true,
           tituloDocumento: true,
           descripcion: true,
           estado: true,
           firmadoAt: true,
           expiresAt: true,
+        },
+      },
+      documentosGenerados: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          tipo: true,
+          titulo: true,
+          contenidoMarkdown: true,
+          estado: true,
         },
       },
     },
@@ -209,6 +213,39 @@ export async function getInduccionPorToken(token: string): Promise<InduccionPubl
   const todasFirmadas =
     induccion.firmas.length > 0 && induccion.firmas.every((f) => f.estado === "firmado");
 
+  const documentosGenerados =
+    induccion.documentosGenerados.length > 0
+      ? induccion.documentosGenerados.map((doc) => {
+          const firma = induccion.firmas.find((f) => f.documentoId === doc.id);
+
+          return {
+            id: doc.id,
+            tipo: doc.tipo,
+            titulo: doc.titulo,
+            contenidoMarkdown: doc.contenidoMarkdown,
+            estado: doc.estado,
+            firma: firma
+              ? {
+                  token: firma.token,
+                  estado: firma.estado,
+                  firmadoAt: firma.firmadoAt?.toISOString() ?? null,
+                }
+              : null,
+          };
+        })
+      : induccion.firmas.map((firma) => ({
+          id: firma.id,
+          tipo: "INDUCCION",
+          titulo: firma.tituloDocumento,
+          contenidoMarkdown: "",
+          estado: firma.estado,
+          firma: {
+            token: firma.token,
+            estado: firma.estado,
+            firmadoAt: firma.firmadoAt?.toISOString() ?? null,
+          },
+        }));
+
   return {
     id: induccion.id,
     token: induccion.token,
@@ -218,6 +255,7 @@ export async function getInduccionPorToken(token: string): Promise<InduccionPubl
     cargoTrabajador: induccion.trabajador.cargo?.nombre ?? null,
     fechaInicio: induccion.fechaInicio?.toISOString() ?? null,
     fechaTermino: induccion.fechaTermino?.toISOString() ?? null,
+    documentosGenerados,
     firmas: induccion.firmas.map((f) => ({
       id: f.id,
       token: f.token,

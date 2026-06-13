@@ -66,6 +66,7 @@ export default function InduccionClient({ induccion }: Props) {
   const estadoConfig = ESTADO_CONFIG[induccion.estado] ?? ESTADO_CONFIG.pendiente;
   const firmasFirmadas = induccion.firmas.filter((f) => f.estado === "firmado").length;
   const totalFirmas = induccion.firmas.length;
+  const totalDocumentosGenerados = induccion.documentosGenerados.length;
 
   return (
     <div className="space-y-4">
@@ -119,53 +120,62 @@ export default function InduccionClient({ induccion }: Props) {
         </CardContent>
       </Card>
 
-      {/* Documentos */}
-      {totalFirmas === 0 ? (
+      {/* Documentos generados */}
+      {totalDocumentosGenerados === 0 ? (
         <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm">
           <CardContent className="px-6 py-8 text-center">
             <p className="text-sm text-slate-500">
-              No hay documentos pendientes de firma para esta inducción.
+              No hay documentos generados para esta inducción.
             </p>
           </CardContent>
         </Card>
       ) : (
         <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm">
           <CardHeader className="border-b border-slate-100 px-6 py-4">
-            <h2 className="text-base font-semibold text-slate-800">Documentos a firmar</h2>
+            <h2 className="text-base font-semibold text-slate-800">Documentos generados</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              Haga clic en &ldquo;Firmar&rdquo; para revisar y firmar cada documento requerido.
+              Revise cada documento y firme los que se encuentren pendientes.
             </p>
           </CardHeader>
           <CardContent className="divide-y divide-slate-100 p-0">
-            {induccion.firmas.map((firma) => {
+            {induccion.documentosGenerados.map((documento) => {
               const firmaConfig =
-                FIRMA_ESTADO_CONFIG[firma.estado] ?? FIRMA_ESTADO_CONFIG.pendiente;
+                FIRMA_ESTADO_CONFIG[documento.firma?.estado ?? "pendiente"] ??
+                FIRMA_ESTADO_CONFIG.pendiente;
+              const resumen = documento.contenidoMarkdown
+                .replaceAll("\n", " ")
+                .slice(0, 180)
+                .trim();
+
               return (
                 <div
-                  key={firma.id}
+                  key={documento.id}
                   className="flex items-center justify-between gap-4 px-6 py-4"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     {firmaConfig.icon}
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-slate-900">
-                        {firma.tituloDocumento}
+                        {documento.titulo}
                       </p>
-                      {firma.descripcion && (
-                        <p className="truncate text-xs text-slate-500">{firma.descripcion}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        Tipo: {documento.tipo}
+                      </p>
+                      {resumen.length > 0 && (
+                        <p className="truncate text-xs text-slate-500">{resumen}</p>
                       )}
-                      {firma.estado === "firmado" && firma.firmadoAt && (
+                      {documento.firma?.estado === "firmado" && documento.firma.firmadoAt && (
                         <p className="text-xs text-emerald-600">
                           Firmado el{" "}
-                          {new Date(firma.firmadoAt).toLocaleString("es-CL")}
+                          {new Date(documento.firma.firmadoAt).toLocaleString("es-CL")}
                         </p>
                       )}
                     </div>
                   </div>
                   <div className="shrink-0">
-                    {firma.estado === "pendiente" ? (
+                    {documento.firma?.estado === "pendiente" && documento.firma.token ? (
                       <Link
-                        href={`/firma/${firma.token}`}
+                        href={`/firma/${documento.firma.token}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800"
