@@ -22,6 +22,7 @@ export type CrearFirmaDocumentoInput = {
 export type FirmaPublicaView = {
   id: string;
   token: string;
+  documentoOrigen: "documento_trabajador" | "documento_empresa" | "entrega_epp" | "capacitacion" | "induccion" | "acreditacion" | "otro";
   estado: "pendiente" | "firmado" | "rechazado" | "expirado";
   tituloDocumento: string;
   descripcion: string | null;
@@ -30,6 +31,7 @@ export type FirmaPublicaView = {
   rutFirmante: string | null;
   firmadoAt: string | null;
   expiresAt: string | null;
+  contenidoMarkdown: string | null;
 };
 
 export type CompletarFirmaDocumentoInput = {
@@ -115,6 +117,8 @@ export async function getFirmaPorToken(token: string): Promise<FirmaPublicaView 
     select: {
       id: true,
       token: true,
+      documentoId: true,
+      documentoOrigen: true,
       estado: true,
       tituloDocumento: true,
       descripcion: true,
@@ -133,6 +137,15 @@ export async function getFirmaPorToken(token: string): Promise<FirmaPublicaView 
 
   if (!firma) return null;
 
+  let contenidoMarkdown: string | null = null;
+  if (firma.documentoOrigen === "induccion") {
+    const documentoInduccion = await prisma.documentoInduccionGenerado.findUnique({
+      where: { id: firma.documentoId },
+      select: { contenidoMarkdown: true },
+    });
+    contenidoMarkdown = documentoInduccion?.contenidoMarkdown ?? null;
+  }
+
   if (firma.estado === "pendiente" && firma.expiresAt && firma.expiresAt.getTime() < Date.now()) {
     await prisma.firmaDocumento.update({
       where: { id: firma.id },
@@ -142,6 +155,7 @@ export async function getFirmaPorToken(token: string): Promise<FirmaPublicaView 
     return {
       id: firma.id,
       token: firma.token,
+      documentoOrigen: firma.documentoOrigen,
       estado: "expirado",
       tituloDocumento: firma.tituloDocumento,
       descripcion: firma.descripcion,
@@ -150,12 +164,14 @@ export async function getFirmaPorToken(token: string): Promise<FirmaPublicaView 
       rutFirmante: firma.rutFirmante,
       firmadoAt: firma.firmadoAt?.toISOString() ?? null,
       expiresAt: firma.expiresAt?.toISOString() ?? null,
+      contenidoMarkdown,
     };
   }
 
   return {
     id: firma.id,
     token: firma.token,
+    documentoOrigen: firma.documentoOrigen,
     estado: firma.estado,
     tituloDocumento: firma.tituloDocumento,
     descripcion: firma.descripcion,
@@ -164,6 +180,7 @@ export async function getFirmaPorToken(token: string): Promise<FirmaPublicaView 
     rutFirmante: firma.rutFirmante,
     firmadoAt: firma.firmadoAt?.toISOString() ?? null,
     expiresAt: firma.expiresAt?.toISOString() ?? null,
+    contenidoMarkdown,
   };
 }
 

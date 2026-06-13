@@ -90,7 +90,7 @@ export function VersionesHistorialDrawer({
           firmadoEn: v.firmadoEn ?? undefined,
         },
         trabajador,
-        contenido: v.observacion ?? "",
+        contenido: v.contenidoMarkdown ?? v.observacion ?? "",
         estado: v.estado as import("./types").DocEstado,
         firmadoPor: v.firmadoPor ?? undefined,
         firmadoEn: v.firmadoEn ?? undefined,

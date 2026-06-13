@@ -42,10 +42,12 @@ export interface DocumentoTrabajador {
   workerId: string;
   tipoDocumentoId: string;
   estado: DocEstado;
+  createdAt?: string;
   fechaCarga?: string;
   fechaVencimiento?: string;
   cargadoPor?: string;
   observacion?: string;
+  contenidoMarkdown?: string;
   archivoNombre?: string;
   archivoNombreOriginal?: string;
   archivoUrl?: string;
@@ -54,7 +56,7 @@ export interface DocumentoTrabajador {
   // Versionado
   esVigente?: boolean;
   versionNumero?: number;
-  origen?: "ia" | "manual" | "sistema";
+  origen?: "ia" | "manual" | "sistema" | "induccion";
   reemplazadoPorId?: string;
   motivoReemplazo?: string;
   totalVersiones?: number; // calculado: cuántas versiones existen para este trabajador+tipo
@@ -76,9 +78,11 @@ export interface DocTrabajadorView {
   archivoUrl?: string;
   firmadoPor?: string;
   firmadoEn?: string;
+  createdAt?: string;
+  contenidoMarkdown?: string;
   // Versionado
   versionNumero?: number;
-  origen?: "ia" | "manual" | "sistema";
+  origen?: "ia" | "manual" | "sistema" | "induccion";
   totalVersiones?: number;  // cuántas versiones (vigente + históricas) existen para este tipo
 }
 

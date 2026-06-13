@@ -1,7 +1,9 @@
 "use server";
 
 import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
+import { generarDocumentosInduccionDesdePlantillasTx } from "@/actions/inducciones/documentos-generados";
 import { evaluarCapacitacionesPorEvento } from "@/lib/capacitacion/evaluar-capacitaciones";
+import { generarTokenFirma } from "@/lib/firmas/tokens";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { Worker, WorkerContrato, WorkerEstado } from "@/components/trabajadores-v2/types";
@@ -140,6 +142,49 @@ async function toDbPayload(worker: Worker, empresaId: string) {
   };
 }
 
+async function crearInduccionAutomaticaSiCorresponde(input: {
+  empresaId: string;
+  trabajadorId: string;
+  usuarioId: string;
+}): Promise<void> {
+  const induccionExistente = await prisma.induccionTrabajador.count({
+    where: {
+      empresaId: input.empresaId,
+      trabajadorId: input.trabajadorId,
+      estado: {
+        in: ["pendiente", "en_progreso"],
+      },
+    },
+  });
+
+  if (induccionExistente > 0) {
+    return;
+  }
+
+  const token = generarTokenFirma();
+
+  await prisma.$transaction(async (tx) => {
+    const induccion = await tx.induccionTrabajador.create({
+      data: {
+        empresaId: input.empresaId,
+        trabajadorId: input.trabajadorId,
+        token,
+        estado: "pendiente",
+        creadoPorId: input.usuarioId,
+        observaciones: "Generada automáticamente al crear trabajador.",
+      },
+      select: { id: true },
+    });
+
+    await generarDocumentosInduccionDesdePlantillasTx(tx, {
+      empresaId: input.empresaId,
+      trabajadorId: input.trabajadorId,
+      induccionId: induccion.id,
+      generadoPor: input.usuarioId,
+    });
+  });
+}
+
 export async function getTrabajadores(): Promise<Worker[]> {
   const { empresaId } = await requirePermission("canReadTrabajadores");
 
@@ -192,6 +237,12 @@ export async function createTrabajador(worker: Worker): Promise<Worker> {
     areaId: payload.areaId ?? null,
     centroTrabajoId: payload.centroTrabajoId ?? null,
   }).catch(() => {});
+
+  await crearInduccionAutomaticaSiCorresponde({
+    empresaId,
+    trabajadorId: created.id,
+    usuarioId,
+  });
 
   return normalizeWorker(row);
 }

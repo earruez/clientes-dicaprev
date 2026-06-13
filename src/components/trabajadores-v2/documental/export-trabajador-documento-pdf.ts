@@ -81,11 +81,106 @@ function buildFilename(tipoNombre: string, trabajador: Worker) {
   return `nextprev-${normalized || "documento"}.pdf`;
 }
 
-function detectTemplate(tipoNombre: string): "epp" | "irl" | "generic" {
+function detectTemplate(documento: DocTrabajadorView | null, tipoNombre: string): "epp" | "irl" | "induccion" | "generic" {
+  if (documento?.origen === "induccion") return "induccion";
+
   const normalized = normalizeText(tipoNombre);
+  if (normalized.includes("induccion") || (normalized.includes("capacitacion") && normalized.includes("inicial"))) return "induccion";
   if (normalized.includes("epp") || normalized.includes("entrega")) return "epp";
   if (normalized.includes("irl") || normalized.includes("riesgo") || normalized.includes("odi")) return "irl";
   return "generic";
+}
+
+type MarkdownSection = {
+  title: string;
+  bodyLines: string[];
+};
+
+function parseMarkdownSections(content: string): MarkdownSection[] {
+  const lines = content.split(/\r?\n/);
+  const sections: MarkdownSection[] = [];
+  let current: MarkdownSection | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const headerMatch = trimmed.match(/^#{1,6}\s+(.+)$/);
+    if (headerMatch) {
+      current = { title: headerMatch[1], bodyLines: [] };
+      sections.push(current);
+      continue;
+    }
+
+    if (!current) continue;
+    if (trimmed === "" && current.bodyLines.length === 0) continue;
+    current.bodyLines.push(line);
+  }
+
+  return sections;
+}
+
+function drawMarkdownSection(doc: jsPDF, layout: Layout, section: MarkdownSection) {
+  ensurePage(doc, layout, 36);
+  drawFormTableHeader(doc, layout, section.title.toUpperCase(), 18);
+  const body = section.bodyLines.join("\n").trim() || "Sin contenido";
+  drawParagraph(doc, layout, body, Math.max(28, Math.min(120, 16 + section.bodyLines.length * 10)));
+}
+
+function renderMarkdownLikeIrlPdf(
+  doc: jsPDF,
+  params: ExportTrabajadorDocumentoPdfParams,
+  tipoNombre: string,
+  options?: {
+    headerTitle?: string;
+    headerSubtitle?: string;
+    footerPrefix?: string;
+  },
+) {
+  const contenidoMarkdown = (params.documento?.contenidoMarkdown ?? params.contenido ?? "").trim();
+  const headerTitle = options?.headerTitle ?? "REGISTRO DE CAPACITACION INICIAL";
+  const headerSubtitle = options?.headerSubtitle ?? "NEXTPREV TEMPLATE-INDUCCION";
+  const footerPrefix = options?.footerPrefix ?? "Estado documental";
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const layout: Layout = {
+    margin: 28,
+    width: pageWidth - 56,
+    pageHeight: doc.internal.pageSize.getHeight(),
+    y: 20,
+  };
+
+  drawHeader(doc, layout, headerTitle, headerSubtitle);
+  drawLabelValue(doc, layout, "Trabajador", safeText(`${params.trabajador.nombre} ${params.trabajador.apellido}`));
+  drawLabelValue(doc, layout, "RUN", safeText(params.trabajador.rut));
+  drawLabelValue(doc, layout, "Cargo", safeText(params.trabajador.cargo));
+  drawLabelValue(doc, layout, "Area", safeText(params.trabajador.area));
+  drawLabelValue(doc, layout, "Estado", estadoLabel(params.estado));
+
+  const sections = parseMarkdownSections(contenidoMarkdown).filter(
+    (section) => section.title.toLowerCase() !== "identificacion del trabajador",
+  );
+
+  if (sections.length === 0) {
+    drawParagraph(doc, layout, contenidoMarkdown || "Sin contenido", 120);
+  } else {
+    sections.forEach((section) => {
+      drawMarkdownSection(doc, layout, section);
+    });
+  }
+
+  const sigH = 72;
+  ensurePage(doc, layout, sigH);
+  const sigW = layout.width / 2;
+  doc.rect(layout.margin, layout.y, sigW, sigH);
+  doc.rect(layout.margin + sigW, layout.y, sigW, sigH);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text(`Firma trabajador\n${safeText(params.firmadoPor ?? params.trabajador.nombre)}`, layout.margin + 6, layout.y + 14);
+  doc.text(`Responsable SST\n${safeText(params.empresa?.nombre ?? params.empresa?.razonSocial ?? "Empresa")}`, layout.margin + sigW + 6, layout.y + 14);
+
+  drawFirmaTrazabilidad(doc, layout, params);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(`${footerPrefix}: ${estadoLabel(params.estado)} | Documento: ${tipoNombre}`, layout.margin, layout.pageHeight - 14);
 }
 
 function wrap(doc: jsPDF, text: string, width: number) {
@@ -1166,15 +1261,11 @@ export async function renderIRLPdf(doc: jsPDF, params: ExportTrabajadorDocumento
     return;
   }
 
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const layout: Layout = {
-    margin: 32,
-    width: pageWidth - 64,
-    pageHeight: doc.internal.pageSize.getHeight(),
-    y: 36,
-  };
-  drawHeader(doc, layout, "ACTA DE INFORMACION DE RIESGOS LABORALES", "Formato simplificado");
-  drawParagraph(doc, layout, params.contenido || "Sin contenido", 80);
+  renderMarkdownLikeIrlPdf(doc, params, tipoNombre, {
+    headerTitle: "ACTA DE INFORMACION DE RIESGOS LABORALES",
+    headerSubtitle: "NEXTPREV TEMPLATE-IRL",
+    footerPrefix: "Estado documental",
+  });
 }
 
 function renderGenericPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams, tipoNombre: string) {
@@ -1227,12 +1318,14 @@ function renderGenericPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams
 export async function exportTrabajadorDocumentoPdf(params: ExportTrabajadorDocumentoPdfParams) {
   const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
   const tipoNombre = params.documento?.tipo.nombre ?? "Documento de trabajador";
-  const template = detectTemplate(tipoNombre);
+  const template = detectTemplate(params.documento, tipoNombre);
 
   if (template === "epp") {
     await renderEppPdf(doc, params, tipoNombre);
   } else if (template === "irl") {
     await renderIRLPdf(doc, params, tipoNombre);
+  } else if (template === "induccion") {
+    renderMarkdownLikeIrlPdf(doc, params, tipoNombre);
   } else {
     renderGenericPdf(doc, params, tipoNombre);
   }

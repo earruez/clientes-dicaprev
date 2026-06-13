@@ -459,7 +459,7 @@ export function DocumentoReviewDrawer({
 
     const d = context.doc;
     setLocalDoc(d);
-    const contenidoInicial = d?.observacion ?? context.contenidoGenerado ?? "";
+    const contenidoInicial = d?.contenidoMarkdown ?? d?.observacion ?? context.contenidoGenerado ?? "";
 
     // Pre-fill content
     setContenido(contenidoInicial);
@@ -894,7 +894,7 @@ export function DocumentoReviewDrawer({
       await exportTrabajadorDocumentoPdf({
         documento: documentoParaPdf,
         trabajador: worker,
-        contenido,
+        contenido: doc?.contenidoMarkdown ?? contenido,
         estado: efectoEstado,
         firmadoPor: doc?.firmadoPor ?? originalDoc?.firmadoPor ?? null,
         firmadoEn: doc?.firmadoEn ?? originalDoc?.firmadoEn ?? null,
@@ -994,6 +994,31 @@ export function DocumentoReviewDrawer({
       setTimeout(() => setPhase("idle"), 1500);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Error al guardar correccion");
+      setPhase("error");
+    }
+  }
+
+  async function handleEnviarRevision() {
+    if (phase !== "idle" || !doc?.documentoId) return;
+    setPhase("saving");
+    setErrorMsg(null);
+    try {
+      await guardarContenidoIADocumento(doc.documentoId, contenido);
+      await cambiarEstadoTrabajadorDocumento(
+        doc.documentoId,
+        "en_revision",
+        "Documento enviado a revisión",
+      );
+      const updated = { ...doc, estado: "en_revision" as const, observacion: contenido };
+      setLocalDoc(updated);
+      const h = await getHistorialDocumentoTrabajador(doc.documentoId);
+      setHistorial(h);
+      await onUpdated?.();
+      router.refresh();
+      setPhase("done");
+      setTimeout(() => setPhase("idle"), 1500);
+    } catch (e) {
+      setErrorMsg(e instanceof Error ? e.message : "Error al enviar a revisión");
       setPhase("error");
     }
   }
@@ -1335,11 +1360,11 @@ export function DocumentoReviewDrawer({
                   </button>
                 )}
 
-                {/* en_revision or initial create -> Guardar + Validar */}
+                {/* pendiente -> Enviar a revisión | en_revision -> Validar */}
                 {!isReadOnly && (efectoEstado === "pendiente" || efectoEstado === "en_revision" || !doc?.documentoId) && (
                   <>
                     <button
-                      onClick={handleGuardar}
+                      onClick={efectoEstado === "pendiente" && doc?.documentoId ? handleEnviarRevision : handleGuardar}
                       disabled={isLoading || !contenido.trim()}
                       className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -1347,9 +1372,9 @@ export function DocumentoReviewDrawer({
                         ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
                         : <PenLine className="h-3.5 w-3.5" />
                       }
-                      Guardar cambios
+                      {efectoEstado === "pendiente" && doc?.documentoId ? "Enviar a revisión" : !doc?.documentoId ? "Crear y enviar a revisión" : "Guardar cambios"}
                     </button>
-                    {doc?.documentoId && (
+                    {doc?.documentoId && efectoEstado === "en_revision" && (
                       <button
                         onClick={handleValidar}
                         disabled={isLoading}
