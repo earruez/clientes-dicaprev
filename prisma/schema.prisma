@@ -569,6 +569,8 @@ model EvidenciaCumplimiento {
   id              String   @id @default(uuid())
   empresaId       String
   titulo          String
+  descripcion     String   @default("")
+  origen          String   @default("manual")
   tipo            String
   estado          String
   fechaEvidencia  DateTime
@@ -579,10 +581,17 @@ model EvidenciaCumplimiento {
   archivoPeso     Int?
   hallazgoId      String?
   obligacionClave String?
+  documentoTrabajadorId String?
+  documentoEmpresaId String?
+  checklistEjecucionId String?
+  entregaEppId   String?
   accionPlanId    String?
   centroTrabajoId String?
   trabajadorId    String?
   creadoPorId     String?
+  validadoPorId   String?
+  validadoAt      DateTime?
+  observacionRevision String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -596,8 +605,14 @@ model EvidenciaCumplimiento {
   @@index([empresaId])
   @@index([hallazgoId])
   @@index([obligacionClave])
+  @@index([documentoTrabajadorId])
+  @@index([documentoEmpresaId])
+  @@index([checklistEjecucionId])
+  @@index([entregaEppId])
   @@index([centroTrabajoId])
   @@index([trabajadorId])
+  @@index([validadoPorId])
+  @@index([validadoAt])
   @@index([estado])
   @@index([fechaEvidencia])
 }

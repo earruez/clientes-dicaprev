@@ -21,10 +21,10 @@ import {
   crearEntregaEpp,
   getEntregasEpp,
   getOpcionesTrabajadoresParaEpp,
-  EPP_PREDETERMINADOS,
   type EntregaEppListItem,
   type DetalleInput,
 } from "@/actions/epp";
+import { EPP_PREDETERMINADOS } from "@/lib/epp/constants";
 
 // ─── Tipos locales ─────────────────────────────────────────────────────────
 
