@@ -52,6 +52,17 @@ export type ControlDocumentalTrabajadoresPayload = {
   documentos: DocumentoTrabajador[];
 };
 
+const CODIGOS_INDUCCION_A_TIPO_CONTROL: Record<string, string> = {
+  IRL: "IRL_RIESGOS",
+  ENTREGA_EPP: "ENTREGA_EPP",
+  RECEPCION_RI: "REGLAMENTO_INTERNO_RECIBIDO",
+  REGISTRO_INDUCCION: "CAPACITACION_INICIAL",
+};
+
+function mapCodigoDocumentoInduccionACodigoControl(codigo: string): string | null {
+  return CODIGOS_INDUCCION_A_TIPO_CONTROL[codigo.trim().toUpperCase()] ?? null;
+}
+
 export type EmpresaDocumentoMeta = {
   nombre: string;
   razonSocial: string | null;
@@ -770,18 +781,6 @@ function normalizeOdiToken(value: string | null | undefined): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function esDocumentoOdiTrabajador(tipo: string, nombre: string): boolean {
-  const source = `${normalizeOdiToken(tipo)} ${normalizeOdiToken(nombre)}`;
-  return (
-    source.includes("odi") ||
-    source.includes("obligacion de informar") ||
-    source.includes("obligacion informar") ||
-    source.includes("informacion de riesgos") ||
-    source.includes("informacion riesgos") ||
-    source.includes("irl")
-  );
-}
-
 function extraerRiesgosDesdePerfil(cargoPerfil: string | null, cargoDescripcion: string | null): string[] {
   const source = normalizeOdiToken(`${cargoPerfil ?? ""} ${cargoDescripcion ?? ""}`);
   const riesgos: string[] = [];
@@ -971,10 +970,6 @@ export async function generarContenidoDocumentoTrabajadorIA(
 
   if (!documento) {
     throw new Error("Documento no encontrado para la empresa actual");
-  }
-
-  if (!esDocumentoOdiTrabajador(documento.tipo, documento.nombre)) {
-    throw new Error("La generación IA v1 está habilitada solo para ODI / Obligación de Informar");
   }
 
   const trabajadorNombre = `${documento.trabajador?.nombres ?? ""} ${documento.trabajador?.apellidos ?? ""}`.trim();
@@ -1803,6 +1798,24 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
       })
     : [];
 
+  const documentosInduccionRows = workerIds.length
+    ? await prisma.documentoInduccionGenerado.findMany({
+        where: { empresaId, trabajadorId: { in: workerIds } },
+        select: {
+          id: true,
+          trabajadorId: true,
+          tipo: true,
+          titulo: true,
+          contenidoMarkdown: true,
+          estado: true,
+          firmadoPor: true,
+          firmadoEn: true,
+          createdAt: true,
+        },
+        orderBy: [{ createdAt: "desc" }],
+      })
+    : [];
+
   // Contar versiones históricas por trabajadorId+tipo para mostrar el badge "Historial N versiones"
   const versionCountRows = workerIds.length
     ? await prisma.trabajadorDocumento.groupBy({
@@ -1861,6 +1874,7 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
         tipoDocumentoId,
         tipoCodigo: row.tipo,
         estado: mapDocEstado(row.estado),
+        createdAt: row.createdAt.toISOString(),
         fechaCarga: row.createdAt.toISOString().slice(0, 10),
         fechaVencimiento: row.fechaVencimiento ? row.fechaVencimiento.toISOString().slice(0, 10) : undefined,
         cargadoPor: row.creadoPorEmail ?? undefined,
@@ -1879,11 +1893,44 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
     })
     .filter(Boolean) as DocumentoTrabajador[];
 
+  const documentosInduccion = documentosInduccionRows
+    .map((row) => {
+      const codigoControl = mapCodigoDocumentoInduccionACodigoControl(row.tipo);
+      if (!codigoControl) return null;
+
+      const tipoDocumentoId = tipoByCodigo.get(codigoControl.toLowerCase());
+      if (!tipoDocumentoId) return null;
+
+      return {
+        id: row.id,
+        workerId: row.trabajadorId,
+        tipoDocumentoId,
+        tipoCodigo: codigoControl,
+        estado: mapDocEstado(row.estado),
+        createdAt: row.createdAt.toISOString(),
+        fechaCarga: row.createdAt.toISOString().slice(0, 10),
+        cargadoPor: row.firmadoPor ?? "Sistema",
+        observacion: row.titulo,
+        contenidoMarkdown: row.contenidoMarkdown,
+        firmadoPor: row.firmadoPor ?? undefined,
+        firmadoEn: row.firmadoEn ? row.firmadoEn.toISOString() : undefined,
+        origen: "induccion",
+        totalVersiones: 1,
+      } satisfies DocumentoTrabajador;
+    })
+    .filter(Boolean) as DocumentoTrabajador[];
+
+  const documentosOrdenados = [...documentos, ...documentosInduccion].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+
   return {
     workers: trabajadoresRows.map(mapWorkerRow),
     tipos,
     reglas,
-    documentos,
+    documentos: documentosOrdenados,
   };
 }
 
@@ -2130,6 +2177,7 @@ export type VersionDocumentoView = {
   cargadoPor: string | null;
   motivoReemplazo: string | null;
   observacion: string | null;
+  contenidoMarkdown: string | null;
   archivoNombre: string | null;
   archivoNombreOriginal: string | null;
   archivoUrl: string | null;
@@ -2198,6 +2246,7 @@ export async function getVersionesTrabajadorDocumento(
     cargadoPor: row.creadoPorEmail ?? null,
     motivoReemplazo: row.motivoReemplazo ?? null,
     observacion: row.observaciones ?? null,
+    contenidoMarkdown: null,
     archivoNombre: row.archivoNombre ?? null,
     archivoNombreOriginal: row.archivoNombreOriginal ?? null,
     archivoUrl: row.archivoUrl ?? null,

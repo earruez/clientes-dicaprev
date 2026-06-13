@@ -7,6 +7,7 @@ import type { CompanyModuleKey } from "@/lib/company-modules";
 type MePermissionsResponse = {
   role: UserRole;
   email: string;
+  empresaId?: string;
   modulos?: Partial<Record<CompanyModuleKey, boolean>>;
 };
 
@@ -19,6 +20,7 @@ export function hasPermission(permission: PermissionKey, role: UserRole | null |
 export function usePermissions() {
   const [role, setRole] = useState<UserRole | null>(null);
   const [modulos, setModulos] = useState<Set<CompanyModuleKey>>(new Set());
+  const [empresaId, setEmpresaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,6 +36,7 @@ export function usePermissions() {
       .then((data) => {
         if (mounted) {
           setRole(data.role);
+          setEmpresaId(typeof data.empresaId === "string" && data.empresaId.trim() ? data.empresaId : null);
           const enabled = new Set<CompanyModuleKey>();
           Object.entries(data.modulos ?? {}).forEach(([key, value]) => {
             if (value) {
@@ -46,6 +49,7 @@ export function usePermissions() {
       .catch(() => {
         if (mounted) {
           setRole(null);
+          setEmpresaId(null);
           setModulos(new Set());
         }
       })
@@ -66,14 +70,16 @@ export function usePermissions() {
 
   const hasModule = useMemo(() => {
     return (module: CompanyModuleKey) => {
-      if (role === "SUPERADMIN") return true;
-      if (modulos.size === 0) return true;
+      if (loading) return false;
+      if (modulos.size === 0) return false;
       return modulos.has(module);
     };
-  }, [modulos, role]);
+  }, [loading, modulos]);
 
   return {
     role,
+    empresaId,
+    hasActiveCompany: Boolean(empresaId),
     loading,
     hasPermission: checker,
     hasModule,

@@ -25,8 +25,9 @@ import {
   Users,
   Sparkles,
   MoreHorizontal,
+  FileText,
 } from "lucide-react";
-import { puedeGenerarseConIA, esContenidoPlaceholder } from "@/lib/documentacion/ia-generacion-helper";
+import { puedeGenerarseConIA, esContenidoPlaceholder, generarPlantillaContenidoIA } from "@/lib/documentacion/ia-generacion-helper";
 import {
   CATEGORIA_CONFIG,
   ESTADO_DOC_CONFIG,
@@ -167,7 +168,7 @@ export function PendientesPanel({
       await exportTrabajadorDocumentoPdf({
         documento: doc,
         trabajador: worker,
-        contenido: doc.observacion ?? "",
+        contenido: doc.contenidoMarkdown ?? doc.observacion ?? "",
         estado: doc.estado,
         firmadoPor: doc.firmadoPor,
         firmadoEn: doc.firmadoEn,
@@ -184,10 +185,23 @@ export function PendientesPanel({
     try {
       setGenerandoDocId(doc.tipo.id);
       if (!doc.documentoId) {
-        throw new Error("El documento ODI no tiene un registro vigente para generar borrador IA");
+        throw new Error("El documento no tiene un registro vigente para generar borrador IA");
       }
 
-      const generated = await generarContenidoDocumentoTrabajadorIA(doc.documentoId);
+      const esIrl = /irl|riesgo|obligacion de informar/i.test(doc.tipo.nombre);
+      const esEpp = /epp|entrega/i.test(doc.tipo.nombre);
+
+      const generated = esIrl || esEpp
+        ? {
+            contenido: generarPlantillaContenidoIA({
+              tipoNombre: doc.tipo.nombre,
+              trabajadorNombre: `${worker.nombre} ${worker.apellido}`,
+              trabajadorRut: worker.rut,
+              cargo: worker.cargo,
+              empresa: empresaMeta?.razonSocial ?? empresaMeta?.nombre ?? "DICAPREV",
+            }),
+          }
+        : await generarContenidoDocumentoTrabajadorIA(doc.documentoId);
 
       const updatedDoc = {
         ...doc,
@@ -1167,11 +1181,13 @@ export function PendientesPanel({
                               const hasAnyRecord = Boolean(doc.documentoId);
                               const hasCarga = Boolean(doc.fechaCarga || doc.cargadoPor || hasUploadedFile);
                               const isSigned = doc.estado === "firmado";
-                              const origen = hasStructuredIaContent && isAutomatizable
-                                ? "IA"
-                                : hasCarga
-                                  ? "Subido"
-                                  : "Pendiente";
+                              const origen = doc.origen === "induccion"
+                                ? "Inducción"
+                                : hasStructuredIaContent && isAutomatizable
+                                  ? "IA"
+                                  : hasCarga
+                                    ? "Subido"
+                                    : "Pendiente";
                               const puedeRevisarIa = isAutomatizable && (
                                 hasStructuredIaContent ||
                                 doc.estado === "en_revision" ||
@@ -1181,7 +1197,8 @@ export function PendientesPanel({
                                 doc.estado === "rechazado"
                               );
                               const puedeGenerarIa = isAutomatizable && !isSigned && !hasStructuredIaContent;
-                              const puedeDescargarPdf = Boolean(doc.observacion?.trim()) && ["en_revision", "validado", "enviado_firma", "firmado"].includes(doc.estado);
+                              const contenidoPdf = (doc.contenidoMarkdown ?? doc.observacion ?? "").trim();
+                              const puedeDescargarPdf = Boolean(contenidoPdf) && ["en_revision", "validado", "enviado_firma", "firmado"].includes(doc.estado);
                               const rowKey = `${worker.id}-${doc.tipo.id}`;
                               // Calcular si está pronto a vencer (< 30 días)
                               const isProxAVencer = doc.diasParaVencer != null && doc.diasParaVencer > 0 && doc.diasParaVencer < 30;
@@ -1274,6 +1291,16 @@ export function PendientesPanel({
                                               <Sparkles className="h-2.5 w-2.5" />
                                             )}
                                             IA
+                                          </button>
+                                        )}
+                                        {puedeRevisarIa && (
+                                          <button
+                                            onClick={() => openReview({ doc, worker })}
+                                            className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-violet-700"
+                                            title="Revisar documento"
+                                          >
+                                            <FileText className="h-2.5 w-2.5" />
+                                            Revisión
                                           </button>
                                         )}
                                       </>

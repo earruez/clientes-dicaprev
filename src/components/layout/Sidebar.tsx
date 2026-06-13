@@ -26,6 +26,7 @@ type ModuleItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   defaultHref: string;
+  alwaysVisible?: boolean;
   permission?: PermissionKey;
   moduleKey?: CompanyModuleKey;
   items: NavItem[];
@@ -37,6 +38,7 @@ const MODULES: ModuleItem[] = [
     label: "Inicio",
     icon: Home,
     defaultHref: "/dicaprev/dashboard",
+    alwaysVisible: true,
     moduleKey: "dashboard",
     items: [{ href: "/dicaprev/dashboard", label: "Dashboard" }],
   },
@@ -138,6 +140,14 @@ const MODULES: ModuleItem[] = [
     ],
   },
   {
+    id: "select-company",
+    label: "Empresa activa",
+    icon: Building2,
+    defaultHref: "/dicaprev/superadmin",
+    alwaysVisible: true,
+    items: [{ href: "/dicaprev/superadmin", label: "Seleccionar empresa" }],
+  },
+  {
     id: "sistema",
     label: "Sistema",
     icon: ClipboardList,
@@ -176,22 +186,70 @@ function isItemActive(pathname: string, href: string) {
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { hasPermission, hasModule, role } = usePermissions();
+  const { hasPermission, hasModule, role, hasActiveCompany, loading } = usePermissions();
+
+  if (loading) {
+    return null;
+  }
+
+  const isSuperAdmin = role === "SUPERADMIN";
 
   const visibleModules = MODULES
-    .filter((module) => (module.permission ? hasPermission(module.permission) : true))
-    .filter((module) => (module.moduleKey ? hasModule(module.moduleKey) : true))
+    .filter((module) => {
+      if (module.id === "select-company") {
+        return isSuperAdmin && !hasActiveCompany;
+      }
+
+      if (!hasActiveCompany && !module.alwaysVisible) {
+        return false;
+      }
+
+      if (module.permission && !hasPermission(module.permission)) {
+        return false;
+      }
+
+      if (hasActiveCompany && module.moduleKey && !hasModule(module.moduleKey)) {
+        return false;
+      }
+
+      return true;
+    })
     .map((module) => ({
       ...module,
       items: module.items.filter((item) => {
+        if (!hasActiveCompany && !module.alwaysVisible) {
+          return false;
+        }
+
         const canByPermission = item.permission ? hasPermission(item.permission) : true;
-        const canByModule = item.moduleKey ? hasModule(item.moduleKey) : true;
-        return canByPermission && canByModule;
+        if (!canByPermission) {
+          return false;
+        }
+
+        if (hasActiveCompany && item.moduleKey) {
+          return hasModule(item.moduleKey);
+        }
+
+        return true;
       }),
     }))
     .filter((module) => module.items.length > 0);
 
-  if (role === "SUPERADMIN") {
+  if (hasActiveCompany) {
+    const enabledOperational = visibleModules.some(
+      (module) => !module.alwaysVisible && module.id !== "superadmin"
+    );
+
+    if (!enabledOperational) {
+      visibleModules.splice(
+        0,
+        visibleModules.length,
+        ...visibleModules.filter((module) => module.alwaysVisible || module.id === "superadmin")
+      );
+    }
+  }
+
+  if (isSuperAdmin) {
     const exists = visibleModules.some((module) => module.id === "superadmin");
     if (!exists) {
       visibleModules.push({
