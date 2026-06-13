@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useRef, useState, useTransition } from "react";
-import { AlertCircle, CheckCircle2, Camera, Loader2, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, Camera, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -69,7 +69,6 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragCounterRef = useRef(0);
   const [archivos, setArchivos] = useState<File[]>([]);
-  const [archivosData, setArchivosData] = useState<Array<{ file: File; url: string; nombre: string; tipo: string }>>([]);
   const [centroTrabajoId, setCentroTrabajoId] = useState<string>("");
   const [areaId, setAreaId] = useState<string>("");
   const [observacion, setObservacion] = useState("");
@@ -98,7 +97,6 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
 
   function resetFlow() {
     setArchivos([]);
-    setArchivosData([]);
     setCentroTrabajoId("");
     setAreaId("");
     setObservacion("");
@@ -260,7 +258,6 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
           });
         }
 
-        setArchivosData(datosArchivos);
         setSugerencias(todasLasSugerencias);
         setSugerenciasSeleccionadas(new Set(todasLasSugerencias.map((item) => item.id)));
         setProcesandoIndex(-1);

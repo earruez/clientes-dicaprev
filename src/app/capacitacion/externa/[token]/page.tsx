@@ -12,7 +12,7 @@ import {
 import { CheckCircle2, BookOpen, Video, FileText, Clock, AlertTriangle, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface Pregunta extends CapacitacionSesionPregunta {}
+type Pregunta = CapacitacionSesionPregunta;
 
 type Paso = "bienvenida" | "material" | "evaluacion" | "firma" | "completado";
 
