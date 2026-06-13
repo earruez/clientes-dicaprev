@@ -69,6 +69,8 @@ const MODULES: ModuleItem[] = [
     items: [
       { href: "/dicaprev/trabajadores", label: "Listado" },
       { href: "/dicaprev/trabajadores/control-documental", label: "Control documental" },
+      { href: "/dicaprev/trabajadores/inducciones", label: "Inducciones" },
+      { href: "/dicaprev/trabajadores/importar", label: "Importar trabajadores" },
       { href: "/dicaprev/capacitacion", label: "Capacitaciones" },
     ],
   },
@@ -88,6 +90,22 @@ const MODULES: ModuleItem[] = [
       { href: "/dicaprev/accidentes", label: "Accidentes" },
       { href: "/dicaprev/cumplimiento/plan-trabajo", label: "Plan de trabajo" },
     ],
+  },
+  {
+    id: "epp",
+    label: "EPP",
+    icon: ShieldCheck,
+    defaultHref: "/dicaprev/epp",
+    permission: "canReadCumplimiento",
+    items: [{ href: "/dicaprev/epp", label: "Gestión EPP" }],
+  },
+  {
+    id: "contratistas",
+    label: "Contratistas",
+    icon: ClipboardList,
+    defaultHref: "/dicaprev/contratistas",
+    permission: "canReadCumplimiento",
+    items: [{ href: "/dicaprev/contratistas", label: "Gestión contratistas" }],
   },
   {
     id: "acreditaciones",
