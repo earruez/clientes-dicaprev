@@ -67,6 +67,8 @@ export interface DocumentoReviewContext {
   worker: Worker;
   /** Pre-fill inicial del contenido en modo "generar" */
   contenidoGenerado?: string;
+  /** Si true, el drawer se usa para visualizar documento sin acciones de edición/IA */
+  viewOnly?: boolean;
 }
 
 export interface DocumentoReviewDrawerProps {
@@ -461,7 +463,46 @@ export function DocumentoReviewDrawer({
 
     // Pre-fill content
     setContenido(contenidoInicial);
-    setEstructura(parseDocumentoEstructurado(contenidoInicial));
+
+    const estructuraDetectada = parseDocumentoEstructurado(contenidoInicial);
+    if (estructuraDetectada) {
+      setEstructura(estructuraDetectada);
+    } else {
+      const tipoDoc = d?.tipo ?? context.doc?.tipo;
+      const nombreTipo = tipoDoc?.nombre ?? "";
+      const plantilla = getPlantilla(tipoDoc?.id ?? "", nombreTipo);
+      const codigo = (plantilla?.codigo ?? "").toLowerCase();
+      const nombrePlantilla = (plantilla?.nombre ?? "").toLowerCase();
+      const esEstructurable =
+        codigo.includes("irl") ||
+        codigo.includes("epp") ||
+        nombrePlantilla.includes("irl") ||
+        nombrePlantilla.includes("epp");
+
+      if (esEstructurable && tipoDoc) {
+        const nuevaEstructura =
+          codigo.includes("epp") || nombrePlantilla.includes("epp")
+            ? crearDocumentoEppEstructurado({
+                tipoNombre: nombreTipo,
+                trabajadorNombre: `${context.worker.nombre} ${context.worker.apellido}`,
+                trabajadorRut: context.worker.rut,
+                cargo: context.worker.cargo,
+                area: context.worker.area,
+              })
+            : crearDocumentoIrlEstructurado({
+                tipoNombre: nombreTipo,
+                trabajadorNombre: `${context.worker.nombre} ${context.worker.apellido}`,
+                trabajadorRut: context.worker.rut,
+                cargo: context.worker.cargo,
+                area: context.worker.area,
+              });
+
+        setEstructura(nuevaEstructura);
+        setContenido(serializarDocumentoEstructurado(nuevaEstructura));
+      } else {
+        setEstructura(null);
+      }
+    }
 
     // Load historial from DB if we have a real documentoId
     if (d?.documentoId) {
@@ -488,11 +529,12 @@ export function DocumentoReviewDrawer({
   if (!isOpen || !context) return null;
 
   const { worker, doc: originalDoc } = context;
+  const isViewOnly = Boolean(context.viewOnly);
   const doc = localDoc;
   const tipoNombre = doc?.tipo.nombre ?? originalDoc?.tipo.nombre ?? "";
   const nombreDisplay = normalizarNombreDocumentoDisplay(tipoNombre);
   const origen = puedeGenerarseConIA(doc?.tipo ?? originalDoc?.tipo ?? {}) ? "IA" : "Manual";
-  const isReadOnly = doc?.estado === "firmado";
+  const isReadOnly = doc?.estado === "firmado" || isViewOnly;
   const efectoEstado = doc?.estado ?? "pendiente";
   const plantillaActual = getPlantilla(doc?.tipo.id ?? originalDoc?.tipo.id ?? "", tipoNombre);
   const plantillaCodigo = (plantillaActual?.codigo ?? "").toLowerCase();
@@ -570,6 +612,7 @@ export function DocumentoReviewDrawer({
   }
 
   function renderFieldIABtn(campoId: string) {
+    if (isViewOnly) return null;
     const disabled = isReadOnly || isLoading || !doc?.documentoId;
     return (
       <button
@@ -589,6 +632,7 @@ export function DocumentoReviewDrawer({
   }
 
   function renderSectionIABtn(seccionId: string) {
+    if (isViewOnly) return null;
     const disabled = isReadOnly || isLoading || !doc?.documentoId;
     return (
       <button
@@ -885,6 +929,15 @@ export function DocumentoReviewDrawer({
       if (doc?.documentoId) {
         // Update existing document content
         await guardarContenidoIADocumento(doc.documentoId, contenido);
+
+        if (efectoEstado === "pendiente") {
+          await cambiarEstadoTrabajadorDocumento(
+            doc.documentoId,
+            "en_revision",
+            "Documento generado/actualizado y enviado a revisión",
+          );
+          setLocalDoc((prev) => (prev ? { ...prev, estado: "en_revision", observacion: contenido } : prev));
+        }
       } else if (tipo) {
         // Create new documento with en_revision state
         const created = await createTrabajadorDocumento({
@@ -1073,7 +1126,7 @@ export function DocumentoReviewDrawer({
             </span>
             <div>
               <h2 className="text-sm font-bold text-slate-900">{nombreDisplay}</h2>
-              <p className="text-[11px] text-slate-500">Revisión y firma de documento</p>
+              <p className="text-[11px] text-slate-500">{isViewOnly ? "Visualización de documento" : "Revisión y firma de documento"}</p>
             </div>
           </div>
           <button
@@ -1283,7 +1336,7 @@ export function DocumentoReviewDrawer({
                 )}
 
                 {/* en_revision or initial create -> Guardar + Validar */}
-                {(efectoEstado === "en_revision" || !doc?.documentoId) && (
+                {!isReadOnly && (efectoEstado === "pendiente" || efectoEstado === "en_revision" || !doc?.documentoId) && (
                   <>
                     <button
                       onClick={handleGuardar}
@@ -1313,7 +1366,7 @@ export function DocumentoReviewDrawer({
                 )}
 
                 {/* validado → Enviar a firma */}
-                {efectoEstado === "validado" && doc?.documentoId && (
+                {!isReadOnly && efectoEstado === "validado" && doc?.documentoId && (
                   <button
                     onClick={handleEnviarFirma}
                     disabled={isLoading}
@@ -1328,7 +1381,7 @@ export function DocumentoReviewDrawer({
                 )}
 
                 {/* enviado_firma → Firmar */}
-                {efectoEstado === "enviado_firma" && doc?.documentoId && (
+                {!isReadOnly && efectoEstado === "enviado_firma" && doc?.documentoId && (
                   <button
                     onClick={handleFirmar}
                     disabled={isLoading}
@@ -1343,7 +1396,7 @@ export function DocumentoReviewDrawer({
                 )}
 
                 {/* rechazado → corregir y volver a en_revision */}
-                {efectoEstado === "rechazado" && doc?.documentoId && (
+                {!isReadOnly && efectoEstado === "rechazado" && doc?.documentoId && (
                   <>
                     <button
                       onClick={handleGuardarCorreccion}

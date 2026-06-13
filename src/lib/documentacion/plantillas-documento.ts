@@ -88,7 +88,7 @@ const PLANTILLAS_DOCUMENTO: PlantillaDocumento[] = [
       "odi",
       "obligacion de informar",
     ],
-    nombre: "Identificación de Riesgos Laborales (IRL)",
+    nombre: "Informe de Riesgos Laborales (IRL)",
     descripcion:
       "Documento que identifica y comunica formalmente los riesgos presentes en el puesto de trabajo, " +
       "las medidas de control aplicadas y el EPP asignado. Firmado por el trabajador y el empleador. " +
@@ -151,7 +151,7 @@ const PLANTILLAS_DOCUMENTO: PlantillaDocumento[] = [
     ],
     baseNormativa: ["Ley 16.744", "DS44", "DS54", "Ley 21.643 (Ley Karin)"],
     instruccionIA:
-      "DOCUMENTO LEGAL: Identificación de Riesgos Laborales (IRL). " +
+      "DOCUMENTO LEGAL: Informe de Riesgos Laborales (IRL). " +
       "CRITERIOS TECNICOS CHILENOS: " +
       "1. Usar terminologia de prevencion de riesgos estandar en Chile (segun SUSESO, DS44, NCh). " +
       "2. Especificar riesgos reales del puesto. " +

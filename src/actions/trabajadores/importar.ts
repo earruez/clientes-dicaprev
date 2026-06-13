@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
+import { generarDocumentosInduccionDesdePlantillasTx } from "@/actions/inducciones/documentos-generados";
 
 export type FilaTrabajadorImportar = {
   rut: string;
@@ -57,51 +58,26 @@ async function crearInduccionSiCorresponde(
 
   const token = generarTokenFirma();
 
-  const induccion = await prisma.induccionTrabajador.create({
-    data: {
-      empresaId,
-      trabajadorId,
-      token,
-      estado: "pendiente",
-      creadoPorId: usuarioId,
-      observaciones: "Generada automáticamente por carga masiva.",
-    },
-    select: { id: true },
-  });
-
-  const docs = await prisma.trabajadorDocumento.findMany({
-    where: {
-      trabajadorId,
-      empresaId,
-      esVigente: true,
-      archivoUrl: { not: null },
-      firmado: false,
-    },
-    select: { id: true, nombre: true, tipo: true },
-  });
-
-  const trabajador = await prisma.trabajador.findUnique({
-    where: { id: trabajadorId },
-    select: { nombres: true, apellidos: true, rut: true },
-  });
-
-  if (docs.length > 0 && trabajador) {
-    await prisma.firmaDocumento.createMany({
-      data: docs.map((doc) => ({
+  await prisma.$transaction(async (tx) => {
+    const induccion = await tx.induccionTrabajador.create({
+      data: {
         empresaId,
         trabajadorId,
-        documentoId: doc.id,
-        documentoOrigen: "induccion" as const,
-        token: generarTokenFirma(),
-        estado: "pendiente" as const,
-        tituloDocumento: doc.nombre,
-        descripcion: `Inducción digital — ${doc.tipo}`,
-        nombreFirmante: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
-        rutFirmante: trabajador.rut ?? null,
-        induccionId: induccion.id,
-      })),
+        token,
+        estado: "pendiente",
+        creadoPorId: usuarioId,
+        observaciones: "Generada automáticamente por carga masiva.",
+      },
+      select: { id: true },
     });
-  }
+
+    await generarDocumentosInduccionDesdePlantillasTx(tx, {
+      empresaId,
+      trabajadorId,
+      induccionId: induccion.id,
+      generadoPor: usuarioId,
+    });
+  });
 
   return true;
 }
