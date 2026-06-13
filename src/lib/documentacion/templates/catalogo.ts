@@ -17,7 +17,7 @@ import type {
 
 export const PLANTILLA_IRL: DocumentoTemplateDefinition<PayloadPlantillaIrl> = {
   codigo: "IRL",
-  nombre: "Identificacion de Riesgos Laborales",
+  nombre: "Informe de Riesgos Laborales",
   descripcion: "Plantilla para identificar riesgos, controles y protocolos asociados al puesto.",
   version: "1.0.0",
   referenciaVisual: "docs/referencias/formato_irl_nextprev_mvp.pdf",

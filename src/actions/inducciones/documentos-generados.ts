@@ -196,7 +196,7 @@ function construirDocumentosBase(params: {
 
   documentos.push({
     codigo: "IRL",
-    titulo: "Identificacion de Riesgos Laborales (IRL)",
+    titulo: "Informe de Riesgos Laborales (IRL)",
     renderizado: PLANTILLA_IRL.construir(
       {
         actividad: `${ctx.trabajadorCargo} en ${ctx.centroTrabajo}`,
@@ -210,7 +210,7 @@ function construirDocumentosBase(params: {
       crearShell(ctx, {
         codigoDocumento: PLANTILLA_IRL.codigo,
         version: PLANTILLA_IRL.version,
-        titulo: "Identificacion de Riesgos Laborales (IRL)",
+        titulo: "Informe de Riesgos Laborales (IRL)",
         generadoPor,
       }),
     ),
