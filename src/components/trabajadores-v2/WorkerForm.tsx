@@ -393,31 +393,6 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
                     />
                   </Field>
 
-                  <Field id="documentosPendientes" label="Documentos pendientes" half>
-                    <input
-                      id="documentosPendientes"
-                      type="number"
-                      min={0}
-                      value={form.documentosPendientes}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        set("documentosPendientes", parseInt(e.target.value) || 0)
-                      }
-                      className={inputCls()}
-                    />
-                  </Field>
-
-                  <Field id="capacitacionesPendientes" label="Capacitaciones pendientes" half>
-                    <input
-                      id="capacitacionesPendientes"
-                      type="number"
-                      min={0}
-                      value={form.capacitacionesPendientes}
-                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                        set("capacitacionesPendientes", parseInt(e.target.value) || 0)
-                      }
-                      className={inputCls()}
-                    />
-                  </Field>
                 </div>
               </section>
 
