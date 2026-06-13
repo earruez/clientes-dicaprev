@@ -7,6 +7,7 @@ import {
   createCapacitacionAsignacion,
   updateCapacitacionAsignacion,
   cambiarEstadoCapacitacionAsignacion,
+  enviarCapacitacionAsignacion,
   deleteCapacitacionAsignacion,
   type AsignacionCapacitacion,
   type CapacitacionCatalogo,
@@ -36,7 +37,7 @@ import {
   Search, Send, Plus, Eye, ClipboardList, Bot, Pencil, X,
   ExternalLink, Copy, RefreshCw, CalendarClock, Award,
   FileBadge2, CheckCircle2, XCircle, RotateCcw, PlayCircle,
-  ClipboardCheck,
+  ClipboardCheck, ChevronDown, Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +63,15 @@ function mapEstadoUi(a: AsignacionCapacitacion): EstadoUI {
   }
   if (a.estado === "en_progreso") return "en_proceso";
   return a.estado as EstadoUI;
+}
+
+function normalizeOrigen(origen?: string): "automatica" | "manual" {
+  return origen === "automatica" || origen === "automatico" ? "automatica" : "manual";
+}
+
+function isVideoModalidad(modalidad?: string): boolean {
+  const m = (modalidad || "").toLowerCase();
+  return m === "virtual" || m === "e-learning" || m === "elearning";
 }
 
 // Configuración de UI por estado
@@ -218,6 +228,7 @@ function DetalleDrawer({
 }) {
   if (!item) return null;
   const cfg = ESTADO_ASIG_CFG[item.estadoUi];
+  const origenUi = normalizeOrigen(item.origen);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const link = item.token ? `/capacitacion/externa/${item.token}` : null;
 
@@ -242,10 +253,10 @@ function DetalleDrawer({
               {cfg.label}
             </span>
             <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border",
-              item.origen === "automatica" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-violet-50 text-violet-700 border-violet-200"
+              origenUi === "automatica" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-violet-50 text-violet-700 border-violet-200"
             )}>
-              {item.origen === "automatica" ? <Bot className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
-              {item.origen === "automatica" ? "Automática" : "Manual"}
+              {origenUi === "automatica" ? <Bot className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+              {origenUi === "automatica" ? "Automática" : "Manual"}
             </span>
           </div>
 
@@ -423,6 +434,7 @@ export default function TabAsignaciones() {
   const [modalCert, setModalCert] = useState<{ certId: string; nombre: string } | null>(null);
   const [formNueva, setFormNueva] = useState({ trabajadorId: "", capacitacionId: "", observacion: "" });
   const [notaRevisar, setNotaRevisar] = useState("");
+  const [expandedTrabajadores, setExpandedTrabajadores] = useState<Record<string, boolean>>({});
 
   // Cargar datos al montar
   useEffect(() => {
@@ -468,15 +480,53 @@ export default function TabAsignaciones() {
   const filtered = useMemo(() =>
     enriched.filter((a) => {
       if (filtroEstado !== "todos" && a.estadoUi !== filtroEstado) return false;
-      if (filtroOrigen !== "todos" && a.origen !== filtroOrigen) return false;
+      if (filtroOrigen !== "todos" && normalizeOrigen(a.origen) !== filtroOrigen) return false;
       if (search) {
         const q = search.toLowerCase();
-        if (!a.trabajadorNombre.toLowerCase().includes(q) && !a.capacitacionNombre.toLowerCase().includes(q)) return false;
+        if (
+          !a.trabajadorNombre.toLowerCase().includes(q) &&
+          !a.capacitacionNombre.toLowerCase().includes(q) &&
+          !(a.modalidad || "").toLowerCase().includes(q)
+        ) {
+          return false;
+        }
       }
       return true;
     }),
     [enriched, filtroEstado, filtroOrigen, search]
   );
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, {
+      trabajadorNombre: string;
+      items: EnrichedAsignacion[];
+      pendientes: number;
+      enCurso: number;
+      completadas: number;
+    }>();
+
+    filtered.forEach((a) => {
+      if (!map.has(a.trabajadorId)) {
+        map.set(a.trabajadorId, {
+          trabajadorNombre: a.trabajadorNombre,
+          items: [],
+          pendientes: 0,
+          enCurso: 0,
+          completadas: 0,
+        });
+      }
+
+      const group = map.get(a.trabajadorId)!;
+      group.items.push(a);
+      if (a.estadoUi === "pendiente") group.pendientes += 1;
+      if (a.estadoUi === "enviada" || a.estadoUi === "en_proceso") group.enCurso += 1;
+      if (a.estadoUi === "completada" || a.estadoUi === "aprobada") group.completadas += 1;
+    });
+
+    return Array.from(map.entries())
+      .sort((a, b) => a[1].trabajadorNombre.localeCompare(b[1].trabajadorNombre, "es"))
+      .map(([trabajadorId, value]) => ({ trabajadorId, ...value }));
+  }, [filtered]);
 
   const kpis = useMemo(() => ({
     total: asignaciones.length,
@@ -491,7 +541,7 @@ export default function TabAsignaciones() {
       switch (accion) {
         case "enviar":
         case "reenviar":
-          await cambiarEstadoCapacitacionAsignacion(item.id, { estado: "enviada" });
+          await enviarCapacitacionAsignacion(item.id, { reenviar: accion === "reenviar" });
           registrarAccion({
             accion: "enviar", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: item.id,
             descripcion: `${accion === "reenviar" ? "Reenvió" : "Envió"} enlace de '${item.capacitacionNombre}' a ${item.trabajadorNombre}`,
@@ -704,57 +754,103 @@ export default function TabAsignaciones() {
 
           {/* Table */}
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[1fr_155px_110px_95px_95px_185px_40px] gap-2 px-5 py-3 bg-slate-50 border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-              <span>Trabajador / Capacitación</span>
-              <span>Estado</span>
-              <span>Origen</span>
-              <span>Asignada</span>
-              <span>Vence</span>
-              <span>Acciones</span>
+            <div className="grid grid-cols-[1fr_120px_120px_120px_40px] gap-2 px-5 py-3 bg-slate-50 border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+              <span>Trabajador</span>
+              <span>Pendientes</span>
+              <span>En curso</span>
+              <span>Completadas</span>
               <span />
             </div>
-            {filtered.length === 0 ? (
+            {grouped.length === 0 ? (
               <div className="py-14 text-center">
                 <ClipboardList className="h-8 w-8 text-slate-200 mx-auto mb-2" />
                 <p className="text-sm text-slate-400">Sin asignaciones para los filtros aplicados.</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-50">
-                {filtered.map((a) => {
-                  const cfg = ESTADO_ASIG_CFG[a.estadoUi];
+                {grouped.map((g) => {
+                  const isOpen = expandedTrabajadores[g.trabajadorId] ?? true;
                   return (
-                    <div
-                      key={a.id}
-                      className="grid grid-cols-[1fr_155px_110px_95px_95px_185px_40px] gap-2 px-5 py-3.5 items-center hover:bg-slate-50/60 transition-colors cursor-pointer"
-                      onClick={() => setSelected(a)}
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">{a.trabajadorNombre}</p>
-                        <p className="text-xs text-slate-400 truncate">{a.capacitacionNombre}</p>
+                    <div key={g.trabajadorId}>
+                      <div className="grid grid-cols-[1fr_120px_120px_120px_40px] gap-2 px-5 py-3.5 items-center hover:bg-slate-50/60 transition-colors">
+                        <button
+                          onClick={() => setExpandedTrabajadores((prev) => ({
+                            ...prev,
+                            [g.trabajadorId]: !isOpen,
+                          }))}
+                          className="min-w-0 text-left"
+                        >
+                          <p className="text-sm font-semibold text-slate-800 truncate">{g.trabajadorNombre}</p>
+                          <p className="text-xs text-slate-400 truncate">{g.items.length} asignaciones</p>
+                        </button>
+                        <span className="text-sm font-semibold text-slate-600">{g.pendientes}</span>
+                        <span className="text-sm font-semibold text-blue-600">{g.enCurso}</span>
+                        <span className="text-sm font-semibold text-emerald-600">{g.completadas}</span>
+                        <button
+                          onClick={() => setExpandedTrabajadores((prev) => ({
+                            ...prev,
+                            [g.trabajadorId]: !isOpen,
+                          }))}
+                          className="flex items-center justify-center h-7 w-7 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                        >
+                          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen ? "rotate-180" : "rotate-0")} />
+                        </button>
                       </div>
-                      <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit", cfg.cls)}>
-                        <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dot)} />
-                        {cfg.label}
-                      </span>
-                      <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit",
-                        a.origen === "automatica" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-violet-50 text-violet-700 border-violet-200"
-                      )}>
-                        {a.origen === "automatica" ? <Bot className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
-                        {a.origen === "automatica" ? "Auto" : "Manual"}
-                      </span>
-                      <span className="text-xs text-slate-500">{fmt(a.fechaAsignacion)}</span>
-                      <span className={cn("text-xs", a.fechaVencimiento && new Date(a.fechaVencimiento) < new Date() ? "text-rose-600 font-medium" : "text-slate-500")}>
-                        {fmt(a.fechaVencimiento)}
-                      </span>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <AccionesRow item={a} onAccion={handleAccion} />
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelected(a); }}
-                        className="flex items-center justify-center h-7 w-7 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </button>
+
+                      {isOpen && (
+                        <div className="bg-slate-50/40 border-t border-slate-100">
+                          {g.items
+                            .slice()
+                            .sort((a, b) => a.capacitacionNombre.localeCompare(b.capacitacionNombre, "es"))
+                            .map((a) => {
+                              const cfg = ESTADO_ASIG_CFG[a.estadoUi];
+                              const origenUi = normalizeOrigen(a.origen);
+                              return (
+                                <div
+                                  key={a.id}
+                                  className="grid grid-cols-[1fr_155px_120px_95px_95px_185px_40px] gap-2 px-6 py-3 items-center hover:bg-white/70 transition-colors cursor-pointer"
+                                  onClick={() => setSelected(a)}
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-slate-800 truncate">{a.capacitacionNombre}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <p className="text-xs text-slate-400 truncate">{a.categoria}</p>
+                                      {isVideoModalidad(a.modalidad) && (
+                                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border bg-cyan-50 text-cyan-700 border-cyan-200">
+                                          <Video className="h-3 w-3" />
+                                          Video
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit", cfg.cls)}>
+                                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dot)} />
+                                    {cfg.label}
+                                  </span>
+                                  <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit",
+                                    origenUi === "automatica" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-violet-50 text-violet-700 border-violet-200"
+                                  )}>
+                                    {origenUi === "automatica" ? <Bot className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+                                    {origenUi === "automatica" ? "Auto" : "Manual"}
+                                  </span>
+                                  <span className="text-xs text-slate-500">{fmt(a.fechaAsignacion)}</span>
+                                  <span className={cn("text-xs", a.fechaVencimiento && new Date(a.fechaVencimiento) < new Date() ? "text-rose-600 font-medium" : "text-slate-500")}>
+                                    {fmt(a.fechaVencimiento)}
+                                  </span>
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <AccionesRow item={a} onAccion={handleAccion} />
+                                  </div>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setSelected(a); }}
+                                    className="flex items-center justify-center h-7 w-7 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
+                                  >
+                                    <Eye className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

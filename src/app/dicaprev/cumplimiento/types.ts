@@ -84,6 +84,8 @@ export interface Hallazgo {
   trabajadorNombre?: string;
   obligacionId?: string;
   obligacionNombre?: string;
+  responsableId?: string;
+  responsableNombre?: string;
   estado: EstadoHallazgo;
   prioridad: PrioridadHallazgo;
   fechaCompromiso: string;
@@ -139,7 +141,7 @@ export interface AccionCumplimiento {
 
 // ---- EvidenciaCumplimiento ----
 
-export type EstadoEvidencia = "valida" | "pendiente" | "rechazada";
+export type EstadoEvidencia = "valida" | "pendiente" | "rechazada" | "vencida";
 
 /**
  * Evidencia alineada con el motor de cumplimiento.
@@ -149,6 +151,8 @@ export type EstadoEvidencia = "valida" | "pendiente" | "rechazada";
 export interface EvidenciaCumplimiento {
   id: string;
   titulo: string;
+  descripcion: string;
+  origen: string;
   tipo: TipoEvidencia;
   fecha: string;
   obligacionId?: string;
@@ -159,10 +163,18 @@ export interface EvidenciaCumplimiento {
   accionTitulo?: string;
   entidadId?: string;
   entidadNombre?: string;
+  documentoTrabajadorId?: string;
+  documentoEmpresaId?: string;
+  checklistEjecucionId?: string;
+  entregaEppId?: string;
   archivoUrl?: string;
+  archivoNombre?: string;
   observacion?: string;
+  observacionRevision?: string;
   subidaPor: string;
   estado: EstadoEvidencia;
+  validadoPorId?: string;
+  validadoAt?: string;
   /** Si esta evidencia cierra el hallazgo vinculado */
   cierraHallazgo?: boolean;
 }

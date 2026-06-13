@@ -6,7 +6,6 @@ import {
   Search,
   UploadCloud,
   ExternalLink,
-  MoreHorizontal,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
@@ -25,7 +24,7 @@ import {
   ShieldAlert,
   Users,
   Sparkles,
-  History,
+  MoreHorizontal,
 } from "lucide-react";
 import { puedeGenerarseConIA, esContenidoPlaceholder } from "@/lib/documentacion/ia-generacion-helper";
 import {
@@ -64,6 +63,7 @@ import {
 import { VersionesHistorialDrawer } from "./VersionesHistorialDrawer";
 import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
+import { useToast } from "@/components/ui/use-toast";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
 import { PorVencimientosView } from "./PorVencimientosView";
@@ -72,22 +72,6 @@ type FilterEstado = "todos" | "criticos" | "pendientes" | "vencidos" | "rechazad
 type BulkModal    = null | "plantilla" | "revisado" | "exportar" | "recordar" | "estado";
 type MainView     = "trabajador" | "centro" | "cargo" | "vencimientos";
 type DocActionType = "validar" | "rechazar" | "no_aplica" | "en_revision" | "enviar_firma" | "firmar";
-
-function esDocumentoODI(tipo: { id?: string; nombre?: string } | null | undefined): boolean {
-  const source = `${tipo?.id ?? ""} ${tipo?.nombre ?? ""}`
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  return (
-    source.includes("odi") ||
-    source.includes("obligacion de informar") ||
-    source.includes("obligacion informar") ||
-    source.includes("informacion de riesgos") ||
-    source.includes("informacion riesgos") ||
-    source.includes("irl")
-  );
-}
 
 interface PendientesPanelProps {
   initialWorkerId?: string;
@@ -108,6 +92,7 @@ export function PendientesPanel({
   documentos,
   onSaved,
 }: PendientesPanelProps) {
+  const { toast } = useToast();
 
   const [mainView, setMainView]                 = useState<MainView>("trabajador");
   const [soloDS44, setSoloDS44]                 = useState(false);
@@ -138,7 +123,6 @@ export function PendientesPanel({
     versiones: VersionDocumentoView[];
   } | null>(null);
   const [cargandoVersiones, setCargandoVersiones] = useState(false);
-  const [openDocActionsKey, setOpenDocActionsKey] = useState<string | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -234,6 +218,27 @@ export function PendientesPanel({
   const [mockBulkDone, setMockBulkDone]                 = useState<string | null>(null);
   const [selectedPlantilla, setSelectedPlantilla]       = useState("");
   const [selectedBulkEstado, setSelectedBulkEstado]     = useState("en_revision");
+  const [openDocMenuKey, setOpenDocMenuKey]             = useState<string | null>(null);
+
+  // ── Cerrar menú al hacer click en cualquier lado ─────────────
+  useEffect(() => {
+    if (!openDocMenuKey) return;
+
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Verificar si el click está en un botón de menú (tres puntos)
+      if (target.closest('button[title="Más acciones"]')) {
+        return;
+      }
+      // Cerrar el menú si el click está fuera de los elementos del menú
+      if (!target.closest('[class*="absolute"][class*="w-56"]')) {
+        setOpenDocMenuKey(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleGlobalClick);
+    return () => document.removeEventListener('mousedown', handleGlobalClick);
+  }, [openDocMenuKey]);
 
   // ── Per-document state actions ─────────────────────────────
   const [actionModal, setActionModal]   = useState<{ documentoId: string; tipoNombre: string; accion: DocActionType } | null>(null);
@@ -285,7 +290,11 @@ export function PendientesPanel({
       if (actionModal.accion === "validar") {
         await validarTrabajadorDocumento(actionModal.documentoId, actionMotivo.trim() || undefined);
       } else if (actionModal.accion === "enviar_firma") {
-        await enviarTrabajadorDocumentoAFirma(actionModal.documentoId, actionMotivo.trim() || undefined);
+        const result = await enviarTrabajadorDocumentoAFirma(actionModal.documentoId, actionMotivo.trim() || undefined);
+        toast({
+          title: "Link de firma generado",
+          description: result.linkFirma,
+        });
       } else if (actionModal.accion === "firmar") {
         await firmarTrabajadorDocumento(actionModal.documentoId);
       } else {
@@ -400,28 +409,6 @@ export function PendientesPanel({
   useEffect(() => {
     setCurrentPage(1);
   }, [search, filterEstado, soloDS44, mainView]);
-
-  useEffect(() => {
-    if (!openDocActionsKey) return;
-
-    const handleOutsideClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest("[data-doc-actions-menu]")) return;
-      setOpenDocActionsKey(null);
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpenDocActionsKey(null);
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [openDocActionsKey]);
 
   const totalFiltered = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
@@ -1154,14 +1141,17 @@ export function PendientesPanel({
                           </Link>
                         </div>
 
-                        {/* Lista compacta de documentos */}
-                        <div className="overflow-visible rounded-2xl border border-slate-200 bg-white">
-                          <div className="hidden items-center gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500 md:grid md:grid-cols-[minmax(430px,2.2fr)_minmax(130px,0.8fr)_minmax(170px,0.9fr)_minmax(220px,1fr)_minmax(280px,1.2fr)]">
-                            <p>Documento</p>
-                            <p>Estado</p>
-                            <p>Fecha / Vencimiento</p>
-                            <p>Responsable</p>
-                            <p className="border-l border-slate-200 pl-4 text-right">Acciones</p>
+                        {/* Lista documental por columnas */}
+                        <div className="rounded-2xl border border-slate-200 bg-white">
+                          <div className="grid grid-cols-[130px,1.6fr,140px,120px,1.2fr,120px,150px,70px] items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:px-4">
+                            <div>Tipo</div>
+                            <div>Documento</div>
+                            <div>Estado</div>
+                            <div>Fecha</div>
+                            <div>Responsable</div>
+                            <div>Vencimiento</div>
+                            <div>Acción</div>
+                            <div className="text-right">Más</div>
                           </div>
                           {[...docs]
                             .sort((a, b) => {
@@ -1172,7 +1162,6 @@ export function PendientesPanel({
                               const catCfg    = CATEGORIA_CONFIG[doc.tipo.categoria];
                               const estCfg    = ESTADO_DOC_CONFIG[doc.estado];
                               const isAutomatizable = puedeGenerarseConIA(doc.tipo);
-                              const isOdi = esDocumentoODI(doc.tipo);
                               const hasStructuredIaContent = !!doc.observacion?.trim() && !esContenidoPlaceholder(doc.observacion);
                               const hasUploadedFile = Boolean(doc.archivoUrl || doc.archivoNombre || doc.archivoNombreOriginal);
                               const hasAnyRecord = Boolean(doc.documentoId);
@@ -1191,296 +1180,232 @@ export function PendientesPanel({
                                 doc.estado === "firmado" ||
                                 doc.estado === "rechazado"
                               );
-                              const puedeGenerarIa = isOdi && hasAnyRecord && !isSigned;
+                              const puedeGenerarIa = isAutomatizable && !isSigned && !hasStructuredIaContent;
                               const puedeDescargarPdf = Boolean(doc.observacion?.trim()) && ["en_revision", "validado", "enviado_firma", "firmado"].includes(doc.estado);
-                              const uploadMode: "subir" | "reenviar" = hasAnyRecord ? "reenviar" : "subir";
-                              const canViewDocumento = Boolean(doc.archivoUrl) || puedeRevisarIa;
-                              const fechaLabel = doc.fechaVencimiento
-                                ? `Vence ${formatDate(doc.fechaVencimiento)}`
-                                : doc.fechaCarga
-                                  ? formatDate(doc.fechaCarga)
-                                  : "-";
-                              const docActionKey = doc.documentoId ?? `${worker.id}-${doc.tipo.id}`;
+                              const rowKey = `${worker.id}-${doc.tipo.id}`;
+                              // Calcular si está pronto a vencer (< 30 días)
+                              const isProxAVencer = doc.diasParaVencer != null && doc.diasParaVencer > 0 && doc.diasParaVencer < 30;
+                              const isVencido = doc.diasParaVencer != null && doc.diasParaVencer < 0;
+                              const vencimientoBg = isVencido ? "bg-red-50" : isProxAVencer ? "bg-amber-50" : "bg-slate-50";
+                              const vencimientoText = isVencido ? "text-red-700" : isProxAVencer ? "text-amber-700" : "text-slate-600";
+                              const vencimientoRing = isVencido ? "ring-1 ring-red-200" : isProxAVencer ? "ring-1 ring-amber-200" : "";
+
                               return (
-                                <div key={doc.tipo.id} className="grid grid-cols-1 gap-2 border-b border-slate-100 px-3 py-3 last:border-b-0 md:grid-cols-[minmax(430px,2.2fr)_minmax(130px,0.8fr)_minmax(170px,0.9fr)_minmax(220px,1fr)_minmax(280px,1.2fr)] md:items-center md:gap-4 md:px-4 md:py-2.5">
-                                  <div className="min-w-0">
-                                    <div className="flex min-w-0 items-center gap-3">
-                                      <span className={`inline-flex h-8 w-[152px] shrink-0 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${catCfg.bg} ${catCfg.text} ${catCfg.ring}`}>
-                                        {doc.tipo.categoria}
-                                      </span>
-                                      <p className="truncate text-sm font-semibold leading-tight text-slate-900 md:text-[13px]" title={normalizarNombreDocumentoDisplay(doc.tipo.nombre)}>
-                                        {normalizarNombreDocumentoDisplay(doc.tipo.nombre)}
-                                        {doc.tipo.esCritico && <span className="ml-1 text-[10px] font-bold text-red-600">●</span>}
-                                      </p>
-                                    </div>
+                                <div key={doc.tipo.id} className="grid grid-cols-[130px,1.6fr,140px,120px,1.2fr,120px,150px,70px] items-center gap-2 border-b border-slate-100 px-3 py-2.5 last:border-b-0 sm:px-4">
+                                  <div>
+                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${catCfg.bg} ${catCfg.text} ${catCfg.ring}`}>
+                                      {doc.tipo.categoria}
+                                    </span>
                                   </div>
 
-                                  <div>
+                                  <div className="min-w-0">
+                                    <p className="truncate text-[13px] font-semibold text-slate-900">
+                                      {normalizarNombreDocumentoDisplay(doc.tipo.nombre)}
+                                    </p>
+                                    {doc.tipo.esCritico && <p className="text-[10px] font-semibold text-red-600">Crítico</p>}
+                                  </div>
+
+                                  <div className="min-w-0">
                                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${estCfg.bg} ${estCfg.text} ${estCfg.ring}`}>
                                       <span className={`h-1.5 w-1.5 rounded-full ${estCfg.dot}`} />
                                       {estCfg.label}
                                     </span>
-                                  </div>
-
-                                  <div>
-                                    <p className="text-xs font-medium text-slate-600">{fechaLabel}</p>
-                                    {doc.fechaVencimiento && doc.diasParaVencer !== undefined && (
-                                      <p className={`text-[10px] ${doc.diasParaVencer < 0 ? "text-red-600" : doc.diasParaVencer <= 30 ? "text-amber-600" : "text-slate-400"}`}>
-                                        {doc.diasParaVencer < 0
-                                          ? `${Math.abs(doc.diasParaVencer)} d vencido`
-                                          : `${doc.diasParaVencer} d restantes`}
+                                    {isProxAVencer && (
+                                      <p className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 ring-1 ring-amber-200">
+                                        <ShieldAlert className="h-2.5 w-2.5" /> Próximo a vencer
                                       </p>
                                     )}
                                   </div>
 
-                                  <div className="min-w-0 md:pr-2">
-                                    <p className="truncate text-xs text-slate-600">{doc.cargadoPor ?? "-"}</p>
-                                    <p className="text-[10px] text-slate-400">{origen}</p>
+                                  <div className="text-[11px] text-slate-600">
+                                    {doc.fechaCarga ? formatDate(doc.fechaCarga) : "-"}
                                   </div>
 
-                                  <div className="md:flex md:justify-end md:border-l md:border-slate-100 md:pl-4">
-                                    <div className="grid grid-cols-1 gap-1.5 md:grid-cols-[minmax(110px,auto)_minmax(104px,auto)_64px] md:items-center md:justify-end">
-                                    {/* Acción principal */}
-                                    {canViewDocumento ? (
-                                      doc.archivoUrl ? (
-                                        <a
-                                          href={doc.archivoUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="inline-flex items-center justify-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800"
-                                        >
-                                          <ExternalLink className="h-2.5 w-2.5" />
-                                          Ver documento
-                                        </a>
-                                      ) : (
-                                        <button
-                                          onClick={() => openReview({ doc, worker, viewOnly: true })}
-                                          className="inline-flex items-center justify-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800"
-                                        >
-                                          <ExternalLink className="h-2.5 w-2.5" />
-                                          Ver documento
-                                        </button>
-                                      )
+                                  <div className="min-w-0 text-[11px] text-slate-600">
+                                    <p className="truncate">{doc.cargadoPor ?? "-"}</p>
+                                    <p className="truncate text-[10px] text-slate-400">Origen: {origen}</p>
+                                  </div>
+
+                                  {/* Columna de vencimiento */}
+                                  <div className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${vencimientoBg} ${vencimientoText} ${vencimientoRing}`}>
+                                    {doc.fechaVencimiento ? (
+                                      <div>
+                                        <p className="font-semibold">{formatDate(doc.fechaVencimiento)}</p>
+                                        <p className={`text-[10px] ${isVencido ? "text-red-600" : isProxAVencer ? "text-amber-700" : "text-slate-500"}`}>
+                                          {isVencido && doc.diasParaVencer != null && `Vencido hace ${Math.abs(doc.diasParaVencer)}d`}
+                                          {!isVencido && doc.diasParaVencer != null && `En ${doc.diasParaVencer}d`}
+                                        </p>
+                                      </div>
                                     ) : (
+                                      <span>Sin vencimiento</span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {/* Botones de carga/IA primarios */}
+                                    {!isSigned && (
+                                      <>
+                                        <button
+                                          onClick={() =>
+                                            openUpload({
+                                              documentoId: doc.documentoId,
+                                              workerId: worker.id,
+                                              tipoDocumentoId: doc.tipo.id,
+                                              mode: hasAnyRecord ? "reenviar" : "subir",
+                                              rejectionObservation: doc.estado === "rechazado" ? doc.observacion : undefined,
+                                            })
+                                          }
+                                          className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800"
+                                          title="Subir documento"
+                                        >
+                                          <UploadCloud className="h-2.5 w-2.5" />
+                                          Subir documento
+                                        </button>
+                                        {puedeGenerarIa && (
+                                          <button
+                                            onClick={() => handleGenerarConIA(doc, worker)}
+                                            disabled={generandoDocId === doc.tipo.id}
+                                            className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                                            title="Generar con IA"
+                                          >
+                                            {generandoDocId === doc.tipo.id ? (
+                                              <span className="h-2.5 w-2.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                            ) : (
+                                              <Sparkles className="h-2.5 w-2.5" />
+                                            )}
+                                            IA
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
+                                    {/* Los botones están en el menú de acciones */}
+                                    {doc.estado === "en_revision" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
                                       <button
-                                        onClick={() =>
-                                          openUpload({
-                                            documentoId:           doc.documentoId,
-                                            workerId:              worker.id,
-                                            tipoDocumentoId:       doc.tipo.id,
-                                            mode:                  uploadMode,
-                                            rejectionObservation:  doc.estado === "rechazado" ? doc.observacion : undefined,
-                                          })
-                                        }
-                                        className="inline-flex items-center justify-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800"
+                                        onClick={() => { openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "validar"); setOpenDocMenuKey(null); }}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-indigo-700"
+                                        title="Validar documento"
+                                      >
+                                        <CheckCircle2 className="h-2.5 w-2.5" />
+                                        Validar
+                                      </button>
+                                    )}
+                                    {doc.estado === "validado" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
+                                      <button
+                                        onClick={() => { openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "enviar_firma"); setOpenDocMenuKey(null); }}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-teal-700"
+                                        title="Enviar a firma"
                                       >
                                         <UploadCloud className="h-2.5 w-2.5" />
-                                        Subir
+                                        Enviar firma
                                       </button>
                                     )}
-
-                                    {puedeGenerarIa && !isSigned && (
+                                    {doc.estado === "enviado_firma" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
                                       <button
-                                        onClick={() => handleGenerarConIA(doc, worker)}
-                                        disabled={generandoDocId === doc.tipo.id}
-                                        className="inline-flex items-center justify-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50"
+                                        onClick={() => { openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "firmar"); setOpenDocMenuKey(null); }}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-emerald-700"
+                                        title="Firmar documento"
                                       >
-                                        <Sparkles className="h-2.5 w-2.5" />
-                                        {generandoDocId === doc.tipo.id ? "IA..." : "Generar IA"}
+                                        <CheckCheck className="h-2.5 w-2.5" />
+                                        Firmar
                                       </button>
                                     )}
-
-                                    {!puedeGenerarIa && (
-                                      <span className="hidden h-7 items-center justify-center rounded-lg border border-transparent px-2.5 py-1 text-[10px] md:inline-flex" aria-hidden="true" />
-                                    )}
-
-                                    {/* Menú de acciones secundarias */}
-                                    <div className="relative" data-doc-actions-menu>
+                                    {puedeDescargarPdf && (
                                       <button
-                                        type="button"
-                                        onClick={() => setOpenDocActionsKey((prev) => (prev === docActionKey ? null : docActionKey))}
-                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                                        onClick={() => { handleDescargarPdf(doc, worker); setOpenDocMenuKey(null); }}
+                                        disabled={descargandoDocId === (doc.documentoId ?? `${worker.id}-${doc.tipo.id}`)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                                        title="Descargar PDF"
                                       >
-                                        <MoreHorizontal className="h-3 w-3" />
-                                        Más
+                                        <Download className="h-2.5 w-2.5" />
+                                        PDF
                                       </button>
-                                      {openDocActionsKey === docActionKey && (
-                                        <div className="absolute right-0 z-30 mt-1 min-w-[220px] rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
-                                          <button
-                                            onClick={() => {
-                                              setOpenDocActionsKey(null);
-                                              openUpload({
-                                                documentoId:           doc.documentoId,
-                                                workerId:              worker.id,
-                                                tipoDocumentoId:       doc.tipo.id,
-                                                mode:                  uploadMode,
-                                                rejectionObservation:  doc.estado === "rechazado" ? doc.observacion : undefined,
-                                              });
-                                            }}
-                                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                                          >
-                                            <UploadCloud className="h-3 w-3" />
-                                            Reemplazar
-                                          </button>
+                                    )}
+                                  </div>
 
-                                          {puedeRevisarIa && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                openReview({ doc, worker });
-                                              }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                                  <div className="relative flex justify-end">
+                                      <button
+                                        onClick={() => setOpenDocMenuKey((prev) => (prev === rowKey ? null : rowKey))}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                                        title="Más acciones"
+                                      >
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </button>
+
+                                      {openDocMenuKey === rowKey && (
+                                        <div 
+                                          className="absolute right-0 top-8 z-40 mt-1 max-h-72 w-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          {!isSigned && (
+                                            <button 
+                                              onClick={() => { 
+                                                openUpload({
+                                                  documentoId: doc.documentoId,
+                                                  workerId: worker.id,
+                                                  tipoDocumentoId: doc.tipo.id,
+                                                  mode: hasAnyRecord ? "reenviar" : "subir",
+                                                  rejectionObservation: doc.estado === "rechazado" ? doc.observacion : undefined,
+                                                });
+                                                setOpenDocMenuKey(null);
+                                              }} 
+                                              className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50"
                                             >
-                                              <Sparkles className="h-3 w-3" />
-                                              Revisar
+                                              Subir documento
                                             </button>
                                           )}
-
-                                          {doc.archivoUrl && (
-                                            <a
-                                              href={doc.archivoUrl}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              onClick={() => setOpenDocActionsKey(null)}
-                                              className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                                          {!isSigned && puedeGenerarIa && (
+                                            <button 
+                                              onClick={() => { handleGenerarConIA(doc, worker); setOpenDocMenuKey(null); }} 
+                                              disabled={generandoDocId === doc.tipo.id}
+                                              className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                                             >
-                                              <ExternalLink className="h-3 w-3" />
-                                              Ampliar
-                                            </a>
+                                              {generandoDocId === doc.tipo.id ? "Generando..." : "Generar con IA"}
+                                            </button>
                                           )}
-
+                                          {puedeRevisarIa && (
+                                            <button onClick={() => { openReview({ doc, worker }); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">
+                                              Revisar IA
+                                            </button>
+                                          )}
+                                          {hasStructuredIaContent && doc.estado === "validado" && (
+                                            <button onClick={() => { openReview({ doc, worker }); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">
+                                              Editar formato
+                                            </button>
+                                          )}
                                           {puedeDescargarPdf && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                handleDescargarPdf(doc, worker);
-                                              }}
-                                              disabled={descargandoDocId === (doc.documentoId ?? `${worker.id}-${doc.tipo.id}`)}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                                            >
-                                              <Download className="h-3 w-3" />
+                                            <button onClick={() => { handleDescargarPdf(doc, worker); setOpenDocMenuKey(null); }} disabled={descargandoDocId === (doc.documentoId ?? `${worker.id}-${doc.tipo.id}`)} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
                                               Descargar PDF
                                             </button>
                                           )}
-
                                           {doc.estado === "en_revision" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "validar");
-                                              }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                                            >
-                                              <CheckCircle2 className="h-3 w-3" />
-                                              Validar
-                                            </button>
+                                            <button onClick={() => { openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "validar"); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Validar</button>
                                           )}
-
                                           {doc.estado === "validado" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "enviar_firma");
-                                              }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                                            >
-                                              <UploadCloud className="h-3 w-3" />
-                                              Enviar a firma
-                                            </button>
+                                            <button onClick={() => { openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "enviar_firma"); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Enviar a firma</button>
                                           )}
-
                                           {doc.estado === "enviado_firma" && doc.documentoId && !puedeGenerarseConIA(doc.tipo) && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "firmar");
-                                              }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                                            >
-                                              <CheckCheck className="h-3 w-3" />
-                                              Firmar
-                                            </button>
+                                            <button onClick={() => { openActionModal(doc.documentoId!, normalizarNombreDocumentoDisplay(doc.tipo.nombre), "firmar"); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Firmar</button>
                                           )}
-
-                                          {doc.estado === "firmado" && (
-                                            <span className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-medium text-emerald-700">
-                                              <CheckCircle2 className="h-3 w-3" />
-                                              Firmado
-                                            </span>
-                                          )}
-
                                           {doc.estado === "en_revision" && doc.documentoId && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                openActionModal(doc.documentoId!, doc.tipo.nombre, "rechazar");
-                                              }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                                            >
-                                              <XCircle className="h-3 w-3" />
-                                              Rechazar
-                                            </button>
+                                            <button onClick={() => { openActionModal(doc.documentoId!, doc.tipo.nombre, "rechazar"); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Rechazar</button>
                                           )}
-
                                           {doc.estado === "completo" && doc.documentoId && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                openActionModal(doc.documentoId!, doc.tipo.nombre, "en_revision");
-                                              }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                                            >
-                                              <Clock className="h-3 w-3" />
-                                              Revisar estado
-                                            </button>
+                                            <button onClick={() => { openActionModal(doc.documentoId!, doc.tipo.nombre, "en_revision"); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Revisar estado</button>
                                           )}
-
                                           {doc.estado !== "no_aplica" && doc.documentoId && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                openActionModal(doc.documentoId!, doc.tipo.nombre, "no_aplica");
-                                              }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                                            >
-                                              <X className="h-3 w-3" />
-                                              No aplica
-                                            </button>
+                                            <button onClick={() => { openActionModal(doc.documentoId!, doc.tipo.nombre, "no_aplica"); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">No aplica</button>
                                           )}
-
                                           {doc.documentoId && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                openHistorialModal(doc.documentoId!, doc.tipo.nombre);
-                                              }}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100"
-                                            >
-                                              <Clock className="h-3 w-3" />
-                                              Historial
-                                            </button>
+                                            <button onClick={() => { openHistorialModal(doc.documentoId!, doc.tipo.nombre); setOpenDocMenuKey(null); }} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50">Historial</button>
                                           )}
-
                                           {doc.documentoId && (
-                                            <button
-                                              onClick={() => {
-                                                setOpenDocActionsKey(null);
-                                                handleVerHistorial(doc, worker);
-                                              }}
-                                              disabled={cargandoVersiones}
-                                              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[11px] font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                                            >
-                                              <History className="h-3 w-3" />
-                                              {(doc.totalVersiones ?? 1) > 1
-                                                ? `Versiones (${doc.totalVersiones})`
-                                                : "Versiones"}
+                                            <button onClick={() => { handleVerHistorial(doc, worker); setOpenDocMenuKey(null); }} disabled={cargandoVersiones} className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                                              {(doc.totalVersiones ?? 1) > 1 ? `Versiones (${doc.totalVersiones})` : "Versiones"}
                                             </button>
                                           )}
                                         </div>
                                       )}
                                     </div>
-                                    </div>
-                                  </div>
                                 </div>
                               );
                             })}

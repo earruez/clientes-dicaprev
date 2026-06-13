@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import { PERMISSIONS } from "@/lib/permissions-matrix";
 import { requireAuth, requirePermission } from "@/server/auth/permissions";
 import type {
@@ -104,7 +105,13 @@ export type OpcionesHallazgo = {
   puedeEditar: boolean;
   centros: Array<{ id: string; nombre: string }>;
   areas: Array<{ id: string; nombre: string }>;
-  trabajadores: Array<{ id: string; nombreCompleto: string; centroTrabajoId: string | null }>;
+  trabajadores: Array<{
+    id: string;
+    nombreCompleto: string;
+    centroTrabajoId: string | null;
+    areaId: string | null;
+    cargoNombre: string | null;
+  }>;
   obligaciones: Array<{
     clave: string;
     nombre: string;
@@ -118,6 +125,7 @@ export type OpcionesHallazgo = {
 export type HallazgoInput = {
   centroTrabajoId: string | null;
   trabajadorId: string | null;
+  responsableId?: string | null;
   obligacionClave: string | null;
   tipo: string;
   prioridad: PrioridadHallazgo;
@@ -129,6 +137,7 @@ export type HallazgoInput = {
 export type HallazgoDetalle = {
   id: string;
   estado: EstadoHallazgo;
+  responsable?: { id: string; nombre: string } | null;
   evidencias: Array<{
     id: string;
     titulo: string;
@@ -198,6 +207,72 @@ function normalizeToken(value: string | null | undefined): string {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+function buildTrabajadorNombre(trabajador: { nombres: string; apellidos: string }): string {
+  return `${trabajador.nombres} ${trabajador.apellidos}`.trim();
+}
+
+function esJefatura(cargoNombre: string | null | undefined): boolean {
+  const token = normalizeToken(cargoNombre);
+  return ["jefe", "supervisor", "encargado", "coordinador", "lider", "gerente"].some((item) => token.includes(item));
+}
+
+async function resolverResponsableHallazgo(
+  tx: Prisma.TransactionClient,
+  empresaId: string,
+  data: Pick<HallazgoInput, "centroTrabajoId" | "trabajadorId" | "responsableId">,
+): Promise<{ id: string; nombre: string } | null> {
+  if (data.responsableId) {
+    const responsable = await tx.trabajador.findFirst({
+      where: { id: data.responsableId, empresaId, estado: "activo" },
+      select: { id: true, nombres: true, apellidos: true },
+    });
+
+    if (!responsable) {
+      throw new Error("Responsable no valido para la empresa activa.");
+    }
+
+    return { id: responsable.id, nombre: buildTrabajadorNombre(responsable) };
+  }
+
+  const trabajadorBase = data.trabajadorId
+    ? await tx.trabajador.findFirst({
+        where: { id: data.trabajadorId, empresaId },
+        select: { areaId: true },
+      })
+    : null;
+
+  const candidatos = await tx.trabajador.findMany({
+    where: {
+      empresaId,
+      estado: "activo",
+      ...(trabajadorBase?.areaId
+        ? { areaId: trabajadorBase.areaId }
+        : data.centroTrabajoId
+          ? { centroTrabajoId: data.centroTrabajoId }
+          : {}),
+    },
+    select: {
+      id: true,
+      nombres: true,
+      apellidos: true,
+      cargo: { select: { nombre: true } },
+    },
+    orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
+  });
+
+  if (candidatos.length === 0) {
+    return null;
+  }
+
+  const jefeArea = candidatos.find((item) => esJefatura(item.cargo?.nombre));
+  const responsable = jefeArea ?? candidatos[0];
+
+  return {
+    id: responsable.id,
+    nombre: buildTrabajadorNombre(responsable),
+  };
+}
+
 function normalizeHallazgoRow(row: {
   id: string;
   tipo: string;
@@ -208,10 +283,12 @@ function normalizeHallazgoRow(row: {
   createdAt: Date;
   updatedAt: Date;
   obligacionClave: string | null;
+  responsableNombre: string | null;
   evidenciasCumplimiento: Array<{ id: string }>;
   centroTrabajo: { id: string; nombre: string } | null;
   trabajador: { id: string; nombres: string; apellidos: string } | null;
   creadoPor: { nombre: string };
+  responsableTrabajador: { id: string; nombres: string; apellidos: string } | null;
 }): Hallazgo {
   const estado = ensureEstado(row.estado);
   const tipo = row.tipo as Hallazgo["tipo"];
@@ -226,11 +303,11 @@ function normalizeHallazgoRow(row: {
     descripcion: row.descripcion,
     centroId: row.centroTrabajo?.id ?? "sin-centro",
     centroNombre: row.centroTrabajo?.nombre ?? "Sin centro",
-    trabajadorNombre: row.trabajador
-      ? `${row.trabajador.nombres} ${row.trabajador.apellidos}`.trim()
-      : undefined,
+    trabajadorNombre: row.trabajador ? buildTrabajadorNombre(row.trabajador) : undefined,
     obligacionId: row.obligacionClave ?? undefined,
     obligacionNombre: row.obligacionClave ?? undefined,
+    responsableId: row.responsableTrabajador?.id ?? undefined,
+    responsableNombre: row.responsableTrabajador ? buildTrabajadorNombre(row.responsableTrabajador) : row.responsableNombre ?? undefined,
     estado,
     prioridad,
     fechaCompromiso: row.fechaCompromiso.toISOString().slice(0, 10),
@@ -261,6 +338,7 @@ export async function getHallazgos(): Promise<Hallazgo[]> {
       centroTrabajo: { select: { id: true, nombre: true } },
       trabajador: { select: { id: true, nombres: true, apellidos: true } },
       creadoPor: { select: { nombre: true } },
+      responsableTrabajador: { select: { id: true, nombres: true, apellidos: true } },
       evidenciasCumplimiento: { select: { id: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -280,6 +358,8 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
     select: {
       id: true,
       estado: true,
+      responsableNombre: true,
+      responsableTrabajador: { select: { id: true, nombres: true, apellidos: true } },
       fechaCompromiso: true,
       evidenciasCumplimiento: {
         orderBy: { createdAt: "desc" },
@@ -288,7 +368,8 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
           titulo: true,
           tipo: true,
           estado: true,
-          observacion: true,
+          descripcion: true,
+          observacionRevision: true,
           archivoUrl: true,
           archivoNombre: true,
           fechaEvidencia: true,
@@ -308,13 +389,13 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
       const estado = normalizeEstadoMedida(ev.estado);
       return {
         id: ev.id,
-        descripcion: ev.observacion ?? "Sin descripcion",
+        descripcion: ev.descripcion || "Sin descripcion",
         responsable: ev.creadoPor?.nombre ?? "Por asignar",
         fechaCompromiso: hallazgo.fechaCompromiso.toISOString().slice(0, 10),
         estado,
         evidenciaCierre: hallazgo.evidenciasCumplimiento.some((cierre) => {
           const tipo = normalizeToken(cierre.tipo);
-          return tipo === "cierre" || normalizeToken(cierre.observacion).includes("cierre");
+          return tipo === "cierre" || normalizeToken(cierre.descripcion).includes("cierre");
         }),
       };
     });
@@ -324,12 +405,17 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
   return {
     id: hallazgo.id,
     estado: ensureEstado(hallazgo.estado),
+    responsable: hallazgo.responsableTrabajador
+      ? { id: hallazgo.responsableTrabajador.id, nombre: buildTrabajadorNombre(hallazgo.responsableTrabajador) }
+      : hallazgo.responsableNombre
+        ? { id: "", nombre: hallazgo.responsableNombre }
+        : null,
     evidencias: hallazgo.evidenciasCumplimiento.map((ev) => ({
       id: ev.id,
       titulo: ev.titulo,
       tipo: ev.tipo,
       estado: ev.estado,
-      observacion: ev.observacion,
+      observacion: ev.descripcion || ev.observacionRevision,
       archivoUrl: ev.archivoUrl,
       archivoNombre: ev.archivoNombre,
       fechaEvidencia: ev.fechaEvidencia.toISOString(),
@@ -368,6 +454,8 @@ export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
         nombres: true,
         apellidos: true,
         centroTrabajoId: true,
+        areaId: true,
+        cargo: { select: { nombre: true } },
       },
       orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
     }),
@@ -380,8 +468,10 @@ export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
     areas,
     trabajadores: trabajadores.map((t) => ({
       id: t.id,
-      nombreCompleto: `${t.nombres} ${t.apellidos}`.trim(),
+      nombreCompleto: buildTrabajadorNombre(t),
       centroTrabajoId: t.centroTrabajoId,
+      areaId: t.areaId,
+      cargoNombre: t.cargo?.nombre ?? null,
     })),
     obligaciones: obligacionesPayload.obligaciones
       .filter((o) => o.aplica)
@@ -410,6 +500,8 @@ export async function crearHallazgo(data: HallazgoInput): Promise<{ id: string }
   }
 
   const created = await prisma.$transaction(async (tx) => {
+    const responsable = await resolverResponsableHallazgo(tx, context.empresaId, data);
+
     const hallazgo = await tx.hallazgoCumplimiento.create({
       data: {
         empresaId: context.empresaId,
@@ -422,6 +514,8 @@ export async function crearHallazgo(data: HallazgoInput): Promise<{ id: string }
         estado: "abierto",
         fechaCompromiso: new Date(data.fechaCompromiso),
         creadoPorId: context.usuarioId,
+        responsableId: responsable?.id ?? null,
+        responsableNombre: responsable?.nombre ?? null,
       },
       select: { id: true },
     });
@@ -434,7 +528,7 @@ export async function crearHallazgo(data: HallazgoInput): Promise<{ id: string }
           tipo: "accion_correctiva",
           estado: "pendiente",
           fechaEvidencia: new Date(),
-          observacion: data.medidaCorrectivaSugerida.trim(),
+          descripcion: data.medidaCorrectivaSugerida.trim(),
           hallazgoId: hallazgo.id,
           centroTrabajoId: data.centroTrabajoId,
           trabajadorId: data.trabajadorId,
@@ -461,6 +555,8 @@ export async function actualizarHallazgo(
   const updateData: {
     centroTrabajoId?: string | null;
     trabajadorId?: string | null;
+    responsableId?: string | null;
+    responsableNombre?: string | null;
     obligacionClave?: string | null;
     tipo?: string;
     prioridad?: string;
@@ -477,6 +573,19 @@ export async function actualizarHallazgo(
   if (data.descripcion !== undefined) updateData.descripcion = data.descripcion.trim();
   if (data.fechaCompromiso !== undefined) updateData.fechaCompromiso = new Date(data.fechaCompromiso);
   if (data.estado !== undefined) updateData.estado = data.estado;
+
+  if (data.responsableId !== undefined || data.trabajadorId !== undefined || data.centroTrabajoId !== undefined) {
+    const responsable = await prisma.$transaction((tx) =>
+      resolverResponsableHallazgo(tx, context.empresaId, {
+        centroTrabajoId: data.centroTrabajoId ?? null,
+        trabajadorId: data.trabajadorId ?? null,
+        responsableId: data.responsableId ?? null,
+      }),
+    );
+
+    updateData.responsableId = responsable?.id ?? null;
+    updateData.responsableNombre = responsable?.nombre ?? null;
+  }
 
   await prisma.hallazgoCumplimiento.updateMany({
     where: {
@@ -509,7 +618,8 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
           id: true,
           tipo: true,
           estado: true,
-          observacion: true,
+          descripcion: true,
+          observacionRevision: true,
         },
       },
     },
@@ -528,7 +638,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
 
   const evidenciaCierre = hallazgo.evidenciasCumplimiento.some((ev) => {
     const tipo = normalizeToken(ev.tipo);
-    return tipo === "cierre" || normalizeToken(ev.observacion).includes("cierre");
+    return tipo === "cierre" || normalizeToken(ev.descripcion).includes("cierre");
   });
 
   if (!tieneMedidaRegistrada || !medidaCompleta || (!evidenciaCierre && !comentario)) {
@@ -544,7 +654,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
           tipo: "cierre",
           estado: "valida",
           fechaEvidencia: new Date(),
-          observacion: comentario,
+          descripcion: comentario,
           hallazgoId: hallazgo.id,
           centroTrabajoId: hallazgo.centroTrabajoId,
           trabajadorId: hallazgo.trabajadorId,
@@ -560,6 +670,39 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
       },
     });
   });
+}
+
+export async function eliminarHallazgo(id: string): Promise<void> {
+  const context = await requireAuth();
+  if (!canManageCumplimiento(context.rol)) {
+    throw new Error("No autorizado para eliminar hallazgos.");
+  }
+
+  await prisma.hallazgoCumplimiento.deleteMany({
+    where: {
+      id,
+      empresaId: context.empresaId,
+    },
+  });
+}
+
+export async function eliminarHallazgos(ids: string[]): Promise<number> {
+  const context = await requireAuth();
+  if (!canManageCumplimiento(context.rol)) {
+    throw new Error("No autorizado para eliminar hallazgos.");
+  }
+
+  const idsValidos = Array.from(new Set(ids.filter((id) => typeof id === "string" && id.trim().length > 0)));
+  if (idsValidos.length === 0) return 0;
+
+  const result = await prisma.hallazgoCumplimiento.deleteMany({
+    where: {
+      id: { in: idsValidos },
+      empresaId: context.empresaId,
+    },
+  });
+
+  return result.count;
 }
 
 export async function actualizarEstadoMedidaCorrectiva(
@@ -584,6 +727,8 @@ export async function actualizarEstadoMedidaCorrectiva(
     throw new Error("Hallazgo no encontrado para la empresa activa.");
   }
 
+  const estadoEvidencia = estado === "completada" ? "valida" : estado === "descartada" ? "rechazada" : "pendiente";
+
   await prisma.evidenciaCumplimiento.updateMany({
     where: {
       id: medidaId,
@@ -592,7 +737,9 @@ export async function actualizarEstadoMedidaCorrectiva(
       tipo: "accion_correctiva",
     },
     data: {
-      estado,
+      estado: estadoEvidencia,
+      validadoAt: estado === "completada" ? new Date() : null,
+      validadoPorId: estado === "completada" ? context.usuarioId : null,
     },
   });
 }
@@ -634,7 +781,7 @@ export async function registrarMedidaCorrectivaHallazgo(
       tipo: "accion_correctiva",
       estado: "pendiente",
       fechaEvidencia: new Date(),
-      observacion: descripcionNormalizada,
+      descripcion: descripcionNormalizada,
       hallazgoId: hallazgo.id,
       centroTrabajoId: hallazgo.centroTrabajoId,
       trabajadorId: hallazgo.trabajadorId,
@@ -646,6 +793,7 @@ export async function registrarMedidaCorrectivaHallazgo(
 export async function agregarEvidenciaCierreHallazgo(
   hallazgoId: string,
   observacion: string,
+  archivoUrl?: string,
 ): Promise<void> {
   const context = await requireAuth();
   if (!canManageCumplimiento(context.rol)) {
@@ -680,11 +828,14 @@ export async function agregarEvidenciaCierreHallazgo(
       tipo: "cierre",
       estado: "valida",
       fechaEvidencia: new Date(),
-      observacion: obs,
+      descripcion: obs,
+      archivoUrl: archivoUrl || null,
       hallazgoId: hallazgo.id,
       centroTrabajoId: hallazgo.centroTrabajoId,
       trabajadorId: hallazgo.trabajadorId,
       creadoPorId: context.usuarioId,
+      validadoPorId: context.usuarioId,
+      validadoAt: new Date(),
     },
   });
 }

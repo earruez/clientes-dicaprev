@@ -8,12 +8,18 @@ import {
   Paperclip,
   Building2,
   Link2,
+  ShieldCheck,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
-import { getEvidenciasCumplimientoView } from "./actions";
+import {
+  crearEvidenciaManual,
+  getEvidenciasDashboard,
+  revisarEvidencia,
+} from "@/actions/cumplimiento/evidencias";
 
-const ESTADO_CFG: Record<"valida" | "pendiente" | "rechazada", { label: string; cls: string }> = {
+const ESTADO_CFG: Record<"valida" | "pendiente" | "rechazada" | "vencida", { label: string; cls: string }> = {
   valida: {
     label: "Valida",
     cls: "bg-emerald-50 text-emerald-700 border border-emerald-200",
@@ -26,16 +32,54 @@ const ESTADO_CFG: Record<"valida" | "pendiente" | "rechazada", { label: string; 
     label: "Rechazada",
     cls: "bg-rose-50 text-rose-700 border border-rose-200",
   },
+  vencida: {
+    label: "Vencida",
+    cls: "bg-slate-100 text-slate-700 border border-slate-200",
+  },
 };
 
 function fmt(iso: string): string {
-  const d = new Date(iso + "T00:00:00");
+  const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString("es-CL");
 }
 
+async function actionCrearEvidencia(formData: FormData) {
+  "use server";
+
+  await crearEvidenciaManual({
+    titulo: String(formData.get("titulo") ?? ""),
+    descripcion: String(formData.get("descripcion") ?? ""),
+    origen: String(formData.get("origen") ?? "manual"),
+    archivoUrl: String(formData.get("archivoUrl") ?? "") || null,
+    archivoNombre: String(formData.get("archivoNombre") ?? "") || null,
+    hallazgoId: String(formData.get("hallazgoId") ?? "") || null,
+    obligacionClave: String(formData.get("obligacionClave") ?? "") || null,
+  });
+}
+
+async function actionValidar(formData: FormData) {
+  "use server";
+
+  await revisarEvidencia({
+    evidenciaId: String(formData.get("evidenciaId") ?? ""),
+    estado: "valida",
+    observacionRevision: String(formData.get("observacionRevision") ?? ""),
+  });
+}
+
+async function actionRechazar(formData: FormData) {
+  "use server";
+
+  await revisarEvidencia({
+    evidenciaId: String(formData.get("evidenciaId") ?? ""),
+    estado: "rechazada",
+    observacionRevision: String(formData.get("observacionRevision") ?? ""),
+  });
+}
+
 export default async function EvidenciasPage() {
-  const view = await getEvidenciasCumplimientoView();
+  const view = await getEvidenciasDashboard();
 
   return (
     <div className="min-h-screen bg-slate-50/80 py-10">
@@ -43,46 +87,93 @@ export default async function EvidenciasPage() {
         <StandardPageHeader
           moduleLabel="Cumplimiento DS44"
           title="Evidencias"
-          description="Vista derivada desde documentos y hallazgos reales en Prisma."
+          description="Trazabilidad y auditoria real de evidencias de cumplimiento."
           icon={Paperclip}
-          actions={
-            <Button disabled className="hidden sm:inline-flex rounded-full px-5 py-2.5 text-sm font-medium shadow-sm shrink-0">
-              Modelo dedicado pendiente
-            </Button>
-          }
         />
 
-        <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-          <p>{view.todoModelo}</p>
-        </div>
+        <Card className="border border-slate-200 bg-white shadow-sm">
+          <CardContent className="pt-6">
+            <form action={actionCrearEvidencia} className="grid gap-3 md:grid-cols-2">
+              <input
+                name="titulo"
+                placeholder="Titulo evidencia"
+                required
+                className="h-10 rounded-md border border-slate-200 px-3 text-sm"
+              />
+              <input
+                name="origen"
+                placeholder="Origen (manual, documento, checklist, epp, etc.)"
+                defaultValue="manual"
+                className="h-10 rounded-md border border-slate-200 px-3 text-sm"
+              />
+              <textarea
+                name="descripcion"
+                placeholder="Descripcion"
+                required
+                className="min-h-[88px] rounded-md border border-slate-200 px-3 py-2 text-sm md:col-span-2"
+              />
+              <select name="hallazgoId" className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+                <option value="">Vincular a hallazgo (opcional)</option>
+                {view.opciones.hallazgos.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.label}
+                  </option>
+                ))}
+              </select>
+              <select name="obligacionClave" className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+                <option value="">Vincular a obligación (opcional)</option>
+                {view.opciones.obligaciones.map((o) => (
+                  <option key={o.clave} value={o.clave}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                name="archivoNombre"
+                placeholder="Nombre archivo"
+                className="h-10 rounded-md border border-slate-200 px-3 text-sm"
+              />
+              <input
+                name="archivoUrl"
+                placeholder="URL archivo"
+                className="h-10 rounded-md border border-slate-200 px-3 text-sm"
+              />
+              <div className="md:col-span-2 flex justify-end">
+                <Button type="submit" className="rounded-full px-5 py-2.5 text-sm font-medium shadow-sm shrink-0">
+                  Crear evidencia
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             {
-              label: "Documentos derivados",
-              value: view.totalDocumentos,
-              sub: `${view.totalHallazgosAbiertos} hallazgos abiertos`,
+              label: "Total",
+              value: view.total,
+              sub: "Evidencias registradas",
               icon: <FileText className="h-5 w-5" />,
               cls: "from-slate-50 to-slate-100 text-slate-700",
             },
             {
               label: "Validas",
-              value: view.totalValidas,
-              sub: "Vigentes en registro documental",
+              value: view.validas,
+              sub: "Aprobadas en revision",
               icon: <CheckCircle2 className="h-5 w-5" />,
               cls: "from-emerald-50 to-emerald-100 text-emerald-700",
             },
             {
               label: "Pendientes",
-              value: view.totalPendientes,
-              sub: "Por vencer o en carga",
+              value: view.pendientes,
+              sub: "Por revision",
               icon: <Clock className="h-5 w-5" />,
               cls: "from-amber-50 to-amber-100 text-amber-700",
             },
             {
-              label: "Rechazadas",
-              value: view.totalRechazadas,
-              sub: "Vencidas o rechazadas",
+              label: "Rechazadas/Vencidas",
+              value: view.rechazadasOVencidas,
+              sub: "No conformes",
               icon: <AlertTriangle className="h-5 w-5" />,
               cls: "from-rose-50 to-rose-100 text-rose-700",
             },
@@ -104,8 +195,8 @@ export default async function EvidenciasPage() {
           {view.rows.length === 0 ? (
             <CardContent className="py-16 text-center">
               <Paperclip className="mx-auto h-10 w-10 text-slate-300 mb-3" />
-              <p className="text-slate-600 text-sm font-medium">Sin evidencias derivables desde documentos reales</p>
-              <p className="text-xs text-slate-400 mt-1">Cuando exista el modelo EvidenciaCumplimiento se habilitara trazabilidad completa.</p>
+              <p className="text-slate-600 text-sm font-medium">Sin evidencias registradas</p>
+              <p className="text-xs text-slate-400 mt-1">Crea una evidencia manual vinculada a hallazgo u obligación.</p>
             </CardContent>
           ) : (
             <div className="overflow-x-auto">
@@ -113,13 +204,13 @@ export default async function EvidenciasPage() {
                 <thead>
                   <tr className="border-b border-slate-100 bg-slate-50/60">
                     {[
-                      "Evidencia",
-                      "Obligacion",
-                      "Entidad",
+                      "Origen",
+                      "Titulo",
+                      "Relacionado con",
                       "Fecha",
                       "Estado",
-                      "Hallazgo abierto",
                       "Archivo",
+                      "Revision",
                     ].map((col) => (
                       <th
                         key={col}
@@ -133,40 +224,27 @@ export default async function EvidenciasPage() {
                 <tbody className="divide-y divide-slate-100">
                   {view.rows.map((row) => (
                     <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-4 py-3 max-w-[260px]">
-                        <div className="flex items-start gap-2">
-                          <FileText className="h-4 w-4 text-slate-300 shrink-0 mt-0.5" />
-                          <span className="font-medium text-slate-800 line-clamp-2">{row.titulo}</span>
-                        </div>
+                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{row.origen}</td>
+                      <td className="px-4 py-3 max-w-[240px]">
+                        <span className="font-medium text-slate-800 line-clamp-2">{row.titulo}</span>
+                        <p className="text-xs text-slate-500 line-clamp-2 mt-0.5">{row.descripcion}</p>
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-600 max-w-[220px]">
-                        {row.obligacionNombre ?? <span className="text-slate-300">-</span>}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
-                        {row.centroNombre ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <Building2 className="h-3.5 w-3.5 text-slate-400" />
-                            {row.centroNombre}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">-</span>
-                        )}
+                      <td className="px-4 py-3 text-xs text-slate-600 max-w-[280px]">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="line-clamp-2">{row.relacionadoCon}</span>
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{fmt(row.fecha)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium", ESTADO_CFG[row.estado].cls)}>
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                            ESTADO_CFG[row.estado].cls,
+                          )}
+                        >
                           {ESTADO_CFG[row.estado].label}
                         </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600 max-w-[300px]">
-                        {row.hallazgoAbiertoRelacionado ? (
-                          <span className="inline-flex items-start gap-1.5 text-amber-700">
-                            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                            <span className="line-clamp-2">{row.hallazgoAbiertoRelacionado}</span>
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">Sin hallazgo abierto vinculado</span>
-                        )}
                       </td>
                       <td className="px-4 py-3 text-xs">
                         {row.archivoUrl ? (
@@ -181,6 +259,45 @@ export default async function EvidenciasPage() {
                           </a>
                         ) : (
                           <span className="text-slate-300">Sin URL</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs min-w-[230px]">
+                        {row.estado === "pendiente" ? (
+                          <div className="flex flex-col gap-2">
+                            <form action={actionValidar} className="flex gap-2">
+                              <input type="hidden" name="evidenciaId" value={row.id} />
+                              <input
+                                name="observacionRevision"
+                                placeholder="Obs. validacion"
+                                className="h-8 flex-1 rounded-md border border-slate-200 px-2 text-[11px]"
+                              />
+                              <Button type="submit" variant="outline" className="h-8 px-2 text-[11px]">
+                                <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+                                Validar
+                              </Button>
+                            </form>
+                            <form action={actionRechazar} className="flex gap-2">
+                              <input type="hidden" name="evidenciaId" value={row.id} />
+                              <input
+                                name="observacionRevision"
+                                placeholder="Obs. rechazo"
+                                className="h-8 flex-1 rounded-md border border-slate-200 px-2 text-[11px]"
+                              />
+                              <Button type="submit" variant="outline" className="h-8 px-2 text-[11px]">
+                                <XCircle className="h-3.5 w-3.5 mr-1" />
+                                Rechazar
+                              </Button>
+                            </form>
+                          </div>
+                        ) : row.estado === "valida" ? (
+                          <div className="space-y-1 text-emerald-700">
+                            <p className="font-medium">Validada</p>
+                            {row.fechaValidacion ? (
+                              <p className="text-[11px] text-slate-500">{fmt(row.fechaValidacion)}</p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <p className="text-slate-500">Sin acciones</p>
                         )}
                       </td>
                     </tr>

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useMemo, useRef, useState, useTransition } from "react";
-import { AlertCircle, CheckCircle2, Camera, Loader2, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, Camera, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,6 +29,16 @@ type Props = {
   opciones: Pick<OpcionesHallazgo, "centros" | "areas">;
   iaConfigurada: boolean;
   onConfirmed: () => Promise<void>;
+};
+
+type SugerenciaAnalizada = {
+  id: string;
+  sugerencia: SugerenciaHallazgoIA;
+  archivo: {
+    url: string;
+    nombre: string;
+    tipo: string;
+  };
 };
 
 const IA_NO_CONFIGURADA = "IA no configurada en este entorno. Configura OPENAI_API_KEY para analizar fotografias.";
@@ -57,23 +68,24 @@ function tipoLabel(tipo: SugerenciaHallazgoIA["tipo"]) {
 export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigurada, onConfirmed }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dragCounterRef = useRef(0);
-  const [archivo, setArchivo] = useState<File | null>(null);
-  const [archivoUrl, setArchivoUrl] = useState<string | null>(null);
-  const [archivoNombre, setArchivoNombre] = useState<string | null>(null);
-  const [archivoTipo, setArchivoTipo] = useState<string | null>(null);
+  const [archivos, setArchivos] = useState<File[]>([]);
   const [centroTrabajoId, setCentroTrabajoId] = useState<string>("");
   const [areaId, setAreaId] = useState<string>("");
   const [observacion, setObservacion] = useState("");
-  const [sugerencias, setSugerencias] = useState<SugerenciaHallazgoIA[]>([]);
+  const [sugerencias, setSugerencias] = useState<SugerenciaAnalizada[]>([]);
+  const [sugerenciasSeleccionadas, setSugerenciasSeleccionadas] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const [confirmingBatch, setConfirmingBatch] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [procesandoIndex, setProcesandoIndex] = useState(-1);
+  const [fotoPreview, setFotoPreview] = useState<{ url: string; nombre: string } | null>(null);
 
   const imagenPreview = useMemo(() => {
-    if (!archivo) return null;
-    return URL.createObjectURL(archivo);
-  }, [archivo]);
+    if (archivos.length === 0) return null;
+    return URL.createObjectURL(archivos[0]);
+  }, [archivos]);
 
   React.useEffect(() => {
     return () => {
@@ -84,16 +96,17 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   }, [imagenPreview]);
 
   function resetFlow() {
-    setArchivo(null);
-    setArchivoUrl(null);
-    setArchivoNombre(null);
-    setArchivoTipo(null);
+    setArchivos([]);
     setCentroTrabajoId("");
     setAreaId("");
     setObservacion("");
     setSugerencias([]);
+    setSugerenciasSeleccionadas(new Set());
     setError(null);
     setConfirmingKey(null);
+    setConfirmingBatch(false);
+    setProcesandoIndex(-1);
+    setFotoPreview(null);
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -103,23 +116,34 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     onOpenChange(nextOpen);
   }
 
-  function setSelectedFile(file: File | null) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
+  function agregarArchivos(files: FileList | null) {
+    if (!files) return;
+    const nuevos = Array.from(files).filter((f) => f.type.startsWith("image/"));
+    if (archivos.length + nuevos.length > 10) {
+      setError(`Máximo 10 fotos permitidas. Actualmente tienes ${archivos.length}.`);
+      return;
+    }
+    const totales = [...archivos, ...nuevos];
+    
+    if (nuevos.length === 0) {
       setError("Solo se permiten imágenes (JPG, PNG, WEBP).");
       return;
     }
-
-    setArchivo(file);
-    setArchivoUrl(null);
-    setArchivoNombre(null);
-    setArchivoTipo(file.type || null);
+    
+    setArchivos(totales);
     setSugerencias([]);
+    setSugerenciasSeleccionadas(new Set());
     setError(null);
   }
 
+  function removerArchivo(index: number) {
+    setArchivos((prev) => prev.filter((_, i) => i !== index));
+    setSugerencias([]);
+    setSugerenciasSeleccionadas(new Set());
+  }
+
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    setSelectedFile(event.target.files?.[0] ?? null);
+    agregarArchivos(event.target.files);
   }
 
   function onDragEnter(event: React.DragEvent<HTMLDivElement>) {
@@ -149,13 +173,12 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     event.stopPropagation();
     dragCounterRef.current = 0;
     setIsDragActive(false);
-    const file = event.dataTransfer.files?.[0] ?? null;
-    setSelectedFile(file);
+    agregarArchivos(event.dataTransfer.files);
   }
 
-  async function uploadAndAnalyze() {
-    if (!archivo) {
-      setError("Debes seleccionar una fotografía para analizar.");
+  async function analizarTodasLasFotos() {
+    if (archivos.length === 0) {
+      setError("Debes seleccionar al menos una fotografía para analizar.");
       return;
     }
 
@@ -166,72 +189,108 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
 
     setError(null);
     setSugerencias([]);
+    setSugerenciasSeleccionadas(new Set());
 
-    const formData = new FormData();
-    formData.append("file", archivo);
+    startTransition(async () => {
+      try {
+        const todasLasSugerencias: SugerenciaAnalizada[] = [];
+        const datosArchivos: Array<{ file: File; url: string; nombre: string; tipo: string }> = [];
 
-    const uploadResponse = await fetch("/api/dicaprev/documentacion/upload", {
-      method: "POST",
-      body: formData,
+        for (let i = 0; i < archivos.length; i++) {
+          setProcesandoIndex(i);
+          const archivo = archivos[i];
+
+          // Subir archivo
+          const formData = new FormData();
+          formData.append("file", archivo);
+
+          const uploadResponse = await fetch("/api/dicaprev/documentacion/upload", {
+            method: "POST",
+            body: formData,
+          });
+
+          const uploadJson = (await uploadResponse.json()) as {
+            archivoUrl?: string;
+            archivoNombre?: string;
+            archivoTipo?: string;
+            error?: string;
+          };
+
+          if (!uploadResponse.ok || !uploadJson.archivoUrl) {
+            throw new Error(uploadJson.error ?? `No fue posible cargar la imagen ${i + 1}.`);
+          }
+
+          datosArchivos.push({
+            file: archivo,
+            url: uploadJson.archivoUrl,
+            nombre: uploadJson.archivoNombre ?? archivo.name,
+            tipo: uploadJson.archivoTipo ?? archivo.type,
+          });
+
+          // Analizar con IA
+          const analysis = await analizarFotoHallazgoIA({
+            archivoUrl: uploadJson.archivoUrl,
+            archivoNombre: uploadJson.archivoNombre ?? archivo.name,
+            archivoTipo: uploadJson.archivoTipo ?? archivo.type,
+            centroTrabajoId: centroTrabajoId || null,
+            areaId: areaId || null,
+            observacion: observacion.trim() || null,
+          });
+
+          if (!analysis || typeof analysis !== "object" || !("ok" in analysis)) {
+            throw new Error("No fue posible procesar la respuesta del análisis IA.");
+          }
+
+          if (!analysis.ok) {
+            throw new Error(analysis.error === "IA no configurada" ? IA_NO_CONFIGURADA : analysis.error);
+          }
+
+          (analysis.sugerencias || []).forEach((sugerencia, suggestionIndex) => {
+            todasLasSugerencias.push({
+              id: `${i}-${suggestionIndex}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              sugerencia,
+              archivo: {
+                url: uploadJson.archivoUrl!,
+                nombre: uploadJson.archivoNombre ?? archivo.name,
+                tipo: uploadJson.archivoTipo ?? archivo.type,
+              },
+            });
+          });
+        }
+
+        setSugerencias(todasLasSugerencias);
+        setSugerenciasSeleccionadas(new Set(todasLasSugerencias.map((item) => item.id)));
+        setProcesandoIndex(-1);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "No fue posible analizar las imágenes.";
+        setError(message);
+        setProcesandoIndex(-1);
+      }
     });
-
-    const uploadJson = (await uploadResponse.json()) as {
-      archivoUrl?: string;
-      archivoNombre?: string;
-      archivoTipo?: string;
-      error?: string;
-    };
-
-    if (!uploadResponse.ok || !uploadJson.archivoUrl) {
-      throw new Error(uploadJson.error ?? "No fue posible cargar la imagen.");
-    }
-
-    setArchivoUrl(uploadJson.archivoUrl);
-    setArchivoNombre(uploadJson.archivoNombre ?? archivo.name);
-
-    const analysis = await analizarFotoHallazgoIA({
-      archivoUrl: uploadJson.archivoUrl,
-      archivoNombre: uploadJson.archivoNombre ?? archivo.name,
-      archivoTipo: uploadJson.archivoTipo ?? archivo.type,
-      centroTrabajoId: centroTrabajoId || null,
-      areaId: areaId || null,
-      observacion: observacion.trim() || null,
-    });
-
-    if (!analysis || typeof analysis !== "object" || !("ok" in analysis)) {
-      setError("No fue posible procesar la respuesta del analisis IA.");
-      setSugerencias([]);
-      return;
-    }
-
-    if (!analysis.ok) {
-      setError(analysis.error === "IA no configurada" ? IA_NO_CONFIGURADA : analysis.error);
-      setSugerencias([]);
-      return;
-    }
-
-    setSugerencias(analysis.sugerencias);
   }
 
-  async function handleConfirmar(sugerencia: SugerenciaHallazgoIA) {
-    if (!archivoUrl) return;
-    const confirmationKey = `${sugerencia.titulo}-${sugerencia.confianza}`;
+  async function handleConfirmar(item: SugerenciaAnalizada) {
+    const confirmationKey = item.id;
     setConfirmingKey(confirmationKey);
     setError(null);
 
     try {
       await confirmarHallazgoDesdeFotoIA({
-        sugerencia,
-        archivoUrl,
-        archivoNombre,
-        archivoTipo,
+        sugerencia: item.sugerencia,
+        archivoUrl: item.archivo.url,
+        archivoNombre: item.archivo.nombre,
+        archivoTipo: item.archivo.tipo,
         centroTrabajoId: centroTrabajoId || null,
         areaId: areaId || null,
         observacion: observacion.trim() || null,
       });
       await onConfirmed();
-      resetFlow();
-      onOpenChange(false);
+      setSugerencias((prev) => prev.filter((current) => current.id !== item.id));
+      setSugerenciasSeleccionadas((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "No fue posible confirmar el hallazgo.";
       setError(message);
@@ -240,17 +299,77 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     }
   }
 
+  async function handleConfirmarSeleccionadas() {
+    if (sugerenciasSeleccionadas.size === 0) {
+      setError("Selecciona al menos una sugerencia para crear hallazgos.");
+      return;
+    }
+
+    const seleccionadas = sugerencias.filter((item) => sugerenciasSeleccionadas.has(item.id));
+    const conBajaConfianza = seleccionadas.some((item) => item.sugerencia.confianza < 20);
+    if (conBajaConfianza) {
+      const ok = window.confirm(
+        "Hay sugerencias no concluyentes dentro de la selección. ¿Deseas crear igualmente todos los hallazgos seleccionados?",
+      );
+      if (!ok) return;
+    }
+
+    setConfirmingBatch(true);
+    setError(null);
+
+    try {
+      for (const item of seleccionadas) {
+        await confirmarHallazgoDesdeFotoIA({
+          sugerencia: item.sugerencia,
+          archivoUrl: item.archivo.url,
+          archivoNombre: item.archivo.nombre,
+          archivoTipo: item.archivo.tipo,
+          centroTrabajoId: centroTrabajoId || null,
+          areaId: areaId || null,
+          observacion: observacion.trim() || null,
+        });
+      }
+
+      await onConfirmed();
+      setSugerencias((prev) => prev.filter((item) => !sugerenciasSeleccionadas.has(item.id)));
+      setSugerenciasSeleccionadas(new Set());
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "No fue posible crear los hallazgos seleccionados.";
+      setError(message);
+    } finally {
+      setConfirmingBatch(false);
+    }
+  }
+
   function handleDescartar(index: number) {
-    setSugerencias((prev) => prev.filter((_, idx) => idx !== index));
+    setSugerencias((prev) => {
+      const target = prev[index];
+      if (!target) return prev;
+      setSugerenciasSeleccionadas((selected) => {
+        const next = new Set(selected);
+        next.delete(target.id);
+        return next;
+      });
+      return prev.filter((_, idx) => idx !== index);
+    });
+  }
+
+  function toggleSeleccion(id: string, checked: boolean) {
+    setSugerenciasSeleccionadas((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[88vh] overflow-y-auto" size="lg">
         <DialogHeader>
-          <DialogTitle>Analizar fotografía con IA</DialogTitle>
+          <DialogTitle>Analizar fotografías con IA (hasta 10)</DialogTitle>
           <DialogDescription>
-            Sube o toma una foto. La IA sugerirá hallazgos visibles, pero debes confirmarlos manualmente.
+            Sube o toma hasta 10 fotos. La IA sugerirá hallazgos visibles, pero debes confirmarlos manualmente.
           </DialogDescription>
         </DialogHeader>
 
@@ -317,33 +436,41 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
               capture="environment"
               className="hidden"
               onChange={handleFileChange}
+              multiple
             />
 
             <div className="flex flex-wrap items-center gap-3">
               <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
                 <Camera className="mr-2 h-4 w-4" />
-                {archivo ? "Cambiar foto" : "Seleccionar foto"}
+                {archivos.length === 0 ? "Seleccionar fotos" : "Agregar más fotos"}
               </Button>
-              <p className="text-xs text-slate-500">Puedes usar cámara móvil, subir archivo o arrastrar la foto aquí.</p>
+              <p className="text-xs text-slate-500">
+                {archivos.length}/10 fotos. Puedes usar cámara móvil, subir archivos o arrastrar fotos aquí.
+              </p>
             </div>
 
-            <div className="mt-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-              {imagenPreview ? (
-                <img
-                  src={imagenPreview}
-                  alt="Vista previa de la foto"
-                  className="h-16 w-16 rounded-lg border object-cover"
-                />
-              ) : (
-                <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-400">
-                  <Upload className="h-5 w-5" />
-                </div>
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-slate-900">{archivo?.name ?? "Sin foto seleccionada"}</p>
-                <p className="truncate text-xs text-slate-500">{archivoUrl ?? "La foto se asociará como evidencia al confirmar."}</p>
+            {archivos.length > 0 && (
+              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+                {archivos.map((file, idx) => (
+                  <div key={idx} className="relative rounded-lg border border-slate-200 overflow-hidden bg-white">
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={`Foto ${idx + 1}`}
+                      className="h-20 w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/0 hover:bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition">
+                      <button
+                        onClick={() => removerArchivo(idx)}
+                        className="text-white font-bold text-sm bg-red-600 rounded-full px-2 py-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="px-2 py-1 text-xs text-slate-600 truncate">{file.name}</div>
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
           </div>
 
           {!iaConfigurada ? (
@@ -355,7 +482,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
           {isPending ? (
             <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Analizando fotografía...
+              Analizando fotografías...
             </div>
           ) : null}
 
@@ -368,17 +495,58 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
 
           {sugerencias.length > 0 ? (
             <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
+                <div className="flex items-center gap-2 text-sm text-slate-700">
+                  <Checkbox
+                    checked={sugerencias.length > 0 && sugerencias.every((item) => sugerenciasSeleccionadas.has(item.id))}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSugerenciasSeleccionadas(new Set(sugerencias.map((item) => item.id)));
+                        return;
+                      }
+                      setSugerenciasSeleccionadas(new Set());
+                    }}
+                  />
+                  <span>Seleccionar todas ({sugerencias.length})</span>
+                </div>
+                <Button
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  onClick={() => {
+                    void handleConfirmarSeleccionadas();
+                  }}
+                  disabled={confirmingBatch || confirmingKey !== null || sugerenciasSeleccionadas.size === 0}
+                >
+                  {confirmingBatch ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creando hallazgos...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      Crear seleccionados ({sugerenciasSeleccionadas.size})
+                    </>
+                  )}
+                </Button>
+              </div>
+
               {sugerencias.map((sugerencia, index) => {
-                const confirmationKey = `${sugerencia.titulo}-${sugerencia.confianza}-${index}`;
-                const bajaConfianza = sugerencia.confianza < 20;
+                const confirmationKey = sugerencia.id;
+                const bajaConfianza = sugerencia.sugerencia.confianza < 20;
+                const disabledByPending = confirmingKey === confirmationKey;
+                const requiereConfirmacionManual = bajaConfianza;
                 return (
                   <div key={confirmationKey} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-sm font-semibold text-slate-900">{sugerencia.titulo}</h4>
-                          <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", prioridadClass(sugerencia.confianza))}>
-                            Confianza {sugerencia.confianza}%
+                          <Checkbox
+                            checked={sugerenciasSeleccionadas.has(sugerencia.id)}
+                            onCheckedChange={(checked) => toggleSeleccion(sugerencia.id, checked === true)}
+                          />
+                          <h4 className="text-sm font-semibold text-slate-900">{sugerencia.sugerencia.titulo}</h4>
+                          <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", prioridadClass(sugerencia.sugerencia.confianza))}>
+                            Confianza {sugerencia.sugerencia.confianza}%
                           </span>
                           {bajaConfianza && (
                             <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
@@ -386,13 +554,16 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                             </span>
                           )}
                           <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                            {tipoLabel(sugerencia.tipo)}
+                            {tipoLabel(sugerencia.sugerencia.tipo)}
                           </span>
                           <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                            Prioridad {sugerencia.prioridad}
+                            Prioridad {sugerencia.sugerencia.prioridad}
+                          </span>
+                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                            Foto: {sugerencia.archivo.nombre}
                           </span>
                         </div>
-                        <p className="text-sm text-slate-700">{sugerencia.descripcion}</p>
+                        <p className="text-sm text-slate-700">{sugerencia.sugerencia.descripcion}</p>
                         {bajaConfianza && (
                           <p className="text-xs text-amber-700">
                             <strong>⚠️ La imagen no permite confirmar el hallazgo con suficiente claridad.</strong>
@@ -405,16 +576,30 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                           Descartar sugerencia
                         </Button>
                         <Button
+                          variant="outline"
+                          onClick={() => setFotoPreview({ url: sugerencia.archivo.url, nombre: sugerencia.archivo.nombre })}
+                        >
+                          Ver foto
+                        </Button>
+                        <Button
                           className="bg-emerald-600 text-white hover:bg-emerald-700"
-                          onClick={() => void handleConfirmar(sugerencia)}
-                          disabled={confirmingKey === confirmationKey || bajaConfianza}
+                          onClick={() => {
+                            if (requiereConfirmacionManual) {
+                              const ok = window.confirm(
+                                "La IA marcó esta sugerencia como no concluyente. ¿Deseas crear el hallazgo de todas formas bajo tu revisión manual?",
+                              );
+                              if (!ok) return;
+                            }
+                            void handleConfirmar(sugerencia);
+                          }}
+                          disabled={disabledByPending || confirmingBatch}
                         >
                           {confirmingKey === confirmationKey ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           ) : (
                             <CheckCircle2 className="mr-2 h-4 w-4" />
                           )}
-                          Crear hallazgo con evidencia
+                          {requiereConfirmacionManual ? "Crear de todas formas" : "Crear hallazgo con evidencia"}
                         </Button>
                       </div>
                     </div>
@@ -422,11 +607,11 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
                       <div className="rounded-xl bg-white p-3 text-sm text-slate-700">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Evidencia visible</p>
-                        <p className="mt-1">{sugerencia.evidenciaVisible}</p>
+                        <p className="mt-1">{sugerencia.sugerencia.evidenciaVisible}</p>
                       </div>
                       <div className="rounded-xl bg-white p-3 text-sm text-slate-700">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Acción sugerida</p>
-                        <p className="mt-1">{sugerencia.accionSugerida}</p>
+                        <p className="mt-1">{sugerencia.sugerencia.accionSugerida}</p>
                       </div>
                     </div>
                   </div>
@@ -443,21 +628,40 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
           <Button
             className="bg-emerald-600 text-white hover:bg-emerald-700"
             onClick={() => {
-              startTransition(() => {
-                void uploadAndAnalyze().catch((err: unknown) => {
-                  const message = err instanceof Error ? err.message : "No fue posible analizar la imagen.";
-                  setError(message);
-                  setSugerencias([]);
-                });
-              });
+              void analizarTodasLasFotos();
             }}
-            disabled={isPending || !archivo || !iaConfigurada}
+            disabled={isPending || confirmingBatch || archivos.length === 0 || !iaConfigurada || procesandoIndex >= 0}
           >
-            {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            Analizar foto
+            {isPending || procesandoIndex >= 0 ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Analizando {procesandoIndex + 1}/{archivos.length}...
+              </>
+            ) : (
+              `Analizar ${archivos.length} foto${archivos.length !== 1 ? "s" : ""}`
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <Dialog open={Boolean(fotoPreview)} onOpenChange={(nextOpen) => !nextOpen && setFotoPreview(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Vista de fotografía</DialogTitle>
+            <DialogDescription>{fotoPreview?.nombre ?? "Imagen de referencia"}</DialogDescription>
+          </DialogHeader>
+
+          {fotoPreview ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+              <img
+                src={fotoPreview.url}
+                alt={fotoPreview.nombre}
+                className="max-h-[70vh] w-full rounded-md object-contain"
+              />
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

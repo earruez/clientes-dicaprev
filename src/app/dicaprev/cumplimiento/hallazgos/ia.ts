@@ -123,6 +123,7 @@ function buildPrompt(params: {
     "- incluir control preventivo",
     "- incluir condición para retomar trabajo cuando aplique",
     "- evitar frases genéricas",
+    "- si la prioridad es 'critica', la medida debe indicar: paralizar faena de inmediato, corregir de inmediato y, si no se puede corregir de inmediato, dejar fuera de uso el área o la máquina hasta eliminar el riesgo",
     "Ejemplos de estilo:",
     "- Trabajo en altura sin arnés: Detener actividad, proveer arnés y línea de vida con anclaje certificado, verificar uso correcto y registrar evidencia antes de continuar.",
     "- Extintor vencido: Retirar o señalizar el equipo vencido, coordinar recarga o reemplazo inmediato, y dejar evidencia del extintor operativo.",
@@ -151,6 +152,24 @@ function buildPrompt(params: {
     params.areaNombre ? `Area: ${params.areaNombre}` : "Area: no seleccionada",
     params.observacion ? `Observacion del usuario: ${params.observacion}` : "Observacion del usuario: no indicada",
   ].join("\n");
+}
+
+function accionCriticaInmediata(textoBase: string): string {
+  const base = textoBase.trim();
+  const instruccion =
+    "Paralizar faena de inmediato y corregir de inmediato. Si no es posible corregir en el acto, dejar fuera de uso el área o la máquina hasta eliminar el riesgo y autorizar reapertura con verificación.";
+  if (!base) return instruccion;
+
+  const token = normalizeToken(base);
+  if (
+    token.includes("paralizar") &&
+    token.includes("de inmediato") &&
+    (token.includes("fuera de uso") || token.includes("sin uso") || token.includes("no usar"))
+  ) {
+    return base;
+  }
+
+  return `${instruccion} ${base}`.trim();
 }
 
 function normalizarSugerenciaHallazgoIA(raw: unknown): SugerenciaHallazgoIA | null {
@@ -404,9 +423,6 @@ export async function confirmarHallazgoDesdeFotoIA(
   if (!input.archivoUrl.trim()) {
     throw new Error("La foto es obligatoria para confirmar el hallazgo.");
   }
-  if (normalizeToken(input.sugerencia.titulo) === "no concluyente") {
-    throw new Error("La sugerencia no es concluyente y no puede convertirse en hallazgo.");
-  }
   if (context.rol !== "SUPERADMIN") {
     const manageCumplimiento = await requirePermission("canManageCumplimiento");
     if (!manageCumplimiento) {
@@ -436,19 +452,23 @@ export async function confirmarHallazgoDesdeFotoIA(
 
   const diasCompromiso =
     input.sugerencia.prioridad === "critica"
-      ? 5
+      ? 0
       : input.sugerencia.prioridad === "alta"
         ? 10
         : input.sugerencia.prioridad === "media"
           ? 15
           : 20;
   const fechaCompromiso = new Date(Date.now() + diasCompromiso * 86_400_000);
+  const accionCorrectivaFinal =
+    input.sugerencia.prioridad === "critica"
+      ? accionCriticaInmediata(input.sugerencia.accionSugerida)
+      : input.sugerencia.accionSugerida;
   const descripcionHallazgo = `${input.sugerencia.titulo}. ${input.sugerencia.descripcion}`.trim();
   const observacionFinal = [
     "Hallazgo sugerido por IA y confirmado por usuario.",
     input.observacion?.trim() || null,
     `Evidencia visible: ${input.sugerencia.evidenciaVisible}`,
-    `Accion sugerida: ${input.sugerencia.accionSugerida}`,
+    `Accion sugerida: ${accionCorrectivaFinal}`,
   ]
     .filter(Boolean)
     .join(" ");
@@ -495,7 +515,7 @@ export async function confirmarHallazgoDesdeFotoIA(
         tipo: "accion_correctiva",
         estado: "pendiente",
         fechaEvidencia: new Date(),
-        observacion: input.sugerencia.accionSugerida,
+        observacion: accionCorrectivaFinal,
         hallazgoId: hallazgo.id,
         centroTrabajoId: centro?.id ?? null,
         creadoPorId: context.usuarioId,

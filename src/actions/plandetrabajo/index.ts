@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import type { Prisma } from "@prisma/client";
+import { MESES_SHORT } from "@/lib/plandetrabajo/constants";
 
 // ─────────────────────────────────────────────
 // TIPOS EXPORTADOS
@@ -25,11 +26,6 @@ export type MesShort =
   | "Oct"
   | "Nov"
   | "Dic";
-
-export const MESES_SHORT: MesShort[] = [
-  "Ene", "Feb", "Mar", "Abr", "May", "Jun",
-  "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
-];
 
 export type ActividadPlanRow = {
   id: string;

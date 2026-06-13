@@ -10,7 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MESES_SHORT, type EstadoActividad, type MesShort } from "@/actions/plandetrabajo";
+import { type EstadoActividad, type MesShort } from "@/actions/plandetrabajo";
+import { MESES_SHORT } from "@/lib/plandetrabajo/constants";
 
 export type ActivityFormModel = {
   actividad: string;

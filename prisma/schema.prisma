@@ -133,6 +133,13 @@ enum EstadoAccionCorrectiva {
   cancelada
 }
 
+enum EstadoEvidenciaCumplimiento {
+  pendiente
+  valida
+  rechazada
+  vencida
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -235,6 +242,7 @@ model Usuario {
   obligacionesEstadoActualizadas ObligacionEmpresaEstado[]      @relation("UsuarioObligacionEmpresaEstado")
   hallazgosCumplimientoCreados   HallazgoCumplimiento[]         @relation("UsuarioHallazgoCumplimientoCreado")
   evidenciasCumplimientoCreadas  EvidenciaCumplimiento[]        @relation("UsuarioEvidenciaCumplimientoCreada")
+  evidenciasCumplimientoValidadas EvidenciaCumplimiento[]       @relation("UsuarioEvidenciaCumplimientoValidada")
   evidenciasCumplimientoHistorial EvidenciaCumplimientoHistorial[] @relation("UsuarioEvidenciaCumplimientoHistorial")
   capacitacionSesionesCreadas    CapacitacionSesion[]           @relation("UsuarioCapacitacionSesionCreada")
   capacitacionHistorialEventos   CapacitacionHistorial[]
@@ -333,6 +341,7 @@ model DocumentoEmpresa {
   subidoPor          Usuario                     @relation("UsuarioDocumentosSubidos", fields: [subidoPorId], references: [id])
   documentoRequerido DocumentoRequeridoEmpresa?  @relation(fields: [documentoRequeridoId], references: [id])
   historial          DocumentoEmpresaHistorial[]
+  evidenciasCumplimiento EvidenciaCumplimiento[]
 
   @@unique([empresaId, documentoRequeridoId])
 }
@@ -405,6 +414,7 @@ model ObligacionEmpresaEstado {
 
   empresa        Empresa  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   actualizadoPor Usuario? @relation("UsuarioObligacionEmpresaEstado", fields: [actualizadoPorId], references: [id])
+  evidenciasCumplimiento EvidenciaCumplimiento[] @relation("EvidenciaObligacionEstado")
 
   @@unique([empresaId, obligacionClave])
   @@index([empresaId])
@@ -424,12 +434,15 @@ model HallazgoCumplimiento {
   estado          String
   fechaCompromiso DateTime
   creadoPorId     String
+  responsableId   String?
+  responsableNombre String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   centroTrabajo CentroTrabajo? @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
   trabajador    Trabajador?    @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  responsableTrabajador Trabajador? @relation("TrabajadorHallazgoCumplimientoResponsable", fields: [responsableId], references: [id], onDelete: SetNull)
   checklistRespuesta ChecklistRespuesta? @relation(fields: [checklistRespuestaId], references: [id], onDelete: SetNull)
   creadoPor     Usuario        @relation("UsuarioHallazgoCumplimientoCreado", fields: [creadoPorId], references: [id])
   evidenciasCumplimiento EvidenciaCumplimiento[]
@@ -441,6 +454,7 @@ model HallazgoCumplimiento {
   @@index([obligacionClave])
   @@index([estado])
   @@index([creadoPorId])
+  @@index([responsableId])
   @@unique([checklistRespuestaId])
 }
 
@@ -545,6 +559,7 @@ model Trabajador {
   posicionDotacion         PosicionDotacion?        @relation(fields: [posicionDotacionId], references: [id], onDelete: SetNull)
   documentos               TrabajadorDocumento[]
   hallazgosCumplimiento    HallazgoCumplimiento[]
+  hallazgosResponsable     HallazgoCumplimiento[]   @relation("TrabajadorHallazgoCumplimientoResponsable")
   evidenciasCumplimiento   EvidenciaCumplimiento[]
   capacitacionAsignaciones CapacitacionAsignacion[]
   capacitacionHistoriales  CapacitacionHistorial[]
@@ -574,7 +589,7 @@ model EvidenciaCumplimiento {
   descripcion     String   @default("")
   origen          String   @default("manual")
   tipo            String
-  estado          String
+  estado          EstadoEvidenciaCumplimiento
   fechaEvidencia  DateTime
   observacion     String?
   archivoNombre   String?
@@ -597,11 +612,17 @@ model EvidenciaCumplimiento {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  empresa       Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  hallazgo      HallazgoCumplimiento? @relation(fields: [hallazgoId], references: [id], onDelete: SetNull)
-  centroTrabajo CentroTrabajo?        @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
-  trabajador    Trabajador?           @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
-  creadoPor     Usuario?              @relation("UsuarioEvidenciaCumplimientoCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  empresa       Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  hallazgo      HallazgoCumplimiento?   @relation(fields: [hallazgoId], references: [id], onDelete: SetNull)
+  obligacionEstado ObligacionEmpresaEstado? @relation("EvidenciaObligacionEstado", fields: [empresaId, obligacionClave], references: [empresaId, obligacionClave])
+  documentoTrabajador TrabajadorDocumento? @relation(fields: [documentoTrabajadorId], references: [id], onDelete: SetNull)
+  documentoEmpresa DocumentoEmpresa?    @relation(fields: [documentoEmpresaId], references: [id], onDelete: SetNull)
+  checklistEjecucion ChecklistEjecucion? @relation(fields: [checklistEjecucionId], references: [id], onDelete: SetNull)
+  entregaEpp    EntregaEpp?             @relation(fields: [entregaEppId], references: [id], onDelete: SetNull)
+  centroTrabajo CentroTrabajo?          @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+  trabajador    Trabajador?             @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  creadoPor     Usuario?                @relation("UsuarioEvidenciaCumplimientoCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
+  validadoPor   Usuario?                @relation("UsuarioEvidenciaCumplimientoValidada", fields: [validadoPorId], references: [id], onDelete: SetNull)
   historial     EvidenciaCumplimientoHistorial[]
 
   @@index([empresaId])
@@ -676,6 +697,7 @@ model TrabajadorDocumento {
   capacitacionAsignacionesEvidencia   CapacitacionAsignacion[]       @relation("CapAsignacionEvidenciaDocumento")
   capacitacionAsignacionesCertificado CapacitacionAsignacion[]       @relation("CapAsignacionCertificadoDocumento")
   capacitacionEvaluacionesEvidencia   CapacitacionEvaluacion[]       @relation("CapEvaluacionEvidenciaDocumento")
+  evidenciasCumplimiento              EvidenciaCumplimiento[]
 
   @@index([trabajadorId, tipo, esVigente])
   @@index([trabajadorId])
@@ -879,6 +901,11 @@ model CapacitacionSesion {
   ubicacion      String?
   relator        String?
   cupos          Int?
+  videoUrl       String?
+  videoDuracionSegundos Int?
+  minimoVisualizacionPct Int @default(85)
+  evaluacionPreguntas Json?
+  evaluacionMinimoAprobacion Int @default(70)
   estado         String    @default("programada") // programada | en_curso | finalizada | cancelada
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -1614,6 +1641,7 @@ model EntregaEpp {
   trabajador Trabajador @relation(fields: [trabajadorId], references: [id], onDelete: Cascade)
   creadoPor  Usuario?   @relation("UsuarioEntregaEppCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
   detalles   EntregaEppDetalle[]
+  evidenciasCumplimiento EvidenciaCumplimiento[]
   firmas     FirmaDocumento[]
 
   @@index([empresaId])
@@ -1696,6 +1724,7 @@ model ChecklistEjecucion {
   centroTrabajo CentroTrabajo?       @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
   trabajador    Trabajador?          @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
   respuestas    ChecklistRespuesta[]
+  evidenciasCumplimiento EvidenciaCumplimiento[]
 
   @@index([empresaId])
   @@index([templateId])

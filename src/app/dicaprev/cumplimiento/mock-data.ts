@@ -206,6 +206,8 @@ export const EVIDENCIAS_CUMPLIMIENTO_MOCK: EvidenciaCumplimiento[] = [
   {
     id: "evc-001",
     titulo: "Confirmación cupo capacitación OTEC — Abril 2026",
+    descripcion: "Evidencia documental de coordinación y cupo de capacitación para trabajadores.",
+    origen: "manual",
     tipo: "registro",
     fecha: "2026-04-01",
     obligacionId: "ob-04",
