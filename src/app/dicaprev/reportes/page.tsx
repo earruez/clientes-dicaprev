@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { FileBarChart2, Clock, AlertTriangle, Building2, BarChart3, UserCheck } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import ModuleInPreparation from "@/components/layout/ModuleInPreparation";
 
 const REPORTES = [
   {
@@ -47,6 +48,14 @@ const REPORTES = [
 ];
 
 export default function ReportesPage() {
+  if (process.env.NODE_ENV === "production") {
+    return (
+      <div className="p-6">
+        <ModuleInPreparation moduleName="Reportes" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
       <StandardPageHeader

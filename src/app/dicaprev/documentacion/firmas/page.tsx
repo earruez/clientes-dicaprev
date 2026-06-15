@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { FileSignature } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import ModuleInPreparation from "@/components/layout/ModuleInPreparation";
 
 type DocumentoFirma = {
   id: string;
@@ -80,6 +81,18 @@ function EstadoPill({
 }
 
 export default function Page() {
+  if (process.env.NODE_ENV === "production") {
+    return (
+      <div className="p-6">
+        <ModuleInPreparation moduleName="Firmas de documentacion" />
+      </div>
+    );
+  }
+
+  return <FirmasDocumentacionContent />;
+}
+
+function FirmasDocumentacionContent() {
   const [selectedId, setSelectedId] = useState<string | null>("1");
   const [showNewModal, setShowNewModal] = useState(false);
 

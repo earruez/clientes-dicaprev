@@ -40,6 +40,7 @@ import {
 import { EMPRESA_MOCK } from "@/lib/empresa";
 import { cn } from "@/lib/utils";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import ModuleInPreparation from "@/components/layout/ModuleInPreparation";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -90,6 +91,18 @@ function pctTextColor(pct: number) {
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function CumplimientoAreaPage() {
+  if (process.env.NODE_ENV === "production") {
+    return (
+      <div className="p-6">
+        <ModuleInPreparation moduleName="Reporte de cumplimiento por area" />
+      </div>
+    );
+  }
+
+  return <CumplimientoAreaPageContent />;
+}
+
+function CumplimientoAreaPageContent() {
   // ── Engine ────────────────────────────────────────────────────────────────
   const docs = useMemo<DocumentoEvaluable[]>(() =>
     EVIDENCIAS_MOCK.flatMap((ev) => {

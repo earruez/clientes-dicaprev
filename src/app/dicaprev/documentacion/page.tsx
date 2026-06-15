@@ -41,6 +41,7 @@ type ArchivoSubido = {
 
 export default function DocumentacionPage() {
   const router = useRouter();
+  const isProductionBuild = process.env.NODE_ENV === "production";
   const {
     usuarioActual,
     documentos,
@@ -596,10 +597,22 @@ export default function DocumentacionPage() {
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-semibold text-slate-700">Resumen alertas documentales:</span>
-          <button onClick={() => router.push("/dicaprev/alertas?severidad=critica")} className="rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700 hover:bg-red-100">Críticas: {alertasResumen.critica}</button>
-          <button onClick={() => router.push("/dicaprev/alertas?severidad=alta")} className="rounded border border-orange-200 bg-orange-50 px-2 py-1 text-orange-700 hover:bg-orange-100">Altas: {alertasResumen.alta}</button>
-          <button onClick={() => router.push("/dicaprev/alertas?severidad=media")} className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 hover:bg-amber-100">Medias: {alertasResumen.media}</button>
-          <button onClick={() => router.push("/dicaprev/alertas?severidad=baja")} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700 hover:bg-slate-100">Bajas: {alertasResumen.baja}</button>
+          {isProductionBuild ? (
+            <>
+              <span className="rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700">Críticas: {alertasResumen.critica}</span>
+              <span className="rounded border border-orange-200 bg-orange-50 px-2 py-1 text-orange-700">Altas: {alertasResumen.alta}</span>
+              <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">Medias: {alertasResumen.media}</span>
+              <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700">Bajas: {alertasResumen.baja}</span>
+              <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600">Modulo de alertas en preparacion</span>
+            </>
+          ) : (
+            <>
+              <button onClick={() => router.push("/dicaprev/alertas?severidad=critica")} className="rounded border border-red-200 bg-red-50 px-2 py-1 text-red-700 hover:bg-red-100">Críticas: {alertasResumen.critica}</button>
+              <button onClick={() => router.push("/dicaprev/alertas?severidad=alta")} className="rounded border border-orange-200 bg-orange-50 px-2 py-1 text-orange-700 hover:bg-orange-100">Altas: {alertasResumen.alta}</button>
+              <button onClick={() => router.push("/dicaprev/alertas?severidad=media")} className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 hover:bg-amber-100">Medias: {alertasResumen.media}</button>
+              <button onClick={() => router.push("/dicaprev/alertas?severidad=baja")} className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-700 hover:bg-slate-100">Bajas: {alertasResumen.baja}</button>
+            </>
+          )}
         </div>
       </div>
 

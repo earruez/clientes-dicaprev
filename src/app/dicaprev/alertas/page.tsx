@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, Bell } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import ModuleInPreparation from "@/components/layout/ModuleInPreparation";
 import {
   getAlertasDocumentalesEmpresa,
   getContextoFijoDocumentacion,
@@ -178,6 +179,14 @@ function AlertasDocumentalesPageContent() {
 }
 
 export default function AlertasDocumentalesPage() {
+  if (process.env.NODE_ENV === "production") {
+    return (
+      <div className="p-6">
+        <ModuleInPreparation moduleName="Alertas" />
+      </div>
+    );
+  }
+
   return (
     <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white px-4 py-10 text-center text-sm text-slate-500">Cargando alertas...</div>}>
       <AlertasDocumentalesPageContent />

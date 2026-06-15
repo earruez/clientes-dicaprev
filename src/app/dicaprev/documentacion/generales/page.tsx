@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ModuleInPreparation from "@/components/layout/ModuleInPreparation";
 
 /* ======================================
    Tipos (mock)
@@ -146,13 +147,24 @@ const mockDocumentosIniciales: DocumentoGeneral[] = [
 ====================================== */
 
 export default function DocumentosGeneralesPage() {
+  if (process.env.NODE_ENV === "production") {
+    return (
+      <div className="p-6">
+        <ModuleInPreparation moduleName="Documentacion generales" />
+      </div>
+    );
+  }
+
+  return <DocumentosGeneralesContent />;
+}
+
+function DocumentosGeneralesContent() {
   const [categorias, setCategorias] = useState<Categoria[]>(
     mockCategoriasIniciales
   );
   const [documentos, setDocumentos] = useState<DocumentoGeneral[]>(
     mockDocumentosIniciales
   );
-
   const [busqueda, setBusqueda] = useState("");
   const [soloAplica, setSoloAplica] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState<EstadoDocumento | "Todos">(
