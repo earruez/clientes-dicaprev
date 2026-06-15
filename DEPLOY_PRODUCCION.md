@@ -103,6 +103,30 @@ Checklist en Vercel:
 3. Verificar que Production use la misma `DATABASE_URL` cloud.
 4. Desplegar.
 
+## Dominio
+
+Dominio comprado: `nextprev.cl`.
+
+Subdominios definidos para producción inicial:
+
+- `www.nextprev.cl`
+  - Web pública / sitio principal.
+- `app.nextprev.cl`
+  - Aplicación NextPrev (login y operación).
+
+Pasos DNS generales con Vercel:
+
+1. Ir a Vercel > Project Settings > Domains.
+2. Agregar `www.nextprev.cl` y `app.nextprev.cl` al proyecto correspondiente.
+3. En el proveedor DNS de `nextprev.cl`, crear/actualizar los registros solicitados por Vercel.
+4. Esperar la verificación de dominio en Vercel y confirmar estado `Valid Configuration`.
+5. Definir dominio primario según estrategia de producto (por ejemplo, app en `app.nextprev.cl`).
+
+Importante:
+
+- Los registros DNS definitivos (tipo, nombre, valor y proxied/no proxied) los entrega Vercel al momento de agregar cada dominio.
+- No fijar registros manuales “de memoria”; usar siempre los valores exactos que muestre Vercel para cada entorno.
+
 ## Superadmin inicial real
 
 El sistema no requiere datos demo obligatorios para funcionar, pero sí requiere al menos un usuario real en tabla `Usuario` para poder iniciar sesión por credenciales.
