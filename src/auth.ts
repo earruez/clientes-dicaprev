@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
+import { verifyPassword } from "@/lib/password-hash";
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -38,10 +39,18 @@ export const authOptions: NextAuthOptions = {
 
         const usuario = await prisma.usuario.findUnique({
           where: { email },
-          select: { id: true, nombre: true, email: true, activo: true },
+          select: { id: true, nombre: true, email: true, activo: true, passwordHash: true },
         });
 
         if (!usuario || !usuario.activo) {
+          return null;
+        }
+
+        if (usuario.passwordHash) {
+          if (!verifyPassword(password, usuario.passwordHash)) {
+            return null;
+          }
+        } else if (password !== devPassword) {
           return null;
         }
 
