@@ -50,6 +50,7 @@ import type {
 import type { EstadoHallazgo } from "@/app/dicaprev/cumplimiento/types";
 import { cn } from "@/lib/utils";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import ModuleInPreparation from "@/components/layout/ModuleInPreparation";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -138,6 +139,18 @@ const PRIORIDAD_CFG: Record<PrioridadHallazgo, { label: string; cls: string }> =
 type Tab = "hallazgos" | "acciones";
 
 export default function PendientesPage() {
+  if (process.env.NODE_ENV === "production") {
+    return (
+      <div className="p-6">
+        <ModuleInPreparation moduleName="Reporte de pendientes" />
+      </div>
+    );
+  }
+
+  return <PendientesPageContent />;
+}
+
+function PendientesPageContent() {
   const [tab, setTab] = useState<Tab>("hallazgos");
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("todos");

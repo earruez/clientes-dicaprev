@@ -36,6 +36,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { ComponentProps } from "react";
+import ModuleInPreparation from "@/components/layout/ModuleInPreparation";
 
 // Fix TS para TabsTrigger + className
 const AnyTabsTrigger = TabsTrigger as React.ComponentType<ComponentProps<typeof TabsTrigger>>;
@@ -183,6 +184,18 @@ function getOrigenIcon(origen: OrigenDocumento) {
 /* ===================== Componente principal ===================== */
 
 export default function VencimientosPage() {
+  if (process.env.NODE_ENV === "production") {
+    return (
+      <div className="p-6">
+        <ModuleInPreparation moduleName="Documentacion vencimientos" />
+      </div>
+    );
+  }
+
+  return <DocumentacionVencimientosContent />;
+}
+
+function DocumentacionVencimientosContent() {
   const [busqueda, setBusqueda] = useState("");
   const [ventanaDias, setVentanaDias] = useState<string>("30");
   const [soloCriticos, setSoloCriticos] = useState(false);

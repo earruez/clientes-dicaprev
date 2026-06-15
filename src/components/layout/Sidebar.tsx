@@ -179,6 +179,15 @@ const MODULES: ModuleItem[] = [
   },
 ];
 
+const HIDDEN_MOCK_ROUTES_PRODUCTION = new Set<string>([
+  "/dicaprev/alertas",
+  "/dicaprev/reportes",
+  "/dicaprev/reportes/vencimientos",
+  "/dicaprev/reportes/pendientes",
+  "/dicaprev/reportes/cumplimiento-centro",
+  "/dicaprev/reportes/cumplimiento-area",
+]);
+
 function isItemActive(pathname: string, href: string) {
   const normalized = href.split("?")[0];
   return pathname === normalized || pathname.startsWith(normalized + "/");
@@ -187,6 +196,7 @@ function isItemActive(pathname: string, href: string) {
 export default function Sidebar() {
   const pathname = usePathname();
   const { hasPermission, hasModule, role, hasActiveCompany, loading } = usePermissions();
+  const isProductionBuild = process.env.NODE_ENV === "production";
 
   if (loading) {
     return null;
@@ -214,10 +224,13 @@ export default function Sidebar() {
 
       return true;
     })
-    .map((module) => ({
-      ...module,
-      items: module.items.filter((item) => {
+    .map((module) => {
+      const items = module.items.filter((item) => {
         if (!hasActiveCompany && !module.alwaysVisible) {
+          return false;
+        }
+
+        if (isProductionBuild && HIDDEN_MOCK_ROUTES_PRODUCTION.has(item.href)) {
           return false;
         }
 
@@ -231,8 +244,19 @@ export default function Sidebar() {
         }
 
         return true;
-      }),
-    }))
+      });
+
+      const defaultHref =
+        items.find((item) => item.href === module.defaultHref)?.href ??
+        items[0]?.href ??
+        module.defaultHref;
+
+      return {
+        ...module,
+        items,
+        defaultHref,
+      };
+    })
     .filter((module) => module.items.length > 0);
 
   if (hasActiveCompany) {

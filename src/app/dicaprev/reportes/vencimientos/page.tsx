@@ -30,6 +30,7 @@ import {
 } from "@/app/dicaprev/cumplimiento/mock-data";
 import { cn } from "@/lib/utils";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import ModuleInPreparation from "@/components/layout/ModuleInPreparation";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,6 +97,18 @@ const ESTADO_CFG: Record<
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function VencimientosPage() {
+  if (process.env.NODE_ENV === "production") {
+    return (
+      <div className="p-6">
+        <ModuleInPreparation moduleName="Reporte de vencimientos" />
+      </div>
+    );
+  }
+
+  return <VencimientosPageContent />;
+}
+
+function VencimientosPageContent() {
   const hoy = useMemo(() => new Date(), []);
 
   // Build items from obligations (with expiry) and evidencias
