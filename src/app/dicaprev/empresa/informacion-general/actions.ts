@@ -40,37 +40,47 @@ export type EmpresaKpisData = {
 export async function getEmpresaActual(): Promise<EmpresaGeneralData> {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
-  const empresa = await prisma.empresa.findUnique({
-    where: { id: empresaId },
-    select: {
-      nombre: true,
-      razonSocial: true,
-      rut: true,
-      giro: true,
-      direccion: true,
-      tipoEmpresa: true,
-      tamanoEmpresa: true,
-      codigoCiiu: true,
-      inicioActividades: true,
-      ciudad: true,
-      region: true,
-      telefono: true,
-      correo: true,
-      web: true,
-      logoUrl: true,
-      representanteLegal: true,
-      rutRepresentanteLegal: true,
-      mutualidad: true,
-      cotizacionAdicional: true,
-      cantidadTrabajadores: true,
-    },
-  });
+  const [empresa, totalTrabajadoresActivos] = await Promise.all([
+    prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: {
+        nombre: true,
+        razonSocial: true,
+        rut: true,
+        giro: true,
+        direccion: true,
+        tipoEmpresa: true,
+        tamanoEmpresa: true,
+        codigoCiiu: true,
+        inicioActividades: true,
+        ciudad: true,
+        region: true,
+        telefono: true,
+        correo: true,
+        web: true,
+        logoUrl: true,
+        representanteLegal: true,
+        rutRepresentanteLegal: true,
+        mutualidad: true,
+        cotizacionAdicional: true,
+      },
+    }),
+    prisma.trabajador.count({
+      where: {
+        empresaId,
+        estado: { not: "inactivo" },
+      },
+    }),
+  ]);
 
   if (!empresa) {
     throw new Error("Empresa no encontrada");
   }
 
-  return empresa;
+  return {
+    ...empresa,
+    cantidadTrabajadores: totalTrabajadoresActivos,
+  };
 }
 
 export async function getEmpresaKpisActual(): Promise<EmpresaKpisData> {
@@ -121,7 +131,6 @@ export async function actualizarEmpresaActual(data: EmpresaGeneralData): Promise
       rutRepresentanteLegal: data.rutRepresentanteLegal,
       mutualidad: data.mutualidad,
       cotizacionAdicional: data.cotizacionAdicional,
-      cantidadTrabajadores: data.cantidadTrabajadores,
     },
   });
 

@@ -40,7 +40,10 @@ const MODULES: ModuleItem[] = [
     defaultHref: "/dicaprev/dashboard",
     alwaysVisible: true,
     moduleKey: "dashboard",
-    items: [{ href: "/dicaprev/dashboard", label: "Dashboard" }],
+    items: [
+      { href: "/dicaprev/dashboard", label: "Dashboard" },
+      { href: "/dicaprev/activacion", label: "Activación inicial", permission: "canReadCumplimiento" },
+    ],
   },
   {
     id: "empresa",

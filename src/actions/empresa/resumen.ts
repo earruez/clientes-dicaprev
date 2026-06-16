@@ -69,7 +69,7 @@ export type ResumenEmpresaResponse = {
   };
 };
 
-export type EstadoActivacionPaso = "completo" | "pendiente" | "recomendado";
+export type EstadoActivacionPaso = "completo" | "pendiente" | "recomendado" | "critico";
 
 export type ActivacionPasoEmpresa = {
   id:
@@ -93,6 +93,10 @@ export type ActivacionPasoEmpresa = {
 
 export type EstadoActivacionEmpresaResponse = {
   porcentajeActivacion: number;
+  completada: boolean;
+  tieneCriticos: boolean;
+  pasosCriticos: ActivacionPasoEmpresa[];
+  mostrarEnDashboard: boolean;
   pasosCompletados: ActivacionPasoEmpresa[];
   pasosPendientes: ActivacionPasoEmpresa[];
   siguienteAccionRecomendada: ActivacionPasoEmpresa | null;
@@ -299,6 +303,7 @@ export async function getEstadoActivacionEmpresa(): Promise<EstadoActivacionEmpr
     prisma.empresa.findUnique({
       where: { id: empresaId },
       select: {
+        id: true,
         nombre: true,
         rut: true,
         razonSocial: true,
@@ -307,6 +312,7 @@ export async function getEstadoActivacionEmpresa(): Promise<EstadoActivacionEmpr
         region: true,
         correo: true,
         telefono: true,
+        activacionCompletada: true,
       },
     }),
     prisma.centroTrabajo.count({ where: { empresaId } }),
@@ -394,7 +400,7 @@ export async function getEstadoActivacionEmpresa(): Promise<EstadoActivacionEmpr
           ? "completo"
           : camposBasicosCompletos > 0
             ? "recomendado"
-            : "pendiente",
+            : "critico",
       resumen: `${camposBasicosCompletos}/${camposBasicos.length} campos base completos`,
       accionLabel: "Completar empresa",
       href: "/dicaprev/empresa/informacion-general",
@@ -403,7 +409,7 @@ export async function getEstadoActivacionEmpresa(): Promise<EstadoActivacionEmpr
       id: "centros",
       titulo: "Crear centros de trabajo",
       descripcion: "Define faenas o centros para segmentar personas, vehículos y cumplimiento.",
-      estado: totalCentros > 0 ? "completo" : "pendiente",
+      estado: totalCentros > 0 ? "completo" : "critico",
       resumen:
         totalCentros > 0
           ? `${totalCentros} centro${totalCentros === 1 ? "" : "s"} creado${totalCentros === 1 ? "" : "s"}`
@@ -429,7 +435,7 @@ export async function getEstadoActivacionEmpresa(): Promise<EstadoActivacionEmpr
       id: "trabajadores",
       titulo: "Cargar trabajadores",
       descripcion: "Incorpora la dotación para activar control documental y acreditaciones.",
-      estado: totalTrabajadores > 0 ? "completo" : "pendiente",
+      estado: totalTrabajadores > 0 ? "completo" : "critico",
       resumen:
         totalTrabajadores > 0
           ? `${totalTrabajadores} trabajador${totalTrabajadores === 1 ? "" : "es"} cargado${totalTrabajadores === 1 ? "" : "s"}`
@@ -454,7 +460,9 @@ export async function getEstadoActivacionEmpresa(): Promise<EstadoActivacionEmpr
       titulo: "Subir documentación empresa",
       descripcion: "Completa los documentos corporativos mínimos para operar con cumplimiento base.",
       estado:
-        requeridosEmpresa.length > 0 && documentosPendientes === 0 && documentosVencidos === 0
+        documentosVencidos > 0
+          ? "critico"
+          : requeridosEmpresa.length > 0 && documentosPendientes === 0 && documentosVencidos === 0
           ? "completo"
           : documentosCompletos > 0
             ? "recomendado"
@@ -501,20 +509,63 @@ export async function getEstadoActivacionEmpresa(): Promise<EstadoActivacionEmpr
     },
   ];
 
+  const pasosCriticos = pasos.filter((paso) => paso.estado === "critico");
   const pasosCompletados = pasos.filter((paso) => paso.estado === "completo");
   const pasosPendientes = pasos.filter((paso) => paso.estado !== "completo");
   const siguienteAccionRecomendada =
-    pasos.find((paso) => !paso.esOpcional && paso.estado === "pendiente")
+    pasos.find((paso) => !paso.esOpcional && paso.estado === "critico")
+    ?? pasos.find((paso) => !paso.esOpcional && paso.estado === "pendiente")
     ?? pasos.find((paso) => !paso.esOpcional && paso.estado === "recomendado")
     ?? null;
 
+  const completada = Boolean(empresa.activacionCompletada);
+  const tieneCriticos = pasosCriticos.length > 0;
+  const mostrarEnDashboard = !completada || tieneCriticos;
+
   return {
     porcentajeActivacion: porcentajeActivacionDesdePasos(pasos),
+    completada,
+    tieneCriticos,
+    pasosCriticos,
+    mostrarEnDashboard,
     pasosCompletados,
     pasosPendientes,
     siguienteAccionRecomendada,
     pasos,
   };
+}
+
+export async function actualizarVisibilidadActivacionDashboard(input: { completada: boolean }): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.empresa.update({
+        where: { id: empresaId },
+        data: {
+          activacionCompletada: input.completada,
+          activacionCompletadaEn: input.completada ? new Date() : null,
+        },
+      });
+
+      if (input.completada) {
+        await tx.activacionEvento.create({
+          data: {
+            empresaId,
+            usuarioId,
+            evento: "activacion_completa",
+            pasoActual: 100,
+            metadata: { origen: "pantalla_activacion" },
+          },
+        });
+      }
+    });
+
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "No se pudo actualizar el estado de activación";
+    return { ok: false, error: message };
+  }
 }
 
 export async function generarDocumentosFaltantes(input: { empresaId: string }): Promise<GenerarDocumentosFaltantesResultado> {

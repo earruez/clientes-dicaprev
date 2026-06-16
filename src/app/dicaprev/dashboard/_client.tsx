@@ -3,7 +3,6 @@ import {
   Activity,
   AlertTriangle,
   Building2,
-  CheckCircle2,
   Car,
   ClipboardList,
   FileCheck2,
@@ -92,16 +91,14 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
         }
       />
 
-      <Card className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-0 xl:grid-cols-[0.95fr_1.05fr]">
-          <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_38%),linear-gradient(135deg,#0f172a_0%,#1e293b_100%)] p-6 text-white xl:border-b-0 xl:border-r">
+      {activacion.mostrarEnDashboard ? (
+        <Card className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_transparent_38%),linear-gradient(135deg,#0f172a_0%,#1e293b_100%)] p-6 text-white">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-200">Puesta en marcha de NextPrev</p>
-                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Checklist de activación inicial</h2>
-                <p className="mt-2 max-w-xl text-sm text-slate-300">
-                  Ruta guiada para dejar la empresa operativa con estructura, documentación y primera operación cargada.
-                </p>
+                <h2 className="mt-2 text-2xl font-semibold tracking-tight">Activación inicial</h2>
+                <p className="mt-2 max-w-xl text-sm text-slate-300">Resumen compacto del onboarding operativo. El checklist completo está en su ruta dedicada.</p>
               </div>
               <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-sky-100">
                 <Rocket className="h-7 w-7" />
@@ -115,8 +112,8 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
                   <p className="mt-2 text-4xl font-semibold">{activacion.porcentajeActivacion}%</p>
                 </div>
                 <div className="text-right text-sm text-slate-300">
-                  <p>{activacion.pasosCompletados.length} pasos completos</p>
-                  <p>{activacion.pasosPendientes.length} por resolver</p>
+                  <p>{activacion.pasosPendientes.length} pendientes</p>
+                  <p>{activacion.pasosCriticos.length} críticos</p>
                 </div>
               </div>
               <Progress value={activacion.porcentajeActivacion} className="mt-4 h-2 bg-white/15" />
@@ -127,7 +124,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
                 href="/dicaprev/activacion"
                 className="inline-flex items-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100"
               >
-                Ver checklist completo
+                Ver checklist
               </Link>
               <Link
                 href={activacion.siguienteAccionRecomendada?.href ?? "/dicaprev/cumplimiento"}
@@ -135,45 +132,15 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
               >
                 {activacion.siguienteAccionRecomendada?.accionLabel ?? "Revisar cumplimiento"}
               </Link>
+              {activacion.tieneCriticos ? (
+                <span className="inline-flex items-center rounded-xl bg-rose-100 px-3 py-2 text-xs font-semibold text-rose-700">
+                  Hay faltantes críticos
+                </span>
+              ) : null}
             </div>
           </div>
-
-          <div className="p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Pasos sugeridos</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-900">Lo próximo para operar</h3>
-              </div>
-              <Link href="/dicaprev/activacion" className="text-sm font-medium text-slate-500 hover:text-slate-900">
-                Abrir ruta completa
-              </Link>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {activacion.pasos.map((paso) => (
-                <div key={paso.id} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-slate-900">{paso.titulo}</p>
-                        <EstadoPasoBadge estado={paso.estado} />
-                      </div>
-                      <p className="mt-1 text-sm text-slate-500">{paso.descripcion}</p>
-                      <p className="mt-2 text-xs font-medium text-slate-600">{paso.resumen}</p>
-                    </div>
-                    <Link
-                      href={paso.href}
-                      className="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:text-slate-900"
-                    >
-                      {paso.accionLabel}
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </Card>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {kpis.map((kpi) => (
@@ -383,30 +350,6 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
         </Card>
       </div>
     </div>
-  );
-}
-
-function EstadoPasoBadge({ estado }: { estado: DashboardEjecutivoResponse["activacion"]["pasos"][number]["estado"] }) {
-  if (estado === "completo") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
-        <CheckCircle2 className="h-3.5 w-3.5" /> Completo
-      </span>
-    );
-  }
-
-  if (estado === "recomendado") {
-    return (
-      <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-        Recomendado
-      </span>
-    );
-  }
-
-  return (
-    <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-      Pendiente
-    </span>
   );
 }
 

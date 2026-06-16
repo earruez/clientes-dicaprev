@@ -484,20 +484,11 @@ export default function InformacionGeneralClient({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>N° trabajadores</Label>
-              <Input
-                type="number"
-                min={0}
-                value={String(form.cantidadTrabajadores ?? 0)}
-                onChange={(e) => {
-                  const raw = e.target.value.trim();
-                  const next = raw === "" ? 0 : Number.parseInt(raw, 10);
-                  updateField(
-                    "cantidadTrabajadores",
-                    Number.isFinite(next) && next >= 0 ? next : 0,
-                  );
-                }}
-              />
+              <Label>N° trabajadores (dotación activa)</Label>
+              <Input type="number" value={String(form.cantidadTrabajadores ?? 0)} disabled />
+              <p className="text-xs text-slate-500">
+                Este valor se calcula automáticamente desde trabajadores activos.
+              </p>
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
