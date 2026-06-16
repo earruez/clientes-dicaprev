@@ -28,6 +28,7 @@ import {
 
 export type UseDocumentosResult = {
   usuarioActual: { nombre: string; email: string };
+  dotacion: number;
   documentos: DocumentoMatrizRow[];
   tabActiva: TabDocumentacion;
   setTabActiva: (tab: TabDocumentacion) => void;
@@ -117,6 +118,7 @@ export function useDocumentos(): UseDocumentosResult {
   const [tabActiva, setTabActiva] = useState<TabDocumentacion>("todos");
   const [filtros, setFiltros] = useState<DocumentosFiltros>(FILTROS_POR_DEFECTO);
   const [usuarioActual, setUsuarioActual] = useState(USUARIO_POR_DEFECTO);
+  const [dotacion, setDotacion] = useState(0);
   const [alertasResumen, setAlertasResumen] = useState<ResumenAlertasDocumentales>(RESUMEN_ALERTAS_POR_DEFECTO);
 
   const cargarMatriz = async () => {
@@ -128,6 +130,7 @@ export function useDocumentos(): UseDocumentosResult {
     }
     const payload = (await response.json()) as {
       usuario: { nombre: string; email: string } | null;
+      dotacion?: number;
       documentos: DocumentoMatrizRow[];
     };
 
@@ -135,6 +138,7 @@ export function useDocumentos(): UseDocumentosResult {
       nombre: payload.usuario?.nombre ?? USUARIO_POR_DEFECTO.nombre,
       email: payload.usuario?.email ?? USUARIO_POR_DEFECTO.email,
     });
+    setDotacion(payload.dotacion ?? 0);
     setDocumentos(payload.documentos);
   };
 
@@ -154,6 +158,7 @@ export function useDocumentos(): UseDocumentosResult {
         await Promise.all([cargarMatriz(), cargarAlertasResumen()]);
       } catch {
         setUsuarioActual(USUARIO_POR_DEFECTO);
+        setDotacion(0);
         setDocumentos([]);
         setAlertasResumen(RESUMEN_ALERTAS_POR_DEFECTO);
       }
@@ -464,6 +469,7 @@ export function useDocumentos(): UseDocumentosResult {
 
   return {
     usuarioActual,
+    dotacion,
     documentos,
     tabActiva,
     setTabActiva,

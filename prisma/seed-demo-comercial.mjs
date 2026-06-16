@@ -83,7 +83,7 @@ const DEMO_DATA = {
     { nombres: "Luis", apellidos: "Paredes García", rut: "30.678.901-2", cargoIdx: 5, centroIdx: 2, estado: "activo" },
     { nombres: "Sandra", apellidos: "Valenzuela Núñez", rut: "31.789.012-3", cargoIdx: 1, centroIdx: 2, estado: "activo" },
     { nombres: "Roberto", apellidos: "Mendoza Flores", rut: "32.890.123-4", cargoIdx: 3, centroIdx: 3, estado: "activo" },
-    { nombres: "Claudia", apellidos: "Castillo Díaz", rut: "33.901.234-5", cargoIdx: 2, centroIdx: 4, estado: "pendiente_documental" },
+    { nombres: "Claudia", apellidos: "Castillo Díaz", rut: "33.901.234-5", cargoIdx: 2, centroIdx: 4, estado: "activo" },
     { nombres: "Ricardo", apellidos: "Aguilar Vásquez", rut: "34.012.345-6", cargoIdx: 6, centroIdx: 0, estado: "activo" },
     { nombres: "Valentina", apellidos: "Fernández Rojas", rut: "35.123.456-7", cargoIdx: 3, centroIdx: 2, estado: "activo" },
     { nombres: "Fernando", apellidos: "Espinoza Valdés", rut: "36.234.567-8", cargoIdx: 5, centroIdx: 1, estado: "activo" },
@@ -144,6 +144,19 @@ const DEMO_DATA = {
     { tipo: "LICENCIA_HABILITANTE", nombre: "Licencia habilitante", requiereVencimiento: true },
   ],
 };
+
+const DOCUMENTOS_EMPRESA_VINCULOS = new Map([
+  ["Reglamento Interno", { nombre: "Reglamento Interno de Orden, Higiene y Seguridad", categoria: "sst" }],
+  ["Política SST", { nombre: "Política SST", categoria: "sst" }],
+  ["Plan de emergencia", { nombre: "Plan de emergencia", categoria: "sst" }],
+  ["Matriz IPER / MIPER", { nombre: "Matriz IPER", categoria: "sst" }],
+  ["Programa de prevención", { nombre: "Programa de trabajo preventivo / plan anual de prevención", categoria: "sst" }],
+  ["Acta Comité Paritario", { nombre: "Actas Comité Paritario, si aplica", categoria: "sst" }],
+  ["Formato entrega EPP", { nombre: "Formato base de entrega de EPP", categoria: "plantillas_formatos" }],
+  ["Procedimiento de emergencias", { nombre: "Procedimiento de emergencias", categoria: "protocolos" }],
+  ["Registro de capacitaciones", { nombre: "Formato / matriz de capacitaciones obligatorias", categoria: "plantillas_formatos" }],
+  ["Documentación contratistas", { nombre: "Documentación contratistas", categoria: "legales_empresa" }],
+]);
 
 // ─── Main Seed Function ──────────────────────────────────────────────────────
 
@@ -378,6 +391,13 @@ async function seedDemo() {
           },
         });
         console.log(`   ✓ Trabajador: ${trab.nombres} ${trab.apellidos}`);
+      } else if (t.estado !== trab.estado) {
+        t = await prisma.trabajador.update({
+          where: { id: t.id },
+          data: {
+            estado: trab.estado,
+          },
+        });
       }
       trabajadores.push(t);
     }
@@ -435,12 +455,42 @@ async function seedDemo() {
 
     // ────── 8.6 DOCUMENTOS EMPRESA ────────────────────────────────────────
     console.log("8️⃣.6️⃣ Creando/verificando documentos de empresa...");
-    const estadosEmpresa = ["completo", "pendiente", "vencido", "rechazado", "en_revision"];
+    const estadosEmpresa = ["Vigente", "En revisión", "Vencido", "Validado", "Enviado a firma"];
     for (let i = 0; i < DEMO_DATA.documentosEmpresa.length; i++) {
       const doc = DEMO_DATA.documentosEmpresa[i];
       const estado = estadosEmpresa[i % estadosEmpresa.length];
       const fechaEmision = new Date("2025-01-15");
       const fechaVencimiento = new Date("2026-12-31");
+      const vinculo = DOCUMENTOS_EMPRESA_VINCULOS.get(doc.nombre);
+
+      const requerido = vinculo
+        ? await prisma.documentoRequeridoEmpresa.upsert({
+            where: {
+              nombre_categoria: {
+                nombre: vinculo.nombre,
+                categoria: vinculo.categoria,
+              },
+            },
+            update: {
+              descripcion: `Documento demo vinculado a ${doc.nombre}`,
+              obligatorio: true,
+              requiereVencimiento: doc.requiereVencimiento,
+              periodicidadMeses: doc.requiereVencimiento ? 12 : null,
+              orden: i + 1,
+              activo: true,
+            },
+            create: {
+              nombre: vinculo.nombre,
+              categoria: vinculo.categoria,
+              descripcion: `Documento demo vinculado a ${doc.nombre}`,
+              obligatorio: true,
+              requiereVencimiento: doc.requiereVencimiento,
+              periodicidadMeses: doc.requiereVencimiento ? 12 : null,
+              orden: i + 1,
+              activo: true,
+            },
+          })
+        : null;
 
       const existe = await prisma.documentoEmpresa.findFirst({
         where: {
@@ -466,8 +516,9 @@ async function seedDemo() {
             archivoUrl: "/demo/documentos/demo-documento.pdf",
             archivoTipo: "application/pdf",
             archivoPeso: 153600,
-            observaciones: estado === "rechazado" ? "Documento demo rechazado para revisión" : null,
+            observaciones: estado === "En revisión" ? "Documento demo en revisión" : null,
             creadoPorEmail: usuario.email,
+            documentoRequeridoId: requerido?.id ?? null,
           },
         });
       } else {
@@ -476,8 +527,11 @@ async function seedDemo() {
           data: {
             estado,
             archivoNombre: existe.archivoNombre || "demo-documento.pdf",
+            archivoNombreOriginal: existe.archivoNombreOriginal || "demo-documento.pdf",
             archivoUrl: existe.archivoUrl || "/demo/documentos/demo-documento.pdf",
             archivoTipo: existe.archivoTipo || "application/pdf",
+            archivoPeso: existe.archivoPeso || 153600,
+            documentoRequeridoId: requerido?.id ?? existe.documentoRequeridoId,
           },
         });
       }

@@ -44,6 +44,7 @@ export default function DocumentacionPage() {
   const isProductionBuild = process.env.NODE_ENV === "production";
   const {
     usuarioActual,
+    dotacion,
     documentos,
     tabActiva,
     setTabActiva,
@@ -591,7 +592,7 @@ export default function DocumentacionPage() {
           <h2 className="text-sm font-semibold text-slate-800">Filtros</h2>
           <span className="text-xs text-slate-500">Mostrando {filtrados.length} de {documentos.length}</span>
         </div>
-        <Filtros filtros={filtros} onChangeFiltros={setFiltros} dotacion={5} />
+        <Filtros filtros={filtros} onChangeFiltros={setFiltros} dotacion={dotacion} />
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">

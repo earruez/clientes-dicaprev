@@ -28,7 +28,6 @@ import type {
   EstadoDocumento,
   HistorialDocumento,
 } from "./types";
-const EMPRESA_CANTIDAD_TRABAJADORES = 5;
 
 const ESTADOS_VALIDOS: EstadoDocumento[] = [
   "Vigente",
@@ -331,6 +330,39 @@ const DOCUMENTOS_REQUERIDOS_BASE: DocumentoRequeridoSeed[] = [
     periodicidadMeses: 12,
     orden: 23,
   },
+  {
+    nombre: "Procedimiento de emergencias",
+    categoria: "protocolos",
+    descripcion: "Procedimiento formal para responder ante emergencias y simulacros.",
+    obligatorio: true,
+    aplicaDesdeTrabajadores: 1,
+    aplicaHastaTrabajadores: null,
+    requiereVencimiento: false,
+    periodicidadMeses: null,
+    orden: 24,
+  },
+  {
+    nombre: "Documentación contratistas",
+    categoria: "legales_empresa",
+    descripcion: "Carpeta documental de contratistas activos y sus respaldos principales.",
+    obligatorio: false,
+    aplicaDesdeTrabajadores: 1,
+    aplicaHastaTrabajadores: null,
+    requiereVencimiento: true,
+    periodicidadMeses: 12,
+    orden: 25,
+  },
+  {
+    nombre: "Política SST",
+    categoria: "sst",
+    descripcion: "Política de seguridad y salud en el trabajo vigente y comunicada al personal.",
+    obligatorio: true,
+    aplicaDesdeTrabajadores: 1,
+    aplicaHastaTrabajadores: null,
+    requiereVencimiento: false,
+    periodicidadMeses: null,
+    orden: 26,
+  },
 ];
 
 function toDateOnly(date: Date | null): string {
@@ -365,6 +397,136 @@ function normalizarStringOpcional(value: string | null | undefined, trim = false
   if (value === null) return null;
   const normalized = trim ? value.trim() : value;
   return normalized === "" ? null : normalized;
+}
+
+function normalizarClaveDocumental(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+const VINCULOS_DOCUMENTOS_DEMO = [
+  {
+    documentoNombre: "Reglamento Interno",
+    requeridoNombre: "Reglamento Interno de Orden, Higiene y Seguridad",
+    requeridoCategoria: "sst",
+  },
+  {
+    documentoNombre: "Política SST",
+    requeridoNombre: "Política SST",
+    requeridoCategoria: "sst",
+  },
+  {
+    documentoNombre: "Plan de emergencia",
+    requeridoNombre: "Plan de emergencia",
+    requeridoCategoria: "sst",
+  },
+  {
+    documentoNombre: "Matriz IPER / MIPER",
+    requeridoNombre: "Matriz IPER",
+    requeridoCategoria: "sst",
+  },
+  {
+    documentoNombre: "Programa de prevención",
+    requeridoNombre: "Programa de trabajo preventivo / plan anual de prevención",
+    requeridoCategoria: "sst",
+  },
+  {
+    documentoNombre: "Acta Comité Paritario",
+    requeridoNombre: "Actas Comité Paritario, si aplica",
+    requeridoCategoria: "sst",
+  },
+  {
+    documentoNombre: "Formato entrega EPP",
+    requeridoNombre: "Formato base de entrega de EPP",
+    requeridoCategoria: "plantillas_formatos",
+  },
+  {
+    documentoNombre: "Procedimiento de emergencias",
+    requeridoNombre: "Procedimiento de emergencias",
+    requeridoCategoria: "protocolos",
+  },
+  {
+    documentoNombre: "Registro de capacitaciones",
+    requeridoNombre: "Formato / matriz de capacitaciones obligatorias",
+    requeridoCategoria: "plantillas_formatos",
+  },
+  {
+    documentoNombre: "Documentación contratistas",
+    requeridoNombre: "Documentación contratistas",
+    requeridoCategoria: "legales_empresa",
+  },
+] as const;
+
+async function obtenerDotacionDocumentacionEmpresa(empresaId: string) {
+  return prisma.trabajador.count({
+    where: {
+      empresaId,
+      estado: "activo",
+    },
+  });
+}
+
+async function vincularDocumentosDemoEmpresa(empresaId: string) {
+  const requeridos = await prisma.documentoRequeridoEmpresa.findMany({
+    where: {
+      OR: VINCULOS_DOCUMENTOS_DEMO.map((vinculo) => ({
+        nombre: vinculo.requeridoNombre,
+        categoria: vinculo.requeridoCategoria,
+      })),
+    },
+    select: { id: true, nombre: true, categoria: true },
+  });
+
+  const requeridosPorClave = new Map(
+    requeridos.map((requerido) => [normalizarClaveDocumental(`${requerido.nombre}::${requerido.categoria}`), requerido]),
+  );
+
+  const documentos = await prisma.documentoEmpresa.findMany({
+    where: {
+      empresaId,
+      documentoRequeridoId: null,
+      estado: { notIn: [...ESTADOS_DOCUMENTO_EMPRESA_ARCHIVADOS] },
+    },
+    select: {
+      id: true,
+      nombre: true,
+      categoria: true,
+      archivoNombre: true,
+      archivoNombreOriginal: true,
+      archivoUrl: true,
+      archivoTipo: true,
+      archivoPeso: true,
+    },
+  });
+
+  for (const documento of documentos) {
+    const vinculo = VINCULOS_DOCUMENTOS_DEMO.find(
+      (item) => normalizarClaveDocumental(item.documentoNombre) === normalizarClaveDocumental(documento.nombre),
+    );
+
+    if (!vinculo) continue;
+
+    const requerido = requeridosPorClave.get(
+      normalizarClaveDocumental(`${vinculo.requeridoNombre}::${vinculo.requeridoCategoria}`),
+    );
+    if (!requerido) continue;
+
+    await prisma.documentoEmpresa.update({
+      where: { id: documento.id },
+      data: {
+        documentoRequeridoId: requerido.id,
+        archivoNombre: documento.archivoNombre ?? documento.archivoNombreOriginal ?? "demo-documento.pdf",
+        archivoNombreOriginal: documento.archivoNombreOriginal ?? documento.archivoNombre ?? "demo-documento.pdf",
+        archivoUrl: documento.archivoUrl ?? "/demo/documentos/demo-documento.pdf",
+        archivoTipo: documento.archivoTipo ?? "application/pdf",
+        archivoPeso: documento.archivoPeso ?? 153600,
+      },
+    });
+  }
 }
 
 async function asegurarContextoBase(context: AppContext) {
@@ -593,51 +755,54 @@ function mapHistorial(
     .sort((a, b) => b.fecha.localeCompare(a.fecha));
 }
 
-function rowFromDocumentoRequerido(requerido: {
-  id: string;
-  nombre: string;
-  categoria: string;
-  descripcion: string;
-  obligatorio: boolean;
-  aplicaDesdeTrabajadores: number | null;
-  aplicaHastaTrabajadores: number | null;
-  requiereVencimiento: boolean;
-  documentos: Array<{
+function rowFromDocumentoRequerido(
+  requerido: {
     id: string;
     nombre: string;
-    tipo: string | null;
-    estado: string;
-    version: string;
-    archivoNombre: string | null;
-    archivoNombreOriginal: string | null;
-    archivoUrl: string | null;
-    archivoTipo: string | null;
-    archivoPeso: number | null;
-    fechaEmision: Date | null;
-    fechaVencimiento: Date | null;
-    tieneVencimiento: boolean;
-    observaciones: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    firmado: boolean;
-    firmadoPor: string | null;
-    firmadoEn: Date | null;
-    subidoPor: { nombre: string; email: string };
-    historial: Array<{
+    categoria: string;
+    descripcion: string;
+    obligatorio: boolean;
+    aplicaDesdeTrabajadores: number | null;
+    aplicaHastaTrabajadores: number | null;
+    requiereVencimiento: boolean;
+    documentos: Array<{
       id: string;
-      accion: string;
-      detalle: string | null;
-      version: string | null;
+      nombre: string;
+      tipo: string | null;
+      estado: string;
+      version: string;
       archivoNombre: string | null;
       archivoNombreOriginal: string | null;
       archivoUrl: string | null;
       archivoTipo: string | null;
       archivoPeso: number | null;
+      fechaEmision: Date | null;
+      fechaVencimiento: Date | null;
+      tieneVencimiento: boolean;
+      observaciones: string | null;
       createdAt: Date;
-      usuario: { nombre: string; email: string } | null;
+      updatedAt: Date;
+      firmado: boolean;
+      firmadoPor: string | null;
+      firmadoEn: Date | null;
+      subidoPor: { nombre: string; email: string };
+      historial: Array<{
+        id: string;
+        accion: string;
+        detalle: string | null;
+        version: string | null;
+        archivoNombre: string | null;
+        archivoNombreOriginal: string | null;
+        archivoUrl: string | null;
+        archivoTipo: string | null;
+        archivoPeso: number | null;
+        createdAt: Date;
+        usuario: { nombre: string; email: string } | null;
+      }>;
     }>;
-  }>;
-}): DocumentoMatrizRow {
+  },
+  dotacionEmpresa: number,
+): DocumentoMatrizRow {
   const doc = requerido.documentos[0];
   const baseDocumento = {
     documentoEmpresaId: doc?.id ?? null,
@@ -650,8 +815,8 @@ function rowFromDocumentoRequerido(requerido: {
     aplicaHastaTrabajadores: requerido.aplicaHastaTrabajadores,
     esAdicional: false,
   } as const;
-  const estadoCalculado = calcularEstadoDocumento(baseDocumento, EMPRESA_CANTIDAD_TRABAJADORES);
-  const esAplicable = esDocumentoAplicable(baseDocumento, EMPRESA_CANTIDAD_TRABAJADORES);
+  const estadoCalculado = calcularEstadoDocumento(baseDocumento, dotacionEmpresa);
+  const esAplicable = esDocumentoAplicable(baseDocumento, dotacionEmpresa);
 
   if (!doc) {
     return {
@@ -695,7 +860,7 @@ function rowFromDocumentoRequerido(requerido: {
     id: `req-${requerido.id}`,
     documentoRequeridoId: requerido.id,
     documentoEmpresaId: doc.id,
-    nombre: requerido.nombre,
+    nombre: doc.nombre,
     categoria: requerido.categoria as CategoriaDocumento,
     descripcion: requerido.descripcion,
     obligatorio: requerido.obligatorio,
@@ -728,7 +893,8 @@ function rowFromDocumentoRequerido(requerido: {
   };
 }
 
-function rowFromDocumentoAdicional(doc: {
+function rowFromDocumentoAdicional(
+  doc: {
   id: string;
   nombre: string;
   categoria: string;
@@ -763,7 +929,9 @@ function rowFromDocumentoAdicional(doc: {
     createdAt: Date;
     usuario: { nombre: string; email: string } | null;
   }>;
-}): DocumentoMatrizRow {
+  },
+  dotacionEmpresa: number,
+): DocumentoMatrizRow {
   const baseDocumento = {
     documentoEmpresaId: doc.id,
     archivoNombre: doc.archivoNombre,
@@ -775,7 +943,7 @@ function rowFromDocumentoAdicional(doc: {
     aplicaHastaTrabajadores: null,
     esAdicional: true,
   } as const;
-  const estadoCalculado = calcularEstadoDocumento(baseDocumento, EMPRESA_CANTIDAD_TRABAJADORES);
+  const estadoCalculado = calcularEstadoDocumento(baseDocumento, dotacionEmpresa);
 
   return {
     id: `doc-${doc.id}`,
@@ -949,6 +1117,9 @@ export async function getDocumentosEmpresa(): Promise<DocumentoMatrizRow[]> {
   const context = await requirePermission("canReadDocumentacion");
   await asegurarContextoBase(context);
   await asegurarMatrizBase();
+  await vincularDocumentosDemoEmpresa(context.empresaId);
+
+  const dotacionEmpresa = await obtenerDotacionDocumentacionEmpresa(context.empresaId);
 
   const requeridos = await prisma.documentoRequeridoEmpresa.findMany({
     where: { activo: true },
@@ -1001,8 +1172,8 @@ export async function getDocumentosEmpresa(): Promise<DocumentoMatrizRow[]> {
   });
 
   return [
-    ...requeridos.map((r) => rowFromDocumentoRequerido(r)),
-    ...adicionales.map((doc) => rowFromDocumentoAdicional(doc)),
+    ...requeridos.map((r) => rowFromDocumentoRequerido(r, dotacionEmpresa)),
+    ...adicionales.map((doc) => rowFromDocumentoAdicional(doc, dotacionEmpresa)),
   ];
 }
 
@@ -1134,7 +1305,7 @@ export async function actualizarDocumentoEmpresa(id: string, data: DocumentoEmpr
 export async function getContextoFijoDocumentacion() {
   const context = await requirePermission("canReadDocumentacion");
   await asegurarContextoBase(context);
-  await asegurarMatrizBase();
+  const dotacion = await obtenerDotacionDocumentacionEmpresa(context.empresaId);
 
   const usuario = await prisma.usuario.findUnique({
     where: { id: context.usuarioId },
@@ -1145,6 +1316,7 @@ export async function getContextoFijoDocumentacion() {
     empresaId: context.empresaId,
     usuarioId: context.usuarioId,
     usuario,
+    dotacion,
   };
 }
 
