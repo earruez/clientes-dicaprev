@@ -362,36 +362,50 @@ async function seedDemo() {
 
     // ────── 9. DOCUMENTOS DE TRABAJADORES ───────────────────────────────────
     console.log("9️⃣ Creando/verificando documentos de trabajadores...");
-    const tiposDoc = ["CONTRATO", "CARNÉ", "CERTIFICADO_DOMICILIO"];
+    const tiposDoc = [
+      { tipo: "CONTRATO_TRABAJO", nombre: "Contrato de trabajo" },
+      { tipo: "CEDULA_IDENTIDAD", nombre: "Cédula de identidad" },
+      { tipo: "IRL", nombre: "IRL - Informe de Riesgos Laborales" },
+      { tipo: "REGLAMENTO_INTERNO", nombre: "Reglamento interno firmado" },
+      { tipo: "ENTREGA_EPP", nombre: "Entrega de EPP" },
+      { tipo: "CAPACITACION_INICIAL", nombre: "Capacitación inicial" },
+    ];
     const estadosDoc = ["completo", "completo", "completo", "faltante", "vencido", "rechazado"];
 
     for (let i = 0; i < trabajadores.length; i++) {
       const trab = trabajadores[i];
-      // Crear 2-3 documentos por trabajador
-      for (let j = 0; j < 3; j++) {
+      for (let j = 0; j < tiposDoc.length; j++) {
         const existe = await prisma.trabajadorDocumento.findFirst({
           where: {
             empresaId: empresa.id,
             trabajadorId: trab.id,
-            tipo: tiposDoc[j],
+            tipo: tiposDoc[j].tipo,
           },
         });
 
-        if (!existe) {
-          const estado = estadosDoc[Math.floor(Math.random() * estadosDoc.length)];
-          const fechaVencimiento = new Date();
-          fechaVencimiento.setMonth(fechaVencimiento.getMonth() + Math.floor(Math.random() * 12));
+        const estado = estadosDoc[(i + j) % estadosDoc.length];
+        const fechaVencimiento = new Date();
+        fechaVencimiento.setMonth(fechaVencimiento.getMonth() + ((i + j) % 12) + 1);
 
+        if (!existe) {
           await prisma.trabajadorDocumento.create({
             data: {
               empresaId: empresa.id,
               trabajadorId: trab.id,
-              tipo: tiposDoc[j],
+              nombre: tiposDoc[j].nombre,
+              tipo: tiposDoc[j].tipo,
               categoria: "documentos_generales",
               estado,
-              rechazarMotivo: estado === "rechazado" ? "Copia ilegible" : null,
+              observaciones: estado === "rechazado" ? "Documento demo con observaciones" : null,
               fechaEmision: new Date("2025-06-01"),
               fechaVencimiento: estado === "vencido" ? new Date("2024-01-01") : fechaVencimiento,
+            },
+          });
+        } else {
+          await prisma.trabajadorDocumento.update({
+            where: { id: existe.id },
+            data: {
+              nombre: existe.nombre || tiposDoc[j].nombre,
             },
           });
         }
@@ -459,7 +473,7 @@ async function seedDemo() {
       });
 
       if (!existe) {
-        const estados = ["pendiente_firma", "firmada", "vencida"];
+        const estados = ["pendiente_firma", "firmada", "cancelada"];
         const estado = estados[Math.floor(Math.random() * estados.length)];
 
         const entrega = await prisma.entregaEpp.create({
@@ -512,7 +526,7 @@ async function seedDemo() {
       contratistasCreados.push(c);
 
       // Agregar documentos de contratista
-      const tiposDocCont = ["CONTRATO", "CERTIFICADO_VIGENCIA", "PÓLIZA_SEGUROS"];
+      const tiposDocCont = ["CONTRATO", "CERTIFICADO_VIGENCIA", "POLIZA_SEGUROS"];
       for (const tipo of tiposDocCont) {
         const existeDoc = await prisma.contratistaDocumento.findFirst({
           where: {
@@ -522,7 +536,7 @@ async function seedDemo() {
         });
 
         if (!existeDoc) {
-          const estados = ["completo", "completo", "faltante", "vencido"];
+          const estados = ["aprobado", "en_revision", "pendiente", "vencido", "rechazado"];
           const estado = estados[Math.floor(Math.random() * estados.length)];
 
           await prisma.contratistaDocumento.create({
@@ -581,13 +595,15 @@ async function seedDemo() {
       const checklist = checklistsCreados[i];
       const preguntas = await prisma.checklistPregunta.findMany({ where: { templateId: checklist.id } });
 
-      // Crear 2-3 ejecuciones por checklist
-      for (let j = 0; j < 2; j++) {
-        const existeEjecucion = await prisma.checklistEjecucion.findFirst({
-          where: { templateId: checklist.id },
-        });
+      const cantidadActual = await prisma.checklistEjecucion.count({
+        where: {
+          empresaId: empresa.id,
+          templateId: checklist.id,
+        },
+      });
 
-        if (!existeEjecucion || j > 0) {
+      // Mantener exactamente 2 ejecuciones demo por checklist sin duplicar en re-ejecuciones
+      for (let j = cantidadActual; j < 2; j++) {
           const ejecucion = await prisma.checklistEjecucion.create({
             data: {
               empresaId: empresa.id,
@@ -595,13 +611,14 @@ async function seedDemo() {
               ejecutadoPorId: usuario.id,
               centroTrabajoId: centros[i % centros.length]?.id || null,
               estado: "completada",
+              observaciones: "Ejecución demo comercial",
               fechaEjecucion: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
             },
           });
 
           // Agregar respuestas
           for (const pregunta of preguntas) {
-            const respuestas = ["conforme", "no_conforme", "no_aplica"];
+            const respuestas = ["cumple", "no_cumple", "no_aplica"];
             const respuesta = respuestas[Math.floor(Math.random() * respuestas.length)];
 
             await prisma.checklistRespuesta.create({
@@ -609,11 +626,10 @@ async function seedDemo() {
                 ejecucionId: ejecucion.id,
                 preguntaId: pregunta.id,
                 respuesta,
-                comentario: respuesta === "no_conforme" ? "Requiere seguimiento" : null,
+                comentario: respuesta === "no_cumple" ? "Requiere seguimiento" : null,
               },
             });
           }
-        }
       }
     }
     console.log(`   ✓ Ejecuciones de checklists creadas/verificadas`);
@@ -675,7 +691,7 @@ async function seedDemo() {
             gravedad: i === 0 ? "leve" : "moderado",
             descripcion: i === 0 ? "Incidente demo sin lesiones" : "Accidente demo con investigación",
             causaProbable: "Causas ficticias para demo",
-            estado: i === 0 ? "cerrada" : "abierta",
+            estado: i === 0 ? "cerrada" : "en_investigacion",
             fechaCierre: i === 0 ? new Date() : null,
           },
         });
@@ -688,7 +704,7 @@ async function seedDemo() {
             descripcion: "Acción correctiva demo",
             responsableId: usuario.id,
             plazo: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-            estado: i === 0 ? "completada" : "pendiente",
+            estado: i === 0 ? "completada" : "en_proceso",
             fechaCierre: i === 0 ? new Date() : null,
           },
         });
