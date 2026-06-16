@@ -40,7 +40,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex flex-1 flex-col">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 flex h-13 items-center justify-between border-b border-slate-200 bg-white px-5 py-2.5 shadow-sm">
+        <header className="sticky top-0 z-30 flex h-13 items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-5">
           <div className="flex items-center gap-3">
             <Button
               type="button"
@@ -53,13 +53,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <Menu className="h-5 w-5" />
             </Button>
             <span className="text-sm font-semibold text-slate-700 tracking-wide">NEXTPREV</span>
-            <ActiveCompanySelector />
+            <div className="hidden sm:block">
+              <ActiveCompanySelector />
+            </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <NotificationBell />
-            <div className="h-4 w-px bg-slate-200" />
-            <span className="text-xs text-slate-500">admin@dicaprev.cl</span>
-            <Button type="button" variant="ghost" size="sm" className="text-slate-600" onClick={handleSignOut}>
+            <div className="hidden lg:block h-4 w-px bg-slate-200" />
+            <span className="hidden xl:block text-xs text-slate-500">admin@dicaprev.cl</span>
+            <Button type="button" variant="ghost" size="sm" className="hidden lg:inline-flex text-slate-600" onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
               Cerrar sesión
             </Button>
@@ -72,16 +74,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <Dialog open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <DialogContent
             withClose={false}
-            className="left-0 top-0 h-screen w-[88vw] max-w-[360px] translate-x-0 translate-y-0 rounded-none border-r border-slate-200 p-0"
+            className="left-0 top-0 h-[100dvh] max-h-[100dvh] w-[92vw] max-w-[360px] translate-x-0 translate-y-0 rounded-none border-r border-slate-200 p-0 overflow-hidden"
           >
-            <div className="flex h-full flex-col bg-white">
+            <div className="flex h-full min-h-0 flex-col bg-white">
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <span className="text-sm font-semibold tracking-wide text-slate-700">NEXTPREV</span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => setMobileMenuOpen(false)}>
                   Cerrar
                 </Button>
               </div>
-              <div className="flex-1 overflow-y-auto px-3 py-4">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
                 <SidebarMobileNav onNavigate={() => setMobileMenuOpen(false)} />
               </div>
               <div className="border-t border-slate-200 p-3">
