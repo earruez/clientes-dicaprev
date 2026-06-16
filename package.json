@@ -21,7 +21,8 @@
     "prisma:seed:reglas-trabajador": "node prisma/seed-reglas-documentales-trabajador.mjs",
     "documentos:reconciliar-trabajador": "node prisma/reconciliar-documentos-trabajador.mjs",
     "seed:catalogos": "node prisma/seed-catalogos-documentales.mjs",
-    "seed:acreditaciones": "node prisma/seed-acreditaciones.mjs"
+    "seed:acreditaciones": "node prisma/seed-acreditaciones.mjs",
+    "seed:demo-comercial": "node prisma/seed-demo-comercial.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
