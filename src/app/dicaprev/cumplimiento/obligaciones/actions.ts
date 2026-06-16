@@ -323,8 +323,17 @@ export async function getObligacionesCumplimientoEmpresa(): Promise<Cumplimiento
     },
   });
 
+  // If empresa is not found, return empty safe payload instead of throwing
   if (!empresa) {
-    throw new Error("No se encontro la empresa asociada al usuario.");
+    console.warn(`[cumplimiento] Empresa no encontrada para empresaId=${context.empresaId}. Retornando payload vacio.`);
+    return {
+      empresaNombre: "Empresa desconocida",
+      cantidadTrabajadores: 0,
+      centros: [],
+      noAplican: 0,
+      puedeEditarEstado: puedeEditarCumplimientoPorRol(context.rol),
+      obligaciones: [],
+    };
   }
 
   const cantidadTrabajadores = empresa.cantidadTrabajadores ?? 0;

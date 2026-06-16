@@ -44,7 +44,15 @@ async function resolveEmpresaActivaId(input: {
     }
 
     if (input.empresaId) {
-      return input.empresaId;
+      // Validate that the stored empresaId actually exists in the DB
+      const empresaExists = await prisma.empresa.findUnique({
+        where: { id: input.empresaId },
+        select: { id: true },
+      });
+      if (empresaExists) {
+        return input.empresaId;
+      }
+      // If not found, fall through to find any empresa
     }
 
     const primeraEmpresa = await prisma.empresa.findFirst({
