@@ -22,7 +22,9 @@
     "documentos:reconciliar-trabajador": "node prisma/reconciliar-documentos-trabajador.mjs",
     "seed:catalogos": "node prisma/seed-catalogos-documentales.mjs",
     "seed:acreditaciones": "node prisma/seed-acreditaciones.mjs",
-    "seed:demo-comercial": "node prisma/seed-demo-comercial.mjs"
+    "seed:demo-comercial": "node prisma/seed-demo-comercial.mjs",
+    "superadmin:cleanup-baker": "npx tsx --import dotenv/config scripts/limpiar-empresas-baker-duplicadas.ts",
+    "superadmin:audit-baker": "npx tsx --import dotenv/config scripts/auditar-empresas-baker.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

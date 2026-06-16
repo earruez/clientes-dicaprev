@@ -75,6 +75,39 @@ function parseString(formData: FormData, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeCompanyName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeRut(value: string | null | undefined): string {
+  if (!value) return "";
+  return value.replace(/[^0-9kK]/g, "").toLowerCase();
+}
+
+async function findEmpresaDuplicada(input: {
+  nombreNormalizado: string;
+  rutNormalizado: string;
+  excludeEmpresaId?: string;
+}) {
+  const empresas = await prisma.empresa.findMany({
+    select: {
+      id: true,
+      nombre: true,
+      rut: true,
+    },
+  });
+
+  return empresas.find((empresa) => {
+    if (input.excludeEmpresaId && empresa.id === input.excludeEmpresaId) {
+      return false;
+    }
+
+    const sameName = normalizeCompanyName(empresa.nombre) === input.nombreNormalizado;
+    const sameRut = input.rutNormalizado.length > 0 && normalizeRut(empresa.rut) === input.rutNormalizado;
+    return sameName || sameRut;
+  });
+}
+
 async function ensureEmpresaModules(empresaId: string) {
   await prisma.$transaction(
     COMPANY_MODULES.map((modulo) =>
@@ -181,6 +214,8 @@ export async function createEmpresaAction(formData: FormData) {
 
   const nombre = parseString(formData, "nombre");
   const rut = parseString(formData, "rut");
+  const nombreNormalizado = normalizeCompanyName(nombre);
+  const rutNormalizado = normalizeRut(rut);
 
   if (!nombre) {
     throw new Error("Nombre de empresa es requerido");
@@ -190,13 +225,13 @@ export async function createEmpresaAction(formData: FormData) {
     throw new Error("Nombre debe tener al menos 2 caracteres");
   }
 
-  // Check for duplicates
-  const existing = await prisma.empresa.findFirst({
-    where: { nombre: { mode: "insensitive", equals: nombre } },
+  const existing = await findEmpresaDuplicada({
+    nombreNormalizado,
+    rutNormalizado,
   });
 
   if (existing) {
-    throw new Error(`Una empresa con el nombre "${nombre}" ya existe`);
+    throw new Error(`Ya existe una empresa con nombre o RUT duplicado: "${existing.nombre}"`);
   }
 
   const empresa = await prisma.empresa.create({
@@ -254,6 +289,8 @@ export async function updateEmpresaAction(formData: FormData) {
   const id = parseString(formData, "empresaId");
   const nombre = parseString(formData, "nombre");
   const rut = parseString(formData, "rut");
+  const nombreNormalizado = normalizeCompanyName(nombre);
+  const rutNormalizado = normalizeRut(rut);
 
   if (!id) {
     throw new Error("ID de empresa es requerido");
@@ -273,16 +310,14 @@ export async function updateEmpresaAction(formData: FormData) {
     throw new Error("Empresa no encontrada");
   }
 
-  // Check for duplicate name (excluding current empresa)
-  const existing = await prisma.empresa.findFirst({
-    where: {
-      id: { not: id },
-      nombre: { mode: "insensitive", equals: nombre },
-    },
+  const existing = await findEmpresaDuplicada({
+    nombreNormalizado,
+    rutNormalizado,
+    excludeEmpresaId: id,
   });
 
   if (existing) {
-    throw new Error(`Una empresa con el nombre "${nombre}" ya existe`);
+    throw new Error(`Ya existe una empresa con nombre o RUT duplicado: "${existing.nombre}"`);
   }
 
   await prisma.empresa.update({
