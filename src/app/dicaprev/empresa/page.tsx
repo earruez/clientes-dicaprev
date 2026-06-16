@@ -39,7 +39,7 @@ import {
   clearEmpresaTemplate,
 } from "@/lib/empresa/empresa-store";
 import { aplicarPlantillaInicialEmpresa } from "@/app/dicaprev/empresa/plantilla/actions";
-import { getEmpresaActual } from "@/app/dicaprev/empresa/informacion-general/actions";
+import { getEmpresaActual, getEmpresaKpisActual } from "@/app/dicaprev/empresa/informacion-general/actions";
 
 interface CompanyData {
   razonSocial: string;
@@ -59,69 +59,26 @@ interface CompanyData {
 }
 
 const INITIAL_COMPANY_DATA: CompanyData = {
-  razonSocial: "MVP CHILE SPA",
-  rut: "76.653.076-1",
-  tipoEmpresa: "Privada",
-  representante: "Jorge Mena Contreras",
-  rutRepresentante: "11.234.567-8",
-  direccion: "Avenida Irarrázabal 5185, oficina 503",
-  comuna: "Ñuñoa",
-  region: "Metropolitana de Santiago",
+  razonSocial: "",
+  rut: "",
+  tipoEmpresa: "",
+  representante: "",
+  rutRepresentante: "",
+  direccion: "",
+  comuna: "",
+  region: "",
   comiteParitario: false,
   expertoPrevencion: false,
   departamentoPrevencion: false,
-  organismoAdministrador: "ACHS",
-  rubroEmpresa: "Fabricación e instalación de ventanas de PVC y aluminio",
-  cantidadTrabajadores: 5,
+  organismoAdministrador: "",
+  rubroEmpresa: "",
+  cantidadTrabajadores: 0,
 };
 
-const COMPANY_STATS = [
-  {
-    id: "trabajadores",
-    title: "Trabajadores",
-    value: 5,
-    icon: <Users className="h-6 w-6 text-emerald-600" />,
-    description: "Personal activo en la compañía",
-  },
-  {
-    id: "centros",
-    title: "Centros de trabajo",
-    value: 1,
-    icon: <Building2 className="h-6 w-6 text-slate-700" />,
-    description: "Centros operativos actualmente",
-  },
-  {
-    id: "cumplimiento",
-    title: "Cumplimiento",
-    value: "82%",
-    icon: <ShieldCheck className="h-6 w-6 text-emerald-600" />,
-    description: "Meta de seguridad en curso",
-    progress: 82,
-  },
-  {
-    id: "riesgo",
-    title: "Nivel de riesgo",
-    value: "Bajo",
-    icon: <TriangleAlert className="h-6 w-6 text-amber-500" />,
-    description: "Categoría asignada SST",
-    statusLabel: "Bajo",
-    statusColor: "bg-emerald-500",
-  },
-  {
-    id: "accidentabilidad",
-    title: "Tasa accidentabilidad",
-    value: "0.82%",
-    icon: <Activity className="h-6 w-6 text-blue-600" />,
-    description: "Últimos 12 meses",
-  },
-  {
-    id: "siniestralidad",
-    title: "Tasa siniestralidad",
-    value: "1.55%",
-    icon: <Activity className="h-6 w-6 text-orange-600" />,
-    description: "Incidentes por 100 trabajadores",
-  },
-];
+type EmpresaKpisView = {
+  trabajadores: number;
+  centros: number;
+};
 
 const TAB_ITEMS = [
   { value: "general", label: "Información General" },
@@ -145,6 +102,7 @@ export default function CompanyPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("general");
   const [companyData, setCompanyData] = useState<CompanyData>(INITIAL_COMPANY_DATA);
+  const [kpis, setKpis] = useState<EmpresaKpisView>({ trabajadores: 0, centros: 0 });
   const [sstValues, setSstValues] = useState<SSTIndicatorValues[]>(DEFAULT_SST_VALUES);
   const [openEdit, setOpenEdit] = useState(false);
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -163,8 +121,8 @@ export default function CompanyPage() {
   useEffect(() => {
     let mounted = true;
 
-    getEmpresaActual()
-      .then((empresa) => {
+    Promise.all([getEmpresaActual(), getEmpresaKpisActual()])
+      .then(([empresa, resumen]) => {
         if (!mounted) return;
 
         setCompanyData((prev) => ({
@@ -179,8 +137,13 @@ export default function CompanyPage() {
           region: empresa.region ?? "",
           organismoAdministrador: empresa.mutualidad ?? prev.organismoAdministrador,
           rubroEmpresa: empresa.giro ?? "",
-          cantidadTrabajadores: empresa.cantidadTrabajadores ?? 0,
+          cantidadTrabajadores: resumen.totalTrabajadores,
         }));
+
+        setKpis({
+          trabajadores: resumen.totalTrabajadores,
+          centros: resumen.totalCentros,
+        });
       })
       .catch(() => {
         // Keep fallback local data if remote read fails.
@@ -239,6 +202,54 @@ export default function CompanyPage() {
     setEditingSection(null);
   };
 
+  const companyStats = [
+    {
+      id: "trabajadores",
+      title: "Trabajadores",
+      value: kpis.trabajadores,
+      icon: <Users className="h-6 w-6 text-emerald-600" />,
+      description: "Personal activo en la compañía",
+    },
+    {
+      id: "centros",
+      title: "Centros de trabajo",
+      value: kpis.centros,
+      icon: <Building2 className="h-6 w-6 text-slate-700" />,
+      description: "Centros operativos actualmente",
+    },
+    {
+      id: "cumplimiento",
+      title: "Cumplimiento",
+      value: "82%",
+      icon: <ShieldCheck className="h-6 w-6 text-emerald-600" />,
+      description: "Meta de seguridad en curso",
+      progress: 82,
+    },
+    {
+      id: "riesgo",
+      title: "Nivel de riesgo",
+      value: "Bajo",
+      icon: <TriangleAlert className="h-6 w-6 text-amber-500" />,
+      description: "Categoría asignada SST",
+      statusLabel: "Bajo",
+      statusColor: "bg-emerald-500",
+    },
+    {
+      id: "accidentabilidad",
+      title: "Tasa accidentabilidad",
+      value: "0.82%",
+      icon: <Activity className="h-6 w-6 text-blue-600" />,
+      description: "Últimos 12 meses",
+    },
+    {
+      id: "siniestralidad",
+      title: "Tasa siniestralidad",
+      value: "1.55%",
+      icon: <Activity className="h-6 w-6 text-orange-600" />,
+      description: "Incidentes por 100 trabajadores",
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-slate-50 py-10">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 space-y-8">
@@ -250,7 +261,7 @@ export default function CompanyPage() {
 
         {/* KPIs Superiores */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
-          {COMPANY_STATS.map((stat) => (
+          {companyStats.map((stat) => (
             <div
               key={stat.id}
               className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
@@ -620,7 +631,7 @@ export default function CompanyPage() {
                   <div className="grid gap-6">
                     <div>
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Centros activos</p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">4 centros</p>
+                      <p className="mt-2 text-lg font-semibold text-slate-900">{kpis.centros} centros</p>
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Región principal</p>

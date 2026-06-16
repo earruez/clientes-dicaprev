@@ -11,6 +11,10 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { LogOut, Menu } from "lucide-react";
 import { signOut } from "next-auth/react";
 
+type MePermissionsPayload = {
+  email?: string;
+};
+
 /* =========================
    LAYOUT DICAPREV
    ========================= */
@@ -18,6 +22,7 @@ import { signOut } from "next-auth/react";
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState<string>("");
 
   useEffect(() => {
     // Defensive cleanup: if a modal leaves body locked after route changes,
@@ -31,7 +36,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    fetch("/api/dicaprev/me/permissions", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return (await res.json()) as MePermissionsPayload;
+      })
+      .then((payload) => {
+        if (!mounted) return;
+        setSessionEmail(payload?.email ?? "");
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setSessionEmail("");
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [pathname]);
+
   const handleSignOut = async () => {
+    await fetch("/api/dicaprev/me/empresa-activa", {
+      method: "DELETE",
+      cache: "no-store",
+    }).catch(() => undefined);
+
     await signOut({ callbackUrl: "/login" });
   };
 
@@ -60,7 +92,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2 sm:gap-3">
             <NotificationBell />
             <div className="hidden lg:block h-4 w-px bg-slate-200" />
-            <span className="hidden xl:block text-xs text-slate-500">admin@dicaprev.cl</span>
+            <span className="hidden xl:block text-xs text-slate-500">{sessionEmail || "usuario@empresa.cl"}</span>
             <Button type="button" variant="ghost" size="sm" className="hidden lg:inline-flex text-slate-600" onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
               Cerrar sesión

@@ -30,6 +30,13 @@ export type EmpresaGeneralData = {
   cantidadTrabajadores: number;
 };
 
+export type EmpresaKpisData = {
+  totalTrabajadores: number;
+  totalCentros: number;
+  totalAreas: number;
+  totalCargos: number;
+};
+
 export async function getEmpresaActual(): Promise<EmpresaGeneralData> {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
@@ -64,6 +71,29 @@ export async function getEmpresaActual(): Promise<EmpresaGeneralData> {
   }
 
   return empresa;
+}
+
+export async function getEmpresaKpisActual(): Promise<EmpresaKpisData> {
+  const { empresaId } = await requirePermission("canReadEmpresa");
+
+  const [totalTrabajadores, totalCentros, totalAreas, totalCargos] = await Promise.all([
+    prisma.trabajador.count({
+      where: {
+        empresaId,
+        estado: { not: "inactivo" },
+      },
+    }),
+    prisma.centroTrabajo.count({ where: { empresaId } }),
+    prisma.area.count({ where: { empresaId } }),
+    prisma.cargo.count({ where: { empresaId } }),
+  ]);
+
+  return {
+    totalTrabajadores,
+    totalCentros,
+    totalAreas,
+    totalCargos,
+  };
 }
 
 export async function actualizarEmpresaActual(data: EmpresaGeneralData): Promise<void> {
