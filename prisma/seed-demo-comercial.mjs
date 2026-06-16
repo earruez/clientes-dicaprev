@@ -17,7 +17,12 @@ import { scryptSync, randomBytes } from "node:crypto";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "../.env") });
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+const connectionString = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error("DATABASE_URL o DATABASE_URL_UNPOOLED no configurado");
+}
+
+const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 
 // ─── Hash Password (compatible con password-hash.ts) ─────────────────────────
@@ -157,6 +162,270 @@ const DOCUMENTOS_EMPRESA_VINCULOS = new Map([
   ["Registro de capacitaciones", { nombre: "Formato / matriz de capacitaciones obligatorias", categoria: "plantillas_formatos" }],
   ["Documentación contratistas", { nombre: "Documentación contratistas", categoria: "legales_empresa" }],
 ]);
+
+const VEHICULOS_EQUIPOS_DEMO = [
+  {
+    nombre: "Camioneta mantención 1",
+    patente: "KXTR-21",
+    codigoInterno: "VEH-001",
+    tipo: "camioneta",
+    marca: "Toyota",
+    modelo: "Hilux",
+    anio: 2022,
+    estado: "operativo",
+    centroIdx: 4,
+    responsable: "Jorge Silva Pérez",
+    kilometraje: 48200,
+    observaciones: "Unidad asignada al equipo de mantención general.",
+  },
+  {
+    nombre: "Camioneta supervisión operaciones",
+    patente: "PLNV-38",
+    codigoInterno: "VEH-002",
+    tipo: "camioneta",
+    marca: "Mitsubishi",
+    modelo: "L200",
+    anio: 2021,
+    estado: "operativo",
+    centroIdx: 1,
+    responsable: "María González López",
+    kilometraje: 62110,
+    observaciones: "Movilización de supervisión para centros comerciales.",
+  },
+  {
+    nombre: "Grúa horquilla bodega",
+    patente: "EQP-001",
+    codigoInterno: "EQ-001",
+    tipo: "equipo",
+    marca: "Toyota",
+    modelo: "8FG",
+    anio: 2020,
+    estado: "mantencion",
+    centroIdx: 4,
+    responsable: "Sergio Cabrera López",
+    kilometraje: 3150,
+    observaciones: "Equipo de izaje en bodega central.",
+  },
+  {
+    nombre: "Carro eléctrico de mantención",
+    patente: "EQP-002",
+    codigoInterno: "EQ-002",
+    tipo: "equipo",
+    marca: "Club Car",
+    modelo: "Carryall 500",
+    anio: 2023,
+    estado: "operativo",
+    centroIdx: 2,
+    responsable: "Patricia Herrera Ramírez",
+    kilometraje: 940,
+    observaciones: "Soporte de desplazamiento para mantención en mall.",
+  },
+  {
+    nombre: "Hidrolavadora industrial",
+    patente: "EQP-003",
+    codigoInterno: "EQ-003",
+    tipo: "equipo",
+    marca: "Karcher",
+    modelo: "HD 9/20",
+    anio: 2022,
+    estado: "operativo",
+    centroIdx: 3,
+    responsable: "Natalia Araya Soto",
+    kilometraje: 220,
+    observaciones: "Limpieza profunda en áreas comunes.",
+  },
+  {
+    nombre: "Generador eléctrico emergencia",
+    patente: "EQP-004",
+    codigoInterno: "EQ-004",
+    tipo: "equipo",
+    marca: "Hyundai",
+    modelo: "DHY 18KSE",
+    anio: 2019,
+    estado: "operativo",
+    centroIdx: 0,
+    responsable: "Fernando Espinoza Valdés",
+    kilometraje: 410,
+    observaciones: "Respaldo eléctrico para contingencias críticas.",
+  },
+  {
+    nombre: "Plataforma alza hombre",
+    patente: "EQP-005",
+    codigoInterno: "EQ-005",
+    tipo: "equipo",
+    marca: "JLG",
+    modelo: "E400AN",
+    anio: 2018,
+    estado: "mantencion",
+    centroIdx: 1,
+    responsable: "Ricardo Aguilar Vásquez",
+    kilometraje: 1870,
+    observaciones: "Trabajo en altura para luminarias y señalética.",
+  },
+  {
+    nombre: "Equipo de limpieza industrial",
+    patente: "EQP-006",
+    codigoInterno: "EQ-006",
+    tipo: "equipo",
+    marca: "Tennant",
+    modelo: "T7",
+    anio: 2020,
+    estado: "baja",
+    centroIdx: 3,
+    responsable: "Luis Paredes García",
+    kilometraje: 2810,
+    observaciones: "Equipo en retiro por renovación programada.",
+  },
+];
+
+const DOCUMENTOS_VEHICULO_DEMO = [
+  { codigo: "REVISION_TECNICA", nombre: "Revisión técnica", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "CERTIFICADO_MANTENCION", nombre: "Mantención preventiva", requiereVencimiento: true, vigenciaDias: 180 },
+  { codigo: "SEGURO_VEHICULO", nombre: "Seguro", requiereVencimiento: true, vigenciaDias: 365 },
+  { codigo: "PERMISO_CIRCULACION", nombre: "Permiso circulación", requiereVencimiento: true, vigenciaDias: 365 },
+];
+
+const MANDANTES_ACREDITACION_DEMO = [
+  { nombre: "Grupo Patio Demo", rut: "77.111.222-3", tipo: "privado" },
+  { nombre: "Mall Operadora Norte", rut: "77.222.333-4", tipo: "constructora" },
+  { nombre: "Administración Strip Center Sur", rut: "77.333.444-5", tipo: "mandante" },
+];
+
+const PLANTILLAS_ACREDITACION_DEMO = [
+  {
+    nombre: "Acreditación contratista mantención",
+    tipo: "mandante_general",
+    descripcion: "Control documental para contratistas de mantención e infraestructura.",
+    mandante: "Mall Operadora Norte",
+    requisitos: [
+      { nombreDocumento: "F30", categoria: "empresa", aplicaA: "empresa", obligatorio: true, documentoRequeridoEmpresaNombre: "Certificado F30" },
+      { nombreDocumento: "F30-1", categoria: "empresa", aplicaA: "empresa", obligatorio: true, documentoRequeridoEmpresaNombre: "Certificado F30-1" },
+      { nombreDocumento: "Certificado mutualidad", categoria: "empresa", aplicaA: "empresa", obligatorio: true, documentoRequeridoEmpresaNombre: "Certificado de afiliación a mutualidad / ISL" },
+      { nombreDocumento: "Contrato trabajadores", categoria: "trabajador", aplicaA: "trabajador", obligatorio: true, documentoTipoTrabajadorCodigo: "CONTRATO_TRABAJO" },
+      { nombreDocumento: "IRL - Informe de Riesgos Laborales", categoria: "trabajador", aplicaA: "trabajador", obligatorio: true, documentoTipoTrabajadorCodigo: "IRL" },
+      { nombreDocumento: "Revisión técnica", categoria: "vehiculo", aplicaA: "vehiculo", obligatorio: true, documentoTipoVehiculoCodigo: "REVISION_TECNICA" },
+    ],
+  },
+  {
+    nombre: "Acreditación empresa de aseo",
+    tipo: "mandante_general",
+    descripcion: "Checklist documental para empresas de aseo en centros comerciales.",
+    mandante: "Grupo Patio Demo",
+    requisitos: [
+      { nombreDocumento: "Reglamento interno", categoria: "empresa", aplicaA: "empresa", obligatorio: true, documentoRequeridoEmpresaNombre: "Reglamento Interno de Orden, Higiene y Seguridad" },
+      { nombreDocumento: "Entrega EPP", categoria: "trabajador", aplicaA: "trabajador", obligatorio: true, documentoTipoTrabajadorCodigo: "ENTREGA_EPP" },
+      { nombreDocumento: "Certificado antecedentes", categoria: "trabajador", aplicaA: "trabajador", obligatorio: false, documentoTipoTrabajadorCodigo: "CERT_ANTECEDENTES" },
+      { nombreDocumento: "Seguro", categoria: "vehiculo", aplicaA: "vehiculo", obligatorio: true, documentoTipoVehiculoCodigo: "SEGURO_VEHICULO" },
+    ],
+  },
+  {
+    nombre: "Acreditación guardias de seguridad",
+    tipo: "mandante_general",
+    descripcion: "Acreditación operativa para equipos de seguridad privada.",
+    mandante: "Administración Strip Center Sur",
+    requisitos: [
+      { nombreDocumento: "F30", categoria: "empresa", aplicaA: "empresa", obligatorio: true, documentoRequeridoEmpresaNombre: "Certificado F30" },
+      { nombreDocumento: "Contrato trabajadores", categoria: "trabajador", aplicaA: "trabajador", obligatorio: true, documentoTipoTrabajadorCodigo: "CONTRATO_TRABAJO" },
+      { nombreDocumento: "IRL - Informe de Riesgos Laborales", categoria: "trabajador", aplicaA: "trabajador", obligatorio: true, documentoTipoTrabajadorCodigo: "IRL" },
+      { nombreDocumento: "Entrega EPP", categoria: "trabajador", aplicaA: "trabajador", obligatorio: true, documentoTipoTrabajadorCodigo: "ENTREGA_EPP" },
+    ],
+  },
+  {
+    nombre: "Acreditación trabajos eléctricos",
+    tipo: "mandante_general",
+    descripcion: "Control de cumplimiento para tareas eléctricas y trabajo en altura.",
+    mandante: "Mall Operadora Norte",
+    requisitos: [
+      { nombreDocumento: "F30-1", categoria: "empresa", aplicaA: "empresa", obligatorio: true, documentoRequeridoEmpresaNombre: "Certificado F30-1" },
+      { nombreDocumento: "Reglamento interno", categoria: "empresa", aplicaA: "empresa", obligatorio: true, documentoRequeridoEmpresaNombre: "Reglamento Interno de Orden, Higiene y Seguridad" },
+      { nombreDocumento: "Certificado antecedentes", categoria: "trabajador", aplicaA: "trabajador", obligatorio: true, documentoTipoTrabajadorCodigo: "CERT_ANTECEDENTES" },
+      { nombreDocumento: "Permiso circulación", categoria: "vehiculo", aplicaA: "vehiculo", obligatorio: true, documentoTipoVehiculoCodigo: "PERMISO_CIRCULACION" },
+      { nombreDocumento: "Mantención preventiva", categoria: "vehiculo", aplicaA: "vehiculo", obligatorio: true, documentoTipoVehiculoCodigo: "CERTIFICADO_MANTENCION" },
+    ],
+  },
+];
+
+const SOLICITUDES_ACREDITACION_DEMO = [
+  {
+    nombreProyecto: "Borrador mantención Patio",
+    obraFaena: "Centro Comercial Norte",
+    estado: "en_preparacion",
+    mandante: "Grupo Patio Demo",
+    plantilla: "Acreditación contratista mantención",
+    contratista: "Mantención Eléctrica Demo SpA",
+    trabajadorRuts: ["27.345.678-9", "38.456.789-0"],
+    vehiculos: ["EQP-001", "EQP-005"],
+  },
+  {
+    nombreProyecto: "Revisión operativa aseo norte",
+    obraFaena: "Centro Comercial Norte",
+    estado: "enviado",
+    mandante: "Grupo Patio Demo",
+    plantilla: "Acreditación empresa de aseo",
+    contratista: "Aseo Integral Demo SpA",
+    trabajadorRuts: ["30.678.901-2", "39.567.890-1"],
+    vehiculos: ["EQP-003", "EQP-006"],
+  },
+  {
+    nombreProyecto: "Observada seguridad strip center",
+    obraFaena: "Strip Center Sur",
+    estado: "observada",
+    mandante: "Administración Strip Center Sur",
+    plantilla: "Acreditación guardias de seguridad",
+    contratista: "Seguridad Privada Demo SpA",
+    trabajadorRuts: ["28.456.789-0", "32.890.123-4", "40.678.901-2"],
+    vehiculos: ["PLNV-38"],
+  },
+  {
+    nombreProyecto: "Aprobada mantención eléctrica anual",
+    obraFaena: "Centro Comercial Oriente",
+    estado: "aprobado",
+    mandante: "Mall Operadora Norte",
+    plantilla: "Acreditación trabajos eléctricos",
+    contratista: "Mantención Eléctrica Demo SpA",
+    trabajadorRuts: ["27.345.678-9", "34.012.345-6", "38.456.789-0"],
+    vehiculos: ["KXTR-21", "EQP-004"],
+  },
+  {
+    nombreProyecto: "Rechazada servicio guardias nocturnos",
+    obraFaena: "Centro Comercial Norte",
+    estado: "rechazado",
+    mandante: "Mall Operadora Norte",
+    plantilla: "Acreditación guardias de seguridad",
+    contratista: "Seguridad Privada Demo SpA",
+    trabajadorRuts: ["28.456.789-0", "35.123.456-7"],
+    vehiculos: ["PLNV-38"],
+  },
+  {
+    nombreProyecto: "Vencida aseo trimestral histórico",
+    obraFaena: "Strip Center Sur",
+    estado: "vencido",
+    mandante: "Administración Strip Center Sur",
+    plantilla: "Acreditación empresa de aseo",
+    contratista: "Aseo Integral Demo SpA",
+    trabajadorRuts: ["30.678.901-2", "39.567.890-1"],
+    vehiculos: ["EQP-003"],
+  },
+];
+
+function daysFromNow(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+}
+
+function toIsoDate(value) {
+  return value.toISOString().slice(0, 10);
+}
+
+function estadoDocumentoDemo(estadoAcreditacion, index) {
+  if (estadoAcreditacion === "en_preparacion") return "faltante";
+  if (estadoAcreditacion === "listo_para_enviar") return index % 3 === 0 ? "faltante" : "completo";
+  if (estadoAcreditacion === "enviado") return index % 4 === 0 ? "faltante" : "completo";
+  if (estadoAcreditacion === "observada") return index % 2 === 0 ? "en_revision" : "faltante";
+  if (estadoAcreditacion === "aprobado") return "completo";
+  if (estadoAcreditacion === "rechazado") return index % 2 === 0 ? "rechazado" : "faltante";
+  if (estadoAcreditacion === "vencido") return index % 2 === 0 ? "vencido" : "completo";
+  return "faltante";
+}
 
 // ─── Main Seed Function ──────────────────────────────────────────────────────
 
@@ -691,6 +960,166 @@ async function seedDemo() {
     }
     console.log(`   ✓ Entregas EPP creadas/verificadas`);
 
+    // ────── 12.5 VEHÍCULOS Y EQUIPOS ──────────────────────────────────────
+    console.log("1️⃣2️⃣.5️⃣ Creando/verificando vehículos y equipos...");
+    const tiposVehiculo = new Map();
+    for (const tipoDoc of DOCUMENTOS_VEHICULO_DEMO) {
+      const tipo = await prisma.documentoTipoVehiculo.upsert({
+        where: {
+          empresaId_codigo: {
+            empresaId: empresa.id,
+            codigo: tipoDoc.codigo,
+          },
+        },
+        update: {
+          nombre: tipoDoc.nombre,
+          descripcion: `Documento demo ${tipoDoc.nombre}`,
+          requiereVencimiento: tipoDoc.requiereVencimiento,
+          vigenciaDias: tipoDoc.vigenciaDias,
+          requiereArchivo: true,
+          activo: true,
+        },
+        create: {
+          empresaId: empresa.id,
+          codigo: tipoDoc.codigo,
+          nombre: tipoDoc.nombre,
+          descripcion: `Documento demo ${tipoDoc.nombre}`,
+          requiereVencimiento: tipoDoc.requiereVencimiento,
+          vigenciaDias: tipoDoc.vigenciaDias,
+          requiereArchivo: true,
+          activo: true,
+        },
+      });
+      tiposVehiculo.set(tipoDoc.codigo, tipo);
+    }
+
+    const vehiculosCreados = [];
+    const estadoDocVehiculoDemo = ["completo", "completo", "en_revision", "vencido", "pendiente"];
+
+    for (let i = 0; i < VEHICULOS_EQUIPOS_DEMO.length; i++) {
+      const item = VEHICULOS_EQUIPOS_DEMO[i];
+      const centroId = centros[item.centroIdx]?.id || null;
+      let vehiculo = await prisma.vehiculo.findFirst({
+        where: {
+          empresaId: empresa.id,
+          patente: item.patente,
+        },
+      });
+
+      if (!vehiculo) {
+        vehiculo = await prisma.vehiculo.create({
+          data: {
+            empresaId: empresa.id,
+            centroTrabajoId: centroId,
+            patente: item.patente,
+            codigoInterno: item.codigoInterno,
+            tipo: item.tipo,
+            marca: item.marca,
+            modelo: item.modelo,
+            anio: item.anio,
+            estado: item.estado,
+            responsable: item.responsable,
+            proximaRevision: toIsoDate(daysFromNow((i + 1) * 20)),
+            kilometraje: item.kilometraje,
+            observaciones: `${item.nombre}. ${item.observaciones}`,
+          },
+        });
+      } else {
+        vehiculo = await prisma.vehiculo.update({
+          where: { id: vehiculo.id },
+          data: {
+            centroTrabajoId: centroId,
+            codigoInterno: item.codigoInterno,
+            tipo: item.tipo,
+            marca: item.marca,
+            modelo: item.modelo,
+            anio: item.anio,
+            estado: item.estado,
+            responsable: item.responsable,
+            proximaRevision: vehiculo.proximaRevision || toIsoDate(daysFromNow((i + 1) * 20)),
+            kilometraje: item.kilometraje,
+            observaciones: `${item.nombre}. ${item.observaciones}`,
+          },
+        });
+      }
+
+      vehiculosCreados.push(vehiculo);
+
+      for (let d = 0; d < DOCUMENTOS_VEHICULO_DEMO.length; d++) {
+        const docBase = DOCUMENTOS_VEHICULO_DEMO[d];
+        const estadoDoc = estadoDocVehiculoDemo[(i + d) % estadoDocVehiculoDemo.length];
+        const fechaEmision = daysFromNow(-90 + d * 7);
+        const fechaVencimiento = estadoDoc === "vencido" ? daysFromNow(-15) : daysFromNow(90 + d * 40);
+
+        await prisma.vehiculoDocumento.upsert({
+          where: {
+            vehiculoId_tipo: {
+              vehiculoId: vehiculo.id,
+              tipo: docBase.codigo,
+            },
+          },
+          update: {
+            empresaId: empresa.id,
+            tipoDocumentoId: tiposVehiculo.get(docBase.codigo)?.id || null,
+            estado: estadoDoc,
+            subido: estadoDoc !== "pendiente",
+            vencimiento: toIsoDate(fechaVencimiento),
+            fechaEmision,
+            fechaVencimiento,
+            archivoNombre: estadoDoc === "pendiente" ? null : `${docBase.codigo.toLowerCase()}-${vehiculo.patente}.pdf`,
+            archivoNombreOriginal: estadoDoc === "pendiente" ? null : `${docBase.codigo.toLowerCase()}-${vehiculo.patente}.pdf`,
+            archivoUrl: estadoDoc === "pendiente" ? null : `/demo/vehiculos/${docBase.codigo.toLowerCase()}-${vehiculo.patente}.pdf`,
+            archivoTipo: estadoDoc === "pendiente" ? null : "application/pdf",
+            archivoPeso: estadoDoc === "pendiente" ? null : 184320,
+            observaciones: estadoDoc === "en_revision" ? "Documento en revisión por control interno" : null,
+            subidoPorId: estadoDoc === "pendiente" ? null : usuario.id,
+          },
+          create: {
+            empresaId: empresa.id,
+            vehiculoId: vehiculo.id,
+            tipoDocumentoId: tiposVehiculo.get(docBase.codigo)?.id || null,
+            tipo: docBase.codigo,
+            estado: estadoDoc,
+            subido: estadoDoc !== "pendiente",
+            vencimiento: toIsoDate(fechaVencimiento),
+            fechaEmision,
+            fechaVencimiento,
+            archivoNombre: estadoDoc === "pendiente" ? null : `${docBase.codigo.toLowerCase()}-${vehiculo.patente}.pdf`,
+            archivoNombreOriginal: estadoDoc === "pendiente" ? null : `${docBase.codigo.toLowerCase()}-${vehiculo.patente}.pdf`,
+            archivoUrl: estadoDoc === "pendiente" ? null : `/demo/vehiculos/${docBase.codigo.toLowerCase()}-${vehiculo.patente}.pdf`,
+            archivoTipo: estadoDoc === "pendiente" ? null : "application/pdf",
+            archivoPeso: estadoDoc === "pendiente" ? null : 184320,
+            observaciones: estadoDoc === "en_revision" ? "Documento en revisión por control interno" : null,
+            subidoPorId: estadoDoc === "pendiente" ? null : usuario.id,
+          },
+        });
+      }
+
+      const mantencionFecha = toIsoDate(daysFromNow(-15 - i * 2));
+      const mantencionEstado = i % 3 === 0 ? "completada" : i % 3 === 1 ? "programada" : "pendiente";
+      const mantencionExistente = await prisma.vehiculoMantencion.findFirst({
+        where: {
+          vehiculoId: vehiculo.id,
+          tipo: "mantencion_preventiva",
+          fecha: mantencionFecha,
+        },
+      });
+
+      if (!mantencionExistente) {
+        await prisma.vehiculoMantencion.create({
+          data: {
+            vehiculoId: vehiculo.id,
+            tipo: "mantencion_preventiva",
+            fecha: mantencionFecha,
+            estado: mantencionEstado,
+            kilometraje: item.kilometraje,
+            observaciones: `Mantención demo para ${item.nombre}`,
+          },
+        });
+      }
+    }
+    console.log(`   ✓ Vehículos/equipos creados/verificados: ${vehiculosCreados.length}`);
+
     // ────── 13. CONTRATISTAS ────────────────────────────────────────────────
     console.log("1️⃣3️⃣ Creando/verificando contratistas...");
     const contratistasCreados = [];
@@ -742,6 +1171,418 @@ async function seedDemo() {
         }
       }
     }
+
+    // ────── 13.5 ACREDITACIONES ───────────────────────────────────────────
+    console.log("1️⃣3️⃣.5️⃣ Creando/verificando acreditaciones demo...");
+
+    const tiposTrabajadorAcreditacionNecesarios = [
+      { codigo: "CONTRATO_TRABAJO", nombre: "Contrato de trabajo", requiereVencimiento: false },
+      { codigo: "ENTREGA_EPP", nombre: "Entrega de EPP", requiereVencimiento: true },
+      { codigo: "IRL", nombre: "IRL - Informe de Riesgos Laborales", requiereVencimiento: true },
+      { codigo: "CERT_ANTECEDENTES", nombre: "Certificado antecedentes", requiereVencimiento: true },
+    ];
+
+    const tiposTrabajadorAcreditacion = new Map();
+    for (const tipo of tiposTrabajadorAcreditacionNecesarios) {
+      const tipoDoc = await prisma.documentoTipoTrabajador.upsert({
+        where: {
+          empresaId_codigo: {
+            empresaId: empresa.id,
+            codigo: tipo.codigo,
+          },
+        },
+        update: {
+          nombre: tipo.nombre,
+          descripcion: `Tipo documental demo para ${tipo.nombre}`,
+          requiereVencimiento: tipo.requiereVencimiento,
+          vigenciaDias: tipo.requiereVencimiento ? 365 : null,
+          requiereArchivo: true,
+          activo: true,
+        },
+        create: {
+          empresaId: empresa.id,
+          codigo: tipo.codigo,
+          nombre: tipo.nombre,
+          descripcion: `Tipo documental demo para ${tipo.nombre}`,
+          requiereVencimiento: tipo.requiereVencimiento,
+          vigenciaDias: tipo.requiereVencimiento ? 365 : null,
+          requiereArchivo: true,
+          activo: true,
+        },
+      });
+      tiposTrabajadorAcreditacion.set(tipo.codigo, tipoDoc);
+    }
+
+    const mandantesByNombre = new Map();
+    for (const mandante of MANDANTES_ACREDITACION_DEMO) {
+      const item = await prisma.mandanteAcreditacion.upsert({
+        where: {
+          empresaId_nombre: {
+            empresaId: empresa.id,
+            nombre: mandante.nombre,
+          },
+        },
+        update: {
+          rut: mandante.rut,
+          tipo: mandante.tipo,
+          activo: true,
+        },
+        create: {
+          empresaId: empresa.id,
+          nombre: mandante.nombre,
+          rut: mandante.rut,
+          tipo: mandante.tipo,
+          activo: true,
+        },
+      });
+      mandantesByNombre.set(mandante.nombre, item);
+    }
+
+    const reqEmpresaNombres = Array.from(
+      new Set(
+        PLANTILLAS_ACREDITACION_DEMO.flatMap((plantilla) =>
+          plantilla.requisitos
+            .map((req) => req.documentoRequeridoEmpresaNombre)
+            .filter((value) => Boolean(value)),
+        ),
+      ),
+    );
+
+    const requeridosEmpresa = await prisma.documentoRequeridoEmpresa.findMany({
+      where: {
+        nombre: { in: reqEmpresaNombres },
+      },
+    });
+    const requeridoEmpresaByNombre = new Map(requeridosEmpresa.map((item) => [item.nombre, item]));
+
+    const tiposVehiculoByCodigo = new Map(
+      (await prisma.documentoTipoVehiculo.findMany({
+        where: {
+          empresaId: empresa.id,
+          codigo: { in: DOCUMENTOS_VEHICULO_DEMO.map((item) => item.codigo) },
+        },
+      })).map((item) => [item.codigo, item]),
+    );
+
+    const plantillasByNombre = new Map();
+    for (const plantillaDemo of PLANTILLAS_ACREDITACION_DEMO) {
+      const mandante = mandantesByNombre.get(plantillaDemo.mandante);
+      let plantilla = await prisma.plantillaAcreditacion.findFirst({
+        where: {
+          empresaId: empresa.id,
+          nombre: plantillaDemo.nombre,
+          version: 1,
+        },
+      });
+
+      if (!plantilla) {
+        plantilla = await prisma.plantillaAcreditacion.create({
+          data: {
+            empresaId: empresa.id,
+            mandanteId: mandante?.id ?? null,
+            nombre: plantillaDemo.nombre,
+            tipo: plantillaDemo.tipo,
+            descripcion: plantillaDemo.descripcion,
+            origen: "nextprev",
+            activa: true,
+            version: 1,
+          },
+        });
+      } else {
+        plantilla = await prisma.plantillaAcreditacion.update({
+          where: { id: plantilla.id },
+          data: {
+            mandanteId: mandante?.id ?? null,
+            tipo: plantillaDemo.tipo,
+            descripcion: plantillaDemo.descripcion,
+            activa: true,
+          },
+        });
+      }
+
+      const requisitosActuales = await prisma.requisitoPlantillaAcreditacion.findMany({
+        where: { plantillaId: plantilla.id },
+      });
+
+      for (let r = 0; r < plantillaDemo.requisitos.length; r++) {
+        const req = plantillaDemo.requisitos[r];
+        const codigoDocumento = `${req.aplicaA}_${req.nombreDocumento}`.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+        const existente = requisitosActuales.find((item) => item.codigoDocumento === codigoDocumento);
+
+        const payload = {
+          nombreDocumento: req.nombreDocumento,
+          codigoDocumento,
+          categoria: req.categoria,
+          aplicaA: req.aplicaA,
+          obligatorio: req.obligatorio,
+          requiereVencimiento: true,
+          requiereRevisionManual: req.aplicaA !== "empresa",
+          orden: r + 1,
+          activo: true,
+          documentoRequeridoEmpresaId: req.documentoRequeridoEmpresaNombre
+            ? (requeridoEmpresaByNombre.get(req.documentoRequeridoEmpresaNombre)?.id ?? null)
+            : null,
+          documentoTipoTrabajadorId: req.documentoTipoTrabajadorCodigo
+            ? (tiposTrabajadorAcreditacion.get(req.documentoTipoTrabajadorCodigo)?.id ?? null)
+            : null,
+          documentoTipoVehiculoId: req.documentoTipoVehiculoCodigo
+            ? (tiposVehiculoByCodigo.get(req.documentoTipoVehiculoCodigo)?.id ?? null)
+            : null,
+        };
+
+        if (existente) {
+          await prisma.requisitoPlantillaAcreditacion.update({
+            where: { id: existente.id },
+            data: payload,
+          });
+        } else {
+          await prisma.requisitoPlantillaAcreditacion.create({
+            data: {
+              plantillaId: plantilla.id,
+              ...payload,
+            },
+          });
+        }
+      }
+
+      const plantillaConRequisitos = await prisma.plantillaAcreditacion.findUnique({
+        where: { id: plantilla.id },
+        include: {
+          requisitos: {
+            where: { activo: true },
+            orderBy: { orden: "asc" },
+          },
+        },
+      });
+
+      plantillasByNombre.set(plantillaDemo.nombre, plantillaConRequisitos);
+    }
+
+    const trabajadoresByRut = new Map(trabajadores.map((item) => [item.rut, item]));
+    const vehiculosByPatente = new Map(
+      (await prisma.vehiculo.findMany({
+        where: {
+          empresaId: empresa.id,
+          patente: { in: VEHICULOS_EQUIPOS_DEMO.map((item) => item.patente) },
+        },
+      })).map((item) => [item.patente, item]),
+    );
+    const contratistasByNombre = new Map(contratistasCreados.map((item) => [item.nombre, item]));
+
+    const acreditacionesDemo = [];
+    for (const solicitud of SOLICITUDES_ACREDITACION_DEMO) {
+      const mandante = mandantesByNombre.get(solicitud.mandante);
+      const plantilla = plantillasByNombre.get(solicitud.plantilla);
+      if (!mandante || !plantilla) continue;
+
+      const contratista = solicitud.contratista ? contratistasByNombre.get(solicitud.contratista) : null;
+      const trabajadoresSolicitud = solicitud.trabajadorRuts
+        .map((rut) => trabajadoresByRut.get(rut))
+        .filter((value) => Boolean(value));
+      const vehiculosSolicitud = solicitud.vehiculos
+        .map((patente) => vehiculosByPatente.get(patente))
+        .filter((value) => Boolean(value));
+
+      const fechaEnvio = ["enviado", "observada", "aprobado", "rechazado", "vencido"].includes(solicitud.estado)
+        ? daysFromNow(-25)
+        : null;
+      const fechaRespuesta = ["observada", "aprobado", "rechazado", "vencido"].includes(solicitud.estado)
+        ? daysFromNow(-12)
+        : null;
+      const fechaVencimiento = solicitud.estado === "vencido" ? daysFromNow(-3) : daysFromNow(65);
+
+      let acreditacion = await prisma.acreditacion.findFirst({
+        where: {
+          empresaId: empresa.id,
+          nombreProyecto: solicitud.nombreProyecto,
+        },
+      });
+
+      if (!acreditacion) {
+        acreditacion = await prisma.acreditacion.create({
+          data: {
+            empresaId: empresa.id,
+            mandanteId: mandante.id,
+            plantillaId: plantilla.id,
+            contratistaId: contratista?.id ?? null,
+            responsableId: usuario.id,
+            nombreProyecto: solicitud.nombreProyecto,
+            obraFaena: solicitud.obraFaena,
+            estado: solicitud.estado,
+            observaciones: `Solicitud demo ${solicitud.estado}`,
+            fechaEnvio,
+            fechaRespuesta,
+            fechaVencimiento,
+          },
+        });
+      } else {
+        acreditacion = await prisma.acreditacion.update({
+          where: { id: acreditacion.id },
+          data: {
+            mandanteId: mandante.id,
+            plantillaId: plantilla.id,
+            contratistaId: contratista?.id ?? null,
+            responsableId: usuario.id,
+            obraFaena: solicitud.obraFaena,
+            estado: solicitud.estado,
+            observaciones: `Solicitud demo ${solicitud.estado}`,
+            fechaEnvio,
+            fechaRespuesta,
+            fechaVencimiento,
+          },
+        });
+      }
+
+      acreditacionesDemo.push(acreditacion);
+
+      for (const trabajador of trabajadoresSolicitud) {
+        await prisma.acreditacionTrabajador.upsert({
+          where: {
+            acreditacionId_trabajadorId: {
+              acreditacionId: acreditacion.id,
+              trabajadorId: trabajador.id,
+            },
+          },
+          update: {},
+          create: {
+            acreditacionId: acreditacion.id,
+            trabajadorId: trabajador.id,
+          },
+        });
+      }
+
+      for (const vehiculo of vehiculosSolicitud) {
+        await prisma.acreditacionVehiculo.upsert({
+          where: {
+            acreditacionId_vehiculoId: {
+              acreditacionId: acreditacion.id,
+              vehiculoId: vehiculo.id,
+            },
+          },
+          update: {},
+          create: {
+            acreditacionId: acreditacion.id,
+            vehiculoId: vehiculo.id,
+          },
+        });
+      }
+
+      const requisitos = plantilla.requisitos ?? [];
+      for (let r = 0; r < requisitos.length; r++) {
+        const requisito = requisitos[r];
+        const titulares = requisito.aplicaA === "empresa"
+          ? [{ tipo: "empresa", id: null, nombre: empresa.nombre }]
+          : requisito.aplicaA === "trabajador"
+            ? trabajadoresSolicitud.map((trabajador) => ({
+                tipo: "trabajador",
+                id: trabajador.id,
+                nombre: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
+              }))
+            : vehiculosSolicitud.map((vehiculo) => ({
+                tipo: "vehiculo",
+                id: vehiculo.id,
+                nombre: `${vehiculo.patente} ${vehiculo.marca} ${vehiculo.modelo}`.trim(),
+              }));
+
+        for (let t = 0; t < titulares.length; t++) {
+          const titular = titulares[t];
+          const estadoDoc = estadoDocumentoDemo(solicitud.estado, r + t);
+          const tieneArchivo = estadoDoc !== "faltante";
+          const fechaDocVencimiento = estadoDoc === "vencido" ? daysFromNow(-5) : daysFromNow(120 + r * 10);
+
+          const existente = await prisma.documentoAcreditacion.findFirst({
+            where: {
+              acreditacionId: acreditacion.id,
+              requisitoId: requisito.id,
+              titularTipo: titular.tipo,
+              titularId: titular.id,
+            },
+          });
+
+          const payload = {
+            nombreDocumento: requisito.nombreDocumento,
+            categoria: requisito.categoria,
+            obligatorio: requisito.obligatorio,
+            titularTipo: titular.tipo,
+            titularId: titular.id,
+            titularNombre: titular.nombre,
+            estado: estadoDoc,
+            archivoUrl: tieneArchivo ? `/demo/acreditaciones/${acreditacion.id}/${requisito.codigoDocumento || requisito.id}.pdf` : null,
+            archivoNombre: tieneArchivo ? `${(requisito.codigoDocumento || requisito.id).toLowerCase()}.pdf` : null,
+            fechaEmision: tieneArchivo ? daysFromNow(-35) : null,
+            fechaVencimiento: tieneArchivo ? fechaDocVencimiento : null,
+            fuenteTipo: tieneArchivo ? "manual" : null,
+            fuenteId: null,
+            observaciones: estadoDoc === "en_revision" ? "Documento observado para corrección" : null,
+          };
+
+          if (existente) {
+            await prisma.documentoAcreditacion.update({
+              where: { id: existente.id },
+              data: payload,
+            });
+          } else {
+            await prisma.documentoAcreditacion.create({
+              data: {
+                acreditacionId: acreditacion.id,
+                requisitoId: requisito.id,
+                ...payload,
+              },
+            });
+          }
+        }
+      }
+
+      const eventos = [
+        { accion: "crear", detalle: "demo-seed: solicitud creada", estadoAnterior: null, estadoNuevo: "en_preparacion", dias: 30 },
+        { accion: "agregar_documento", detalle: "demo-seed: documentos cargados", estadoAnterior: "en_preparacion", estadoNuevo: "listo_para_enviar", dias: 24 },
+      ];
+
+      if (["enviado", "observada", "aprobado", "rechazado", "vencido"].includes(solicitud.estado)) {
+        eventos.push({ accion: "enviar", detalle: "demo-seed: solicitud enviada", estadoAnterior: "listo_para_enviar", estadoNuevo: "enviado", dias: 21 });
+      }
+      if (["observada", "aprobado", "rechazado"].includes(solicitud.estado)) {
+        eventos.push({ accion: "observar", detalle: "demo-seed: observación enviada", estadoAnterior: "enviado", estadoNuevo: "observada", dias: 16 });
+      }
+      if (["aprobado"].includes(solicitud.estado)) {
+        eventos.push({ accion: "corregir", detalle: "demo-seed: corrección recibida", estadoAnterior: "observada", estadoNuevo: "enviado", dias: 12 });
+        eventos.push({ accion: "aprobar", detalle: "demo-seed: solicitud aprobada", estadoAnterior: "enviado", estadoNuevo: "aprobado", dias: 8 });
+      }
+      if (["rechazado"].includes(solicitud.estado)) {
+        eventos.push({ accion: "rechazar", detalle: "demo-seed: solicitud rechazada", estadoAnterior: "observada", estadoNuevo: "rechazado", dias: 9 });
+      }
+      if (["vencido"].includes(solicitud.estado)) {
+        eventos.push({ accion: "cerrar", detalle: "demo-seed: solicitud vencida", estadoAnterior: "enviado", estadoNuevo: "vencido", dias: 3 });
+      }
+
+      for (const evento of eventos) {
+        const existente = await prisma.historialAcreditacion.findFirst({
+          where: {
+            acreditacionId: acreditacion.id,
+            accion: evento.accion,
+            detalle: evento.detalle,
+          },
+        });
+
+        if (!existente) {
+          await prisma.historialAcreditacion.create({
+            data: {
+              acreditacionId: acreditacion.id,
+              usuarioId: usuario.id,
+              accion: evento.accion,
+              detalle: evento.detalle,
+              estadoAnterior: evento.estadoAnterior,
+              estadoNuevo: evento.estadoNuevo,
+              createdAt: daysFromNow(-evento.dias),
+            },
+          });
+        }
+      }
+    }
+
+    console.log(`   ✓ Mandantes demo: ${MANDANTES_ACREDITACION_DEMO.length}`);
+    console.log(`   ✓ Plantillas demo: ${PLANTILLAS_ACREDITACION_DEMO.length}`);
+    console.log(`   ✓ Solicitudes demo: ${SOLICITUDES_ACREDITACION_DEMO.length}`);
 
     // ────── 14. CHECKLISTS ──────────────────────────────────────────────────
     console.log("1️⃣4️⃣ Creando/verificando templates de checklists...");
@@ -962,6 +1803,38 @@ async function seedDemo() {
       console.log(`   ↷ Plan de trabajo 2026 ya existe`);
     }
 
+    const acreditacionDemoIds = acreditacionesDemo.map((item) => item.id);
+    const [vehiculosDemoCount, plantillasDemoCount, solicitudesDemoCount, historialDemoCount, documentosDemoCount] = await Promise.all([
+      prisma.vehiculo.count({
+        where: {
+          empresaId: empresa.id,
+          patente: { in: VEHICULOS_EQUIPOS_DEMO.map((item) => item.patente) },
+        },
+      }),
+      prisma.plantillaAcreditacion.count({
+        where: {
+          empresaId: empresa.id,
+          nombre: { in: PLANTILLAS_ACREDITACION_DEMO.map((item) => item.nombre) },
+        },
+      }),
+      prisma.acreditacion.count({
+        where: {
+          empresaId: empresa.id,
+          nombreProyecto: { in: SOLICITUDES_ACREDITACION_DEMO.map((item) => item.nombreProyecto) },
+        },
+      }),
+      prisma.historialAcreditacion.count({
+        where: {
+          acreditacionId: { in: acreditacionDemoIds.length > 0 ? acreditacionDemoIds : ["__none__"] },
+        },
+      }),
+      prisma.documentoAcreditacion.count({
+        where: {
+          acreditacionId: { in: acreditacionDemoIds.length > 0 ? acreditacionDemoIds : ["__none__"] },
+        },
+      }),
+    ]);
+
     console.log("\n✅ Seed de empresa demo completado exitosamente!\n");
     console.log("─────────────────────────────────────────────────");
     console.log("📊 Resumen de datos demo creados:");
@@ -970,6 +1843,11 @@ async function seedDemo() {
     console.log(`  • Centros de trabajo: ${centros.length}`);
     console.log(`  • Trabajadores: ${trabajadores.length}`);
     console.log(`  • Contratistas: ${contratistasCreados.length}`);
+    console.log(`  • Vehículos/equipos demo: ${vehiculosDemoCount}`);
+    console.log(`  • Plantillas acreditación demo: ${plantillasDemoCount}`);
+    console.log(`  • Solicitudes acreditación demo: ${solicitudesDemoCount}`);
+    console.log(`  • Historial acreditación demo: ${historialDemoCount}`);
+    console.log(`  • Documentos acreditación demo: ${documentosDemoCount}`);
     console.log(`  • Checklists: ${checklistsCreados.length}`);
     console.log(`  • Actividades plan 2026: ${DEMO_DATA.planTrabajo2026.length}`);
     console.log("─────────────────────────────────────────────────");
