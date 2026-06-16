@@ -181,8 +181,22 @@ export async function createEmpresaAction(formData: FormData) {
 
   const nombre = parseString(formData, "nombre");
   const rut = parseString(formData, "rut");
+
   if (!nombre) {
-    throw new Error("Nombre de empresa requerido");
+    throw new Error("Nombre de empresa es requerido");
+  }
+
+  if (nombre.length < 2) {
+    throw new Error("Nombre debe tener al menos 2 caracteres");
+  }
+
+  // Check for duplicates
+  const existing = await prisma.empresa.findFirst({
+    where: { nombre: { mode: "insensitive", equals: nombre } },
+  });
+
+  if (existing) {
+    throw new Error(`Una empresa con el nombre "${nombre}" ya existe`);
   }
 
   const empresa = await prisma.empresa.create({
@@ -195,29 +209,43 @@ export async function createEmpresaAction(formData: FormData) {
     select: { id: true, nombre: true },
   });
 
-  const bootstrap = await bootstrapEmpresaOperativa(empresa.id);
-
-  revalidatePath("/dicaprev/superadmin");
-
-  return {
-    empresa,
-    bootstrap,
-  };
+  try {
+    const bootstrap = await bootstrapEmpresaOperativa(empresa.id);
+    revalidatePath("/dicaprev/superadmin");
+    return {
+      empresa,
+      bootstrap,
+    };
+  } catch (bootstrapError) {
+    // Clean up empresa if bootstrap fails
+    await prisma.empresa.delete({ where: { id: empresa.id } });
+    throw new Error(`Error al preparar empresa: ${bootstrapError instanceof Error ? bootstrapError.message : "Error desconocido"}`);
+  }
 }
 
 export async function prepararEmpresaAction(formData: FormData) {
   await requireRole("SUPERADMIN");
 
   const empresaId = parseString(formData, "empresaId");
+
   if (!empresaId) {
-    throw new Error("Empresa requerida");
+    throw new Error("Empresa es requerida");
   }
 
-  const bootstrap = await bootstrapEmpresaOperativa(empresaId);
+  // Verify empresa exists
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
+  }
 
-  revalidatePath("/dicaprev/superadmin");
-
-  return bootstrap;
+  try {
+    const bootstrap = await bootstrapEmpresaOperativa(empresaId);
+    revalidatePath("/dicaprev/superadmin");
+    return bootstrap;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Error desconocido en bootstrap";
+    throw new Error(`Error al preparar empresa: ${errorMsg}`);
+  }
 }
 
 export async function updateEmpresaAction(formData: FormData) {
@@ -227,8 +255,34 @@ export async function updateEmpresaAction(formData: FormData) {
   const nombre = parseString(formData, "nombre");
   const rut = parseString(formData, "rut");
 
-  if (!id || !nombre) {
-    throw new Error("Datos de empresa incompletos");
+  if (!id) {
+    throw new Error("ID de empresa es requerido");
+  }
+
+  if (!nombre) {
+    throw new Error("Nombre de empresa es requerido");
+  }
+
+  if (nombre.length < 2) {
+    throw new Error("Nombre debe tener al menos 2 caracteres");
+  }
+
+  // Verify empresa exists
+  const empresa = await prisma.empresa.findUnique({ where: { id } });
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
+  }
+
+  // Check for duplicate name (excluding current empresa)
+  const existing = await prisma.empresa.findFirst({
+    where: {
+      id: { not: id },
+      nombre: { mode: "insensitive", equals: nombre },
+    },
+  });
+
+  if (existing) {
+    throw new Error(`Una empresa con el nombre "${nombre}" ya existe`);
   }
 
   await prisma.empresa.update({
@@ -247,8 +301,15 @@ export async function toggleEmpresaActivaAction(formData: FormData) {
 
   const empresaId = parseString(formData, "empresaId");
   const activa = parseBooleanFromFormData(formData, "activa");
+
   if (!empresaId) {
-    throw new Error("Empresa requerida");
+    throw new Error("Empresa es requerida");
+  }
+
+  // Verify empresa exists
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
   }
 
   await prisma.empresa.update({
@@ -266,8 +327,29 @@ export async function createUsuarioAction(formData: FormData) {
   const email = parseString(formData, "email").toLowerCase();
   const rol = parseString(formData, "rol") as Rol;
 
-  if (!nombre || !email || !SUPERADMIN_ROLES.includes(rol)) {
-    throw new Error("Datos de usuario invalidos");
+  if (!nombre) {
+    throw new Error("Nombre de usuario es requerido");
+  }
+
+  if (nombre.length < 2) {
+    throw new Error("Nombre debe tener al menos 2 caracteres");
+  }
+
+  if (!email || !email.includes("@")) {
+    throw new Error("Email válido es requerido");
+  }
+
+  if (!SUPERADMIN_ROLES.includes(rol)) {
+    throw new Error("Rol inválido");
+  }
+
+  // Check for duplicate email
+  const existing = await prisma.usuario.findFirst({
+    where: { email: { mode: "insensitive", equals: email } },
+  });
+
+  if (existing) {
+    throw new Error(`Un usuario con el email "${email}" ya existe`);
   }
 
   await prisma.usuario.create({
@@ -289,7 +371,13 @@ export async function toggleUsuarioActivoAction(formData: FormData) {
   const activo = parseBooleanFromFormData(formData, "activo");
 
   if (!usuarioId) {
-    throw new Error("Usuario requerido");
+    throw new Error("Usuario es requerido");
+  }
+
+  // Verify usuario exists
+  const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId } });
+  if (!usuario) {
+    throw new Error("Usuario no encontrado");
   }
 
   await prisma.usuario.update({
@@ -308,8 +396,28 @@ export async function upsertUsuarioEmpresaAction(formData: FormData) {
   const rol = parseString(formData, "rol") as Rol;
   const activo = parseBooleanFromFormData(formData, "activo");
 
-  if (!usuarioId || !empresaId || !SUPERADMIN_ROLES.includes(rol)) {
-    throw new Error("Asignacion de usuario a empresa invalida");
+  if (!usuarioId) {
+    throw new Error("Usuario es requerido");
+  }
+
+  if (!empresaId) {
+    throw new Error("Empresa es requerida");
+  }
+
+  if (!SUPERADMIN_ROLES.includes(rol)) {
+    throw new Error("Rol es requerido");
+  }
+
+  // Verify usuario exists
+  const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId } });
+  if (!usuario) {
+    throw new Error("Usuario no encontrado");
+  }
+
+  // Verify empresa exists
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
   }
 
   await prisma.usuarioEmpresa.upsert({
@@ -341,7 +449,13 @@ export async function toggleUsuarioEmpresaActivoAction(formData: FormData) {
   const activo = parseBooleanFromFormData(formData, "activo");
 
   if (!id) {
-    throw new Error("Asignacion requerida");
+    throw new Error("Asignación es requerida");
+  }
+
+  // Verify assignment exists
+  const assignment = await prisma.usuarioEmpresa.findUnique({ where: { id } });
+  if (!assignment) {
+    throw new Error("Asignación no encontrada");
   }
 
   await prisma.usuarioEmpresa.update({
@@ -359,8 +473,18 @@ export async function toggleEmpresaModuloAction(formData: FormData) {
   const modulo = parseString(formData, "modulo") as CompanyModuleKey;
   const activo = parseBooleanFromFormData(formData, "activo");
 
-  if (!empresaId || !COMPANY_MODULES.includes(modulo)) {
-    throw new Error("Modulo invalido");
+  if (!empresaId) {
+    throw new Error("Empresa es requerida");
+  }
+
+  if (!COMPANY_MODULES.includes(modulo)) {
+    throw new Error("Módulo inválido");
+  }
+
+  // Verify empresa exists
+  const empresa = await prisma.empresa.findUnique({ where: { id: empresaId } });
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
   }
 
   await prisma.empresaModulo.upsert({
@@ -384,41 +508,48 @@ export async function toggleEmpresaModuloAction(formData: FormData) {
 export async function ensureBackfillAction() {
   await requireRole("SUPERADMIN");
 
-  const usuarios = await prisma.usuario.findMany({
-    where: { empresaId: { not: null } },
-    select: {
-      id: true,
-      empresaId: true,
-      rol: true,
-      activo: true,
-    },
-  });
-
-  for (const usuario of usuarios) {
-    if (!usuario.empresaId) continue;
-    await prisma.usuarioEmpresa.upsert({
-      where: {
-        usuarioId_empresaId: {
-          usuarioId: usuario.id,
-          empresaId: usuario.empresaId,
-        },
-      },
-      update: {
-        activo: usuario.activo,
-      },
-      create: {
-        usuarioId: usuario.id,
-        empresaId: usuario.empresaId,
-        rol: usuario.rol,
-        activo: usuario.activo,
+  try {
+    // Backfill usuarios a usuarioEmpresa
+    const usuarios = await prisma.usuario.findMany({
+      where: { empresaId: { not: null } },
+      select: {
+        id: true,
+        empresaId: true,
+        rol: true,
+        activo: true,
       },
     });
-  }
 
-  const empresas = await prisma.empresa.findMany({ select: { id: true } });
-  for (const empresa of empresas) {
-    await ensureEmpresaModules(empresa.id);
-  }
+    for (const usuario of usuarios) {
+      if (!usuario.empresaId) continue;
+      await prisma.usuarioEmpresa.upsert({
+        where: {
+          usuarioId_empresaId: {
+            usuarioId: usuario.id,
+            empresaId: usuario.empresaId,
+          },
+        },
+        update: {
+          activo: usuario.activo,
+        },
+        create: {
+          usuarioId: usuario.id,
+          empresaId: usuario.empresaId,
+          rol: usuario.rol,
+          activo: usuario.activo,
+        },
+      });
+    }
 
-  revalidatePath("/dicaprev/superadmin");
+    // Ensure all empresas have all modules
+    const empresas = await prisma.empresa.findMany({ select: { id: true } });
+    for (const empresa of empresas) {
+      await ensureEmpresaModules(empresa.id);
+    }
+
+    revalidatePath("/dicaprev/superadmin");
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Error desconocido en backfill";
+    throw new Error(`Error en backfill idempotente: ${errorMsg}`);
+  }
 }
