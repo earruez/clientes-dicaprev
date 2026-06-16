@@ -28,30 +28,38 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const devPassword = process.env.AUTH_DEV_PASSWORD ?? (process.env.NODE_ENV === "development" ? "dev1234" : undefined);
-        if (!devPassword) {
-          throw new Error("AUTH_DEV_PASSWORD no esta definida");
-        }
-
-        if (password !== devPassword) {
-          return null;
-        }
-
         const usuario = await prisma.usuario.findUnique({
           where: { email },
           select: { id: true, nombre: true, email: true, activo: true, passwordHash: true },
         });
 
-        if (!usuario || !usuario.activo) {
+        if (!usuario) {
+          console.log(`[auth] Usuario no encontrado: ${email}`);
+          return null;
+        }
+
+        if (!usuario.activo) {
+          console.log(`[auth] Usuario inactivo: ${email}`);
           return null;
         }
 
         if (usuario.passwordHash) {
+          // Usuario con hash de contraseña real (e.g. SUPERADMIN creado por bootstrap)
           if (!verifyPassword(password, usuario.passwordHash)) {
+            console.log(`[auth] Contraseña incorrecta (hash) para: ${email}`);
             return null;
           }
-        } else if (password !== devPassword) {
-          return null;
+        } else {
+          // Fallback: usuario sin hash usa AUTH_DEV_PASSWORD
+          const devPassword = process.env.AUTH_DEV_PASSWORD;
+          if (!devPassword) {
+            console.log(`[auth] AUTH_DEV_PASSWORD no definida, usuario sin hash: ${email}`);
+            return null;
+          }
+          if (password !== devPassword) {
+            console.log(`[auth] Contraseña devPassword incorrecta para: ${email}`);
+            return null;
+          }
         }
 
         return {

@@ -9,6 +9,7 @@ type BootstrapBody = {
   password?: string;
   nombre?: string;
   companyName?: string;
+  resetPassword?: boolean;
 };
 
 function normalizeText(value: unknown): string {
@@ -48,6 +49,26 @@ export async function POST(request: Request) {
   });
 
   if (existingSuperadmin) {
+    // Opción: resetear contraseña del SUPERADMIN existente
+    if (body.resetPassword === true) {
+      const newPassword = normalizeText(body.password);
+      if (!newPassword) {
+        return NextResponse.json(
+          { ok: false, message: "Password requerido para resetPassword" },
+          { status: 400 }
+        );
+      }
+      const newHash = hashPassword(newPassword);
+      await prisma.usuario.update({
+        where: { id: existingSuperadmin.id },
+        data: { passwordHash: newHash },
+      });
+      return NextResponse.json(
+        { ok: true, message: "Contraseña de SUPERADMIN actualizada" },
+        { status: 200 }
+      );
+    }
+
     return NextResponse.json(
       { ok: false, message: "Ya existe SUPERADMIN", existingSuperadmin },
       { status: 409 }
