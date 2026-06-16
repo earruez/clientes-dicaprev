@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { bootstrapEmpresaOperativa } from "@/server/bootstrap/empresa-operativa";
 import { hashPassword } from "@/lib/password-hash";
+import { COMPANY_MODULES } from "@/lib/company-modules";
 
 type BootstrapBody = {
   secret?: string;
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   if (!bootstrapSecret) {
     return NextResponse.json(
-      { status: "error", message: "BOOTSTRAP_SECRET no esta definida" },
+      { ok: false, message: "BOOTSTRAP_SECRET no esta definida en el servidor" },
       { status: 500 }
     );
   }
@@ -30,14 +30,14 @@ export async function POST(request: Request) {
     body = (await request.json()) as BootstrapBody;
   } catch {
     return NextResponse.json(
-      { status: "error", message: "Body JSON invalido" },
+      { ok: false, message: "Body JSON invalido" },
       { status: 400 }
     );
   }
 
   if (normalizeText(body.secret) !== bootstrapSecret) {
     return NextResponse.json(
-      { status: "not_authorized", message: "BOOTSTRAP_SECRET invalido" },
+      { ok: false, message: "No autorizado" },
       { status: 401 }
     );
   }
@@ -49,11 +49,7 @@ export async function POST(request: Request) {
 
   if (existingSuperadmin) {
     return NextResponse.json(
-      {
-        status: "already_exists",
-        message: "Ya existe un usuario SUPERADMIN en la base de datos",
-        existingSuperadmin,
-      },
+      { ok: false, message: "Ya existe SUPERADMIN", existingSuperadmin },
       { status: 409 }
     );
   }
@@ -65,22 +61,22 @@ export async function POST(request: Request) {
 
   if (!email || !password) {
     return NextResponse.json(
-      { status: "error", message: "Email y password son requeridos" },
+      { ok: false, message: "Email y password son requeridos" },
       { status: 400 }
     );
   }
 
   const passwordHash = hashPassword(password);
 
-  const result = await prisma.$transaction(async (tx) => {
-    const empresaExistente = await tx.empresa.findFirst({
+  try {
+    // 1. Empresa base (fuera de transacción para que sea visible de inmediato)
+    let empresa = await prisma.empresa.findFirst({
       where: { nombre: companyName },
       select: { id: true, nombre: true },
     });
 
-    const empresa =
-      empresaExistente ??
-      (await tx.empresa.create({
+    if (!empresa) {
+      empresa = await prisma.empresa.create({
         data: {
           nombre: companyName,
           razonSocial: companyName,
@@ -89,9 +85,11 @@ export async function POST(request: Request) {
           giro: "servicios",
         },
         select: { id: true, nombre: true },
-      }));
+      });
+    }
 
-    const usuario = await tx.usuario.upsert({
+    // 2. Usuario SUPERADMIN
+    const usuario = await prisma.usuario.upsert({
       where: { email },
       create: {
         nombre,
@@ -111,7 +109,8 @@ export async function POST(request: Request) {
       select: { id: true, nombre: true, email: true, rol: true },
     });
 
-    await tx.usuarioEmpresa.upsert({
+    // 3. Relación usuario-empresa
+    await prisma.usuarioEmpresa.upsert({
       where: {
         usuarioId_empresaId: {
           usuarioId: usuario.id,
@@ -130,21 +129,56 @@ export async function POST(request: Request) {
       },
     });
 
-    const bootstrap = await bootstrapEmpresaOperativa(empresa.id);
+    // 4. Módulos base
+    let modulosCreados = 0;
+    for (const modulo of COMPANY_MODULES) {
+      const existente = await prisma.empresaModulo.findUnique({
+        where: { empresaId_modulo: { empresaId: empresa.id, modulo } },
+        select: { id: true },
+      });
+      if (!existente) {
+        await prisma.empresaModulo.create({
+          data: { empresaId: empresa.id, modulo, activo: true },
+        });
+        modulosCreados += 1;
+      }
+    }
 
-    return {
-      empresa,
-      usuario,
-      bootstrap,
-    };
-  });
+    // 5. Centro de trabajo base
+    const centrosCount = await prisma.centroTrabajo.count({ where: { empresaId: empresa.id } });
+    if (centrosCount === 0) {
+      await prisma.centroTrabajo.create({
+        data: {
+          empresaId: empresa.id,
+          nombre: "Casa matriz / Principal",
+          tipo: "Casa Matriz",
+          estado: "activo",
+          direccion: "Por definir",
+          comuna: "Por definir",
+          region: "Por definir",
+        },
+      });
+    }
 
-  return NextResponse.json(
-    {
-      status: "created",
-      message: "SUPERADMIN y empresa base creados correctamente",
-      ...result,
-    },
-    { status: 201 }
-  );
+    return NextResponse.json(
+      {
+        ok: true,
+        message: "SUPERADMIN creado",
+        empresa,
+        usuario,
+        modulosCreados,
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error("[bootstrap/superadmin] Error:", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        message: "Error interno al crear SUPERADMIN",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  }
 }
