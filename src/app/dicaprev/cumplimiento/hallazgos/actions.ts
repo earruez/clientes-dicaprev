@@ -312,16 +312,16 @@ function normalizeHallazgoRow(row: {
     prioridad,
     fechaCompromiso: row.fechaCompromiso.toISOString().slice(0, 10),
     fechaCreacion: row.createdAt.toISOString(),
-    creadoPor: row.creadoPor.nombre,
+    creadoPor: row.creadoPor?.nombre ?? "Sistema",
     historial: [
       {
         fecha: row.createdAt.toISOString(),
-        usuario: row.creadoPor.nombre,
+        usuario: row.creadoPor?.nombre ?? "Sistema",
         accion: "Creación de hallazgo",
       },
       {
         fecha: row.updatedAt.toISOString(),
-        usuario: row.creadoPor.nombre,
+        usuario: row.creadoPor?.nombre ?? "Sistema",
         accion: "Actualización",
       },
     ],
