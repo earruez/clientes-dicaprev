@@ -121,6 +121,28 @@ const DEMO_DATA = {
     { actividad: "Control de contratistas", normativa: "DS 44", categoria: "Contratación", periodicidad: "continua", responsable: "Administrador de Centro", centroContratista: "Todas las sedes" },
     { actividad: "Inspección de zonas comunes", normativa: "DS 40", categoria: "Inspección", periodicidad: "semanal", responsable: "Supervisor de Operaciones", centroContratista: "Centros Comerciales" },
   ],
+  documentosEmpresa: [
+    { nombre: "Reglamento Interno", categoria: "gestion", tipo: "REGLAMENTO_INTERNO", requiereVencimiento: false },
+    { nombre: "Política SST", categoria: "gestion", tipo: "POLITICA_SST", requiereVencimiento: false },
+    { nombre: "Plan de emergencia", categoria: "emergencias", tipo: "PLAN_EMERGENCIA", requiereVencimiento: true },
+    { nombre: "Matriz IPER / MIPER", categoria: "riesgos", tipo: "MATRIZ_IPER", requiereVencimiento: true },
+    { nombre: "Programa de prevención", categoria: "gestion", tipo: "PROGRAMA_PREVENCION", requiereVencimiento: true },
+    { nombre: "Acta Comité Paritario", categoria: "comite", tipo: "ACTA_COMITE_PARITARIO", requiereVencimiento: false },
+    { nombre: "Formato entrega EPP", categoria: "epp", tipo: "FORMATO_ENTREGA_EPP", requiereVencimiento: false },
+    { nombre: "Procedimiento de emergencias", categoria: "emergencias", tipo: "PROCEDIMIENTO_EMERGENCIAS", requiereVencimiento: false },
+    { nombre: "Registro de capacitaciones", categoria: "capacitacion", tipo: "REGISTRO_CAPACITACIONES", requiereVencimiento: true },
+    { nombre: "Documentación contratistas", categoria: "contratistas", tipo: "DOCUMENTACION_CONTRATISTAS", requiereVencimiento: true },
+  ],
+  documentosTrabajadorBase: [
+    { tipo: "CONTRATO_TRABAJO", nombre: "Contrato de trabajo", requiereVencimiento: false },
+    { tipo: "CEDULA_IDENTIDAD", nombre: "Cédula de identidad", requiereVencimiento: true },
+    { tipo: "IRL", nombre: "IRL - Informe de Riesgos Laborales", requiereVencimiento: true },
+    { tipo: "REGLAMENTO_INTERNO", nombre: "Reglamento interno firmado", requiereVencimiento: false },
+    { tipo: "ENTREGA_EPP", nombre: "Entrega de EPP", requiereVencimiento: true },
+    { tipo: "CAPACITACION_INICIAL", nombre: "Capacitación inicial", requiereVencimiento: true },
+    { tipo: "EXAMEN_OCUPACIONAL", nombre: "Examen ocupacional", requiereVencimiento: true },
+    { tipo: "LICENCIA_HABILITANTE", nombre: "Licencia habilitante", requiereVencimiento: true },
+  ],
 };
 
 // ─── Main Seed Function ──────────────────────────────────────────────────────
@@ -360,26 +382,125 @@ async function seedDemo() {
       trabajadores.push(t);
     }
 
+    // ────── 8.5 TIPOS DOCUMENTALES + REGLAS ───────────────────────────────
+    console.log("8️⃣.5️⃣ Creando/verificando tipos y reglas documentales...");
+    const tiposDocumentales = [];
+    for (const doc of DEMO_DATA.documentosTrabajadorBase) {
+      let tipoDoc = await prisma.documentoTipoTrabajador.findFirst({
+        where: {
+          empresaId: empresa.id,
+          codigo: doc.tipo,
+        },
+      });
+
+      if (!tipoDoc) {
+        tipoDoc = await prisma.documentoTipoTrabajador.create({
+          data: {
+            empresaId: empresa.id,
+            nombre: doc.nombre,
+            codigo: doc.tipo,
+            descripcion: `Documento demo: ${doc.nombre}`,
+            vigenciaDias: doc.requiereVencimiento ? 365 : null,
+            requiereVencimiento: doc.requiereVencimiento,
+            requiereArchivo: true,
+            activo: true,
+          },
+        });
+      }
+
+      tiposDocumentales.push(tipoDoc);
+
+      const regla = await prisma.reglaDocumentoTrabajador.findFirst({
+        where: {
+          empresaId: empresa.id,
+          tipoDocumentoId: tipoDoc.id,
+          cargoId: null,
+          areaId: null,
+          centroTrabajoId: null,
+          tipoContrato: null,
+        },
+      });
+
+      if (!regla) {
+        await prisma.reglaDocumentoTrabajador.create({
+          data: {
+            empresaId: empresa.id,
+            tipoDocumentoId: tipoDoc.id,
+            obligatorio: true,
+            activo: true,
+          },
+        });
+      }
+    }
+
+    // ────── 8.6 DOCUMENTOS EMPRESA ────────────────────────────────────────
+    console.log("8️⃣.6️⃣ Creando/verificando documentos de empresa...");
+    const estadosEmpresa = ["completo", "pendiente", "vencido", "rechazado", "en_revision"];
+    for (let i = 0; i < DEMO_DATA.documentosEmpresa.length; i++) {
+      const doc = DEMO_DATA.documentosEmpresa[i];
+      const estado = estadosEmpresa[i % estadosEmpresa.length];
+      const fechaEmision = new Date("2025-01-15");
+      const fechaVencimiento = new Date("2026-12-31");
+
+      const existe = await prisma.documentoEmpresa.findFirst({
+        where: {
+          empresaId: empresa.id,
+          nombre: doc.nombre,
+        },
+      });
+
+      if (!existe) {
+        await prisma.documentoEmpresa.create({
+          data: {
+            empresaId: empresa.id,
+            subidoPorId: usuario.id,
+            nombre: doc.nombre,
+            categoria: doc.categoria,
+            tipo: doc.tipo,
+            estado,
+            tieneVencimiento: doc.requiereVencimiento,
+            fechaEmision,
+            fechaVencimiento: doc.requiereVencimiento ? (estado === "vencido" ? new Date("2024-01-01") : fechaVencimiento) : null,
+            archivoNombre: "demo-documento.pdf",
+            archivoNombreOriginal: "demo-documento.pdf",
+            archivoUrl: "/demo/documentos/demo-documento.pdf",
+            archivoTipo: "application/pdf",
+            archivoPeso: 153600,
+            observaciones: estado === "rechazado" ? "Documento demo rechazado para revisión" : null,
+            creadoPorEmail: usuario.email,
+          },
+        });
+      } else {
+        await prisma.documentoEmpresa.update({
+          where: { id: existe.id },
+          data: {
+            estado,
+            archivoNombre: existe.archivoNombre || "demo-documento.pdf",
+            archivoUrl: existe.archivoUrl || "/demo/documentos/demo-documento.pdf",
+            archivoTipo: existe.archivoTipo || "application/pdf",
+          },
+        });
+      }
+    }
+
     // ────── 9. DOCUMENTOS DE TRABAJADORES ───────────────────────────────────
     console.log("9️⃣ Creando/verificando documentos de trabajadores...");
-    const tiposDoc = [
-      { tipo: "CONTRATO_TRABAJO", nombre: "Contrato de trabajo" },
-      { tipo: "CEDULA_IDENTIDAD", nombre: "Cédula de identidad" },
-      { tipo: "IRL", nombre: "IRL - Informe de Riesgos Laborales" },
-      { tipo: "REGLAMENTO_INTERNO", nombre: "Reglamento interno firmado" },
-      { tipo: "ENTREGA_EPP", nombre: "Entrega de EPP" },
-      { tipo: "CAPACITACION_INICIAL", nombre: "Capacitación inicial" },
-    ];
-    const estadosDoc = ["completo", "completo", "completo", "faltante", "vencido", "rechazado"];
+    const estadosDoc = ["completo", "pendiente", "vencido", "rechazado", "en_revision"];
 
     for (let i = 0; i < trabajadores.length; i++) {
       const trab = trabajadores[i];
-      for (let j = 0; j < tiposDoc.length; j++) {
+      const docsTrabajador = DEMO_DATA.documentosTrabajadorBase.filter((doc) => {
+        if (doc.tipo !== "LICENCIA_HABILITANTE") return true;
+        const cargoNombre = DEMO_DATA.cargos[DEMO_DATA.trabajadores[i].cargoIdx]?.nombre || "";
+        return cargoNombre.includes("Guardia") || cargoNombre.includes("Técnico") || cargoNombre.includes("Supervisor");
+      });
+
+      for (let j = 0; j < docsTrabajador.length; j++) {
         const existe = await prisma.trabajadorDocumento.findFirst({
           where: {
             empresaId: empresa.id,
             trabajadorId: trab.id,
-            tipo: tiposDoc[j].tipo,
+            tipo: docsTrabajador[j].tipo,
           },
         });
 
@@ -392,20 +513,34 @@ async function seedDemo() {
             data: {
               empresaId: empresa.id,
               trabajadorId: trab.id,
-              nombre: tiposDoc[j].nombre,
-              tipo: tiposDoc[j].tipo,
+              nombre: docsTrabajador[j].nombre,
+              tipo: docsTrabajador[j].tipo,
               categoria: "documentos_generales",
               estado,
+              tieneVencimiento: docsTrabajador[j].requiereVencimiento,
+              archivoNombre: "demo-documento.pdf",
+              archivoNombreOriginal: "demo-documento.pdf",
+              archivoUrl: "/demo/documentos/demo-documento.pdf",
+              archivoTipo: "application/pdf",
+              archivoPeso: 102400,
               observaciones: estado === "rechazado" ? "Documento demo con observaciones" : null,
               fechaEmision: new Date("2025-06-01"),
-              fechaVencimiento: estado === "vencido" ? new Date("2024-01-01") : fechaVencimiento,
+              fechaVencimiento: docsTrabajador[j].requiereVencimiento
+                ? (estado === "vencido" ? new Date("2024-01-01") : fechaVencimiento)
+                : null,
+              subidoPorId: usuario.id,
+              creadoPorEmail: usuario.email,
             },
           });
         } else {
           await prisma.trabajadorDocumento.update({
             where: { id: existe.id },
             data: {
-              nombre: existe.nombre || tiposDoc[j].nombre,
+              nombre: existe.nombre || docsTrabajador[j].nombre,
+              estado,
+              archivoNombre: existe.archivoNombre || "demo-documento.pdf",
+              archivoUrl: existe.archivoUrl || "/demo/documentos/demo-documento.pdf",
+              archivoTipo: existe.archivoTipo || "application/pdf",
             },
           });
         }
