@@ -92,58 +92,67 @@ export default async function EvidenciasPage() {
         />
 
         <Card className="border border-slate-200 bg-white shadow-sm">
-          <CardContent className="pt-6">
-            <form action={actionCrearEvidencia} className="grid gap-3 md:grid-cols-2">
-              <input
-                name="titulo"
-                placeholder="Titulo evidencia"
-                required
-                className="h-10 rounded-md border border-slate-200 px-3 text-sm"
-              />
-              <input
-                name="origen"
-                placeholder="Origen (manual, documento, checklist, epp, etc.)"
-                defaultValue="manual"
-                className="h-10 rounded-md border border-slate-200 px-3 text-sm"
-              />
-              <textarea
-                name="descripcion"
-                placeholder="Descripcion"
-                required
-                className="min-h-[88px] rounded-md border border-slate-200 px-3 py-2 text-sm md:col-span-2"
-              />
-              <select name="hallazgoId" className="h-10 rounded-md border border-slate-200 px-3 text-sm">
-                <option value="">Vincular a hallazgo (opcional)</option>
-                {view.opciones.hallazgos.map((h) => (
-                  <option key={h.id} value={h.id}>
-                    {h.label}
-                  </option>
-                ))}
-              </select>
-              <select name="obligacionClave" className="h-10 rounded-md border border-slate-200 px-3 text-sm">
-                <option value="">Vincular a obligación (opcional)</option>
-                {view.opciones.obligaciones.map((o) => (
-                  <option key={o.clave} value={o.clave}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-              <input
-                name="archivoNombre"
-                placeholder="Nombre archivo"
-                className="h-10 rounded-md border border-slate-200 px-3 text-sm"
-              />
-              <input
-                name="archivoUrl"
-                placeholder="URL archivo"
-                className="h-10 rounded-md border border-slate-200 px-3 text-sm"
-              />
-              <div className="md:col-span-2 flex justify-end">
-                <Button type="submit" className="rounded-full px-5 py-2.5 text-sm font-medium shadow-sm shrink-0">
+          <CardContent className="pt-5 pb-5">
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center justify-end">
+                <span className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-medium text-white transition-colors group-open:bg-slate-700">
                   Crear evidencia
-                </Button>
+                </span>
+              </summary>
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <form action={actionCrearEvidencia} className="grid gap-3 md:grid-cols-2">
+                  <input
+                    name="titulo"
+                    placeholder="Titulo evidencia"
+                    required
+                    className="h-10 rounded-md border border-slate-200 px-3 text-sm"
+                  />
+                  <input
+                    name="origen"
+                    placeholder="Origen (manual, documento, checklist, epp, etc.)"
+                    defaultValue="manual"
+                    className="h-10 rounded-md border border-slate-200 px-3 text-sm"
+                  />
+                  <textarea
+                    name="descripcion"
+                    placeholder="Descripcion"
+                    required
+                    className="min-h-[88px] rounded-md border border-slate-200 px-3 py-2 text-sm md:col-span-2"
+                  />
+                  <select name="hallazgoId" className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+                    <option value="">Vincular a hallazgo (opcional)</option>
+                    {view.opciones.hallazgos.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select name="obligacionClave" className="h-10 rounded-md border border-slate-200 px-3 text-sm">
+                    <option value="">Vincular a obligación (opcional)</option>
+                    {view.opciones.obligaciones.map((o) => (
+                      <option key={o.clave} value={o.clave}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    name="archivoNombre"
+                    placeholder="Nombre archivo"
+                    className="h-10 rounded-md border border-slate-200 px-3 text-sm"
+                  />
+                  <input
+                    name="archivoUrl"
+                    placeholder="URL archivo"
+                    className="h-10 rounded-md border border-slate-200 px-3 text-sm"
+                  />
+                  <div className="md:col-span-2 flex justify-end">
+                    <Button type="submit" className="rounded-full px-5 py-2.5 text-sm font-medium shadow-sm shrink-0">
+                      Guardar evidencia
+                    </Button>
+                  </div>
+                </form>
               </div>
-            </form>
+            </details>
           </CardContent>
         </Card>
 
