@@ -193,13 +193,13 @@ function isItemActive(pathname: string, href: string) {
   return pathname === normalized || pathname.startsWith(normalized + "/");
 }
 
-export default function Sidebar() {
+function useSidebarData() {
   const pathname = usePathname();
   const { hasPermission, hasModule, role, hasActiveCompany, loading } = usePermissions();
   const isProductionBuild = process.env.NODE_ENV === "production";
 
   if (loading) {
-    return null;
+    return { loading: true, pathname, visibleModules: [], activeModule: null } as const;
   }
 
   const isSuperAdmin = role === "SUPERADMIN";
@@ -289,6 +289,65 @@ export default function Sidebar() {
   const activeModule =
     visibleModules.find((module) => module.items.some((item) => isItemActive(pathname, item.href))) ??
     visibleModules[0];
+
+  return {
+    loading: false,
+    pathname,
+    visibleModules,
+    activeModule,
+  } as const;
+}
+
+export function SidebarMobileNav({ onNavigate }: { onNavigate?: () => void }) {
+  const { loading, pathname, visibleModules } = useSidebarData();
+
+  if (loading || visibleModules.length === 0) {
+    return null;
+  }
+
+  return (
+    <nav className="space-y-4">
+      {visibleModules.map((module) => {
+        const Icon = module.icon;
+        return (
+          <div key={module.id} className="space-y-1">
+            <div className="flex items-center gap-2 px-1 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+              <Icon className="h-3.5 w-3.5" />
+              <span>{module.label}</span>
+            </div>
+            <div className="space-y-1">
+              {module.items.map((item) => {
+                const active = isItemActive(pathname, item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={onNavigate}
+                    className={cn(
+                      "block rounded-lg px-3 py-2 text-sm transition-colors",
+                      active
+                        ? "bg-[#052a57] font-semibold text-amber-300"
+                        : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                    )}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+export default function Sidebar() {
+  const { loading, pathname, visibleModules, activeModule } = useSidebarData();
+
+  if (loading) {
+    return null;
+  }
 
   if (!activeModule) {
     return null;
