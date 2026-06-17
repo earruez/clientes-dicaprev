@@ -30,6 +30,7 @@ import Filtros from "./components/Filtros";
 import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE, formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
 import { exportarInformeDocumentalPdf } from "@/lib/documentacion/export-informe-documental-pdf";
 import { usePermissions } from "@/lib/permissions";
+import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
 
 type ArchivoSubido = {
   archivoNombre: string;
@@ -495,7 +496,24 @@ export default function DocumentacionPage() {
       const empresaSafe = (informe.empresa.nombre || "empresa").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       const stamp = new Date().toISOString().slice(0, 10);
       const filename = `informe-documental-${empresaSafe || "empresa"}-${stamp}.pdf`;
-      pdf.save(filename);
+      await persistirDocumentoGenerado({
+        empresaId: informe.empresa.id,
+        modulo: "documentacion",
+        tipoDocumento: "informe_documental_pdf",
+        entidadTipo: "empresa",
+        entidadId: informe.empresa.id,
+        nombre: `Informe documental ${informe.empresa.nombre}`,
+        blob: pdf,
+        filename,
+        metadata: {
+          version: informe.meta.version,
+          generadoEn: informe.meta.generadoEn,
+          totalAplicables: informe.cumplimiento.totalAplicables,
+          totalCumple: informe.cumplimiento.totalCumple,
+          totalFaltantes: informe.cumplimiento.totalFaltantes,
+          totalIncompletos: informe.cumplimiento.totalIncompletos,
+        },
+      });
       showInfo("PDF del informe documental descargado correctamente.", "success");
     } catch {
       showInfo("No se pudo generar el PDF del informe documental.", "error");

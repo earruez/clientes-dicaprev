@@ -1,0 +1,64 @@
+"use client";
+
+import { registrarDocumentoGenerado } from "@/actions/documentos-generados";
+import type { DocumentoGeneradoInput } from "./registro-documento-generado";
+
+type UploadedGeneratedFile = {
+  archivoNombre: string;
+  archivoNombreOriginal: string;
+  archivoUrl: string;
+  archivoTipo: string | null;
+  archivoPeso: number;
+};
+
+async function uploadGeneratedBlob(blob: Blob, filename: string): Promise<UploadedGeneratedFile> {
+  const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/dicaprev/documentacion/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const payload = (await response.json()) as UploadedGeneratedFile | { error?: string };
+
+  if (!response.ok) {
+    throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el documento generado.");
+  }
+
+  return payload as UploadedGeneratedFile;
+}
+
+export type PersistirDocumentoGeneradoParams = Omit<DocumentoGeneradoInput, "formato" | "archivoNombre" | "archivoNombreOriginal" | "archivoUrl" | "archivoTipo" | "archivoPeso"> & {
+  blob: Blob;
+  filename: string;
+};
+
+export async function persistirDocumentoGenerado(params: PersistirDocumentoGeneradoParams): Promise<{ archivoUrl: string; archivoNombre: string }> {
+  const uploaded = await uploadGeneratedBlob(params.blob, params.filename);
+
+  await registrarDocumentoGenerado({
+    empresaId: params.empresaId,
+    usuarioId: params.usuarioId ?? null,
+    modulo: params.modulo,
+    tipoDocumento: params.tipoDocumento,
+    entidadTipo: params.entidadTipo,
+    entidadId: params.entidadId ?? null,
+    nombre: params.nombre,
+    formato: params.blob.type || uploaded.archivoTipo || "application/octet-stream",
+    archivoNombre: uploaded.archivoNombre,
+    archivoNombreOriginal: uploaded.archivoNombreOriginal,
+    archivoUrl: uploaded.archivoUrl,
+    archivoTipo: uploaded.archivoTipo,
+    archivoPeso: uploaded.archivoPeso,
+    metadata: params.metadata ?? undefined,
+  });
+
+  return {
+    archivoUrl: uploaded.archivoUrl,
+    archivoNombre: uploaded.archivoNombre,
+  };
+}
+
+export type { DocumentoGeneradoModulo } from "./registro-documento-generado";

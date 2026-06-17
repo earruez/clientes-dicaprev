@@ -1333,5 +1333,7 @@ export async function exportTrabajadorDocumentoPdf(params: ExportTrabajadorDocum
     renderGenericPdf(doc, params, tipoNombre);
   }
 
+  const blob = doc.output("blob");
   doc.save(buildFilename(tipoNombre, params.trabajador));
+  return blob;
 }

@@ -22,6 +22,7 @@ import { type Worker } from "../types";
 import { type DocTrabajadorView } from "./types";
 import { puedeGenerarseConIA } from "@/lib/documentacion/ia-generacion-helper";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
+import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
 import {
   cambiarEstadoTrabajadorDocumento,
   generarContenidoIATrabajadorDocumento,
@@ -891,7 +892,7 @@ export function DocumentoReviewDrawer({
     setErrorMsg(null);
 
     try {
-      await exportTrabajadorDocumentoPdf({
+      const pdf = await exportTrabajadorDocumentoPdf({
         documento: documentoParaPdf,
         trabajador: worker,
         contenido: doc?.contenidoMarkdown ?? contenido,
@@ -900,6 +901,28 @@ export function DocumentoReviewDrawer({
         firmadoEn: doc?.firmadoEn ?? originalDoc?.firmadoEn ?? null,
         empresa: empresaMeta,
       });
+
+      if (empresaMeta?.id) {
+        const filename = `documento-${normalizarNombreDocumentoDisplay(documentoParaPdf.tipo.nombre).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${worker.nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+        await persistirDocumentoGenerado({
+          empresaId: empresaMeta.id,
+          modulo: "trabajadores",
+          tipoDocumento: "documento_trabajador_pdf",
+          entidadTipo: "trabajador_documento",
+          entidadId: documentoParaPdf.documentoId ?? null,
+          nombre: `${documentoParaPdf.tipo.nombre} - ${worker.nombre} ${worker.apellido}`,
+          blob: pdf,
+          filename,
+          metadata: {
+            trabajadorId: worker.id,
+            documentoId: documentoParaPdf.documentoId ?? null,
+            tipoDocumentoId: documentoParaPdf.tipo.id,
+            estado: efectoEstado,
+            versionNumero: documentoParaPdf.versionNumero ?? null,
+            origen: documentoParaPdf.origen ?? null,
+          },
+        });
+      }
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "No fue posible exportar el PDF");
       setPhase("error");

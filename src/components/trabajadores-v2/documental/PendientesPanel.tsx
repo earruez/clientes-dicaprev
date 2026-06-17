@@ -64,6 +64,7 @@ import {
 import { VersionesHistorialDrawer } from "./VersionesHistorialDrawer";
 import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
+import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
 import { useToast } from "@/components/ui/use-toast";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
@@ -165,7 +166,7 @@ export function PendientesPanel({
     const id = doc.documentoId ?? `${worker.id}-${doc.tipo.id}`;
     try {
       setDescargandoDocId(id);
-      await exportTrabajadorDocumentoPdf({
+      const pdf = await exportTrabajadorDocumentoPdf({
         documento: doc,
         trabajador: worker,
         contenido: doc.contenidoMarkdown ?? doc.observacion ?? "",
@@ -174,6 +175,28 @@ export function PendientesPanel({
         firmadoEn: doc.firmadoEn,
         empresa: empresaMeta,
       });
+
+      if (empresaMeta?.id) {
+        const filename = `documento-${doc.tipo.nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${worker.nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+        await persistirDocumentoGenerado({
+          empresaId: empresaMeta.id,
+          modulo: "trabajadores",
+          tipoDocumento: "documento_trabajador_pdf",
+          entidadTipo: "trabajador_documento",
+          entidadId: doc.documentoId ?? null,
+          nombre: `${doc.tipo.nombre} - ${worker.nombre} ${worker.apellido}`,
+          blob: pdf,
+          filename,
+          metadata: {
+            trabajadorId: worker.id,
+            documentoId: doc.documentoId ?? null,
+            tipoDocumentoId: doc.tipo.id,
+            estado: doc.estado,
+            versionNumero: doc.versionNumero ?? null,
+            origen: doc.origen ?? null,
+          },
+        });
+      }
     } catch (error) {
       console.error("Error exporting PDF:", error);
     } finally {

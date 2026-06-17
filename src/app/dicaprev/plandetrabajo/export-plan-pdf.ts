@@ -349,5 +349,7 @@ export async function exportPlanTrabajoPdf(snapshot: PlanPdfSnapshot, year: stri
 
   drawFooter(doc.getNumberOfPages());
 
+  const blob = doc.output("blob");
   doc.save(`plan-trabajo-anual-${year}.pdf`);
+  return blob;
 }
