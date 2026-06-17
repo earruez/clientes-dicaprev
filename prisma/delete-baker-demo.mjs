@@ -16,6 +16,7 @@ const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter })
 
 const PROTECTED_NAMES = new Set(['dicaprev spa', 'centros comerciales spa'])
+const DELETE_CONFIRM_VALUE = 'ELIMINAR_BAKER'
 
 function normalizeName(value) {
   if (!value) return ''
@@ -102,10 +103,21 @@ async function deleteEmpresaDependencias(tx, empresaId) {
 async function run() {
   console.log('Iniciando eliminación definitiva de Baker SpA duplicadas...\n')
 
+  const confirmationValue = process.env.CONFIRM_DELETE_BAKER
+  const dryRun = confirmationValue !== DELETE_CONFIRM_VALUE
+
+  if (dryRun) {
+    console.log('Modo DRY RUN activo: no se eliminará ningún registro.')
+    console.log('Para eliminar realmente use: CONFIRM_DELETE_BAKER=ELIMINAR_BAKER\n')
+  } else {
+    console.log('Confirmación explícita detectada: se ejecutará eliminación real.\n')
+  }
+
   const resumen = {
     eliminadas: [],
     omitidas: [],
     errores: [],
+    candidatas: [],
   }
 
   try {
@@ -127,6 +139,7 @@ async function run() {
 
     if (baker.length === 0) {
       console.log('0 encontradas, nada que eliminar')
+      console.log('Resumen final: DRY RUN: no se eliminó nada')
       return
     }
 
@@ -140,6 +153,7 @@ async function run() {
       }
 
       const counts = await getCounts(empresa.id)
+      resumen.candidatas.push({ id: empresa.id, nombre: empresa.nombre })
       console.log(`- ID: ${empresa.id}`)
       console.log(`  Nombre: ${empresa.nombre}`)
       console.log(`  RUT: ${empresa.rut ?? 'sin RUT'}`)
@@ -154,6 +168,10 @@ async function run() {
     for (const empresa of baker) {
       const normalizedName = normalizeName(empresa.nombre)
       if (PROTECTED_NAMES.has(normalizedName)) {
+        continue
+      }
+
+      if (dryRun) {
         continue
       }
 
@@ -174,13 +192,26 @@ async function run() {
     }
 
     console.log('Resumen final:')
+    console.log(`- modo: ${dryRun ? 'DRY RUN' : 'EJECUCION REAL'}`)
+    console.log(`- candidatas a eliminar: ${resumen.candidatas.length}`)
     console.log(`- eliminadas: ${resumen.eliminadas.length}`)
     console.log(`- omitidas: ${resumen.omitidas.length}`)
     console.log(`- errores: ${resumen.errores.length}`)
 
+    if (dryRun) {
+      console.log('DRY RUN: no se eliminó nada')
+    }
+
     if (resumen.eliminadas.length > 0) {
       console.log('\nDetalle eliminadas:')
       for (const item of resumen.eliminadas) {
+        console.log(`  * ${item.nombre} (${item.id})`)
+      }
+    }
+
+    if (resumen.candidatas.length > 0) {
+      console.log('\nDetalle qué eliminaría:')
+      for (const item of resumen.candidatas) {
         console.log(`  * ${item.nombre} (${item.id})`)
       }
     }
