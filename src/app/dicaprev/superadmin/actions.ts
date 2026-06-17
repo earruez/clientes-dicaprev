@@ -5,7 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { COMPANY_MODULES, type CompanyModuleKey } from "@/lib/company-modules";
 import { requireRole } from "@/server/auth/permissions";
 import { bootstrapEmpresaOperativa } from "@/server/bootstrap/empresa-operativa";
-import type { Rol } from "@prisma/client";
+import { verifyPassword } from "@/lib/password-hash";
+import type { Prisma, Rol } from "@prisma/client";
 
 const SUPERADMIN_ROLES: Rol[] = [
   "SUPERADMIN",
@@ -51,6 +52,30 @@ type EmpresaModuloSummary = {
   activo: boolean;
 };
 
+type EmpresaDeletionCounts = {
+  trabajadores: number;
+  documentosEmpresa: number;
+  documentosTrabajadores: number;
+  capacitaciones: number;
+  asignaciones: number;
+  contratistas: number;
+  acreditaciones: number;
+  checklists: number;
+  hallazgos: number;
+  usuariosAsociados: number;
+};
+
+export type EmpresaDeletionPreview = {
+  empresaId: string;
+  nombre: string;
+  rut: string | null;
+  protegida: boolean;
+  protegidaMotivo: string | null;
+  esEmpresaActivaUsuario: boolean;
+  canDelete: boolean;
+  counts: EmpresaDeletionCounts;
+};
+
 export type SuperadminData = {
   totals: {
     empresas: number;
@@ -63,6 +88,11 @@ export type SuperadminData = {
   asignaciones: UsuarioEmpresaSummary[];
   modulos: EmpresaModuloSummary[];
 };
+
+const CONFIRM_DELETE_EMPRESA_TEXT = "ELIMINAR EMPRESA";
+const PROTECTED_DICAPREV_NAME = "dicaprev spa";
+const PROTECTED_CENTROS_NAME = "centros comerciales spa";
+const ALLOW_DELETE_CENTROS_COMERCIALES = false;
 
 function parseBooleanFromFormData(formData: FormData, key: string): boolean {
   const value = formData.get(key);
@@ -77,6 +107,20 @@ function parseString(formData: FormData, key: string): string {
 
 function normalizeCompanyName(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getProtectedCompanyReason(nombre: string): string | null {
+  const normalizedName = normalizeCompanyName(nombre);
+
+  if (normalizedName === PROTECTED_DICAPREV_NAME) {
+    return "La empresa DICAPREV SpA está protegida y no puede eliminarse.";
+  }
+
+  if (normalizedName === PROTECTED_CENTROS_NAME && !ALLOW_DELETE_CENTROS_COMERCIALES) {
+    return "La empresa Centros Comerciales SpA está protegida por configuración y no puede eliminarse.";
+  }
+
+  return null;
 }
 
 function normalizeRut(value: string | null | undefined): string {
@@ -127,6 +171,104 @@ async function ensureEmpresaModules(empresaId: string) {
       })
     )
   );
+}
+
+async function getEmpresaDeletionCounts(empresaId: string): Promise<EmpresaDeletionCounts> {
+  const [
+    trabajadores,
+    documentosEmpresa,
+    documentosTrabajadores,
+    capacitaciones,
+    asignaciones,
+    contratistas,
+    acreditaciones,
+    checklistTemplates,
+    checklistEjecuciones,
+    hallazgos,
+    usuariosAsociados,
+  ] = await Promise.all([
+    prisma.trabajador.count({ where: { empresaId } }),
+    prisma.documentoEmpresa.count({ where: { empresaId } }),
+    prisma.trabajadorDocumento.count({ where: { empresaId } }),
+    prisma.capacitacion.count({ where: { empresaId } }),
+    prisma.capacitacionAsignacion.count({ where: { empresaId } }),
+    prisma.contratista.count({ where: { empresaId } }),
+    prisma.acreditacion.count({ where: { empresaId } }),
+    prisma.checklistTemplate.count({ where: { empresaId } }),
+    prisma.checklistEjecucion.count({ where: { empresaId } }),
+    prisma.hallazgoCumplimiento.count({ where: { empresaId } }),
+    prisma.usuarioEmpresa.count({ where: { empresaId } }),
+  ]);
+
+  return {
+    trabajadores,
+    documentosEmpresa,
+    documentosTrabajadores,
+    capacitaciones,
+    asignaciones,
+    contratistas,
+    acreditaciones,
+    checklists: checklistTemplates + checklistEjecuciones,
+    hallazgos,
+    usuariosAsociados,
+  };
+}
+
+async function deleteEmpresaDependenciasTx(tx: Prisma.TransactionClient, empresaId: string) {
+  await tx.usuarioEmpresa.deleteMany({ where: { empresaId } });
+  await tx.usuario.updateMany({ where: { empresaId }, data: { empresaId: null } });
+
+  await tx.evidenciaCumplimiento.deleteMany({ where: { empresaId } });
+  await tx.hallazgoCumplimiento.deleteMany({ where: { empresaId } });
+  await tx.obligacionEmpresaEstado.deleteMany({ where: { empresaId } });
+
+  await tx.documentoEmpresa.deleteMany({ where: { empresaId } });
+  await tx.trabajadorDocumento.deleteMany({ where: { empresaId } });
+
+  await tx.capacitacionAsistencia.deleteMany({ where: { empresaId } });
+  await tx.capacitacionEvaluacion.deleteMany({ where: { empresaId } });
+  await tx.capacitacionHistorial.deleteMany({ where: { empresaId } });
+  await tx.capacitacionAsignacion.deleteMany({ where: { empresaId } });
+  await tx.capacitacionSesion.deleteMany({ where: { empresaId } });
+  await tx.reglaCapacitacionCargo.deleteMany({ where: { empresaId } });
+  await tx.planCapacitacion.deleteMany({ where: { empresaId } });
+  await tx.plantillaPlanCapacitacion.deleteMany({ where: { empresaId } });
+  await tx.capacitacion.deleteMany({ where: { empresaId } });
+
+  await tx.entregaEpp.deleteMany({ where: { empresaId } });
+  await tx.eppItem.deleteMany({ where: { empresaId } });
+
+  await tx.acreditacion.deleteMany({ where: { empresaId } });
+  await tx.plantillaAcreditacion.deleteMany({ where: { empresaId } });
+  await tx.mandanteAcreditacion.deleteMany({ where: { empresaId } });
+  await tx.contratista.deleteMany({ where: { empresaId } });
+
+  await tx.checklistEjecucion.deleteMany({ where: { empresaId } });
+  await tx.checklistTemplate.deleteMany({ where: { empresaId } });
+
+  await tx.accidenteAccionCorrectiva.deleteMany({ where: { empresaId } });
+  await tx.accidenteInvestigacion.deleteMany({ where: { empresaId } });
+
+  await tx.induccionTrabajador.deleteMany({ where: { empresaId } });
+  await tx.firmaDocumento.deleteMany({ where: { empresaId } });
+
+  await tx.planTrabajo.deleteMany({ where: { empresaId } });
+
+  await tx.vehiculo.deleteMany({ where: { empresaId } });
+  await tx.trabajador.deleteMany({ where: { empresaId } });
+  await tx.posicionDotacion.deleteMany({ where: { empresaId } });
+  await tx.reglaDocumentoTrabajador.deleteMany({ where: { empresaId } });
+  await tx.documentoTipoTrabajador.deleteMany({ where: { empresaId } });
+  await tx.documentoTipoVehiculo.deleteMany({ where: { empresaId } });
+  await tx.cargo.deleteMany({ where: { empresaId } });
+  await tx.area.deleteMany({ where: { empresaId } });
+  await tx.centroTrabajo.deleteMany({ where: { empresaId } });
+
+  await tx.obligacionEmpresaEstado.deleteMany({ where: { empresaId } });
+  await tx.plantillaDocumentoEmpresa.deleteMany({ where: { empresaId } });
+  await tx.activacionEvento.deleteMany({ where: { empresaId } });
+  await tx.empresaModulo.deleteMany({ where: { empresaId } });
+  await tx.generacionDocumentosLog.deleteMany({ where: { empresaId } });
 }
 
 export async function getSuperadminData(): Promise<SuperadminData> {
@@ -587,4 +729,115 @@ export async function ensureBackfillAction() {
     const errorMsg = error instanceof Error ? error.message : "Error desconocido en backfill";
     throw new Error(`Error en backfill idempotente: ${errorMsg}`);
   }
+}
+
+export async function getEmpresaDeletionPreviewAction(formData: FormData): Promise<EmpresaDeletionPreview> {
+  const context = await requireRole("SUPERADMIN");
+
+  const empresaId = parseString(formData, "empresaId");
+  if (!empresaId) {
+    throw new Error("Empresa es requerida");
+  }
+
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: {
+      id: true,
+      nombre: true,
+      rut: true,
+    },
+  });
+
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
+  }
+
+  const protectedReason = getProtectedCompanyReason(empresa.nombre);
+  const esEmpresaActivaUsuario = context.empresaId === empresa.id;
+  const counts = await getEmpresaDeletionCounts(empresa.id);
+
+  return {
+    empresaId: empresa.id,
+    nombre: empresa.nombre,
+    rut: empresa.rut,
+    protegida: Boolean(protectedReason),
+    protegidaMotivo: protectedReason,
+    esEmpresaActivaUsuario,
+    canDelete: !protectedReason && !esEmpresaActivaUsuario,
+    counts,
+  };
+}
+
+export async function eliminarEmpresaDefinitivamenteAction(formData: FormData) {
+  const context = await requireRole("SUPERADMIN");
+
+  const empresaId = parseString(formData, "empresaId");
+  const confirmacionTexto = parseString(formData, "confirmacionTexto");
+  const currentPassword = parseString(formData, "currentPassword");
+
+  if (!empresaId) {
+    throw new Error("Empresa es requerida");
+  }
+
+  if (confirmacionTexto !== CONFIRM_DELETE_EMPRESA_TEXT) {
+    throw new Error("Texto de confirmación inválido");
+  }
+
+  if (!currentPassword) {
+    throw new Error("Debe ingresar su clave de SUPERADMIN");
+  }
+
+  const usuarioActual = await prisma.usuario.findUnique({
+    where: { id: context.usuarioId },
+    select: {
+      id: true,
+      passwordHash: true,
+      activo: true,
+    },
+  });
+
+  if (!usuarioActual || !usuarioActual.activo) {
+    throw new Error("Permisos insuficientes");
+  }
+
+  if (!usuarioActual.passwordHash || !verifyPassword(currentPassword, usuarioActual.passwordHash)) {
+    throw new Error("Clave incorrecta");
+  }
+
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: {
+      id: true,
+      nombre: true,
+    },
+  });
+
+  if (!empresa) {
+    throw new Error("Empresa no encontrada");
+  }
+
+  const protectedReason = getProtectedCompanyReason(empresa.nombre);
+  if (protectedReason) {
+    throw new Error(protectedReason);
+  }
+
+  if (context.empresaId === empresa.id) {
+    throw new Error("No puede eliminar su empresa activa actual. Cambie primero la empresa activa.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // No existe un modelo de auditoría específico para eliminación definitiva de empresa.
+    // Se deja advertencia técnica sin datos sensibles.
+    console.warn("[superadmin] Eliminación definitiva de empresa ejecutada sin tabla de auditoría dedicada.");
+
+    await deleteEmpresaDependenciasTx(tx, empresa.id);
+    await tx.empresa.delete({ where: { id: empresa.id } });
+  });
+
+  revalidatePath("/dicaprev/superadmin");
+
+  return {
+    ok: true,
+    message: `Empresa \"${empresa.nombre}\" eliminada definitivamente`,
+  };
 }

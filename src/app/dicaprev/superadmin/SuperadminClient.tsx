@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
 import {
   createEmpresaAction,
+  eliminarEmpresaDefinitivamenteAction,
   createUsuarioAction,
   ensureBackfillAction,
+  getEmpresaDeletionPreviewAction,
   prepararEmpresaAction,
   toggleEmpresaActivaAction,
   toggleEmpresaModuloAction,
@@ -31,6 +33,27 @@ const SUPERADMIN_ROLES: Rol[] = [
 
 type Message = { type: "success" | "error"; text: string; id: string };
 type ConfirmData = { title: string; description: string; action: () => Promise<void>; isDestructive?: boolean } | null;
+type DeletePreview = {
+  empresaId: string;
+  nombre: string;
+  rut: string | null;
+  protegida: boolean;
+  protegidaMotivo: string | null;
+  esEmpresaActivaUsuario: boolean;
+  canDelete: boolean;
+  counts: {
+    trabajadores: number;
+    documentosEmpresa: number;
+    documentosTrabajadores: number;
+    capacitaciones: number;
+    asignaciones: number;
+    contratistas: number;
+    acreditaciones: number;
+    checklists: number;
+    hallazgos: number;
+    usuariosAsociados: number;
+  };
+};
 
 export default function SuperadminClient({ data, appUrl }: { data: SuperadminData; appUrl: string }) {
   const router = useRouter();
@@ -39,6 +62,12 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
   const [confirm, setConfirm] = useState<ConfirmData>(null);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [isCreatingEmpresa, setIsCreatingEmpresa] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<1 | 2 | 3>(1);
+  const [deletePreview, setDeletePreview] = useState<DeletePreview | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteTargetEmpresaId, setDeleteTargetEmpresaId] = useState<string>("");
 
   // Form refs para limpiar después de Submit
   const createEmpresaFormRef = useRef<HTMLFormElement>(null);
@@ -185,6 +214,54 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
     );
   };
 
+  const openDeleteEmpresaModal = async (empresaId: string) => {
+    setLoadingAction(`delete-preview-${empresaId}`);
+    try {
+      const formData = new FormData();
+      formData.set("empresaId", empresaId);
+      const preview = await getEmpresaDeletionPreviewAction(formData);
+      setDeleteTargetEmpresaId(empresaId);
+      setDeletePreview(preview);
+      setDeleteStep(1);
+      setDeleteConfirmText("");
+      setDeletePassword("");
+      setDeleteModalOpen(true);
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const closeDeleteEmpresaModal = () => {
+    setDeleteModalOpen(false);
+    setDeleteStep(1);
+    setDeletePreview(null);
+    setDeleteConfirmText("");
+    setDeletePassword("");
+    setDeleteTargetEmpresaId("");
+  };
+
+  const handleDeleteEmpresaDefinitiva = async () => {
+    if (!deletePreview) return;
+
+    setLoadingAction(`delete-confirm-${deletePreview.empresaId}`);
+    try {
+      const formData = new FormData();
+      formData.set("empresaId", deletePreview.empresaId);
+      formData.set("confirmacionTexto", deleteConfirmText);
+      formData.set("currentPassword", deletePassword);
+      const result = await eliminarEmpresaDefinitivamenteAction(formData);
+      addMessage("success", result.message);
+      closeDeleteEmpresaModal();
+      router.refresh();
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   // ==================== USUARIO ====================
 
   const handleCreateUsuario = async (formData: FormData) => {
@@ -320,6 +397,10 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
   };
 
   const isLoading = isPending || loadingAction !== null;
+  const canConfirmDelete =
+    (deletePreview?.canDelete ?? false) &&
+    deleteConfirmText === "ELIMINAR EMPRESA" &&
+    deletePassword.trim().length > 0;
 
   return (
     <>
@@ -375,6 +456,120 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
                 {loadingAction === "confirm" && <Loader2 className="h-4 w-4 animate-spin" />}
                 {confirm.isDestructive ? "Confirmar" : "Continuar"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteModalOpen && deletePreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-2xl rounded-lg border border-rose-200 bg-white p-6 shadow-lg">
+            <h3 className="text-lg font-semibold text-rose-900">Eliminar definitivamente empresa</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Empresa objetivo: <span className="font-semibold">{deletePreview.nombre}</span>
+              {deletePreview.rut ? ` (${deletePreview.rut})` : ""}
+            </p>
+
+            {deleteStep === 1 && (
+              <div className="mt-4 space-y-4">
+                <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                  <p>Esta acción eliminará de forma definitiva:</p>
+                  <ul className="mt-2 list-disc pl-5">
+                    <li>empresa y configuración</li>
+                    <li>documentos asociados si corresponde</li>
+                    <li>módulos, asignaciones y relaciones</li>
+                    <li>esta acción no se puede deshacer</li>
+                  </ul>
+                </div>
+
+                <div className="grid gap-2 rounded-md border border-slate-200 p-3 text-sm text-slate-700 md:grid-cols-2">
+                  <p>Trabajadores: <span className="font-semibold">{deletePreview.counts.trabajadores}</span></p>
+                  <p>Documentos empresa: <span className="font-semibold">{deletePreview.counts.documentosEmpresa}</span></p>
+                  <p>Documentos trabajadores: <span className="font-semibold">{deletePreview.counts.documentosTrabajadores}</span></p>
+                  <p>Capacitaciones: <span className="font-semibold">{deletePreview.counts.capacitaciones}</span></p>
+                  <p>Asignaciones: <span className="font-semibold">{deletePreview.counts.asignaciones}</span></p>
+                  <p>Contratistas: <span className="font-semibold">{deletePreview.counts.contratistas}</span></p>
+                  <p>Acreditaciones: <span className="font-semibold">{deletePreview.counts.acreditaciones}</span></p>
+                  <p>Checklists: <span className="font-semibold">{deletePreview.counts.checklists}</span></p>
+                  <p>Hallazgos: <span className="font-semibold">{deletePreview.counts.hallazgos}</span></p>
+                  <p>Usuarios asociados: <span className="font-semibold">{deletePreview.counts.usuariosAsociados}</span></p>
+                </div>
+
+                {deletePreview.protegidaMotivo && (
+                  <p className="text-sm font-semibold text-rose-700">{deletePreview.protegidaMotivo}</p>
+                )}
+                {deletePreview.esEmpresaActivaUsuario && (
+                  <p className="text-sm font-semibold text-rose-700">
+                    No puede eliminar su empresa activa actual. Cambie la empresa activa antes de continuar.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {deleteStep === 2 && (
+              <div className="mt-4 space-y-3">
+                <p className="text-sm text-slate-700">
+                  Escriba exactamente: <span className="font-semibold">ELIMINAR EMPRESA</span>
+                </p>
+                <input
+                  value={deleteConfirmText}
+                  onChange={(event) => setDeleteConfirmText(event.target.value)}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="ELIMINAR EMPRESA"
+                />
+              </div>
+            )}
+
+            {deleteStep === 3 && (
+              <div className="mt-4 space-y-3">
+                <p className="text-sm text-slate-700">Ingrese su clave de SUPERADMIN para confirmar.</p>
+                <input
+                  type="password"
+                  value={deletePassword}
+                  onChange={(event) => setDeletePassword(event.target.value)}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="Clave actual"
+                />
+              </div>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={closeDeleteEmpresaModal}
+                disabled={isLoading}
+                className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              {deleteStep > 1 && (
+                <button
+                  onClick={() => setDeleteStep((prev) => (prev - 1) as 1 | 2 | 3)}
+                  disabled={isLoading}
+                  className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Volver
+                </button>
+              )}
+
+              {deleteStep < 3 ? (
+                <button
+                  onClick={() => setDeleteStep((prev) => (prev + 1) as 1 | 2 | 3)}
+                  disabled={isLoading || (deleteStep === 1 && !deletePreview.canDelete) || (deleteStep === 2 && deleteConfirmText !== "ELIMINAR EMPRESA")}
+                  className="rounded-md bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                >
+                  Continuar
+                </button>
+              ) : (
+                <button
+                  onClick={handleDeleteEmpresaDefinitiva}
+                  disabled={isLoading || !canConfirmDelete}
+                  className="inline-flex items-center gap-2 rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-800 disabled:opacity-50"
+                >
+                  {loadingAction === `delete-confirm-${deleteTargetEmpresaId}` && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Eliminar definitivamente
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -437,6 +632,14 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
                       className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
                       {empresa.activa ? "Desactivar" : "Activar"}
+                    </button>
+                    <button
+                      onClick={() => openDeleteEmpresaModal(empresa.id)}
+                      disabled={isLoading}
+                      className="rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                    >
+                      {loadingAction === `delete-preview-${empresa.id}` && <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />}
+                      Eliminar definitivamente
                     </button>
                   </div>
                 </div>
