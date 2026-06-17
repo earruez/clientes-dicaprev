@@ -6,7 +6,8 @@ import { COMPANY_MODULES, type CompanyModuleKey } from "@/lib/company-modules";
 import { requireRole } from "@/server/auth/permissions";
 import { bootstrapEmpresaOperativa } from "@/server/bootstrap/empresa-operativa";
 import { verifyPassword } from "@/lib/password-hash";
-import type { Prisma, Rol } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { Rol } from "@prisma/client";
 
 const SUPERADMIN_ROLES: Rol[] = [
   "SUPERADMIN",
@@ -64,6 +65,55 @@ type EmpresaDeletionCounts = {
   hallazgos: number;
   usuariosAsociados: number;
 };
+
+type DeleteDependenciasStats = {
+  usuarioEmpresa: number;
+  usuarioEmpresaIdNull: number;
+  evidenciaCumplimiento: number;
+  hallazgoCumplimiento: number;
+  obligacionEmpresaEstado: number;
+  documentoEmpresa: number;
+  trabajadorDocumento: number;
+  capacitacionAsistencia: number;
+  capacitacionEvaluacion: number;
+  capacitacionHistorial: number;
+  capacitacionAsignacion: number;
+  capacitacionSesion: number;
+  reglaCapacitacionCargo: number;
+  planCapacitacion: number;
+  plantillaPlanCapacitacion: number;
+  capacitacion: number;
+  entregaEpp: number;
+  eppItem: number;
+  acreditacion: number;
+  plantillaAcreditacion: number;
+  mandanteAcreditacion: number;
+  contratista: number;
+  checklistEjecucion: number;
+  checklistTemplate: number;
+  accidenteAccionCorrectiva: number;
+  accidenteInvestigacion: number;
+  induccionTrabajador: number;
+  firmaDocumento: number;
+  planTrabajo: number;
+  vehiculo: number;
+  trabajador: number;
+  posicionDotacion: number;
+  reglaDocumentoTrabajador: number;
+  documentoTipoTrabajador: number;
+  documentoTipoVehiculo: number;
+  cargo: number;
+  area: number;
+  centroTrabajo: number;
+  plantillaDocumentoEmpresa: number;
+  activacionEvento: number;
+  empresaModulo: number;
+  generacionDocumentosLog: number;
+};
+
+type DeleteEmpresaActionResult =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
 
 export type EmpresaDeletionPreview = {
   empresaId: string;
@@ -215,60 +265,134 @@ async function getEmpresaDeletionCounts(empresaId: string): Promise<EmpresaDelet
 }
 
 async function deleteEmpresaDependenciasTx(tx: Prisma.TransactionClient, empresaId: string) {
-  await tx.usuarioEmpresa.deleteMany({ where: { empresaId } });
-  await tx.usuario.updateMany({ where: { empresaId }, data: { empresaId: null } });
+  const stats: DeleteDependenciasStats = {
+    usuarioEmpresa: 0,
+    usuarioEmpresaIdNull: 0,
+    evidenciaCumplimiento: 0,
+    hallazgoCumplimiento: 0,
+    obligacionEmpresaEstado: 0,
+    documentoEmpresa: 0,
+    trabajadorDocumento: 0,
+    capacitacionAsistencia: 0,
+    capacitacionEvaluacion: 0,
+    capacitacionHistorial: 0,
+    capacitacionAsignacion: 0,
+    capacitacionSesion: 0,
+    reglaCapacitacionCargo: 0,
+    planCapacitacion: 0,
+    plantillaPlanCapacitacion: 0,
+    capacitacion: 0,
+    entregaEpp: 0,
+    eppItem: 0,
+    acreditacion: 0,
+    plantillaAcreditacion: 0,
+    mandanteAcreditacion: 0,
+    contratista: 0,
+    checklistEjecucion: 0,
+    checklistTemplate: 0,
+    accidenteAccionCorrectiva: 0,
+    accidenteInvestigacion: 0,
+    induccionTrabajador: 0,
+    firmaDocumento: 0,
+    planTrabajo: 0,
+    vehiculo: 0,
+    trabajador: 0,
+    posicionDotacion: 0,
+    reglaDocumentoTrabajador: 0,
+    documentoTipoTrabajador: 0,
+    documentoTipoVehiculo: 0,
+    cargo: 0,
+    area: 0,
+    centroTrabajo: 0,
+    plantillaDocumentoEmpresa: 0,
+    activacionEvento: 0,
+    empresaModulo: 0,
+    generacionDocumentosLog: 0,
+  };
 
-  await tx.evidenciaCumplimiento.deleteMany({ where: { empresaId } });
-  await tx.hallazgoCumplimiento.deleteMany({ where: { empresaId } });
-  await tx.obligacionEmpresaEstado.deleteMany({ where: { empresaId } });
+  stats.usuarioEmpresa = (await tx.usuarioEmpresa.deleteMany({ where: { empresaId } })).count;
+  stats.usuarioEmpresaIdNull = (await tx.usuario.updateMany({ where: { empresaId }, data: { empresaId: null } })).count;
 
-  await tx.documentoEmpresa.deleteMany({ where: { empresaId } });
-  await tx.trabajadorDocumento.deleteMany({ where: { empresaId } });
+  stats.evidenciaCumplimiento = (await tx.evidenciaCumplimiento.deleteMany({ where: { empresaId } })).count;
+  stats.hallazgoCumplimiento = (await tx.hallazgoCumplimiento.deleteMany({ where: { empresaId } })).count;
+  stats.obligacionEmpresaEstado = (await tx.obligacionEmpresaEstado.deleteMany({ where: { empresaId } })).count;
 
-  await tx.capacitacionAsistencia.deleteMany({ where: { empresaId } });
-  await tx.capacitacionEvaluacion.deleteMany({ where: { empresaId } });
-  await tx.capacitacionHistorial.deleteMany({ where: { empresaId } });
-  await tx.capacitacionAsignacion.deleteMany({ where: { empresaId } });
-  await tx.capacitacionSesion.deleteMany({ where: { empresaId } });
-  await tx.reglaCapacitacionCargo.deleteMany({ where: { empresaId } });
-  await tx.planCapacitacion.deleteMany({ where: { empresaId } });
-  await tx.plantillaPlanCapacitacion.deleteMany({ where: { empresaId } });
-  await tx.capacitacion.deleteMany({ where: { empresaId } });
+  stats.documentoEmpresa = (await tx.documentoEmpresa.deleteMany({ where: { empresaId } })).count;
+  stats.trabajadorDocumento = (await tx.trabajadorDocumento.deleteMany({ where: { empresaId } })).count;
 
-  await tx.entregaEpp.deleteMany({ where: { empresaId } });
-  await tx.eppItem.deleteMany({ where: { empresaId } });
+  stats.capacitacionAsistencia = (await tx.capacitacionAsistencia.deleteMany({ where: { empresaId } })).count;
+  stats.capacitacionEvaluacion = (await tx.capacitacionEvaluacion.deleteMany({ where: { empresaId } })).count;
+  stats.capacitacionHistorial = (await tx.capacitacionHistorial.deleteMany({ where: { empresaId } })).count;
+  stats.capacitacionAsignacion = (await tx.capacitacionAsignacion.deleteMany({ where: { empresaId } })).count;
+  stats.capacitacionSesion = (await tx.capacitacionSesion.deleteMany({ where: { empresaId } })).count;
+  stats.reglaCapacitacionCargo = (await tx.reglaCapacitacionCargo.deleteMany({ where: { empresaId } })).count;
+  stats.planCapacitacion = (await tx.planCapacitacion.deleteMany({ where: { empresaId } })).count;
+  stats.plantillaPlanCapacitacion = (await tx.plantillaPlanCapacitacion.deleteMany({ where: { empresaId } })).count;
+  stats.capacitacion = (await tx.capacitacion.deleteMany({ where: { empresaId } })).count;
 
-  await tx.acreditacion.deleteMany({ where: { empresaId } });
-  await tx.plantillaAcreditacion.deleteMany({ where: { empresaId } });
-  await tx.mandanteAcreditacion.deleteMany({ where: { empresaId } });
-  await tx.contratista.deleteMany({ where: { empresaId } });
+  stats.entregaEpp = (await tx.entregaEpp.deleteMany({ where: { empresaId } })).count;
+  stats.eppItem = (await tx.eppItem.deleteMany({ where: { empresaId } })).count;
 
-  await tx.checklistEjecucion.deleteMany({ where: { empresaId } });
-  await tx.checklistTemplate.deleteMany({ where: { empresaId } });
+  stats.acreditacion = (await tx.acreditacion.deleteMany({ where: { empresaId } })).count;
+  stats.plantillaAcreditacion = (await tx.plantillaAcreditacion.deleteMany({ where: { empresaId } })).count;
+  stats.mandanteAcreditacion = (await tx.mandanteAcreditacion.deleteMany({ where: { empresaId } })).count;
+  stats.contratista = (await tx.contratista.deleteMany({ where: { empresaId } })).count;
 
-  await tx.accidenteAccionCorrectiva.deleteMany({ where: { empresaId } });
-  await tx.accidenteInvestigacion.deleteMany({ where: { empresaId } });
+  stats.checklistEjecucion = (await tx.checklistEjecucion.deleteMany({ where: { empresaId } })).count;
+  stats.checklistTemplate = (await tx.checklistTemplate.deleteMany({ where: { empresaId } })).count;
 
-  await tx.induccionTrabajador.deleteMany({ where: { empresaId } });
-  await tx.firmaDocumento.deleteMany({ where: { empresaId } });
+  stats.accidenteAccionCorrectiva = (await tx.accidenteAccionCorrectiva.deleteMany({ where: { empresaId } })).count;
+  stats.accidenteInvestigacion = (await tx.accidenteInvestigacion.deleteMany({ where: { empresaId } })).count;
 
-  await tx.planTrabajo.deleteMany({ where: { empresaId } });
+  stats.induccionTrabajador = (await tx.induccionTrabajador.deleteMany({ where: { empresaId } })).count;
+  stats.firmaDocumento = (await tx.firmaDocumento.deleteMany({ where: { empresaId } })).count;
 
-  await tx.vehiculo.deleteMany({ where: { empresaId } });
-  await tx.trabajador.deleteMany({ where: { empresaId } });
-  await tx.posicionDotacion.deleteMany({ where: { empresaId } });
-  await tx.reglaDocumentoTrabajador.deleteMany({ where: { empresaId } });
-  await tx.documentoTipoTrabajador.deleteMany({ where: { empresaId } });
-  await tx.documentoTipoVehiculo.deleteMany({ where: { empresaId } });
-  await tx.cargo.deleteMany({ where: { empresaId } });
-  await tx.area.deleteMany({ where: { empresaId } });
-  await tx.centroTrabajo.deleteMany({ where: { empresaId } });
+  stats.planTrabajo = (await tx.planTrabajo.deleteMany({ where: { empresaId } })).count;
 
-  await tx.obligacionEmpresaEstado.deleteMany({ where: { empresaId } });
-  await tx.plantillaDocumentoEmpresa.deleteMany({ where: { empresaId } });
-  await tx.activacionEvento.deleteMany({ where: { empresaId } });
-  await tx.empresaModulo.deleteMany({ where: { empresaId } });
-  await tx.generacionDocumentosLog.deleteMany({ where: { empresaId } });
+  stats.vehiculo = (await tx.vehiculo.deleteMany({ where: { empresaId } })).count;
+  stats.trabajador = (await tx.trabajador.deleteMany({ where: { empresaId } })).count;
+  stats.posicionDotacion = (await tx.posicionDotacion.deleteMany({ where: { empresaId } })).count;
+  stats.reglaDocumentoTrabajador = (await tx.reglaDocumentoTrabajador.deleteMany({ where: { empresaId } })).count;
+  stats.documentoTipoTrabajador = (await tx.documentoTipoTrabajador.deleteMany({ where: { empresaId } })).count;
+  stats.documentoTipoVehiculo = (await tx.documentoTipoVehiculo.deleteMany({ where: { empresaId } })).count;
+  stats.cargo = (await tx.cargo.deleteMany({ where: { empresaId } })).count;
+  stats.area = (await tx.area.deleteMany({ where: { empresaId } })).count;
+  stats.centroTrabajo = (await tx.centroTrabajo.deleteMany({ where: { empresaId } })).count;
+
+  stats.plantillaDocumentoEmpresa = (await tx.plantillaDocumentoEmpresa.deleteMany({ where: { empresaId } })).count;
+  stats.activacionEvento = (await tx.activacionEvento.deleteMany({ where: { empresaId } })).count;
+  stats.empresaModulo = (await tx.empresaModulo.deleteMany({ where: { empresaId } })).count;
+  stats.generacionDocumentosLog = (await tx.generacionDocumentosLog.deleteMany({ where: { empresaId } })).count;
+
+  return stats;
+}
+
+function extractDependentModelFromPrismaError(error: unknown): string | null {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    return null;
+  }
+
+  if (error.code !== "P2003") {
+    return null;
+  }
+
+  const meta = error.meta as { field_name?: string } | undefined;
+  const fieldName = meta?.field_name;
+  if (!fieldName || typeof fieldName !== "string") {
+    return "relación referencial";
+  }
+
+  const constraint = fieldName.toLowerCase();
+  if (constraint.includes("acredita")) return "Acreditación";
+  if (constraint.includes("contratista")) return "Contratista";
+  if (constraint.includes("checklist")) return "Checklist";
+  if (constraint.includes("capacit")) return "Capacitación";
+  if (constraint.includes("trabajador")) return "Trabajador";
+  if (constraint.includes("vehiculo")) return "Vehículo";
+  if (constraint.includes("documento")) return "Documento";
+  if (constraint.includes("plan")) return "Plan de trabajo";
+
+  return fieldName;
 }
 
 export async function getSuperadminData(): Promise<SuperadminData> {
@@ -768,76 +892,128 @@ export async function getEmpresaDeletionPreviewAction(formData: FormData): Promi
   };
 }
 
-export async function eliminarEmpresaDefinitivamenteAction(formData: FormData) {
-  const context = await requireRole("SUPERADMIN");
-
-  const empresaId = parseString(formData, "empresaId");
+export async function eliminarEmpresaDefinitivamenteAction(formData: FormData): Promise<DeleteEmpresaActionResult> {
+  let empresaId = parseString(formData, "empresaId");
   const confirmacionTexto = parseString(formData, "confirmacionTexto");
   const currentPassword = parseString(formData, "currentPassword");
 
-  if (!empresaId) {
-    throw new Error("Empresa es requerida");
+  const fail = (error: string): DeleteEmpresaActionResult => ({ ok: false, error });
+
+  try {
+    if (!empresaId) {
+      return fail("Empresa es requerida");
+    }
+
+    const context = await requireRole("SUPERADMIN");
+
+    if (confirmacionTexto !== CONFIRM_DELETE_EMPRESA_TEXT) {
+      return fail("Texto de confirmación inválido");
+    }
+
+    if (!currentPassword) {
+      return fail("Debe ingresar su clave de SUPERADMIN");
+    }
+
+    const usuarioActual = await prisma.usuario.findUnique({
+      where: { id: context.usuarioId },
+      select: {
+        id: true,
+        passwordHash: true,
+        activo: true,
+      },
+    });
+
+    if (!usuarioActual || !usuarioActual.activo) {
+      return fail("Permisos insuficientes");
+    }
+
+    if (!usuarioActual.passwordHash || !verifyPassword(currentPassword, usuarioActual.passwordHash)) {
+      return fail("Clave incorrecta");
+    }
+
+    const empresa = await prisma.empresa.findUnique({
+      where: { id: empresaId },
+      select: {
+        id: true,
+        nombre: true,
+        activa: true,
+      },
+    });
+
+    if (!empresa) {
+      return fail("Empresa no encontrada");
+    }
+
+    empresaId = empresa.id;
+    const protectedReason = getProtectedCompanyReason(empresa.nombre);
+    if (protectedReason) {
+      return fail(protectedReason);
+    }
+
+    if (context.empresaId === empresa.id) {
+      return fail("No puede eliminar su empresa activa actual. Cambie primero la empresa activa.");
+    }
+
+    console.info("[superadmin][eliminar_empresa] inicio", {
+      empresaId: empresa.id,
+      empresaNombre: empresa.nombre,
+      empresaActiva: empresa.activa,
+      paso: "inicio_transaccion",
+    });
+
+    await prisma.$transaction(async (tx) => {
+      console.info("[superadmin][eliminar_empresa] paso", {
+        empresaId: empresa.id,
+        empresaNombre: empresa.nombre,
+        paso: "eliminar_dependencias",
+      });
+
+      const deletedStats = await deleteEmpresaDependenciasTx(tx, empresa.id);
+
+      console.info("[superadmin][eliminar_empresa] conteos", {
+        empresaId: empresa.id,
+        empresaNombre: empresa.nombre,
+        paso: "dependencias_eliminadas",
+        deletedStats,
+      });
+
+      // No existe un modelo de auditoría específico para eliminación definitiva de empresa.
+      // Se deja advertencia técnica sin datos sensibles.
+      console.warn("[superadmin][eliminar_empresa] sin tabla auditoria dedicada", {
+        empresaId: empresa.id,
+        empresaNombre: empresa.nombre,
+      });
+
+      await tx.empresa.delete({ where: { id: empresa.id } });
+
+      console.info("[superadmin][eliminar_empresa] paso", {
+        empresaId: empresa.id,
+        empresaNombre: empresa.nombre,
+        paso: "empresa_eliminada",
+      });
+    });
+
+    revalidatePath("/dicaprev/superadmin");
+
+    return {
+      ok: true,
+      message: `Empresa \"${empresa.nombre}\" eliminada definitivamente`,
+    };
+  } catch (error) {
+    const dependentModel = extractDependentModelFromPrismaError(error);
+    const controlledMessage = dependentModel
+      ? `No se pudo eliminar porque existen registros dependientes no contemplados: ${dependentModel}`
+      : "No se pudo eliminar la empresa por un error interno controlado.";
+
+    console.error("[superadmin][eliminar_empresa] error", {
+      empresaId,
+      paso: "error",
+      errorType: error instanceof Error ? error.name : "UnknownError",
+      errorMessage: error instanceof Error ? error.message : String(error),
+      prismaCode: error instanceof Prisma.PrismaClientKnownRequestError ? error.code : undefined,
+      dependentModel,
+    });
+
+    return fail(controlledMessage);
   }
-
-  if (confirmacionTexto !== CONFIRM_DELETE_EMPRESA_TEXT) {
-    throw new Error("Texto de confirmación inválido");
-  }
-
-  if (!currentPassword) {
-    throw new Error("Debe ingresar su clave de SUPERADMIN");
-  }
-
-  const usuarioActual = await prisma.usuario.findUnique({
-    where: { id: context.usuarioId },
-    select: {
-      id: true,
-      passwordHash: true,
-      activo: true,
-    },
-  });
-
-  if (!usuarioActual || !usuarioActual.activo) {
-    throw new Error("Permisos insuficientes");
-  }
-
-  if (!usuarioActual.passwordHash || !verifyPassword(currentPassword, usuarioActual.passwordHash)) {
-    throw new Error("Clave incorrecta");
-  }
-
-  const empresa = await prisma.empresa.findUnique({
-    where: { id: empresaId },
-    select: {
-      id: true,
-      nombre: true,
-    },
-  });
-
-  if (!empresa) {
-    throw new Error("Empresa no encontrada");
-  }
-
-  const protectedReason = getProtectedCompanyReason(empresa.nombre);
-  if (protectedReason) {
-    throw new Error(protectedReason);
-  }
-
-  if (context.empresaId === empresa.id) {
-    throw new Error("No puede eliminar su empresa activa actual. Cambie primero la empresa activa.");
-  }
-
-  await prisma.$transaction(async (tx) => {
-    // No existe un modelo de auditoría específico para eliminación definitiva de empresa.
-    // Se deja advertencia técnica sin datos sensibles.
-    console.warn("[superadmin] Eliminación definitiva de empresa ejecutada sin tabla de auditoría dedicada.");
-
-    await deleteEmpresaDependenciasTx(tx, empresa.id);
-    await tx.empresa.delete({ where: { id: empresa.id } });
-  });
-
-  revalidatePath("/dicaprev/superadmin");
-
-  return {
-    ok: true,
-    message: `Empresa \"${empresa.nombre}\" eliminada definitivamente`,
-  };
 }
