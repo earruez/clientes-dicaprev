@@ -9,6 +9,7 @@ import {
   cambiarEstadoCapacitacionAsignacion,
   enviarCapacitacionAsignacion,
   deleteCapacitacionAsignacion,
+  descargarCertificadoCapacitacionPdf,
   type AsignacionCapacitacion,
   type CapacitacionCatalogo,
 } from "@/actions/capacitaciones";
@@ -591,12 +592,20 @@ export default function TabAsignaciones() {
         }
 
         case "generar_cert": {
-          // TODO: Implementar generación de certificado con Documento real
+          const blob = await descargarCertificadoCapacitacionPdf(item.id);
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `certificado-${item.capacitacionNombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${item.trabajadorNombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
           registrarAccion({
-            accion: "crear", modulo: "capacitacion", entidadTipo: "Certificado", entidadId: "cert-mock",
-            descripcion: `Generó certificado de '${item.capacitacionNombre}' para ${item.trabajadorNombre}`,
+            accion: "crear", modulo: "capacitacion", entidadTipo: "Certificado", entidadId: item.id,
+            descripcion: `Descargó certificado de '${item.capacitacionNombre}' para ${item.trabajadorNombre}`,
           });
-          setModalCert({ certId: "cert-mock-" + item.id, nombre: item.capacitacionNombre });
+          setModalCert({ certId: `cert-${item.id}`, nombre: item.capacitacionNombre });
           break;
         }
 

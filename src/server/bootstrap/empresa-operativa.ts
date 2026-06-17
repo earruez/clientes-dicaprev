@@ -77,9 +77,9 @@ const DOCUMENTOS_TRABAJADOR_BASE: WorkerDocTemplate[] = [
     vigenciaDias: null,
   },
   {
-    codigo: "ODI_OBLIGACION_INFORMAR",
-    nombre: "ODI / obligacion de informar",
-    descripcion: "Constancia de obligacion de informar riesgos y medidas preventivas.",
+    codigo: "IRL_RIESGOS",
+    nombre: "IRL - Informe de Riesgos Laborales",
+    descripcion: "Constancia de informacion de riesgos y medidas preventivas laborales.",
     requiereVencimiento: false,
     vigenciaDias: null,
   },

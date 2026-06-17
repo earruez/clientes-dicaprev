@@ -1,6 +1,7 @@
 "use server";
 
 import type { Prisma } from "@prisma/client";
+import { jsPDF } from "jspdf";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -599,6 +600,214 @@ async function createHistorialCapacitacion(
       vigenciaHasta: input.vigenciaHasta ?? null,
       fechaEvento: input.fechaEvento,
     },
+  });
+}
+
+function safeText(value: string | null | undefined): string {
+  return (value ?? "").trim() || "-";
+}
+
+function formatDate(value: Date | string | null | undefined): string {
+  if (!value) return "-";
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function normalizeSafeLogoUrl(value: string | null | undefined): string | null {
+  const raw = (value ?? "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("data:image/")) return raw;
+  try {
+    const parsed = new URL(raw, "https://app.nextprev.cl");
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function loadLogoDataUrl(src: string | null): Promise<string | null> {
+  if (!src || typeof window === "undefined") return null;
+  if (src.startsWith("data:image/")) return src;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
+async function buildCertificadoCapacitacionPdf(input: {
+  empresaNombre: string;
+  empresaRut: string | null;
+  empresaLogoUrl: string | null;
+  trabajadorNombre: string;
+  trabajadorRut: string;
+  capacitacionNombre: string;
+  capacitacionCategoria: string;
+  modalidad: string;
+  fechaEvaluacion: Date | string | null;
+  vigenciaHasta: Date | string | null;
+  resultado: string;
+  nota: number | null;
+  responsable: string | null;
+}): Promise<Blob> {
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 36;
+  const contentWidth = pageWidth - marginX * 2;
+  const logo = await loadLogoDataUrl(normalizeSafeLogoUrl(input.empresaLogoUrl));
+
+  doc.setDrawColor(203, 213, 225);
+  doc.rect(marginX, 34, contentWidth, 76);
+  if (logo) {
+    try {
+      doc.addImage(logo, "PNG", marginX + 10, 44, 72, 28);
+    } catch {
+      // continuar sin logo si falla
+    }
+  }
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(15);
+  doc.text("CERTIFICADO DE CAPACITACIÓN", marginX + (logo ? 92 : 14), 58);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(safeText(input.empresaNombre), marginX + (logo ? 92 : 14), 74);
+  doc.text(`RUT: ${safeText(input.empresaRut)}`, marginX + (logo ? 92 : 14), 88);
+
+  const rows: Array<[string, string]> = [
+    ["Trabajador", safeText(input.trabajadorNombre)],
+    ["RUT", safeText(input.trabajadorRut)],
+    ["Capacitación", safeText(input.capacitacionNombre)],
+    ["Categoría", safeText(input.capacitacionCategoria)],
+    ["Modalidad", safeText(input.modalidad)],
+    ["Fecha de realización", formatDate(input.fechaEvaluacion)],
+    ["Vigencia hasta", input.vigenciaHasta ? formatDate(input.vigenciaHasta) : "No aplica"],
+    ["Resultado", safeText(input.resultado)],
+    ["Nota", input.nota === null ? "-" : input.nota.toFixed(1)],
+    ["Responsable", safeText(input.responsable)],
+  ];
+
+  let y = 130;
+  rows.forEach(([label, value]) => {
+    doc.rect(marginX, y, 150, 24);
+    doc.rect(marginX + 150, y, contentWidth - 150, 24);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text(label, marginX + 8, y + 15);
+    doc.setFont("helvetica", "normal");
+    doc.text(value, marginX + 158, y + 15);
+    y += 24;
+  });
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(
+    "El presente certificado acredita la capacitación realizada con datos reales de la empresa activa.",
+    marginX,
+    y + 28,
+    { maxWidth: contentWidth },
+  );
+
+  doc.rect(marginX, pageHeight - 160, contentWidth, 72);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.text("Firma responsable", marginX + 10, pageHeight - 140);
+  doc.setFont("helvetica", "normal");
+  doc.text(safeText(input.responsable || "Responsable SST"), marginX + 10, pageHeight - 124);
+  doc.text(`Fecha de emisión: ${formatDate(new Date())}`, marginX + 10, pageHeight - 108);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text("Generado por NextPrev", marginX, pageHeight - 12);
+
+  return doc.output("blob");
+}
+
+export async function descargarCertificadoCapacitacionPdf(asignacionId: string): Promise<Blob> {
+  const context = await requirePermission("canReadCapacitaciones");
+
+  const asignacion = await prisma.capacitacionAsignacion.findFirst({
+    where: { id: asignacionId, empresaId: context.empresaId },
+    select: {
+      id: true,
+      fechaCompletada: true,
+      fechaVencimiento: true,
+      aprobado: true,
+      nota: true,
+      trabajador: {
+        select: {
+          nombres: true,
+          apellidos: true,
+          rut: true,
+          cargo: { select: { nombre: true } },
+        },
+      },
+      capacitacion: {
+        select: {
+          nombre: true,
+          categoria: true,
+          modalidad: true,
+          generaCertificado: true,
+        },
+      },
+      empresa: {
+        select: { nombre: true, rut: true, logoUrl: true },
+      },
+      historial: {
+        where: { tipoEvento: { in: ["asignacion_creada", "asignacion_estado_actualizado"] } },
+        orderBy: { fechaEvento: "desc" },
+        take: 1,
+        select: { usuarioId: true },
+      },
+    },
+  });
+
+  if (!asignacion) {
+    throw new Error("Asignación no encontrada para la empresa activa");
+  }
+
+  if (!asignacion.capacitacion.generaCertificado) {
+    throw new Error("Esta capacitación no genera certificado");
+  }
+
+  const trabajadorNombre = `${asignacion.trabajador.nombres} ${asignacion.trabajador.apellidos}`.trim();
+  const resultado = asignacion.aprobado === true ? "Aprobado" : asignacion.aprobado === false ? "No aprobado" : "Completado";
+
+  return buildCertificadoCapacitacionPdf({
+    empresaNombre: asignacion.empresa.nombre,
+    empresaRut: asignacion.empresa.rut,
+    empresaLogoUrl: asignacion.empresa.logoUrl,
+    trabajadorNombre,
+    trabajadorRut: asignacion.trabajador.rut ?? "",
+    capacitacionNombre: asignacion.capacitacion.nombre,
+    capacitacionCategoria: asignacion.capacitacion.categoria,
+    modalidad: asignacion.capacitacion.modalidad,
+    fechaEvaluacion: asignacion.fechaCompletada ?? new Date(),
+    vigenciaHasta: asignacion.fechaVencimiento,
+    resultado,
+    nota: asignacion.nota,
+    responsable: asignacion.historial[0]?.usuarioId ? `Usuario ${asignacion.historial[0].usuarioId}` : asignacion.trabajador.cargo?.nombre ?? null,
   });
 }
 

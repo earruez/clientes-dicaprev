@@ -887,3 +887,40 @@ RECOMENDACIÓN:
 
 **Recomendación:** No lanzar a producción sin resolver los 4 primeros items CRÍTICOS.
 
+## 16. CORRECCIONES FASE 1
+
+### Críticos corregidos
+
+| Crítico | Estado | Evidencia |
+|--------|--------|-----------|
+| Certificado de capacitación | ✅ Corregido | Se agregó descarga real desde la asignación aprobada con validación de empresa activa |
+| ODI visible | ✅ Corregido | Se reemplazó el texto visible por `IRL - Informe de Riesgos Laborales` en semilla y textos de capacitación |
+| Footer `Generado por NextPrev` | ✅ Corregido | Se reforzó el footer en IRL, EPP, plan de trabajo e informe documental |
+| Logo empresa sin sanitización | ✅ Corregido | Se validan URLs seguras antes de renderizar el logo en PDFs |
+
+### Archivos modificados
+
+- [src/actions/capacitaciones/index.ts](src/actions/capacitaciones/index.ts)
+- [src/app/dicaprev/capacitacion/components/TabAsignaciones.tsx](src/app/dicaprev/capacitacion/components/TabAsignaciones.tsx)
+- [src/server/bootstrap/empresa-operativa.ts](src/server/bootstrap/empresa-operativa.ts)
+- [src/lib/capacitacion/catalogo-capacitaciones-sst.ts](src/lib/capacitacion/catalogo-capacitaciones-sst.ts)
+- [src/actions/trabajadores/documentos/index.ts](src/actions/trabajadores/documentos/index.ts)
+- [src/components/trabajadores-v2/documental/export-trabajador-documento-pdf.ts](src/components/trabajadores-v2/documental/export-trabajador-documento-pdf.ts)
+- [src/app/dicaprev/plandetrabajo/export-plan-pdf.ts](src/app/dicaprev/plandetrabajo/export-plan-pdf.ts)
+- [src/lib/documentacion/export-informe-documental-pdf.ts](src/lib/documentacion/export-informe-documental-pdf.ts)
+
+### Pruebas realizadas
+
+- `npx prisma validate` ✅
+- `npm run typecheck` ✅
+- `npm run build` ✅
+- Generación real de certificado de capacitación desde la asignación aprobada ✅
+- Generación de IRL/EPP con footer homogéneo ✅
+- Descarga de plan de trabajo PDF e informe documental con footer `Generado por NextPrev` ✅
+
+### Pendientes restantes
+
+- Validación adicional de descargas cruzadas por empresa en rutas aún basadas en blob cliente
+- Homogeneizar más textos legacy con ODI en módulos no críticos o mock data
+- Persistencia automática del PDF generado en todos los flujos documentales
+

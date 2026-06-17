@@ -811,7 +811,7 @@ function construirBorradorOdiLocal(input: {
     : "- Riesgos generales del puesto por definir con equipo SST";
 
   return [
-    "OBLIGACION DE INFORMAR (ODI) - BORRADOR",
+    "IRL - INFORME DE RIESGOS LABORALES - BORRADOR",
     "",
     `Fecha: ${fecha}`,
     `Empresa: ${input.empresaNombre}`,
@@ -867,7 +867,7 @@ async function generarBorradorOdiConOpenAI(input: {
   const model = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
   const riesgos = input.riesgos.length ? input.riesgos.join(", ") : "No informados";
   const prompt = [
-    "Genera un borrador profesional en espanol para un documento ODI (Obligacion de Informar) de Chile.",
+    "Genera un borrador profesional en espanol para un documento IRL (Informe de Riesgos Laborales) de Chile.",
     "No uses markdown.",
     "Incluye secciones: Objetivo, Identificacion del trabajador, Riesgos del cargo, Medidas preventivas, Emergencias, Declaracion.",
     "Datos:",
@@ -895,7 +895,7 @@ async function generarBorradorOdiConOpenAI(input: {
       messages: [
         {
           role: "system",
-          content: "Eres un especialista en documentacion SST en Chile. Redactas documentos ODI claros y auditables.",
+            content: "Eres un especialista en documentacion SST en Chile. Redactas documentos IRL claros y auditables.",
         },
         {
           role: "user",
