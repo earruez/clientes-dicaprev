@@ -10,6 +10,23 @@
 
 NextPrev **es funcionalmente capaz** de generar, persistir, descargar y trazar documentos reales. Sin embargo, se identificaron **13 problemas críticos** y **9 problemas de arquitectura** que impiden que el sistema sea completamente confiable para producción.
 
+### Correcciones Fase 2.1 - Persistencia y trazabilidad
+
+Durante la Fase 2.1 se implementó una capa transversal de persistencia para documentos generados al vuelo, sin romper los historiales ya existentes por módulo.
+
+- Se agregó el modelo `DocumentoGeneradoRegistro` para centralizar trazabilidad de PDFs y ZIPs generados desde cliente o servidor.
+- Se creó una ruta compartida de registro en `src/actions/documentos-generados/index.ts` y helpers de normalización en `src/lib/documentacion/registro-documento-generado.ts`.
+- Los flujos de descarga ahora persisten archivo y metadata antes o durante la entrega al usuario en los siguientes casos:
+  - Informe documental empresa PDF.
+  - Plan de trabajo anual PDF.
+  - Certificado de capacitación PDF.
+  - PDF de documentos de trabajador, incluyendo versiones históricas.
+  - Expediente de acreditación ZIP.
+  - Índice PDF del expediente de acreditación.
+- La persistencia se realiza reutilizando la infraestructura actual de uploads en `public/uploads/documentos` para evitar introducir almacenamiento paralelo en esta fase.
+- Los historiales funcionales existentes (`DocumentoEmpresaHistorial`, `TrabajadorDocumentoHistorial`, `CapacitacionHistorial`, `HistorialPlanTrabajo`, `DocumentoInduccionGenerado`) se mantienen intactos; la nueva capa actúa como registro transversal de generación y descarga.
+- Con esta corrección, la generación documental deja de depender exclusivamente de `blob + URL.createObjectURL()` para auditoría y re-trazabilidad.
+
 ### Hallazgos Principales
 
 | Categoría | Estado | Severidad | Impacto |

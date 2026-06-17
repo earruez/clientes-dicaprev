@@ -143,6 +143,7 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     <ExpedienteClient
       acreditacion={{
         id: acreditacion.id,
+        empresaId: acreditacion.empresa?.id ?? "",
         empresaNombre: acreditacion.empresa?.nombre ?? "Sin empresa",
         mandante: acreditacion.mandante?.nombre ?? "Sin mandante",
         tipo: acreditacion.plantilla?.tipo ?? "mandante_general",

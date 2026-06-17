@@ -17,6 +17,7 @@ import type { Worker } from "../types";
 import type { VersionDocumentoView } from "@/actions/trabajadores/documentos";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
 import type { EmpresaDocumentoMeta } from "@/actions/trabajadores/documentos";
+import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
 
 interface VersionesHistorialDrawerProps {
   open: boolean;
@@ -78,7 +79,7 @@ export function VersionesHistorialDrawer({
   async function handleDescargarVersion(v: VersionDocumentoView) {
     setDescargandoId(v.id);
     try {
-      await exportTrabajadorDocumentoPdf({
+      const pdf = await exportTrabajadorDocumentoPdf({
         documento: {
           tipo: { id: v.id, nombre: tipoNombre, categoria: "SST", descripcion: "", requiereVencimiento: false, vencimientoMeses: null, esCritico: false },
           estado: v.estado as import("./types").DocEstado,
@@ -96,6 +97,27 @@ export function VersionesHistorialDrawer({
         firmadoEn: v.firmadoEn ?? undefined,
         empresa: empresaMeta,
       });
+
+      if (empresaMeta?.id) {
+        const filename = `version-${tipoNombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${trabajador.nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+        await persistirDocumentoGenerado({
+          empresaId: empresaMeta.id,
+          modulo: "trabajadores",
+          tipoDocumento: "documento_trabajador_pdf",
+          entidadTipo: "trabajador_documento_version",
+          entidadId: v.id,
+          nombre: `${tipoNombre} - ${trabajador.nombre} ${trabajador.apellido}`,
+          blob: pdf,
+          filename,
+          metadata: {
+            trabajadorId: trabajador.id,
+            versionId: v.id,
+            estado: v.estado,
+            firmadoPor: v.firmadoPor ?? null,
+            firmadoEn: v.firmadoEn ?? null,
+          },
+        });
+      }
     } catch (e) {
       console.error("Error descargando PDF versión:", e);
     } finally {

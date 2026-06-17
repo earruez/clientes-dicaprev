@@ -1,7 +1,11 @@
 "use server";
 
+import { randomUUID } from "crypto";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 import type { Prisma } from "@prisma/client";
 import { jsPDF } from "jspdf";
+import { construirRegistroDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -655,6 +659,35 @@ async function loadLogoDataUrl(src: string | null): Promise<string | null> {
   });
 }
 
+const CERTIFICADOS_UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "documentos");
+
+function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+}
+
+async function persistirBlobCertificado(blob: Blob, filename: string): Promise<{ archivoNombre: string; archivoUrl: string; archivoPeso: number }> {
+  const archivoNombre = `${randomUUID()}.pdf`;
+  const archivoUrl = `/uploads/documentos/${archivoNombre}`;
+  const destino = path.join(CERTIFICADOS_UPLOAD_DIR, archivoNombre);
+  const buffer = new Uint8Array(await blob.arrayBuffer());
+
+  await mkdir(CERTIFICADOS_UPLOAD_DIR, { recursive: true });
+  await writeFile(destino, buffer);
+
+  return {
+    archivoNombre,
+    archivoUrl,
+    archivoPeso: buffer.byteLength,
+  };
+}
+
 async function buildCertificadoCapacitacionPdf(input: {
   empresaNombre: string;
   empresaRut: string | null;
@@ -751,6 +784,8 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
     where: { id: asignacionId, empresaId: context.empresaId },
     select: {
       id: true,
+      trabajadorId: true,
+      capacitacionId: true,
       fechaCompletada: true,
       fechaVencimiento: true,
       aprobado: true,
@@ -794,7 +829,7 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
   const trabajadorNombre = `${asignacion.trabajador.nombres} ${asignacion.trabajador.apellidos}`.trim();
   const resultado = asignacion.aprobado === true ? "Aprobado" : asignacion.aprobado === false ? "No aprobado" : "Completado";
 
-  return buildCertificadoCapacitacionPdf({
+  const blob = await buildCertificadoCapacitacionPdf({
     empresaNombre: asignacion.empresa.nombre,
     empresaRut: asignacion.empresa.rut,
     empresaLogoUrl: asignacion.empresa.logoUrl,
@@ -809,6 +844,37 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
     nota: asignacion.nota,
     responsable: asignacion.historial[0]?.usuarioId ? `Usuario ${asignacion.historial[0].usuarioId}` : asignacion.trabajador.cargo?.nombre ?? null,
   });
+
+  const nombreArchivo = `certificado-${slugify(asignacion.capacitacion.nombre)}-${slugify(trabajadorNombre) || asignacion.id}.pdf`;
+  const persistido = await persistirBlobCertificado(blob, nombreArchivo);
+
+  await prisma.documentoGeneradoRegistro.create({
+    data: construirRegistroDocumentoGenerado({
+      empresaId: context.empresaId,
+      usuarioId: context.usuarioId,
+      modulo: "capacitacion",
+      tipoDocumento: "certificado_capacitacion",
+      entidadTipo: "capacitacion_asignacion",
+      entidadId: asignacion.id,
+      nombre: `Certificado de capacitación: ${trabajadorNombre} - ${asignacion.capacitacion.nombre}`,
+      formato: "pdf",
+      archivoNombre: persistido.archivoNombre,
+      archivoNombreOriginal: nombreArchivo,
+      archivoUrl: persistido.archivoUrl,
+      archivoTipo: "application/pdf",
+      archivoPeso: persistido.archivoPeso,
+      metadata: {
+        asignacionId: asignacion.id,
+        trabajadorId: asignacion.trabajadorId,
+        capacitacionId: asignacion.capacitacionId,
+        resultado,
+        nota: asignacion.nota,
+        vigenciaHasta: asignacion.fechaVencimiento?.toISOString() ?? null,
+      },
+    }),
+  });
+
+  return blob;
 }
 
 function toAsignacionShape(row: {

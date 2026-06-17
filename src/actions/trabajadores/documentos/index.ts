@@ -64,6 +64,7 @@ function mapCodigoDocumentoInduccionACodigoControl(codigo: string): string | nul
 }
 
 export type EmpresaDocumentoMeta = {
+  id: string;
   nombre: string;
   razonSocial: string | null;
   rut: string | null;
@@ -1940,6 +1941,7 @@ export async function getEmpresaDocumentoMeta(): Promise<EmpresaDocumentoMeta> {
   const empresa = await prisma.empresa.findUnique({
     where: { id: empresaId },
     select: {
+      id: true,
       nombre: true,
       razonSocial: true,
       rut: true,

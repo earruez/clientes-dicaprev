@@ -567,5 +567,7 @@ export async function exportarInformeDocumentalPdf(informe: InformeDocumentalEmp
   ], buildRowsFirmas(informe.documentos.vencidos));
 
   drawFooter(doc.getNumberOfPages());
-  return doc;
+  const blob = doc.output("blob");
+  doc.save(`informe-documental-${informe.empresa.nombre.replace(/\s/g, "_")}.pdf`);
+  return blob;
 }

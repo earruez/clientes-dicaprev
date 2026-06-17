@@ -24,6 +24,7 @@ import { PlanNav } from "../components/plan-nav";
 import { ActivityFormFields, type ActivityFormModel } from "../components/activity-form-fields";
 import { KpiCard, QuickActions, TopActions, EstadoBadge, EstadoPlanBadge } from "../components/plan-ui";
 import { exportPlanTrabajoPdf } from "../export-plan-pdf";
+import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
   getPlanTrabajo,
@@ -239,7 +240,25 @@ export default function PlanResumenPage() {
         enviadoRevisionEn: plan.enviadoRevisionEn,
         versionPlan: plan.version,
       };
-      await exportPlanTrabajoPdf(snapshot, year);
+      const pdf = await exportPlanTrabajoPdf(snapshot, year);
+      await persistirDocumentoGenerado({
+        empresaId: plan.empresaId,
+        modulo: "plandetrabajo",
+        tipoDocumento: "plan_trabajo_pdf",
+        entidadTipo: "plan_trabajo",
+        entidadId: plan.id,
+        nombre: `Plan de trabajo anual ${year}`,
+        blob: pdf,
+        filename: `plan-trabajo-anual-${year}.pdf`,
+        metadata: {
+          anio: plan.anio,
+          versionPlan: plan.version,
+          estadoPlan: plan.estadoPlan,
+          aprobadoPor: plan.aprobadoPor,
+          aprobadoCargo: plan.aprobadoCargo,
+          aprobadoEn: plan.aprobadoEn,
+        },
+      });
       setInfoMessage("PDF generado correctamente.");
     } catch {
       setInfoMessage("No se pudo generar el PDF. Intenta nuevamente.");

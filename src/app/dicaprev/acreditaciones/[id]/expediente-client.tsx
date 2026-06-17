@@ -29,6 +29,7 @@ import {
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
 import { cn } from "@/lib/utils";
+import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
 import {
   CambiarEstadoModal,
   TRANSICIONES,
@@ -98,6 +99,7 @@ type BloqueTrabajador = {
 
 type AcreditacionExpediente = {
   id: string;
+  empresaId: string;
   empresaNombre: string;
   mandante: string;
   tipo: string;
@@ -318,7 +320,7 @@ function Toasts({ toasts }: { toasts: ToastT[] }) {
 
 // ── Generación ZIP ────────────────────────────────────────────────────
 
-async function generarZip(docs: DocumentoInstancia[], empresaNombre: string): Promise<void> {
+async function generarZip(docs: DocumentoInstancia[], empresaNombre: string): Promise<Blob> {
   const zip = new JSZip();
   const fecha = new Date().toISOString().slice(0, 10);
   const base = `Expediente_${empresaNombre.replace(/\s/g, "_")}_${fecha}`;
@@ -359,6 +361,7 @@ async function generarZip(docs: DocumentoInstancia[], empresaNombre: string): Pr
   a.download = `${base}.zip`;
   a.click();
   URL.revokeObjectURL(url);
+  return zipBlob;
 }
 
 function generarPDF(docs: DocumentoInstancia[], ac: { empresaNombre: string; mandante: string; plantillaNombre: string }) {
@@ -424,7 +427,9 @@ function generarPDF(docs: DocumentoInstancia[], ac: { empresaNombre: string; man
     pdf.text(`NEXTPREV · Generado: ${fecha} · Página ${i}/${pages}`, 14, 290);
   }
 
+  const blob = pdf.output("blob");
   pdf.save(`Indice_${ac.empresaNombre.replace(/\s/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  return blob;
 }
 
 function generarEmail(ac: { empresaNombre: string; mandante: string }, docs: DocumentoInstancia[]) {
@@ -641,16 +646,58 @@ export default function ExpedienteClient({
     if (validacion.bloqueado) { push("error", `${validacion.faltantesOblig.length} documentos obligatorios faltantes.`); return; }
     setGenerando(true);
     try {
-      await generarZip(docs, acreditacion!.empresaNombre);
+      const zip = await generarZip(docs, acreditacion!.empresaNombre);
+      if (acreditacion?.empresaId) {
+        const stamp = new Date().toISOString().slice(0, 10);
+        await persistirDocumentoGenerado({
+          empresaId: acreditacion.empresaId,
+          modulo: "acreditaciones",
+          tipoDocumento: "expediente_acreditacion_zip",
+          entidadTipo: "acreditacion",
+          entidadId: acreditacion.id,
+          nombre: `Expediente acreditación ${acreditacion.empresaNombre}`,
+          blob: zip,
+          filename: `expediente-${acreditacion.empresaNombre.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${stamp}.zip`,
+          metadata: {
+            acreditacionId: acreditacion.id,
+            mandante: acreditacion.mandante,
+            plantillaNombre: acreditacion.plantillaNombre,
+            documentosIncluidos: docs.filter((d) => d.estado !== "faltante").length,
+          },
+        });
+      }
       addHistorial("generado");
       push("success", "ZIP descargado correctamente.");
     } catch { push("error", "Error al generar el ZIP."); }
     finally { setGenerando(false); }
   }
 
-  function handlePDF() {
-    generarPDF(docs, { empresaNombre: acreditacion!.empresaNombre, mandante: acreditacion!.mandante, plantillaNombre: acreditacion!.plantillaNombre });
-    push("success", "PDF índice generado.");
+  async function handlePDF() {
+    try {
+      const pdf = generarPDF(docs, { empresaNombre: acreditacion!.empresaNombre, mandante: acreditacion!.mandante, plantillaNombre: acreditacion!.plantillaNombre });
+      if (acreditacion?.empresaId) {
+        const stamp = new Date().toISOString().slice(0, 10);
+        await persistirDocumentoGenerado({
+          empresaId: acreditacion.empresaId,
+          modulo: "acreditaciones",
+          tipoDocumento: "indice_acreditacion_pdf",
+          entidadTipo: "acreditacion",
+          entidadId: acreditacion.id,
+          nombre: `Índice expediente ${acreditacion.empresaNombre}`,
+          blob: pdf,
+          filename: `indice-${acreditacion.empresaNombre.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${stamp}.pdf`,
+          metadata: {
+            acreditacionId: acreditacion.id,
+            mandante: acreditacion.mandante,
+            plantillaNombre: acreditacion.plantillaNombre,
+            documentosIncluidos: docs.filter((d) => d.estado !== "faltante").length,
+          },
+        });
+      }
+      push("success", "PDF índice generado.");
+    } catch {
+      push("error", "Error al generar el PDF.");
+    }
   }
 
   function handleEmail() {
