@@ -181,7 +181,7 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
         try {
           const formData = new FormData();
           formData.set("empresaId", empresaId);
-          const result = await prepararEmpresaAction(formData);
+          await prepararEmpresaAction(formData);
           addMessage("success", `Empresa "${nombre}" preparada exitosamente`);
           router.refresh();
         } catch (error) {
@@ -252,6 +252,12 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
       formData.set("confirmacionTexto", deleteConfirmText);
       formData.set("currentPassword", deletePassword);
       const result = await eliminarEmpresaDefinitivamenteAction(formData);
+
+      if (!result.ok) {
+        addMessage("error", result.error);
+        return;
+      }
+
       addMessage("success", result.message);
       closeDeleteEmpresaModal();
       router.refresh();
