@@ -16,6 +16,7 @@ export type BootstrapEmpresaOperativaResult = {
   documentosTrabajadorCreados: number;
   reglasTrabajadorCreadas: number;
   documentosVehiculoCreados: number;
+  capacitacionesCreadas: number;
 };
 
 type AreaTemplate = {
@@ -77,16 +78,9 @@ const DOCUMENTOS_TRABAJADOR_BASE: WorkerDocTemplate[] = [
     vigenciaDias: null,
   },
   {
-    codigo: "ODI_OBLIGACION_INFORMAR",
-    nombre: "ODI / obligacion de informar",
-    descripcion: "Constancia de obligacion de informar riesgos y medidas preventivas.",
-    requiereVencimiento: false,
-    vigenciaDias: null,
-  },
-  {
     codigo: "IRL_RIESGOS",
-    nombre: "Informacion de Riesgos Laborales (IRL)",
-    descripcion: "Acta de informacion sobre riesgos laborales firmada por el trabajador.",
+    nombre: "IRL - Informe de Riesgos Laborales",
+    descripcion: "Constancia de informacion de riesgos y medidas preventivas laborales.",
     requiereVencimiento: false,
     vigenciaDias: null,
   },
@@ -431,7 +425,6 @@ async function ensureReglaDocumentoTrabajadorBase(empresaId: string): Promise<nu
     "CONTRATO_TRABAJO",
     "CEDULA_IDENTIDAD",
     "REGLAMENTO_INTERNO_RECIBIDO",
-    "ODI_OBLIGACION_INFORMAR",
     "IRL_RIESGOS",
     "ENTREGA_EPP",
     "CAPACITACION_INICIAL",
@@ -479,6 +472,169 @@ async function ensureReglaDocumentoTrabajadorBase(empresaId: string): Promise<nu
   return created;
 }
 
+const CAPACITACIONES_CATALOGO_BASE = [
+  {
+    codigo: "CAP-IRL-001",
+    nombre: "Informacion de Riesgos Laborales (IRL)",
+    descripcion: "Capacitacion sobre riesgos especificos del puesto de trabajo e IRL.",
+    categoria: "sst",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-EPP-001",
+    nombre: "Uso correcto de EPP",
+    descripcion: "Uso, mantenimiento y reposicion de elementos de proteccion personal.",
+    categoria: "sst",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: false,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-MMC-001",
+    nombre: "Manejo manual de cargas",
+    descripcion: "Tecnicas seguras para manipulacion manual de cargas y prevencion de lesiones.",
+    categoria: "sst",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 24,
+    requiereEvaluacion: false,
+    requiereFirma: true,
+    generaCertificado: false,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-ALT-001",
+    nombre: "Prevencion de caidas",
+    descripcion: "Controles preventivos para trabajo en altura y prevencion de caidas a distinto nivel.",
+    categoria: "sst",
+    modalidad: "presencial",
+    duracionHoras: 4,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-EME-001",
+    nombre: "Emergencias y evacuacion",
+    descripcion: "Procedimientos de respuesta ante emergencia y rutas de evacuacion.",
+    categoria: "emergencia",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 12,
+    requiereEvaluacion: false,
+    requiereFirma: true,
+    generaCertificado: false,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-EXT-001",
+    nombre: "Uso de extintores",
+    descripcion: "Uso practico y seguro de extintores segun tipo de fuego.",
+    categoria: "emergencia",
+    modalidad: "presencial",
+    duracionHoras: 2,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-PAU-001",
+    nombre: "Primeros auxilios basicos",
+    descripcion: "Conceptos y tecnicas basicas de primeros auxilios en faena.",
+    categoria: "salud_ocupacional",
+    modalidad: "presencial",
+    duracionHoras: 4,
+    vigenciaMeses: 24,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: false,
+  },
+  {
+    codigo: "CAP-IND-001",
+    nombre: "Induccion trabajador nuevo",
+    descripcion: "Induccion inicial para nuevos ingresos sobre normas, riesgos y procedimientos.",
+    categoria: "induccion",
+    modalidad: "presencial",
+    duracionHoras: 4,
+    vigenciaMeses: 12,
+    requiereEvaluacion: true,
+    requiereFirma: true,
+    generaCertificado: true,
+    esObligatoria: true,
+  },
+  {
+    codigo: "CAP-RPS-001",
+    nombre: "Riesgos psicosociales",
+    descripcion: "Sensibilizacion sobre factores de riesgo psicosocial y medidas preventivas.",
+    categoria: "psicosocial",
+    modalidad: "online",
+    duracionHoras: 2,
+    vigenciaMeses: null as number | null,
+    requiereEvaluacion: false,
+    requiereFirma: false,
+    generaCertificado: false,
+    esObligatoria: false,
+  },
+  {
+    codigo: "CAP-OYA-001",
+    nombre: "Orden y aseo en el lugar de trabajo",
+    descripcion: "Buenas practicas de orden, limpieza y estandar 5S en areas de trabajo.",
+    categoria: "sst",
+    modalidad: "online",
+    duracionHoras: 1,
+    vigenciaMeses: null as number | null,
+    requiereEvaluacion: false,
+    requiereFirma: false,
+    generaCertificado: false,
+    esObligatoria: true,
+  },
+] as const;
+
+async function ensureCapacitacionesBase(empresaId: string): Promise<number> {
+  let created = 0;
+  for (const cap of CAPACITACIONES_CATALOGO_BASE) {
+    const existing = await prisma.capacitacion.findUnique({
+      where: { empresaId_codigo: { empresaId, codigo: cap.codigo } },
+      select: { id: true },
+    });
+    if (existing) continue;
+    await prisma.capacitacion.create({
+      data: {
+        empresaId,
+        codigo: cap.codigo,
+        nombre: cap.nombre,
+        descripcion: cap.descripcion,
+        categoria: cap.categoria,
+        modalidad: cap.modalidad,
+        duracionHoras: cap.duracionHoras,
+        vigenciaMeses: cap.vigenciaMeses ?? null,
+        requiereEvaluacion: cap.requiereEvaluacion,
+        requiereFirma: cap.requiereFirma,
+        generaCertificado: cap.generaCertificado,
+        esObligatoria: cap.esObligatoria,
+        activa: true,
+      },
+    });
+    created += 1;
+  }
+  return created;
+}
+
 export async function bootstrapEmpresaOperativa(
   empresaId: string,
   opciones: BootstrapOptions = {},
@@ -512,6 +668,7 @@ export async function bootstrapEmpresaOperativa(
   const documentosTrabajadorCreados = await ensureDocumentoTipoTrabajadorBase(empresa.id);
   const reglasTrabajadorCreadas = await ensureReglaDocumentoTrabajadorBase(empresa.id);
   const documentosVehiculoCreados = await ensureDocumentoTipoVehiculoBase(empresa.id);
+  const capacitacionesCreadas = await ensureCapacitacionesBase(empresa.id);
 
   return {
     empresaId: empresa.id,
@@ -523,5 +680,6 @@ export async function bootstrapEmpresaOperativa(
     documentosTrabajadorCreados,
     reglasTrabajadorCreadas,
     documentosVehiculoCreados,
+    capacitacionesCreadas,
   };
 }

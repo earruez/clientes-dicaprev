@@ -9,6 +9,7 @@ import {
   cambiarEstadoCapacitacionAsignacion,
   enviarCapacitacionAsignacion,
   deleteCapacitacionAsignacion,
+  descargarCertificadoCapacitacionPdf,
   type AsignacionCapacitacion,
   type CapacitacionCatalogo,
 } from "@/actions/capacitaciones";
@@ -591,12 +592,20 @@ export default function TabAsignaciones() {
         }
 
         case "generar_cert": {
-          // TODO: Implementar generación de certificado con Documento real
+          const blob = await descargarCertificadoCapacitacionPdf(item.id);
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `certificado-${item.capacitacionNombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${item.trabajadorNombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
           registrarAccion({
-            accion: "crear", modulo: "capacitacion", entidadTipo: "Certificado", entidadId: "cert-mock",
-            descripcion: `Generó certificado de '${item.capacitacionNombre}' para ${item.trabajadorNombre}`,
+            accion: "crear", modulo: "capacitacion", entidadTipo: "Certificado", entidadId: item.id,
+            descripcion: `Descargó certificado de '${item.capacitacionNombre}' para ${item.trabajadorNombre}`,
           });
-          setModalCert({ certId: "cert-mock-" + item.id, nombre: item.capacitacionNombre });
+          setModalCert({ certId: `cert-${item.id}`, nombre: item.capacitacionNombre });
           break;
         }
 
@@ -762,9 +771,18 @@ export default function TabAsignaciones() {
               <span />
             </div>
             {grouped.length === 0 ? (
-              <div className="py-14 text-center">
+              <div className="py-14 text-center px-6">
                 <ClipboardList className="h-8 w-8 text-slate-200 mx-auto mb-2" />
-                <p className="text-sm text-slate-400">Sin asignaciones para los filtros aplicados.</p>
+                <p className="text-sm text-slate-500 font-medium">
+                  {catalogo.length === 0
+                    ? "No hay capacitaciones en el catálogo."
+                    : "Sin asignaciones para los filtros aplicados."}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">
+                  {catalogo.length === 0
+                    ? "Agrega capacitaciones en la pestaña Catálogo antes de asignarlas a trabajadores."
+                    : "Usa el botón \"Nueva asignación\" para asignar una capacitación a un trabajador."}
+                </p>
               </div>
             ) : (
               <div className="divide-y divide-slate-50">

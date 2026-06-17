@@ -59,7 +59,7 @@ export const CATALOGO_CAPACITACIONES_SST: CapacitacionSSTDef[] = [
   },
   {
     codigo: "CAP-SST-002",
-    nombre: "Obligación de Informar (ODI) – Riesgos del Puesto de Trabajo",
+    nombre: "IRL - Informe de Riesgos Laborales del Puesto de Trabajo",
     descripcion:
       "Información sobre riesgos específicos del puesto, agentes físicos/químicos/biológicos presentes y medidas de control vigentes.",
     categoria: "prevencion_riesgos",

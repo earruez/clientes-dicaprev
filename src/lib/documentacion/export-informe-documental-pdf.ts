@@ -169,6 +169,14 @@ async function loadImageDataUrl(src: string | null | undefined): Promise<string 
 
   if (src.startsWith("data:image/")) return src;
 
+  try {
+    const parsed = new URL(src, "https://app.nextprev.cl");
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    src = parsed.toString();
+  } catch {
+    return null;
+  }
+
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";

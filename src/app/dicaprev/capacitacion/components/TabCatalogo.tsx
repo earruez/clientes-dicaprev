@@ -280,11 +280,22 @@ export default function TabCatalogo() {
           <BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" />
           <p className="text-sm text-slate-500">
             {catalogo.length === 0
-              ? "No hay capacitaciones cargadas para esta empresa."
+              ? "No hay capacitaciones en el catálogo de esta empresa."
               : "No hay resultados para los filtros aplicados."}
           </p>
-          {catalogo.length === 0 && (
-            <p className="text-xs text-slate-400 mt-1">Crea la primera capacitación para iniciar el catálogo.</p>
+          {catalogo.length === 0 ? (
+            <div className="mt-3 flex flex-col items-center gap-2">
+              <p className="text-xs text-slate-400">Crea la primera capacitación para iniciar el catálogo.</p>
+              <button
+                onClick={openCrear}
+                className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-cyan-700 px-4 py-2 text-xs font-semibold text-white hover:bg-cyan-800 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Nueva capacitación
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400 mt-1">Ajusta los filtros para ver otros resultados.</p>
           )}
         </div>
       ) : (

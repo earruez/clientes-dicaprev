@@ -1177,6 +1177,7 @@ async function renderStructuredIrlPdf(
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
     doc.text(footer, layout.margin, layout.pageHeight - 10);
+    doc.text("Generado por NextPrev", layout.margin + layout.width - 118, layout.pageHeight - 10);
   }
 }
 
@@ -1234,6 +1235,7 @@ async function renderStructuredEppPdf(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.text(`Estado documental: ${estadoLabel(params.estado)} | Documento: ${tipoNombre}`, layout.margin, layout.pageHeight - 14);
+  doc.text("Generado por NextPrev", layout.margin + layout.width - 118, layout.pageHeight - 14);
 }
 
 export async function renderEppPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams, tipoNombre: string) {
@@ -1313,6 +1315,7 @@ function renderGenericPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.text("Formato generico aplicado por no existir plantilla especializada.", margin, pageHeight - 20);
+  doc.text("Generado por NextPrev", margin + contentWidth - 118, pageHeight - 20);
 }
 
 export async function exportTrabajadorDocumentoPdf(params: ExportTrabajadorDocumentoPdfParams) {
