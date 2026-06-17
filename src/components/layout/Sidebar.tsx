@@ -148,7 +148,10 @@ const MODULES: ModuleItem[] = [
     icon: Building2,
     defaultHref: "/dicaprev/superadmin",
     alwaysVisible: true,
-    items: [{ href: "/dicaprev/superadmin", label: "Seleccionar empresa" }],
+    items: [
+      { href: "/dicaprev/superadmin", label: "Seleccionar empresa" },
+      { href: "/dicaprev/superadmin/auditoria-documental", label: "Auditoría documental" },
+    ],
   },
   {
     id: "sistema",
