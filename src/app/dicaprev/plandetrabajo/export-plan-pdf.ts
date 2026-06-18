@@ -1,6 +1,5 @@
 import { jsPDF } from "jspdf";
 import type { EstadoActividad, EstadoPlan, MesShort } from "@/actions/plandetrabajo";
-import { EMPRESA_MOCK } from "@/lib/empresa/empresa-store";
 
 // Compatible snapshot type accepted by this function.
 // Pages that call exportPlanTrabajoPdf build this shape from Prisma-backed data.
@@ -31,6 +30,8 @@ export type PlanPdfSnapshot = {
   motivoRechazo: string | null | undefined;
   enviadoRevisionEn: string | null | undefined;
   versionPlan: number;
+  empresaNombre: string;
+  empresaLogoUrl?: string | null;
 };
 
 async function loadImageDataUrl(src: string): Promise<string | null> {
@@ -122,8 +123,8 @@ function planStateLabel(state: EstadoPlan) {
 export async function exportPlanTrabajoPdf(snapshot: PlanPdfSnapshot, year: string) {
   const actividades = snapshot.actividades;
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-  const companyName = EMPRESA_MOCK.nombre || "Empresa cliente";
-  const companyLogoSrc = (EMPRESA_MOCK as { logoUrl?: string }).logoUrl;
+  const companyName = snapshot.empresaNombre || "Empresa cliente";
+  const companyLogoSrc = snapshot.empresaLogoUrl;
   const companyLogo = companyLogoSrc ? await loadImageDataUrl(companyLogoSrc) : null;
 
   const marginX = 34;

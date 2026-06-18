@@ -500,7 +500,7 @@ export default function DocumentacionPage() {
         empresaId: informe.empresa.id,
         modulo: "documentacion",
         tipoDocumento: "informe_documental_pdf",
-        entidadTipo: "empresa",
+        entidadTipo: "informe_documental_empresa",
         entidadId: informe.empresa.id,
         nombre: `Informe documental ${informe.empresa.nombre}`,
         blob: pdf,

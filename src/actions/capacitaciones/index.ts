@@ -618,47 +618,6 @@ function formatDate(value: Date | string | null | undefined): string {
   return parsed.toLocaleDateString("es-CL", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function normalizeSafeLogoUrl(value: string | null | undefined): string | null {
-  const raw = (value ?? "").trim();
-  if (!raw) return null;
-  if (raw.startsWith("data:image/")) return raw;
-  try {
-    const parsed = new URL(raw, "https://app.nextprev.cl");
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
-    return parsed.toString();
-  } catch {
-    return null;
-  }
-}
-
-async function loadLogoDataUrl(src: string | null): Promise<string | null> {
-  if (!src || typeof window === "undefined") return null;
-  if (src.startsWith("data:image/")) return src;
-
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          resolve(null);
-          return;
-        }
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
-      } catch {
-        resolve(null);
-      }
-    };
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
 const CERTIFICADOS_UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "documentos");
 
 function slugify(value: string): string {
@@ -708,25 +667,18 @@ async function buildCertificadoCapacitacionPdf(input: {
   const pageHeight = doc.internal.pageSize.getHeight();
   const marginX = 36;
   const contentWidth = pageWidth - marginX * 2;
-  const logo = await loadLogoDataUrl(normalizeSafeLogoUrl(input.empresaLogoUrl));
 
   doc.setDrawColor(203, 213, 225);
   doc.rect(marginX, 34, contentWidth, 76);
-  if (logo) {
-    try {
-      doc.addImage(logo, "PNG", marginX + 10, 44, 72, 28);
-    } catch {
-      // continuar sin logo si falla
-    }
-  }
+  // jsPDF may handle URLs if enabled; fallback is text-only header.
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
-  doc.text("CERTIFICADO DE CAPACITACIÓN", marginX + (logo ? 92 : 14), 58);
+  doc.text("CERTIFICADO DE CAPACITACIÓN", marginX + 14, 58);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.text(safeText(input.empresaNombre), marginX + (logo ? 92 : 14), 74);
-  doc.text(`RUT: ${safeText(input.empresaRut)}`, marginX + (logo ? 92 : 14), 88);
+  doc.text(safeText(input.empresaNombre), marginX + 14, 74);
+  doc.text(`RUT: ${safeText(input.empresaRut)}`, marginX + 14, 88);
 
   const rows: Array<[string, string]> = [
     ["Trabajador", safeText(input.trabajadorNombre)],

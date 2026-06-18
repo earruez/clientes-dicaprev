@@ -242,6 +242,21 @@ export async function getPlanTrabajo(anio?: number): Promise<PlanTrabajoRow> {
 }
 
 /**
+ * Obtiene el nombre y logo de la empresa activa para un plan PDF.
+ */
+export async function getEmpresaActivaParaPlan(): Promise<{ empresaNombre: string; empresaLogoUrl: string | null }> {
+  const { empresaId } = await requirePermission("canReadCumplimiento");
+  const empresa = await prisma.empresa.findUniqueOrThrow({
+    where: { id: empresaId },
+    select: { nombre: true, logoUrl: true },
+  });
+  return {
+    empresaNombre: empresa.nombre,
+    empresaLogoUrl: empresa.logoUrl,
+  };
+}
+
+/**
  * Lista todas las actividades de un plan.
  */
 export async function getActividadesPlan(planId: string): Promise<ActividadPlanRow[]> {
