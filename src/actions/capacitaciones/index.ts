@@ -5,7 +5,11 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import type { Prisma } from "@prisma/client";
 import { jsPDF } from "jspdf";
-import { construirRegistroDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado";
+import { construirArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
+import {
+  construirMetadataDocumentoPdf,
+  construirRegistroDocumentoGenerado,
+} from "@/lib/documentacion/registro-documento-generado";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -633,7 +637,7 @@ function slugify(value: string): string {
 
 async function persistirBlobCertificado(blob: Blob, filename: string): Promise<{ archivoNombre: string; archivoUrl: string; archivoPeso: number }> {
   const archivoNombre = `${randomUUID()}.pdf`;
-  const archivoUrl = `/uploads/documentos/${archivoNombre}`;
+  const archivoUrl = construirArchivoSeguroUrl(archivoNombre);
   const destino = path.join(CERTIFICADOS_UPLOAD_DIR, archivoNombre);
   const buffer = new Uint8Array(await blob.arrayBuffer());
 
@@ -815,14 +819,19 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
       archivoUrl: persistido.archivoUrl,
       archivoTipo: "application/pdf",
       archivoPeso: persistido.archivoPeso,
-      metadata: {
+      metadata: construirMetadataDocumentoPdf({
+        estado: asignacion.aprobado === false ? "no_aprobado" : "completado",
+        historialDetalle: "Documento generado automáticamente",
+        usuarioId: context.usuarioId,
+        metadata: {
         asignacionId: asignacion.id,
         trabajadorId: asignacion.trabajadorId,
         capacitacionId: asignacion.capacitacionId,
         resultado,
         nota: asignacion.nota,
         vigenciaHasta: asignacion.fechaVencimiento?.toISOString() ?? null,
-      },
+        },
+      }),
     }),
   });
 

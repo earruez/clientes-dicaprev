@@ -29,7 +29,11 @@ import {
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
 import { cn } from "@/lib/utils";
-import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
+import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
+import {
+  guardarDocumentoGeneradoPDF,
+  persistirDocumentoGenerado,
+} from "@/lib/documentacion/registro-documento-generado-client";
 import {
   CambiarEstadoModal,
   TRANSICIONES,
@@ -424,7 +428,7 @@ function generarPDF(docs: DocumentoInstancia[], ac: { empresaNombre: string; man
     pdf.setPage(i);
     pdf.setFontSize(7);
     pdf.setTextColor(148, 163, 184);
-    pdf.text(`NEXTPREV · Generado: ${fecha} · Página ${i}/${pages}`, 14, 290);
+    pdf.text(`Generado por NextPrev · ${fecha} · Página ${i}/${pages}`, 14, 290);
   }
 
   const blob = pdf.output("blob");
@@ -488,8 +492,8 @@ function DocRow({ doc }: { doc: DocumentoInstancia }) {
           Vence {fmt(doc.fechaVencimiento)}
         </span>
       )}
-      {doc.archivoUrl && (
-        <a href={doc.archivoUrl} className="shrink-0 text-blue-500 hover:text-blue-700" title="Ver documento">
+      {normalizarArchivoSeguroUrl(doc.archivoUrl) && (
+        <a href={normalizarArchivoSeguroUrl(doc.archivoUrl) ?? undefined} className="shrink-0 text-blue-500 hover:text-blue-700" title="Ver documento">
           <Paperclip className="h-3.5 w-3.5" />
         </a>
       )}
@@ -677,7 +681,7 @@ export default function ExpedienteClient({
       const pdf = generarPDF(docs, { empresaNombre: acreditacion!.empresaNombre, mandante: acreditacion!.mandante, plantillaNombre: acreditacion!.plantillaNombre });
       if (acreditacion?.empresaId) {
         const stamp = new Date().toISOString().slice(0, 10);
-        await persistirDocumentoGenerado({
+        await guardarDocumentoGeneradoPDF({
           empresaId: acreditacion.empresaId,
           modulo: "acreditaciones",
           tipoDocumento: "indice_acreditacion_pdf",
@@ -686,6 +690,8 @@ export default function ExpedienteClient({
           nombre: `Índice expediente ${acreditacion.empresaNombre}`,
           blob: pdf,
           filename: `indice-${acreditacion.empresaNombre.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${stamp}.pdf`,
+          estado: estadoActual,
+          historialDetalle: "Documento generado automáticamente",
           metadata: {
             acreditacionId: acreditacion.id,
             mandante: acreditacion.mandante,

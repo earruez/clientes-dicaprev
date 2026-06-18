@@ -64,7 +64,7 @@ import {
 import { VersionesHistorialDrawer } from "./VersionesHistorialDrawer";
 import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
-import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
+import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
 import { useToast } from "@/components/ui/use-toast";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
@@ -178,7 +178,7 @@ export function PendientesPanel({
 
       if (empresaMeta?.id) {
         const filename = `documento-${doc.tipo.nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${worker.nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
-        await persistirDocumentoGenerado({
+        await guardarDocumentoGeneradoPDF({
           empresaId: empresaMeta.id,
           modulo: "trabajadores",
           tipoDocumento: "documento_trabajador_pdf",
@@ -187,6 +187,9 @@ export function PendientesPanel({
           nombre: `${doc.tipo.nombre} - ${worker.nombre} ${worker.apellido}`,
           blob: pdf,
           filename,
+          version: doc.versionNumero ?? null,
+          estado: doc.estado,
+          historialDetalle: "Documento generado automáticamente",
           metadata: {
             trabajadorId: worker.id,
             documentoId: doc.documentoId ?? null,
