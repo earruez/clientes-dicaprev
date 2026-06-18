@@ -77,6 +77,19 @@ export type CrearFirmaDocumentoGeneradoTrabajadorInput = {
   expiresAt?: Date | null;
 };
 
+export type FirmaPdfBloqueItem = {
+  nombreFirmante: string | null;
+  rutFirmante: string | null;
+  fechaHora: string | null;
+  tokenTrazabilidad: string | null;
+  estado: "firmado" | "pendiente" | "expirado" | "rechazado";
+};
+
+export type FirmasPdfBloque = {
+  prevencionista: FirmaPdfBloqueItem | null;
+  trabajador: FirmaPdfBloqueItem | null;
+};
+
 export type CompletarFirmaDocumentoInput = {
   token: string;
   nombreFirmante: string;
@@ -311,6 +324,63 @@ export async function crearFirmaDocumentoGeneradoTrabajador(
     id: firma.id,
     token: firma.token,
     link: `/firma/${firma.token}`,
+  };
+}
+
+export async function obtenerBloqueFirmasDocumentoTrabajador(documentoId: string): Promise<FirmasPdfBloque> {
+  const { empresaId } = await requirePermission("canReadDocumentacion");
+
+  const documento = await prisma.trabajadorDocumento.findFirst({
+    where: { id: documentoId, empresaId },
+    select: { id: true },
+  });
+
+  if (!documento) {
+    throw new Error("Documento de trabajador no encontrado para la empresa activa.");
+  }
+
+  const firmas = await prisma.firmaDocumento.findMany({
+    where: {
+      empresaId,
+      documentoId,
+      documentoOrigen: "documento_trabajador",
+    },
+    select: {
+      estado: true,
+      tipoFirmante: true,
+      nombreFirmante: true,
+      rutFirmante: true,
+      firmadoAt: true,
+      tokenTrazabilidad: true,
+      hashDocumento: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const firmaTrabajador = firmas.find((f) => (f.tipoFirmante ?? "trabajador") === "trabajador") ?? null;
+  const firmaPrevencionista = firmas.find((f) => (f.tipoFirmante ?? "") === "prevencionista") ?? null;
+
+  const toItem = (firma: typeof firmaTrabajador): FirmaPdfBloqueItem | null => {
+    if (!firma) return null;
+
+    const estado =
+      firma.estado === "firmado" || firma.estado === "pendiente" || firma.estado === "expirado" || firma.estado === "rechazado"
+        ? firma.estado
+        : "pendiente";
+
+    return {
+      nombreFirmante: firma.nombreFirmante ?? null,
+      rutFirmante: firma.rutFirmante ?? null,
+      fechaHora: firma.firmadoAt?.toISOString() ?? null,
+      tokenTrazabilidad: firma.tokenTrazabilidad ?? firma.hashDocumento ?? null,
+      estado,
+    };
+  };
+
+  return {
+    prevencionista: toItem(firmaPrevencionista),
+    trabajador: toItem(firmaTrabajador),
   };
 }
 

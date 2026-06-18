@@ -23,6 +23,7 @@ import { type DocTrabajadorView } from "./types";
 import { puedeGenerarseConIA } from "@/lib/documentacion/ia-generacion-helper";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
 import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
+import { obtenerBloqueFirmasDocumentoTrabajador } from "@/actions/firmas";
 import {
   cambiarEstadoTrabajadorDocumento,
   generarContenidoIATrabajadorDocumento,
@@ -892,6 +893,10 @@ export function DocumentoReviewDrawer({
     setErrorMsg(null);
 
     try {
+      const firmas = documentoParaPdf.documentoId
+        ? await obtenerBloqueFirmasDocumentoTrabajador(documentoParaPdf.documentoId)
+        : undefined;
+
       const pdf = await exportTrabajadorDocumentoPdf({
         documento: documentoParaPdf,
         trabajador: worker,
@@ -899,6 +904,7 @@ export function DocumentoReviewDrawer({
         estado: efectoEstado,
         firmadoPor: doc?.firmadoPor ?? originalDoc?.firmadoPor ?? null,
         firmadoEn: doc?.firmadoEn ?? originalDoc?.firmadoEn ?? null,
+        firmas,
         empresa: empresaMeta,
       });
 

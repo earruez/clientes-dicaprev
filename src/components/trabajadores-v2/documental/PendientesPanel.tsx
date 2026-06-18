@@ -65,6 +65,7 @@ import { VersionesHistorialDrawer } from "./VersionesHistorialDrawer";
 import { normalizarNombreDocumentoDisplay } from "@/lib/documentacion/plantillas-documento";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
 import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
+import { obtenerBloqueFirmasDocumentoTrabajador } from "@/actions/firmas";
 import { useToast } from "@/components/ui/use-toast";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
@@ -166,6 +167,10 @@ export function PendientesPanel({
     const id = doc.documentoId ?? `${worker.id}-${doc.tipo.id}`;
     try {
       setDescargandoDocId(id);
+      const firmas = doc.documentoId
+        ? await obtenerBloqueFirmasDocumentoTrabajador(doc.documentoId)
+        : undefined;
+
       const pdf = await exportTrabajadorDocumentoPdf({
         documento: doc,
         trabajador: worker,
@@ -173,6 +178,7 @@ export function PendientesPanel({
         estado: doc.estado,
         firmadoPor: doc.firmadoPor,
         firmadoEn: doc.firmadoEn,
+        firmas,
         empresa: empresaMeta,
       });
 

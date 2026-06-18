@@ -19,6 +19,7 @@ import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf"
 import type { EmpresaDocumentoMeta } from "@/actions/trabajadores/documentos";
 import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
 import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
+import { obtenerBloqueFirmasDocumentoTrabajador } from "@/actions/firmas";
 
 interface VersionesHistorialDrawerProps {
   open: boolean;
@@ -80,6 +81,8 @@ export function VersionesHistorialDrawer({
   async function handleDescargarVersion(v: VersionDocumentoView) {
     setDescargandoId(v.id);
     try {
+      const firmas = await obtenerBloqueFirmasDocumentoTrabajador(v.id);
+
       const pdf = await exportTrabajadorDocumentoPdf({
         documento: {
           tipo: { id: v.id, nombre: tipoNombre, categoria: "SST", descripcion: "", requiereVencimiento: false, vencimientoMeses: null, esCritico: false },
@@ -96,6 +99,7 @@ export function VersionesHistorialDrawer({
         estado: v.estado as import("./types").DocEstado,
         firmadoPor: v.firmadoPor ?? undefined,
         firmadoEn: v.firmadoEn ?? undefined,
+        firmas,
         empresa: empresaMeta,
       });
 
