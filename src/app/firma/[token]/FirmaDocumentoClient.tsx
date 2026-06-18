@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,12 +44,15 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   const [nombreFirmante, setNombreFirmante] = useState(firma.nombreFirmante ?? "");
   const [rutFirmante, setRutFirmante] = useState(firma.rutFirmante ?? "");
   const [firmaTexto, setFirmaTexto] = useState(firma.nombreFirmante ?? "");
+  const [firmaTrazo, setFirmaTrazo] = useState<string | null>(null);
   const [aceptoLectura, setAceptoLectura] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isRead, setIsRead] = useState(firma.estado !== "pendiente");
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -67,6 +70,74 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   const contenidoMarkdown = firma.contenidoMarkdown?.trim() ?? "";
   const contenidoLineas = contenidoMarkdown.length > 0 ? contenidoMarkdown.split("\n") : [];
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#0f172a";
+  }, []);
+
+  function getCanvasPoint(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    };
+  }
+
+  function startDraw(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (formDisabled) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const point = getCanvasPoint(event);
+    if (!point) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    canvas.setPointerCapture(event.pointerId);
+    setIsDrawing(true);
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+  }
+
+  function draw(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (!isDrawing || formDisabled) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const point = getCanvasPoint(event);
+    if (!point) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  }
+
+  function endDraw(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
+    setIsDrawing(false);
+    setFirmaTrazo(canvas.toDataURL("image/png"));
+  }
+
+  function limpiarFirmaDibujada() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setFirmaTrazo(null);
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -79,6 +150,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
           nombreFirmante,
           rutFirmante,
           aceptoLectura,
+          firmaSvg: firmaTrazo,
           firmaTexto,
         });
 
@@ -96,6 +168,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
           <h1 className="text-2xl font-semibold text-slate-900">{firma.tituloDocumento}</h1>
           {firma.descripcion ? <p className="text-sm text-slate-500">{firma.descripcion}</p> : null}
           {firma.nombreTrabajador ? <p className="text-sm text-slate-600">Documento asociado a {firma.nombreTrabajador}</p> : null}
+          {firma.rutTrabajador ? <p className="text-sm text-slate-500">RUT trabajador: {firma.rutTrabajador}</p> : null}
         </div>
       </CardHeader>
 
@@ -185,6 +258,31 @@ export default function FirmaDocumentoClient({ firma }: Props) {
                 placeholder="Escriba su nombre como firma"
                 disabled={formDisabled}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Firma dibujada</Label>
+              <canvas
+                ref={canvasRef}
+                width={640}
+                height={180}
+                onPointerDown={startDraw}
+                onPointerMove={draw}
+                onPointerUp={endDraw}
+                onPointerLeave={endDraw}
+                className="w-full rounded-xl border border-slate-200 bg-white touch-none"
+              />
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span>Dibuja tu firma desde tu teléfono.</span>
+                <button
+                  type="button"
+                  onClick={limpiarFirmaDibujada}
+                  disabled={formDisabled}
+                  className="rounded-md border border-slate-200 px-2 py-1 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Limpiar
+                </button>
+              </div>
             </div>
 
             <label className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
