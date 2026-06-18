@@ -8,8 +8,8 @@ import { jsPDF } from "jspdf";
 import { construirArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 import {
   construirMetadataDocumentoPdf,
-  construirRegistroDocumentoGenerado,
 } from "@/lib/documentacion/registro-documento-generado";
+import { registrarDocumentoGenerado } from "@/actions/documentos-generados";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -635,7 +635,7 @@ function slugify(value: string): string {
     .replace(/-+/g, "-");
 }
 
-async function persistirBlobCertificado(blob: Blob, filename: string): Promise<{ archivoNombre: string; archivoUrl: string; archivoPeso: number }> {
+async function persistirBlobCertificado(blob: Blob): Promise<{ archivoNombre: string; archivoUrl: string; archivoPeso: number }> {
   const archivoNombre = `${randomUUID()}.pdf`;
   const archivoUrl = construirArchivoSeguroUrl(archivoNombre);
   const destino = path.join(CERTIFICADOS_UPLOAD_DIR, archivoNombre);
@@ -657,6 +657,9 @@ async function buildCertificadoCapacitacionPdf(input: {
   empresaLogoUrl: string | null;
   trabajadorNombre: string;
   trabajadorRut: string;
+  prevencionistaNombre: string | null;
+  prevencionistaRut: string | null;
+  prevencionistaCargo: string | null;
   capacitacionNombre: string;
   capacitacionCategoria: string;
   modalidad: string;
@@ -665,6 +668,7 @@ async function buildCertificadoCapacitacionPdf(input: {
   resultado: string;
   nota: number | null;
   responsable: string | null;
+  tokenTrazabilidad: string;
 }): Promise<Blob> {
   const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -718,13 +722,25 @@ async function buildCertificadoCapacitacionPdf(input: {
     { maxWidth: contentWidth },
   );
 
-  doc.rect(marginX, pageHeight - 160, contentWidth, 72);
+  doc.rect(marginX, pageHeight - 180, contentWidth, 92);
+  doc.line(marginX + contentWidth / 2, pageHeight - 180, marginX + contentWidth / 2, pageHeight - 88);
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.text("Firma responsable", marginX + 10, pageHeight - 140);
+  doc.text("Firma prevencionista", marginX + 10, pageHeight - 162);
+  doc.text("Firma trabajador", marginX + contentWidth / 2 + 10, pageHeight - 162);
+
   doc.setFont("helvetica", "normal");
-  doc.text(safeText(input.responsable || "Responsable SST"), marginX + 10, pageHeight - 124);
-  doc.text(`Fecha de emisión: ${formatDate(new Date())}`, marginX + 10, pageHeight - 108);
+  doc.text(safeText(input.prevencionistaNombre || input.responsable || "Pendiente"), marginX + 10, pageHeight - 146);
+  doc.text(`RUT: ${safeText(input.prevencionistaRut)}`, marginX + 10, pageHeight - 132);
+  doc.text(`Cargo: ${safeText(input.prevencionistaCargo || "Prevencionista")}`, marginX + 10, pageHeight - 118);
+
+  doc.text(safeText(input.trabajadorNombre), marginX + contentWidth / 2 + 10, pageHeight - 146);
+  doc.text(`RUT: ${safeText(input.trabajadorRut)}`, marginX + contentWidth / 2 + 10, pageHeight - 132);
+  doc.text("Firma manual desde enlace seguro", marginX + contentWidth / 2 + 10, pageHeight - 118);
+
+  doc.text(`Fecha de emisión: ${formatDate(new Date())}`, marginX + 10, pageHeight - 102);
+  doc.text(`Trazabilidad: ${safeText(input.tokenTrazabilidad)}`, marginX + 10, pageHeight - 92, { maxWidth: contentWidth - 20 });
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
@@ -784,6 +800,21 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
 
   const trabajadorNombre = `${asignacion.trabajador.nombres} ${asignacion.trabajador.apellidos}`.trim();
   const resultado = asignacion.aprobado === true ? "Aprobado" : asignacion.aprobado === false ? "No aprobado" : "Completado";
+  const firmaPrevencionista = await prisma.firmaUsuarioPerfil.findFirst({
+    where: {
+      empresaId: context.empresaId,
+      usuarioId: context.usuarioId,
+      activa: true,
+    },
+    select: {
+      nombre: true,
+      rut: true,
+      cargo: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  const tokenTrazabilidad = randomUUID();
 
   const blob = await buildCertificadoCapacitacionPdf({
     empresaNombre: asignacion.empresa.nombre,
@@ -791,6 +822,9 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
     empresaLogoUrl: asignacion.empresa.logoUrl,
     trabajadorNombre,
     trabajadorRut: asignacion.trabajador.rut ?? "",
+    prevencionistaNombre: firmaPrevencionista?.nombre ?? null,
+    prevencionistaRut: firmaPrevencionista?.rut ?? null,
+    prevencionistaCargo: firmaPrevencionista?.cargo ?? null,
     capacitacionNombre: asignacion.capacitacion.nombre,
     capacitacionCategoria: asignacion.capacitacion.categoria,
     modalidad: asignacion.capacitacion.modalidad,
@@ -799,39 +833,39 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
     resultado,
     nota: asignacion.nota,
     responsable: asignacion.historial[0]?.usuarioId ? `Usuario ${asignacion.historial[0].usuarioId}` : asignacion.trabajador.cargo?.nombre ?? null,
+    tokenTrazabilidad,
   });
 
   const nombreArchivo = `certificado-${slugify(asignacion.capacitacion.nombre)}-${slugify(trabajadorNombre) || asignacion.id}.pdf`;
-  const persistido = await persistirBlobCertificado(blob, nombreArchivo);
+  const persistido = await persistirBlobCertificado(blob);
 
-  await prisma.documentoGeneradoRegistro.create({
-    data: construirRegistroDocumentoGenerado({
-      empresaId: context.empresaId,
+  await registrarDocumentoGenerado({
+    empresaId: context.empresaId,
+    usuarioId: context.usuarioId,
+    modulo: "capacitacion",
+    tipoDocumento: "certificado_capacitacion",
+    entidadTipo: "capacitacion_asignacion",
+    entidadId: asignacion.id,
+    nombre: `Certificado de capacitación: ${trabajadorNombre} - ${asignacion.capacitacion.nombre}`,
+    formato: "pdf",
+    archivoNombre: persistido.archivoNombre,
+    archivoNombreOriginal: nombreArchivo,
+    archivoUrl: persistido.archivoUrl,
+    archivoTipo: "application/pdf",
+    archivoPeso: persistido.archivoPeso,
+    metadata: construirMetadataDocumentoPdf({
+      estado: asignacion.aprobado === false ? "no_aprobado" : "completado",
+      historialDetalle: "Documento generado automáticamente",
       usuarioId: context.usuarioId,
-      modulo: "capacitacion",
-      tipoDocumento: "certificado_capacitacion",
-      entidadTipo: "capacitacion_asignacion",
-      entidadId: asignacion.id,
-      nombre: `Certificado de capacitación: ${trabajadorNombre} - ${asignacion.capacitacion.nombre}`,
-      formato: "pdf",
-      archivoNombre: persistido.archivoNombre,
-      archivoNombreOriginal: nombreArchivo,
-      archivoUrl: persistido.archivoUrl,
-      archivoTipo: "application/pdf",
-      archivoPeso: persistido.archivoPeso,
-      metadata: construirMetadataDocumentoPdf({
-        estado: asignacion.aprobado === false ? "no_aprobado" : "completado",
-        historialDetalle: "Documento generado automáticamente",
-        usuarioId: context.usuarioId,
-        metadata: {
+      metadata: {
         asignacionId: asignacion.id,
         trabajadorId: asignacion.trabajadorId,
         capacitacionId: asignacion.capacitacionId,
         resultado,
         nota: asignacion.nota,
         vigenciaHasta: asignacion.fechaVencimiento?.toISOString() ?? null,
-        },
-      }),
+        tokenTrazabilidad,
+      },
     }),
   });
 

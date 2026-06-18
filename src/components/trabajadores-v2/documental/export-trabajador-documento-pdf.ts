@@ -24,6 +24,22 @@ export type ExportTrabajadorDocumentoPdfParams = {
   estado: string;
   firmadoPor?: string | null;
   firmadoEn?: string | Date | null;
+  firmas?: {
+    prevencionista: {
+      nombreFirmante: string | null;
+      rutFirmante: string | null;
+      fechaHora: string | null;
+      tokenTrazabilidad: string | null;
+      estado: "firmado" | "pendiente" | "enviado_firma" | "expirado" | "rechazado";
+    } | null;
+    trabajador: {
+      nombreFirmante: string | null;
+      rutFirmante: string | null;
+      fechaHora: string | null;
+      tokenTrazabilidad: string | null;
+      estado: "firmado" | "pendiente" | "enviado_firma" | "expirado" | "rechazado";
+    } | null;
+  };
   empresa?: EmpresaPdfMeta | null;
 };
 
@@ -87,7 +103,7 @@ function detectTemplate(documento: DocTrabajadorView | null, tipoNombre: string)
   const normalized = normalizeText(tipoNombre);
   if (normalized.includes("induccion") || (normalized.includes("capacitacion") && normalized.includes("inicial"))) return "induccion";
   if (normalized.includes("epp") || normalized.includes("entrega")) return "epp";
-  if (normalized.includes("irl") || normalized.includes("riesgo") || normalized.includes("odi")) return "irl";
+  if (normalized.includes("irl") || normalized.includes("riesgo")) return "irl";
   return "generic";
 }
 
@@ -176,7 +192,7 @@ function renderMarkdownLikeIrlPdf(
   doc.text(`Firma trabajador\n${safeText(params.firmadoPor ?? params.trabajador.nombre)}`, layout.margin + 6, layout.y + 14);
   doc.text(`Responsable SST\n${safeText(params.empresa?.nombre ?? params.empresa?.razonSocial ?? "Empresa")}`, layout.margin + sigW + 6, layout.y + 14);
 
-  drawFirmaTrazabilidad(doc, layout, params);
+  drawBloqueFirmasDocumentoTrabajador(doc, layout, params);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
@@ -531,25 +547,67 @@ function drawSectionTitle(
   layout.y += 10;
 }
 
-function drawFirmaTrazabilidad(
+function drawBloqueFirmasDocumentoTrabajador(
   doc: jsPDF,
   layout: Layout,
   params: ExportTrabajadorDocumentoPdfParams,
 ) {
-  if (params.estado !== "firmado" || !params.firmadoPor) return;
+  const firmaTrabajador = params.firmas?.trabajador
+    ?? (params.firmadoPor
+      ? {
+          nombreFirmante: params.firmadoPor,
+          rutFirmante: params.trabajador.rut ?? null,
+          fechaHora: params.firmadoEn ? new Date(params.firmadoEn).toISOString() : null,
+          tokenTrazabilidad: null,
+          estado: "firmado" as const,
+        }
+      : null);
 
-  const boxHeight = 34;
-  ensurePage(doc, layout, boxHeight + 6);
+  const firmaPrevencionista = params.firmas?.prevencionista ?? null;
+
+  const boxHeight = 64;
+  const colWidth = layout.width / 2;
+  ensurePage(doc, layout, boxHeight + 8);
+
   doc.setDrawColor(160, 160, 160);
-  doc.rect(layout.margin, layout.y, layout.width, boxHeight);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
-  doc.text("Trazabilidad de firma", layout.margin + 6, layout.y + 11);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text(`Firmado por: ${safeText(params.firmadoPor)}`, layout.margin + 6, layout.y + 21);
-  doc.text(`Fecha firma: ${formatDate(params.firmadoEn)}`, layout.margin + 6, layout.y + 30);
-  layout.y += boxHeight + 6;
+  doc.rect(layout.margin, layout.y, colWidth, boxHeight);
+  doc.rect(layout.margin + colWidth, layout.y, colWidth, boxHeight);
+
+  const drawCol = (
+    x: number,
+    titulo: string,
+    firma: {
+      nombreFirmante: string | null;
+      rutFirmante: string | null;
+      fechaHora: string | null;
+      tokenTrazabilidad: string | null;
+      estado: "firmado" | "pendiente" | "enviado_firma" | "expirado" | "rechazado";
+    } | null,
+  ) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(titulo, x + 5, layout.y + 10);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+
+    if (!firma || firma.estado !== "firmado") {
+      doc.text("Pendiente de firma", x + 5, layout.y + 22);
+      return;
+    }
+
+    doc.text(`Nombre: ${safeText(firma.nombreFirmante)}`, x + 5, layout.y + 22);
+    doc.text(`RUT: ${safeText(firma.rutFirmante)}`, x + 5, layout.y + 31);
+    doc.text(`Fecha: ${formatDate(firma.fechaHora)}`, x + 5, layout.y + 40);
+    doc.text(`Trazabilidad: ${safeText(firma.tokenTrazabilidad)}`, x + 5, layout.y + 49, {
+      maxWidth: colWidth - 10,
+    });
+  };
+
+  drawCol(layout.margin, "Firma trabajador", firmaTrabajador);
+  drawCol(layout.margin + colWidth, "Firma prevencionista", firmaPrevencionista);
+
+  layout.y += boxHeight + 8;
 }
 
 function drawPuesto3Section(
@@ -1161,7 +1219,7 @@ async function renderStructuredIrlPdf(
   drawAntecedentes6Section(doc, layout, c);
   drawMaterial7Section(doc, layout, c);
   drawConsentimiento8Section(doc, layout, c, params);
-  drawFirmaTrazabilidad(doc, layout, params);
+  drawBloqueFirmasDocumentoTrabajador(doc, layout, params);
 
   // ===== FOOTER WITH CORRECT PAGE NUMBERS =====
   const totalPages = doc.getNumberOfPages();
@@ -1225,7 +1283,7 @@ async function renderStructuredEppPdf(
   doc.text(`Firma trabajador\n${safeText(c.firma_trabajador)}`, layout.margin + 6, layout.y + 14);
   doc.text(`Entregado por\n${safeText(c.entregado_por)}`, layout.margin + sigW + 6, layout.y + 14);
 
-  drawFirmaTrazabilidad(doc, layout, params);
+  drawBloqueFirmasDocumentoTrabajador(doc, layout, params);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
@@ -1293,19 +1351,14 @@ function renderGenericPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams
   const lines = doc.splitTextToSize(params.contenido || "Sin contenido", contentWidth) as string[];
   doc.text(lines, margin, y);
   
-  // Firma section if signed
-  if (params.estado === "firmado" && params.firmadoPor) {
-    y = pageHeight - 60;
-    doc.setDrawColor(100, 100, 100);
-    doc.rect(margin, y, contentWidth, 40);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.text("INFORMACIÓN DE FIRMA", margin + 6, y + 12);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
-    doc.text(`Firmado por: ${params.firmadoPor}`, margin + 6, y + 24);
-    doc.text(`Fecha y hora: ${formatDate(params.firmadoEn)}`, margin + 6, y + 34);
-  }
+  y = pageHeight - 88;
+  const genericLayout: Layout = {
+    margin,
+    width: contentWidth,
+    pageHeight,
+    y,
+  };
+  drawBloqueFirmasDocumentoTrabajador(doc, genericLayout, params);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);

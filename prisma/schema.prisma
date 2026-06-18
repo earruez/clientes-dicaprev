@@ -203,6 +203,7 @@ model Empresa {
   plantillasDocumentoEmpresa  PlantillaDocumentoEmpresa[]
   activacionEventos          ActivacionEvento[]
   firmasDocumento            FirmaDocumento[]
+  firmasUsuarioPerfil        FirmaUsuarioPerfil[]
   inducciones                 InduccionTrabajador[]
   documentosInduccionGenerados DocumentoInduccionGenerado[]
   documentosGenerados         DocumentoGeneradoRegistro[]
@@ -251,6 +252,8 @@ model Usuario {
   planesCapacitacionItemsResponsables PlanCapacitacionItem[]     @relation("UsuarioPlanCapacitacionItemResponsable")
   activacionEventosCreados       ActivacionEvento[]             @relation("UsuarioActivacionEvento")
   induccionesCreadas             InduccionTrabajador[]          @relation("UsuarioInduccionCreada")
+  firmasUsuarioPerfil            FirmaUsuarioPerfil[]
+  firmasPrevencionistaAplicadas  FirmaDocumento[]               @relation("UsuarioFirmaPrevencionistaDocumento")
   documentosGenerados            DocumentoGeneradoRegistro[]    @relation("UsuarioDocumentoGenerado")
   entregasEppCreadas             EntregaEpp[]                   @relation("UsuarioEntregaEppCreada")
   checklistTemplatesCreados      ChecklistTemplate[]            @relation("UsuarioChecklistTemplateCreado")
@@ -731,9 +734,12 @@ model FirmaDocumento {
   id              String               @id @default(cuid())
   empresaId       String
   trabajadorId    String?
+  usuarioPrevencionistaId String?
   documentoId     String
   documentoOrigen DocumentoOrigenFirma
   token           String               @unique
+  tipoFirmante    String?              @default("trabajador")
+  tipoFirma       String?              @default("manual")
   estado          EstadoFirmaDocumento @default(pendiente)
   tituloDocumento String
   descripcion     String?
@@ -745,6 +751,7 @@ model FirmaDocumento {
   firmaTexto      String?
   ipFirma         String?
   userAgentFirma  String?
+  tokenTrazabilidad String?
   hashDocumento   String?
   expiresAt       DateTime?
   firmadoAt       DateTime?
@@ -756,6 +763,7 @@ model FirmaDocumento {
 
   empresa    Empresa              @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   trabajador Trabajador?          @relation(fields: [trabajadorId], references: [id], onDelete: SetNull)
+  usuarioPrevencionista Usuario?  @relation("UsuarioFirmaPrevencionistaDocumento", fields: [usuarioPrevencionistaId], references: [id], onDelete: SetNull)
   induccion  InduccionTrabajador? @relation(fields: [induccionId], references: [id], onDelete: SetNull)
   entregaEpp EntregaEpp?          @relation(fields: [entregaEppId], references: [id], onDelete: SetNull)
 
@@ -764,8 +772,30 @@ model FirmaDocumento {
   @@index([documentoId])
   @@index([estado])
   @@index([token])
+  @@index([usuarioPrevencionistaId])
   @@index([induccionId])
   @@index([entregaEppId])
+}
+
+model FirmaUsuarioPerfil {
+  id          String   @id @default(cuid())
+  empresaId   String
+  usuarioId   String
+  nombre      String
+  rut         String
+  cargo       String?
+  imagenFirma String?
+  trazoFirma  String?
+  activa      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId])
+  @@index([usuarioId])
+  @@index([empresaId, activa])
 }
 
 model DocumentoTipoTrabajador {
