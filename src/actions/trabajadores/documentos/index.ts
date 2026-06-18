@@ -17,6 +17,8 @@ import { REGLAS_DOCUMENTALES, type ReglaDocumentalNextPrev } from "@/lib/documen
 import { prisma } from "@/lib/prisma";
 import { crearFirmaDocumento } from "@/actions/firmas";
 import { requirePermission } from "@/server/auth/permissions";
+import { generarTokenFirma } from "@/lib/firmas/tokens";
+import { generarHashFirma } from "@/lib/firmas/hash";
 import type { Worker } from "@/components/trabajadores-v2/types";
 import type {
   DocumentoTrabajador,
@@ -2859,6 +2861,44 @@ export async function validarTrabajadorDocumento(
       version: updated.version,
     },
   });
+
+  // Aplica firma automática del prevencionista si tiene perfil activo
+  const perfilFirma = await prisma.firmaUsuarioPerfil.findFirst({
+    where: { empresaId, usuarioId, activa: true },
+    select: { nombre: true, rut: true },
+  });
+
+  if (perfilFirma) {
+    const token = generarTokenFirma();
+    const timestamp = new Date().toISOString();
+    const hash = generarHashFirma({
+      documentoId: updated.id,
+      token,
+      timestamp,
+      firmante: perfilFirma.nombre,
+      rut: perfilFirma.rut,
+    });
+    await prisma.firmaDocumento.create({
+      data: {
+        empresaId,
+        usuarioPrevencionistaId: usuarioId,
+        documentoId: updated.id,
+        documentoOrigen: "documento_trabajador",
+        token,
+        tipoFirmante: "prevencionista",
+        tipoFirma: "automatica",
+        estado: "firmado",
+        tituloDocumento: documento.nombre,
+        descripcion: "Firma automática del prevencionista al validar el documento",
+        nombreFirmante: perfilFirma.nombre,
+        rutFirmante: perfilFirma.rut,
+        tokenTrazabilidad: token,
+        hashDocumento: hash,
+        aceptoLectura: true,
+        firmadoAt: new Date(),
+      },
+    });
+  }
 
   return { id: updated.id };
 }
