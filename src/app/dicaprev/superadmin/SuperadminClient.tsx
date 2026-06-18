@@ -274,6 +274,8 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
     const nombre = formData.get("nombre") as string;
     const email = formData.get("email") as string;
     const rol = formData.get("rol") as string;
+    const passwordTemporal = formData.get("passwordTemporal") as string;
+    const confirmarPasswordTemporal = formData.get("confirmarPasswordTemporal") as string;
 
     if (!nombre?.trim()) {
       addMessage("error", "Nombre de usuario es requerido");
@@ -287,6 +289,21 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
 
     if (!rol || !SUPERADMIN_ROLES.includes(rol as Rol)) {
       addMessage("error", "Rol válido es requerido");
+      return;
+    }
+
+    if (!passwordTemporal?.trim()) {
+      addMessage("error", "Contraseña temporal es requerida");
+      return;
+    }
+
+    if (passwordTemporal.trim().length < 8) {
+      addMessage("error", "La contraseña temporal debe tener al menos 8 caracteres");
+      return;
+    }
+
+    if (passwordTemporal !== confirmarPasswordTemporal) {
+      addMessage("error", "La confirmación de contraseña no coincide");
       return;
     }
 
@@ -657,7 +674,7 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
         {/* Usuarios */}
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Usuarios</h2>
-          <form onSubmit={(e) => { e.preventDefault(); handleCreateUsuario(new FormData(e.currentTarget)); }} ref={createUsuarioFormRef} className="mt-4 grid gap-3 md:grid-cols-5">
+          <form onSubmit={(e) => { e.preventDefault(); handleCreateUsuario(new FormData(e.currentTarget)); }} ref={createUsuarioFormRef} className="mt-4 grid gap-3 md:grid-cols-6">
             <input name="nombre" placeholder="Nombre" disabled={isLoading} className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50" />
             <input name="email" placeholder="email@dominio.cl" type="email" disabled={isLoading} className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50" />
             <select name="rol" disabled={isLoading} defaultValue="ADMIN_EMPRESA" className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50">
@@ -667,6 +684,24 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
                 </option>
               ))}
             </select>
+            <input
+              name="passwordTemporal"
+              placeholder="Contraseña temporal"
+              type="password"
+              minLength={8}
+              autoComplete="new-password"
+              disabled={isLoading}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+            />
+            <input
+              name="confirmarPasswordTemporal"
+              placeholder="Confirmar contraseña"
+              type="password"
+              minLength={8}
+              autoComplete="new-password"
+              disabled={isLoading}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"
+            />
             <button disabled={isLoading} className="inline-flex items-center justify-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 md:col-span-1 disabled:opacity-50">
               {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Crear usuario

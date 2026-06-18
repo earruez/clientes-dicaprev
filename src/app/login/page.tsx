@@ -4,6 +4,19 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { Mail, Lock, Eye, EyeOff } from "lucide-react";
 
+const NO_PASSWORD_CONFIGURED_ERROR = "NO_PASSWORD_CONFIGURED";
+const NO_PASSWORD_CONFIGURED_MESSAGE = "Usuario sin contraseña configurada. Solicita al administrador restablecer acceso.";
+
+function resolveAuthErrorMessage(rawError: string): string {
+  const decodedError = decodeURIComponent(rawError);
+
+  if (decodedError.includes(NO_PASSWORD_CONFIGURED_ERROR)) {
+    return NO_PASSWORD_CONFIGURED_MESSAGE;
+  }
+
+  return "Credenciales inválidas o usuario no autorizado.";
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,7 +45,7 @@ export default function LoginPage() {
     }
 
     if (result.error) {
-      setError("Credenciales inválidas o usuario no autorizado.");
+      setError(resolveAuthErrorMessage(result.error));
       return;
     }
 

@@ -3,6 +3,8 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password-hash";
 
+const NO_PASSWORD_CONFIGURED_ERROR = "NO_PASSWORD_CONFIGURED";
+
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
@@ -50,12 +52,19 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
         } else {
-          // Fallback: usuario sin hash usa AUTH_DEV_PASSWORD
+          // En producción nunca permitimos fallback de clave compartida.
+          if (process.env.NODE_ENV === "production") {
+            console.log(`[auth] Usuario sin passwordHash bloqueado en producción: ${email}`);
+            throw new Error(NO_PASSWORD_CONFIGURED_ERROR);
+          }
+
+          // Solo en desarrollo/local: fallback temporal para usuarios legacy sin hash.
           const devPassword = process.env.AUTH_DEV_PASSWORD;
           if (!devPassword) {
             console.log(`[auth] AUTH_DEV_PASSWORD no definida, usuario sin hash: ${email}`);
-            return null;
+            throw new Error(NO_PASSWORD_CONFIGURED_ERROR);
           }
+
           if (password !== devPassword) {
             console.log(`[auth] Contraseña devPassword incorrecta para: ${email}`);
             return null;
