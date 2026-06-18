@@ -104,7 +104,7 @@ export function VersionesHistorialDrawer({
           empresaId: empresaMeta.id,
           modulo: "trabajadores",
           tipoDocumento: "documento_trabajador_pdf",
-          entidadTipo: "trabajador_documento_version",
+          entidadTipo: "trabajador_documento",
           entidadId: v.id,
           nombre: `${tipoNombre} - ${trabajador.nombre} ${trabajador.apellido}`,
           blob: pdf,

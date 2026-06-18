@@ -29,6 +29,7 @@ import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
   getPlanTrabajo,
   getActividadesPlan,
+  getEmpresaActivaParaPlan,
   crearActividad,
   enviarPlanRevision,
   aprobarPlan,
@@ -211,6 +212,7 @@ export default function PlanResumenPage() {
     if (!plan) return;
     try {
       const year = String(plan.anio);
+      const empresa = await getEmpresaActivaParaPlan();
       // Build a snapshot-compatible object for the existing export function
       const snapshot = {
         actividades: actividades.map((a) => ({
@@ -239,6 +241,8 @@ export default function PlanResumenPage() {
         motivoRechazo: plan.motivoRechazo ?? "",
         enviadoRevisionEn: plan.enviadoRevisionEn,
         versionPlan: plan.version,
+        empresaNombre: empresa.empresaNombre,
+        empresaLogoUrl: empresa.empresaLogoUrl,
       };
       const pdf = await exportPlanTrabajoPdf(snapshot, year);
       await persistirDocumentoGenerado({

@@ -1137,12 +1137,6 @@ async function renderStructuredIrlPdf(
     layout.y + 16,
     { align: "center" },
   );
-  doc.text(
-    `Página 1 de ${doc.getNumberOfPages()}`,
-    layout.margin + layout.width / 2,
-    layout.y + 24,
-    { align: "center" },
-  );
 
   layout.y += 32;
 
@@ -1169,15 +1163,16 @@ async function renderStructuredIrlPdf(
   drawConsentimiento8Section(doc, layout, c, params);
   drawFirmaTrazabilidad(doc, layout, params);
 
-  // ===== FOOTER =====
+  // ===== FOOTER WITH CORRECT PAGE NUMBERS =====
   const totalPages = doc.getNumberOfPages();
-  const footer = `${safeText(c.codigo_documento || "FORM-IRL 03")} | VER:${safeText(c.version || "01")} | REGISTRO INFORMACION DE LOS RIESGOS LABORALES`;
+  const footer = `${safeText(c.codigo_documento || "FORM-IRL 03")} | VER:${safeText(c.version || "01")} | IRL - INFORME DE RIESGOS LABORALES`;
   for (let p = 1; p <= totalPages; p += 1) {
     doc.setPage(p);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text(footer, layout.margin, layout.pageHeight - 10);
-    doc.text("Generado por NextPrev", layout.margin + layout.width - 118, layout.pageHeight - 10);
+    doc.text(footer, layout.margin, layout.pageHeight - 14);
+    doc.text(`Página ${p} de ${totalPages}`, layout.margin + layout.width / 2, layout.pageHeight - 14, { align: "center" });
+    doc.text("Generado por NextPrev", layout.margin + layout.width - 118, layout.pageHeight - 14);
   }
 }
 
