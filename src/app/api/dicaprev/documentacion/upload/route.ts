@@ -3,10 +3,10 @@ import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { NextResponse } from "next/server";
 import { getDocumentoExtension, validarArchivoDocumento } from "@/lib/documentacion/archivo-documento";
+import { construirArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 import { requireAuth } from "@/server/auth/permissions";
 
 const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads", "documentos");
-const PUBLIC_UPLOADS_PATH = "/uploads/documentos";
 
 export async function POST(request: Request) {
   try {
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
   const extension = getDocumentoExtension(file.name);
   const archivoNombre = `${randomUUID()}${extension}`;
-  const archivoUrl = `${PUBLIC_UPLOADS_PATH}/${archivoNombre}`;
+  const archivoUrl = construirArchivoSeguroUrl(archivoNombre);
   const destino = path.join(UPLOADS_DIR, archivoNombre);
   const contenido = new Uint8Array(await file.arrayBuffer());
 

@@ -28,6 +28,7 @@ import { useDocumentos } from "./hooks/useDocumentos";
 import TableView from "./components/TableView";
 import Filtros from "./components/Filtros";
 import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE, formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
+import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 import { exportarInformeDocumentalPdf } from "@/lib/documentacion/export-informe-documental-pdf";
 import { usePermissions } from "@/lib/permissions";
 import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
@@ -349,12 +350,13 @@ export default function DocumentacionPage() {
   }
 
   function handleDownload(doc: DocumentoMatrizRow) {
-    if (!doc.archivoUrl) {
+    const archivoSeguroUrl = normalizarArchivoSeguroUrl(doc.archivoUrl);
+    if (!archivoSeguroUrl) {
       showInfo("Descarga deshabilitada: aún no existe archivo real almacenado.", "error");
       return;
     }
     const link = document.createElement("a");
-    link.href = doc.archivoUrl;
+    link.href = archivoSeguroUrl;
     link.download = doc.archivoNombreOriginal ?? doc.archivoNombre ?? "documento";
     link.rel = "noopener noreferrer";
     document.body.appendChild(link);
@@ -363,12 +365,13 @@ export default function DocumentacionPage() {
   }
 
   function handleDownloadHistorial(item: { archivoUrl: string | null; archivoNombreOriginal: string | null; archivoNombre: string | null }) {
-    if (!item.archivoUrl) {
+    const archivoSeguroUrl = normalizarArchivoSeguroUrl(item.archivoUrl);
+    if (!archivoSeguroUrl) {
       showInfo("Esta versión histórica no tiene archivo disponible para descarga.", "error");
       return;
     }
     const link = document.createElement("a");
-    link.href = item.archivoUrl;
+    link.href = archivoSeguroUrl;
     link.download = item.archivoNombreOriginal ?? item.archivoNombre ?? "documento-version";
     link.rel = "noopener noreferrer";
     document.body.appendChild(link);
@@ -377,11 +380,12 @@ export default function DocumentacionPage() {
   }
 
   function handleOpenDocument(doc: DocumentoMatrizRow) {
-    if (!doc.archivoUrl) {
+    const archivoSeguroUrl = normalizarArchivoSeguroUrl(doc.archivoUrl);
+    if (!archivoSeguroUrl) {
       showInfo("Aún no existe un archivo cargado para este documento.", "error");
       return;
     }
-    window.open(doc.archivoUrl, "_blank", "noopener,noreferrer");
+    window.open(archivoSeguroUrl, "_blank", "noopener,noreferrer");
   }
 
   async function handleRestoreVersion(historialId: string) {
@@ -1063,13 +1067,13 @@ export default function DocumentacionPage() {
           {selectedDoc ? (
             <div className="grid gap-4 md:grid-cols-[minmax(0,1.3fr)_minmax(280px,0.9fr)]">
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                {selectedDoc.archivoUrl ? (
+                {normalizarArchivoSeguroUrl(selectedDoc.archivoUrl) ? (
                   canPreviewInline(selectedDoc) ? (
                     selectedDoc.archivoTipo === "application/pdf" ? (
-                      <iframe src={selectedDoc.archivoUrl} title={selectedDoc.nombre} className="h-[480px] w-full bg-white" />
+                      <iframe src={normalizarArchivoSeguroUrl(selectedDoc.archivoUrl) ?? undefined} title={selectedDoc.nombre} className="h-[480px] w-full bg-white" />
                     ) : (
                       <div className="relative h-[480px] w-full bg-white">
-                        <Image src={selectedDoc.archivoUrl} alt={selectedDoc.nombre} fill className="object-contain" unoptimized />
+                        <Image src={normalizarArchivoSeguroUrl(selectedDoc.archivoUrl) ?? ""} alt={selectedDoc.nombre} fill className="object-contain" unoptimized />
                       </div>
                     )
                   ) : (

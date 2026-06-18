@@ -29,6 +29,7 @@ import {
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
 import { cn } from "@/lib/utils";
+import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 import {
   guardarDocumentoGeneradoPDF,
   persistirDocumentoGenerado,
@@ -491,8 +492,8 @@ function DocRow({ doc }: { doc: DocumentoInstancia }) {
           Vence {fmt(doc.fechaVencimiento)}
         </span>
       )}
-      {doc.archivoUrl && (
-        <a href={doc.archivoUrl} className="shrink-0 text-blue-500 hover:text-blue-700" title="Ver documento">
+      {normalizarArchivoSeguroUrl(doc.archivoUrl) && (
+        <a href={normalizarArchivoSeguroUrl(doc.archivoUrl) ?? undefined} className="shrink-0 text-blue-500 hover:text-blue-700" title="Ver documento">
           <Paperclip className="h-3.5 w-3.5" />
         </a>
       )}

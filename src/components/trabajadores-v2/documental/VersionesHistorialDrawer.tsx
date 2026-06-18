@@ -18,6 +18,7 @@ import type { VersionDocumentoView } from "@/actions/trabajadores/documentos";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
 import type { EmpresaDocumentoMeta } from "@/actions/trabajadores/documentos";
 import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
+import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 
 interface VersionesHistorialDrawerProps {
   open: boolean;
@@ -257,9 +258,9 @@ export function VersionesHistorialDrawer({
                       )}
 
                       {/* Ver archivo si hay URL */}
-                      {v.archivoUrl && (
+                      {normalizarArchivoSeguroUrl(v.archivoUrl) && (
                         <a
-                          href={v.archivoUrl}
+                          href={normalizarArchivoSeguroUrl(v.archivoUrl) ?? undefined}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
