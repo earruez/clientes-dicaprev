@@ -33,8 +33,12 @@ export async function POST(request: Request) {
   const destino = path.join(UPLOADS_DIR, archivoNombre);
   const contenido = new Uint8Array(await file.arrayBuffer());
 
-  await mkdir(UPLOADS_DIR, { recursive: true });
-  await writeFile(destino, contenido);
+  try {
+    await mkdir(UPLOADS_DIR, { recursive: true });
+    await writeFile(destino, contenido);
+  } catch {
+    return NextResponse.json({ error: "No se pudo guardar el archivo en el servidor." }, { status: 500 });
+  }
 
   return NextResponse.json({
     archivoNombre,

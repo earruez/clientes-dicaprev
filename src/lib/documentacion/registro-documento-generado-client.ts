@@ -24,7 +24,17 @@ async function uploadGeneratedBlob(blob: Blob, filename: string): Promise<Upload
     body: formData,
   });
 
-  const payload = (await response.json()) as UploadedGeneratedFile | { error?: string };
+  const responseText = await response.text().catch(() => "");
+  let payload: UploadedGeneratedFile | { error?: string };
+  try {
+    payload = JSON.parse(responseText) as UploadedGeneratedFile | { error?: string };
+  } catch {
+    throw new Error(
+      !response.ok
+        ? `Error al guardar el documento generado (HTTP ${response.status}).`
+        : "Respuesta inválida del servidor al guardar el documento generado.",
+    );
+  }
 
   if (!response.ok) {
     throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el documento generado.");
