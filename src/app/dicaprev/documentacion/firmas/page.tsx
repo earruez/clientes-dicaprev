@@ -24,6 +24,30 @@ type FormState = {
   activa: boolean;
 };
 
+function formatRut(value: string): string {
+  const cleaned = value.trim().replace(/[^\dkK]/g, "").toUpperCase();
+  if (!cleaned) return "";
+
+  const formatBody = (digits: string) => {
+    let formatted = "";
+    for (let i = digits.length - 1, pos = 0; i >= 0; i--, pos++) {
+      if (pos > 0 && pos % 3 === 0) formatted = "." + formatted;
+      formatted = digits[i] + formatted;
+    }
+    return formatted;
+  };
+
+  if (cleaned.length <= 7) {
+    return formatBody(cleaned.replace(/\D/g, ""));
+  }
+
+  const verifier = cleaned.slice(-1);
+  const body = cleaned.slice(0, -1).replace(/\D/g, "");
+  if (!body) return verifier;
+
+  return `${formatBody(body)}-${verifier}`;
+}
+
 function fmtFecha(value: string | null | undefined) {
   if (!value) return "-";
   const date = new Date(value);
@@ -227,7 +251,7 @@ export default function FirmasDocumentacionPage() {
                     <Input
                       id="firma-rut"
                       value={form.rut}
-                      onChange={(event) => setForm((prev) => ({ ...prev, rut: event.target.value }))}
+                      onChange={(event) => setForm((prev) => ({ ...prev, rut: formatRut(event.target.value) }))}
                       placeholder="12.345.678-9"
                       disabled={isPending}
                     />
