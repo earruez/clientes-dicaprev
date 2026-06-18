@@ -19,6 +19,7 @@ import {
   type TipoDocumento,
 } from "./domain";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
+import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 import {
   crearMantencionVehiculo,
   cambiarEstadoDocumentoVehiculo,
@@ -992,9 +993,9 @@ export function VehiculoDetailDrawer({
                                     ? "Sin fecha de vencimiento"
                                     : "No cargado"}
                                 </p>
-                                {doc.archivoUrl && (
+                                {normalizarArchivoSeguroUrl(doc.archivoUrl) && (
                                   <a
-                                    href={doc.archivoUrl}
+                                    href={normalizarArchivoSeguroUrl(doc.archivoUrl) ?? undefined}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="mt-1 inline-block text-xs font-medium text-slate-600 underline"

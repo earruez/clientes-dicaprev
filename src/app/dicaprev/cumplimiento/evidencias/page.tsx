@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 import {
   crearEvidenciaManual,
   getEvidenciasDashboard,
@@ -256,9 +257,9 @@ export default async function EvidenciasPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-xs">
-                        {row.archivoUrl ? (
+                        {normalizarArchivoSeguroUrl(row.archivoUrl) ? (
                           <a
-                            href={row.archivoUrl}
+                            href={normalizarArchivoSeguroUrl(row.archivoUrl) ?? undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 text-blue-700 hover:text-blue-800"
