@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { COMPANY_MODULES, type CompanyModuleKey } from "@/lib/company-modules";
 import { requireRole } from "@/server/auth/permissions";
 import { bootstrapEmpresaOperativa } from "@/server/bootstrap/empresa-operativa";
-import { verifyPassword } from "@/lib/password-hash";
+import { hashPassword, verifyPassword } from "@/lib/password-hash";
 import { Prisma } from "@prisma/client";
 import type { Rol } from "@prisma/client";
 
@@ -627,6 +627,8 @@ export async function createUsuarioAction(formData: FormData) {
   const nombre = parseString(formData, "nombre");
   const email = parseString(formData, "email").toLowerCase();
   const rol = parseString(formData, "rol") as Rol;
+  const passwordTemporal = parseString(formData, "passwordTemporal");
+  const confirmarPasswordTemporal = parseString(formData, "confirmarPasswordTemporal");
 
   if (!nombre) {
     throw new Error("Nombre de usuario es requerido");
@@ -638,6 +640,18 @@ export async function createUsuarioAction(formData: FormData) {
 
   if (!email || !email.includes("@")) {
     throw new Error("Email válido es requerido");
+  }
+
+  if (!passwordTemporal) {
+    throw new Error("Contraseña temporal es requerida");
+  }
+
+  if (passwordTemporal.length < 8) {
+    throw new Error("La contraseña temporal debe tener al menos 8 caracteres");
+  }
+
+  if (passwordTemporal !== confirmarPasswordTemporal) {
+    throw new Error("La confirmación de contraseña no coincide");
   }
 
   if (!SUPERADMIN_ROLES.includes(rol)) {
@@ -653,12 +667,15 @@ export async function createUsuarioAction(formData: FormData) {
     throw new Error(`Un usuario con el email "${email}" ya existe`);
   }
 
+  const passwordHash = hashPassword(passwordTemporal);
+
   await prisma.usuario.create({
     data: {
       nombre,
       email,
       rol,
       activo: true,
+      passwordHash,
     },
   });
 
