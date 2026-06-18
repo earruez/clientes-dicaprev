@@ -1,7 +1,10 @@
 "use client";
 
 import { registrarDocumentoGenerado } from "@/actions/documentos-generados";
-import type { DocumentoGeneradoInput } from "./registro-documento-generado";
+import {
+  construirMetadataDocumentoPdf,
+  type DocumentoGeneradoInput,
+} from "./registro-documento-generado";
 
 type UploadedGeneratedFile = {
   archivoNombre: string;
@@ -34,6 +37,35 @@ export type PersistirDocumentoGeneradoParams = Omit<DocumentoGeneradoInput, "for
   blob: Blob;
   filename: string;
 };
+
+export type GuardarDocumentoGeneradoPDFParams = Omit<PersistirDocumentoGeneradoParams, "blob"> & {
+  blob: Blob;
+  version?: string | number | null;
+  estado?: string | null;
+  historialDetalle?: string;
+};
+
+export async function guardarDocumentoGeneradoPDF(
+  params: GuardarDocumentoGeneradoPDFParams,
+): Promise<{ archivoUrl: string; archivoNombre: string }> {
+  const archivoTipoPdf = "application/pdf";
+  const blobPdf =
+    params.blob.type === archivoTipoPdf
+      ? params.blob
+      : new Blob([params.blob], { type: archivoTipoPdf });
+
+  return persistirDocumentoGenerado({
+    ...params,
+    blob: blobPdf,
+    metadata: construirMetadataDocumentoPdf({
+      metadata: params.metadata,
+      version: params.version,
+      estado: params.estado,
+      usuarioId: params.usuarioId,
+      historialDetalle: params.historialDetalle,
+    }),
+  });
+}
 
 export async function persistirDocumentoGenerado(params: PersistirDocumentoGeneradoParams): Promise<{ archivoUrl: string; archivoNombre: string }> {
   const uploaded = await uploadGeneratedBlob(params.blob, params.filename);

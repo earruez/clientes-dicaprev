@@ -29,7 +29,10 @@ import {
 import JSZip from "jszip";
 import { jsPDF } from "jspdf";
 import { cn } from "@/lib/utils";
-import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
+import {
+  guardarDocumentoGeneradoPDF,
+  persistirDocumentoGenerado,
+} from "@/lib/documentacion/registro-documento-generado-client";
 import {
   CambiarEstadoModal,
   TRANSICIONES,
@@ -424,7 +427,7 @@ function generarPDF(docs: DocumentoInstancia[], ac: { empresaNombre: string; man
     pdf.setPage(i);
     pdf.setFontSize(7);
     pdf.setTextColor(148, 163, 184);
-    pdf.text(`NEXTPREV · Generado: ${fecha} · Página ${i}/${pages}`, 14, 290);
+    pdf.text(`Generado por NextPrev · ${fecha} · Página ${i}/${pages}`, 14, 290);
   }
 
   const blob = pdf.output("blob");
@@ -677,7 +680,7 @@ export default function ExpedienteClient({
       const pdf = generarPDF(docs, { empresaNombre: acreditacion!.empresaNombre, mandante: acreditacion!.mandante, plantillaNombre: acreditacion!.plantillaNombre });
       if (acreditacion?.empresaId) {
         const stamp = new Date().toISOString().slice(0, 10);
-        await persistirDocumentoGenerado({
+        await guardarDocumentoGeneradoPDF({
           empresaId: acreditacion.empresaId,
           modulo: "acreditaciones",
           tipoDocumento: "indice_acreditacion_pdf",
@@ -686,6 +689,8 @@ export default function ExpedienteClient({
           nombre: `Índice expediente ${acreditacion.empresaNombre}`,
           blob: pdf,
           filename: `indice-${acreditacion.empresaNombre.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}-${stamp}.pdf`,
+          estado: estadoActual,
+          historialDetalle: "Documento generado automáticamente",
           metadata: {
             acreditacionId: acreditacion.id,
             mandante: acreditacion.mandante,

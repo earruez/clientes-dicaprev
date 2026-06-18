@@ -30,7 +30,7 @@ import Filtros from "./components/Filtros";
 import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE, formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
 import { exportarInformeDocumentalPdf } from "@/lib/documentacion/export-informe-documental-pdf";
 import { usePermissions } from "@/lib/permissions";
-import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
+import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
 
 type ArchivoSubido = {
   archivoNombre: string;
@@ -496,7 +496,7 @@ export default function DocumentacionPage() {
       const empresaSafe = (informe.empresa.nombre || "empresa").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
       const stamp = new Date().toISOString().slice(0, 10);
       const filename = `informe-documental-${empresaSafe || "empresa"}-${stamp}.pdf`;
-      await persistirDocumentoGenerado({
+      await guardarDocumentoGeneradoPDF({
         empresaId: informe.empresa.id,
         modulo: "documentacion",
         tipoDocumento: "informe_documental_pdf",
@@ -505,6 +505,9 @@ export default function DocumentacionPage() {
         nombre: `Informe documental ${informe.empresa.nombre}`,
         blob: pdf,
         filename,
+        version: informe.meta.version,
+        estado: informe.cumplimiento.totalFaltantes > 0 ? "con_observaciones" : "completo",
+        historialDetalle: "Documento generado automáticamente",
         metadata: {
           version: informe.meta.version,
           generadoEn: informe.meta.generadoEn,

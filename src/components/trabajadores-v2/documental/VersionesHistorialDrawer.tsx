@@ -17,7 +17,7 @@ import type { Worker } from "../types";
 import type { VersionDocumentoView } from "@/actions/trabajadores/documentos";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
 import type { EmpresaDocumentoMeta } from "@/actions/trabajadores/documentos";
-import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
+import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
 
 interface VersionesHistorialDrawerProps {
   open: boolean;
@@ -100,7 +100,7 @@ export function VersionesHistorialDrawer({
 
       if (empresaMeta?.id) {
         const filename = `version-${tipoNombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${trabajador.nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
-        await persistirDocumentoGenerado({
+        await guardarDocumentoGeneradoPDF({
           empresaId: empresaMeta.id,
           modulo: "trabajadores",
           tipoDocumento: "documento_trabajador_pdf",
@@ -109,6 +109,8 @@ export function VersionesHistorialDrawer({
           nombre: `${tipoNombre} - ${trabajador.nombre} ${trabajador.apellido}`,
           blob: pdf,
           filename,
+          estado: v.estado,
+          historialDetalle: "Documento generado automáticamente",
           metadata: {
             trabajadorId: trabajador.id,
             versionId: v.id,

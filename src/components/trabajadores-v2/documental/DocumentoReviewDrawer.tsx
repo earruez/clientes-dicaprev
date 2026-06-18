@@ -22,7 +22,7 @@ import { type Worker } from "../types";
 import { type DocTrabajadorView } from "./types";
 import { puedeGenerarseConIA } from "@/lib/documentacion/ia-generacion-helper";
 import { exportTrabajadorDocumentoPdf } from "./export-trabajador-documento-pdf";
-import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
+import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
 import {
   cambiarEstadoTrabajadorDocumento,
   generarContenidoIATrabajadorDocumento,
@@ -904,7 +904,7 @@ export function DocumentoReviewDrawer({
 
       if (empresaMeta?.id) {
         const filename = `documento-${normalizarNombreDocumentoDisplay(documentoParaPdf.tipo.nombre).toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${worker.nombre.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.pdf`;
-        await persistirDocumentoGenerado({
+        await guardarDocumentoGeneradoPDF({
           empresaId: empresaMeta.id,
           modulo: "trabajadores",
           tipoDocumento: "documento_trabajador_pdf",
@@ -913,6 +913,9 @@ export function DocumentoReviewDrawer({
           nombre: `${documentoParaPdf.tipo.nombre} - ${worker.nombre} ${worker.apellido}`,
           blob: pdf,
           filename,
+          version: documentoParaPdf.versionNumero ?? null,
+          estado: efectoEstado,
+          historialDetalle: "Documento generado automáticamente",
           metadata: {
             trabajadorId: worker.id,
             documentoId: documentoParaPdf.documentoId ?? null,

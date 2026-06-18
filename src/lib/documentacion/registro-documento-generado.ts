@@ -24,6 +24,48 @@ export type DocumentoGeneradoInput = {
   metadata?: Prisma.InputJsonValue;
 };
 
+export type ConstruirMetadataDocumentoPdfParams = {
+  metadata?: Prisma.InputJsonValue;
+  version?: string | number | null;
+  estado?: string | null;
+  usuarioId?: string | null;
+  historialDetalle?: string;
+  generatedAt?: Date;
+};
+
+export function construirMetadataDocumentoPdf(params: ConstruirMetadataDocumentoPdfParams): Prisma.InputJsonValue {
+  const generatedAt = (params.generatedAt ?? new Date()).toISOString();
+  const historialDetalle = params.historialDetalle?.trim() || "Documento generado automáticamente";
+
+  const baseMetadata: Record<string, unknown> =
+    params.metadata && typeof params.metadata === "object" && !Array.isArray(params.metadata)
+      ? { ...(params.metadata as Record<string, unknown>) }
+      : {};
+
+  if (params.version !== undefined) {
+    baseMetadata.version = params.version;
+  }
+
+  if (params.estado !== undefined) {
+    baseMetadata.estado = params.estado;
+  }
+
+  const historialPrevio =
+    Array.isArray(baseMetadata.historial) ? [...baseMetadata.historial] : [];
+
+  historialPrevio.push({
+    fecha: generatedAt,
+    evento: "documento_generado_pdf",
+    detalle: historialDetalle,
+    usuarioId: params.usuarioId ?? null,
+  });
+
+  baseMetadata.historial = historialPrevio;
+  baseMetadata.generatedAt = generatedAt;
+
+  return baseMetadata as Prisma.InputJsonValue;
+}
+
 export function construirRegistroDocumentoGenerado(input: DocumentoGeneradoInput) {
   return {
     empresaId: input.empresaId,

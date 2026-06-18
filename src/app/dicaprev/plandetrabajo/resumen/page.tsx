@@ -24,7 +24,7 @@ import { PlanNav } from "../components/plan-nav";
 import { ActivityFormFields, type ActivityFormModel } from "../components/activity-form-fields";
 import { KpiCard, QuickActions, TopActions, EstadoBadge, EstadoPlanBadge } from "../components/plan-ui";
 import { exportPlanTrabajoPdf } from "../export-plan-pdf";
-import { persistirDocumentoGenerado } from "@/lib/documentacion/registro-documento-generado-client";
+import { guardarDocumentoGeneradoPDF } from "@/lib/documentacion/registro-documento-generado-client";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
   getPlanTrabajo,
@@ -245,7 +245,7 @@ export default function PlanResumenPage() {
         empresaLogoUrl: empresa.empresaLogoUrl,
       };
       const pdf = await exportPlanTrabajoPdf(snapshot, year);
-      await persistirDocumentoGenerado({
+      await guardarDocumentoGeneradoPDF({
         empresaId: plan.empresaId,
         modulo: "plandetrabajo",
         tipoDocumento: "plan_trabajo_pdf",
@@ -254,6 +254,9 @@ export default function PlanResumenPage() {
         nombre: `Plan de trabajo anual ${year}`,
         blob: pdf,
         filename: `plan-trabajo-anual-${year}.pdf`,
+        version: plan.version,
+        estado: plan.estadoPlan,
+        historialDetalle: "Documento generado automáticamente",
         metadata: {
           anio: plan.anio,
           versionPlan: plan.version,
