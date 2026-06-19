@@ -112,6 +112,27 @@ const DOCUMENTOS_TRABAJADOR_BASE: WorkerDocTemplate[] = [
     requiereVencimiento: true,
     vigenciaDias: 1825,
   },
+  {
+    codigo: "PTS_TRABAJO_SEGURO",
+    nombre: "Procedimiento de Trabajo Seguro (PTS)",
+    descripcion: "Procedimiento de trabajo seguro aplicable al cargo o actividad.",
+    requiereVencimiento: false,
+    vigenciaDias: null,
+  },
+  {
+    codigo: "COBERTURA_ACCIDENTE",
+    nombre: "Cobertura en caso de accidentes",
+    descripcion: "Informacion sobre cobertura y procedimiento ante accidentes laborales.",
+    requiereVencimiento: false,
+    vigenciaDias: null,
+  },
+  {
+    codigo: "HDS_SUSTANCIAS",
+    nombre: "Hojas de Datos de Seguridad (HDS)",
+    descripcion: "Fichas de seguridad de productos y sustancias a manipular.",
+    requiereVencimiento: false,
+    vigenciaDias: null,
+  },
 ];
 
 const DOCUMENTOS_VEHICULO_BASE: VehicleDocTemplate[] = [
@@ -428,6 +449,9 @@ async function ensureReglaDocumentoTrabajadorBase(empresaId: string): Promise<nu
     "IRL_RIESGOS",
     "ENTREGA_EPP",
     "CAPACITACION_INICIAL",
+    "PTS_TRABAJO_SEGURO",
+    "COBERTURA_ACCIDENTE",
+    "HDS_SUSTANCIAS",
   ];
 
   const tipos = await prisma.documentoTipoTrabajador.findMany({

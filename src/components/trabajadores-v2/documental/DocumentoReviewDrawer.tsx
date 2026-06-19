@@ -37,6 +37,7 @@ import {
   registrarHistorialDocumentoTrabajador,
   createTrabajadorDocumento,
   getEmpresaDocumentoMeta,
+  obtenerAdjuntosIrlTrabajador,
   type HistorialEntryView,
   type EmpresaDocumentoMeta,
 } from "@/actions/trabajadores/documentos";
@@ -897,6 +898,8 @@ export function DocumentoReviewDrawer({
         ? await obtenerBloqueFirmasDocumentoTrabajador(documentoParaPdf.documentoId)
         : undefined;
 
+      const adjuntosIrl = await obtenerAdjuntosIrlTrabajador(worker.id).catch(() => undefined);
+
       const pdf = await exportTrabajadorDocumentoPdf({
         documento: documentoParaPdf,
         trabajador: worker,
@@ -905,6 +908,7 @@ export function DocumentoReviewDrawer({
         firmadoPor: doc?.firmadoPor ?? originalDoc?.firmadoPor ?? null,
         firmadoEn: doc?.firmadoEn ?? originalDoc?.firmadoEn ?? null,
         firmas,
+        adjuntosIrl,
         empresa: empresaMeta,
       });
 

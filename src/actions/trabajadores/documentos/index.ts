@@ -3200,3 +3200,99 @@ export async function updateReglaDocumentoTrabajador(
   if (updated.count === 0) throw new Error("Regla documental no encontrada");
   return { id };
 }
+
+const CODIGOS_ADJUNTOS_IRL = [
+  { codigo: "PTS_TRABAJO_SEGURO", titulo: "PROCEDIMIENTOS DE TRABAJO SEGURO (PTS)" },
+  { codigo: "HDS_SUSTANCIAS", titulo: "PRODUCTOS Y SUSTANCIAS A MANIPULAR" },
+  { codigo: "COBERTURA_ACCIDENTE", titulo: "COBERTURA EN CASO DE ACCIDENTES" },
+  { codigo: "ENTREGA_EPP", titulo: "ENTREGA DE EPP" },
+] as const;
+
+export type AdjuntoIrlItem = {
+  titulo: string;
+  nombre: string;
+  origen: "carpeta_trabajador" | "biblioteca_empresa" | "documentacion_empresa" | "manual";
+  estado: "recibido" | "pendiente" | "no_aplica";
+  fechaRecepcion: string | null;
+  documentoId: string | null;
+  tipoDocumento: string | null;
+};
+
+export async function obtenerAdjuntosIrlTrabajador(
+  trabajadorId: string,
+): Promise<AdjuntoIrlItem[]> {
+  const { empresaId } = await requirePermission("canReadDocumentacion");
+
+  const tipos = await prisma.documentoTipoTrabajador.findMany({
+    where: {
+      empresaId,
+      codigo: { in: CODIGOS_ADJUNTOS_IRL.map((a) => a.codigo) },
+      activo: true,
+    },
+    select: { id: true, codigo: true, nombre: true },
+  });
+
+  const tipoIds = tipos.map((t) => t.id);
+  const documentos = tipoIds.length > 0
+    ? await prisma.trabajadorDocumento.findMany({
+        where: {
+          trabajadorId,
+          empresaId,
+          tipo: { in: tipos.map((t) => t.codigo) },
+          esVigente: true,
+        },
+        select: {
+          id: true,
+          tipo: true,
+          nombre: true,
+          estado: true,
+          firmado: true,
+          firmadoEn: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    : [];
+
+  return CODIGOS_ADJUNTOS_IRL.map((adjDef) => {
+    const tipo = tipos.find((t) => t.codigo === adjDef.codigo);
+    const doc = documentos.find((d) => d.tipo === adjDef.codigo);
+
+    if (!tipo) {
+      return {
+        titulo: adjDef.titulo,
+        nombre: "Tipo documental no configurado",
+        origen: "manual" as const,
+        estado: "no_aplica" as const,
+        fechaRecepcion: null,
+        documentoId: null,
+        tipoDocumento: adjDef.codigo,
+      };
+    }
+
+    if (!doc) {
+      return {
+        titulo: adjDef.titulo,
+        nombre: tipo.nombre,
+        origen: "documentacion_empresa" as const,
+        estado: "pendiente" as const,
+        fechaRecepcion: null,
+        documentoId: null,
+        tipoDocumento: adjDef.codigo,
+      };
+    }
+
+    const estadoNorm = (doc.estado ?? "").trim().toLowerCase();
+    const esRecibido = ["validado", "firmado", "completo", "aprobado"].includes(estadoNorm) || doc.firmado;
+
+    return {
+      titulo: adjDef.titulo,
+      nombre: doc.nombre || tipo.nombre,
+      origen: "carpeta_trabajador" as const,
+      estado: esRecibido ? ("recibido" as const) : ("pendiente" as const),
+      fechaRecepcion: esRecibido ? (doc.firmadoEn?.toISOString() ?? doc.createdAt.toISOString()) : null,
+      documentoId: doc.id,
+      tipoDocumento: adjDef.codigo,
+    };
+  });
+}
