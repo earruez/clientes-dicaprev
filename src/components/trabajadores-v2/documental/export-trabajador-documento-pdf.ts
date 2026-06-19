@@ -340,15 +340,16 @@ function drawFormTableHeader(
   doc: jsPDF,
   layout: Layout,
   title: string,
-  height = 16,
+  height = 18,
 ) {
   ensurePage(doc, layout, height);
-  doc.setFillColor(245, 245, 245);
+  doc.setFillColor(26, 82, 118);
   doc.rect(layout.margin, layout.y, layout.width, height, "F");
-  doc.rect(layout.margin, layout.y, layout.width, height);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text(title, layout.margin + 4, layout.y + 11);
+  doc.setFontSize(9);
+  doc.setTextColor(255, 255, 255);
+  doc.text(title, layout.margin + 6, layout.y + 12);
+  doc.setTextColor(0, 0, 0);
   layout.y += height;
 }
 
@@ -363,17 +364,17 @@ function drawTableCell(
   align: "left" | "center" = "left",
 ) {
   doc.rect(x, y, width, height);
-  const lines = wrap(doc, text, width - 6);
+  const lines = wrap(doc, text, width - 12);
   doc.setFont("helvetica", bold ? "bold" : "normal");
-  doc.setFontSize(7.5);
-  let textY = y + 9;
+  doc.setFontSize(8);
+  let textY = y + 11;
   lines.forEach((line) => {
     const textX =
       align === "center"
         ? x + width / 2
-        : x + 3;
+        : x + 6;
     doc.text(line, textX, textY, { align });
-    textY += 8;
+    textY += 9;
   });
 }
 
@@ -404,7 +405,7 @@ function drawIdentificationTable(
   const colW1 = layout.width * 0.33;
   const colW2 = layout.width * 0.33;
   const colW3 = layout.width * 0.34;
-  const rowH = 20;
+  const rowH = 24;
 
   // Row 1: Nombre, RUT, Cargo
   ensurePage(doc, layout, rowH + 2);
@@ -530,34 +531,34 @@ function drawIdentificationTable(
   );
   layout.y += rowH;
 
-  // Motivo checkboxes
-  ensurePage(doc, layout, 20);
+  // Motivo checkboxes — tabla de 3 columnas
+  const cbRowH = 20;
+  ensurePage(doc, layout, cbRowH + 14);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
-  doc.text(
-    "Marque con una cruz (X):",
-    layout.margin + 4,
-    layout.y + 10,
-  );
-  layout.y += 12;
+  doc.text("Marque con una cruz (X):", layout.margin + 6, layout.y + 10);
+  layout.y += 14;
 
-  const checkboxW = layout.width / 3 - 2;
-  const cbY = layout.y + 8;
-  
-  doc.rect(layout.margin, layout.y, layout.width, 10);
-  drawCheckbox(doc, layout.margin + 4, cbY, c.colaborador_nuevo ?? false);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.text("Colaborador nuevo", layout.margin + 12, cbY + 4);
+  const cbColW = layout.width / 3;
+  doc.rect(layout.margin, layout.y, cbColW, cbRowH);
+  doc.rect(layout.margin + cbColW, layout.y, cbColW, cbRowH);
+  doc.rect(layout.margin + cbColW * 2, layout.y, cbColW, cbRowH);
 
-  drawCheckbox(doc, layout.margin + checkboxW + 4, cbY, c.cambio_proceso_puesto ?? false);
-  doc.text("Cambio en proceso o puesto de trabajo", layout.margin + checkboxW + 12, cbY + 4);
+  const cbItems = [
+    { label: "Colaborador nuevo", checked: c.colaborador_nuevo ?? false },
+    { label: "Cambio en proceso\no puesto de trabajo", checked: c.cambio_proceso_puesto ?? false },
+    { label: "Nuevas actividades", checked: c.nuevas_actividades ?? false },
+  ];
 
-  drawCheckbox(doc, layout.margin + checkboxW * 2 + 4, cbY, c.nuevas_actividades ?? false);
-  doc.text("Nuevas actividades", layout.margin + checkboxW * 2 + 12, cbY + 4);
+  cbItems.forEach((item, i) => {
+    const cellX = layout.margin + cbColW * i;
+    drawCheckbox(doc, cellX + 8, layout.y + 6, item.checked);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.text(item.label, cellX + 16, layout.y + 10, { maxWidth: cbColW - 22 });
+  });
 
-  layout.y += 10;
-  layout.y += 6;
+  layout.y += cbRowH + 8;
 }
 
 function drawRelatorTable(
@@ -619,11 +620,12 @@ function drawSectionTitle(
   layout: Layout,
   title: string,
 ) {
-  ensurePage(doc, layout, 8);
+  ensurePage(doc, layout, 16);
+  layout.y += 4;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text(title, layout.margin, layout.y + 6);
-  layout.y += 10;
+  doc.setFontSize(10);
+  doc.text(title, layout.margin, layout.y + 10);
+  layout.y += 16;
 }
 
 function drawBloqueFirmasDocumentoTrabajador(
@@ -702,167 +704,109 @@ function drawPuesto3Section(
 
   ensurePage(doc, layout, 16);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("3.1 CARACTERÍSTICAS DEL LUGAR DE TRABAJO", layout.margin, layout.y + 6);
-  layout.y += 10;
+  doc.setFontSize(8.5);
+  doc.text("3.1 CARACTERÍSTICAS DEL LUGAR DE TRABAJO", layout.margin, layout.y + 8);
+  layout.y += 14;
 
-  // 3.1a) Descripción del cargo
-  ensurePage(doc, layout, 30);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("a) Descripción del cargo:", layout.margin + 4, layout.y + 6);
-  layout.y += 8;
-  const descLines = wrap(doc, safeText(c.descripcion_cargo || c.descripcion_actividad), layout.width - 8);
-  const descH = Math.max(24, 6 + descLines.length * 8);
-  ensurePage(doc, layout, descH);
-  doc.rect(layout.margin, layout.y, layout.width, descH);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  descLines.forEach((line, i) => {
-    doc.text(line, layout.margin + 4, layout.y + 8 + i * 8);
-  });
-  layout.y += descH + 4;
+  const drawContentBox = (label: string, text: string) => {
+    ensurePage(doc, layout, 30);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.text(label, layout.margin + 6, layout.y + 8);
+    layout.y += 12;
+    const contentLines = wrap(doc, safeText(text), layout.width - 16);
+    const lineH = 9;
+    const boxH = Math.max(20, 10 + contentLines.length * lineH);
+    ensurePage(doc, layout, boxH);
+    doc.rect(layout.margin, layout.y, layout.width, boxH);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    contentLines.forEach((line, i) => {
+      doc.text(line, layout.margin + 8, layout.y + 10 + i * lineH);
+    });
+    layout.y += boxH + 6;
+  };
 
-  // 3.1b) Tareas
-  ensurePage(doc, layout, 30);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("b) Tareas que realiza:", layout.margin + 4, layout.y + 6);
-  layout.y += 8;
-  const tareasLines = wrap(doc, safeText(c.tareas_realiza), layout.width - 8);
-  const tareasH = Math.max(20, 6 + tareasLines.length * 8);
-  ensurePage(doc, layout, tareasH);
-  doc.rect(layout.margin, layout.y, layout.width, tareasH);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  tareasLines.forEach((line, i) => {
-    doc.text(line, layout.margin + 4, layout.y + 8 + i * 8);
-  });
-  layout.y += tareasH + 4;
-
-  // 3.1c) Espacio de trabajo
-  ensurePage(doc, layout, 24);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("c) Espacio de trabajo:", layout.margin + 4, layout.y + 6);
-  layout.y += 8;
-  const espacioLines = wrap(doc, safeText(c.espacio_trabajo || c.lugar_trabajo), layout.width - 8);
-  const espacioH = Math.max(16, 6 + espacioLines.length * 8);
-  ensurePage(doc, layout, espacioH);
-  doc.rect(layout.margin, layout.y, layout.width, espacioH);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  espacioLines.forEach((line, i) => {
-    doc.text(line, layout.margin + 4, layout.y + 8 + i * 8);
-  });
-  layout.y += espacioH + 4;
+  drawContentBox("a) Descripción del cargo:", safeText(c.descripcion_cargo || c.descripcion_actividad));
+  drawContentBox("b) Tareas que realiza:", safeText(c.tareas_realiza));
+  drawContentBox("c) Espacio de trabajo:", safeText(c.espacio_trabajo || c.lugar_trabajo));
 
   // 3.1d) Condiciones ambientales (CHECKLIST)
   ensurePage(doc, layout, 20);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("d) Condiciones ambientales del puesto de trabajo:", layout.margin + 4, layout.y + 6);
-  layout.y += 10;
+  doc.setFontSize(8.5);
+  doc.text("d) Condiciones ambientales del puesto de trabajo:", layout.margin + 6, layout.y + 8);
+  layout.y += 12;
 
   const conditions = c.condiciones_amb_obj || {};
-  const physicalAgents = [
-    { label: "Ruido", value: conditions.ruido },
-    { label: "Iluminación", value: conditions.iluminacion },
-    { label: "Temperaturas extremas", value: conditions.temperaturas_extremas },
-    { label: "Vibraciones", value: conditions.vibraciones },
+  const agentGroups: Array<{ title: string; agents: Array<{ label: string; value: boolean | undefined }> }> = [
+    { title: "AGENTES FÍSICOS", agents: [
+      { label: "Ruido", value: conditions.ruido },
+      { label: "Iluminación", value: conditions.iluminacion },
+      { label: "Temp. extremas", value: conditions.temperaturas_extremas },
+      { label: "Vibraciones", value: conditions.vibraciones },
+    ]},
+    { title: "AGENTES BIOLÓGICOS", agents: [
+      { label: "Virus/Bacterias/Hongos", value: conditions.virus_bacterias_hongos },
+    ]},
+    { title: "AGENTES QUÍMICOS", agents: [
+      { label: "Sust. peligrosas", value: conditions.sustancias_peligrosas },
+      { label: "Polvos/Humos/Nieblas", value: conditions.polvos_humos_nieblas },
+      { label: "Vapores orgánicos", value: conditions.vapores_organicos },
+    ]},
+    { title: "AGENTES DE RIESGO", agents: [
+      { label: "Eléctrico", value: conditions.electrico },
+      { label: "Altura", value: conditions.altura_fisica },
+      { label: "Caída mismo nivel", value: conditions.caida_mismo_nivel },
+      { label: "Caída distinto nivel", value: conditions.caida_distinto_nivel },
+    ]},
+    { title: "AGENTES ERGONÓMICOS", agents: [
+      { label: "Posturas forzadas", value: conditions.posturas_forzadas },
+      { label: "Mov. repetitivos", value: conditions.movimientos_repetitivos },
+    ]},
   ];
 
-  const biologicalAgents = [
-    { label: "Virus/Bacterias/Hongos", value: conditions.virus_bacterias_hongos },
-  ];
+  agentGroups.forEach((group) => {
+    const itemsPerRow = 3;
+    const rowCount = Math.ceil(group.agents.length / itemsPerRow);
+    const groupH = 12 + rowCount * 12;
+    ensurePage(doc, layout, groupH);
 
-  const chemicalAgents = [
-    { label: "Sustancias peligrosas", value: conditions.sustancias_peligrosas },
-    { label: "Polvos/Humos/Nieblas", value: conditions.polvos_humos_nieblas },
-    { label: "Vapores orgánicos", value: conditions.vapores_organicos },
-  ];
+    doc.setFillColor(240, 244, 248);
+    doc.rect(layout.margin, layout.y, layout.width, groupH, "F");
+    doc.rect(layout.margin, layout.y, layout.width, groupH);
 
-  const riskAgents = [
-    { label: "Eléctrico", value: conditions.electrico },
-    { label: "Altura", value: conditions.altura_fisica },
-    { label: "Caída al mismo nivel", value: conditions.caida_mismo_nivel },
-    { label: "Caída a distinto nivel", value: conditions.caida_distinto_nivel },
-  ];
-
-  const ergonomicAgents = [
-    { label: "Posturas forzadas", value: conditions.posturas_forzadas },
-    { label: "Movimientos repetitivos", value: conditions.movimientos_repetitivos },
-  ];
-
-  const drawAgentGroup = (title: string, agents: Array<{ label: string; value: boolean | undefined }>) => {
-    ensurePage(doc, layout, 10);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.5);
-    doc.text(`${title}:`, layout.margin + 4, layout.y + 6);
-    layout.y += 8;
+    doc.setFontSize(7);
+    doc.text(group.title, layout.margin + 6, layout.y + 9);
 
-    const itemsPerRow = 2;
-    const colW = layout.width / itemsPerRow;
-    let currentRow = 0;
-    let currentCol = 0;
+    const agentColW = (layout.width - 12) / itemsPerRow;
+    group.agents.forEach((agent, idx) => {
+      const col = idx % itemsPerRow;
+      const row = Math.floor(idx / itemsPerRow);
+      const ax = layout.margin + 6 + col * agentColW;
+      const ay = layout.y + 14 + row * 12;
 
-    agents.forEach((agent, idx) => {
-      const x = layout.margin + currentCol * colW;
-      const y = layout.y + currentRow * 8;
-
-      if (idx > 0 && idx % itemsPerRow === 0) {
-        currentRow++;
-        currentCol = 0;
-        ensurePage(doc, layout, 8);
-      }
-
-      drawCheckbox(doc, x + 2, y, agent.value ?? false);
+      drawCheckbox(doc, ax, ay, agent.value ?? false);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(6.5);
-      doc.text(agent.label, x + 10, y + 4);
-
-      currentCol++;
-      if ((idx + 1) % itemsPerRow === 0) {
-        layout.y += 8;
-      }
+      doc.setFontSize(7);
+      doc.text(agent.label, ax + 8, ay + 4);
     });
 
-    if (agents.length % itemsPerRow !== 0) {
-      layout.y += 8;
-    }
-  };
-
-  drawAgentGroup("AGENTES FÍSICOS", physicalAgents);
-  drawAgentGroup("AGENTES BIOLÓGICOS", biologicalAgents);
-  drawAgentGroup("AGENTES QUÍMICOS", chemicalAgents);
-  drawAgentGroup("AGENTES DE RIESGO", riskAgents);
-  drawAgentGroup("AGENTES ERGONÓMICOS", ergonomicAgents);
+    layout.y += groupH + 2;
+  });
 
   layout.y += 4;
 
   // 3.1e) Orden y aseo
-  ensurePage(doc, layout, 24);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("e) Condiciones de orden y aseo exigidas en el puesto:", layout.margin + 4, layout.y + 6);
-  layout.y += 8;
-  const ordenLines = wrap(doc, safeText(c.orden_aseo), layout.width - 8);
-  const ordenH = Math.max(16, 6 + ordenLines.length * 8);
-  ensurePage(doc, layout, ordenH);
-  doc.rect(layout.margin, layout.y, layout.width, ordenH);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  ordenLines.forEach((line, i) => {
-    doc.text(line, layout.margin + 4, layout.y + 8 + i * 8);
-  });
-  layout.y += ordenH + 4;
+  drawContentBox("e) Condiciones de orden y aseo exigidas en el puesto:", safeText(c.orden_aseo));
 
   // 3.1f) Máquinas y herramientas (TABLE)
   ensurePage(doc, layout, 18);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("f) Máquinas y herramientas de trabajo:", layout.margin + 4, layout.y + 6);
-  layout.y += 10;
+  doc.setFontSize(8.5);
+  doc.text("f) Máquinas y herramientas de trabajo:", layout.margin + 6, layout.y + 8);
+  layout.y += 14;
 
   const maquinas = c.maquinas_herramientas_tabla ?? [];
   if (maquinas.length > 0) {
@@ -916,21 +860,7 @@ function drawPuesto3Section(
   layout.y += 4;
 
   // 3.1g) EPP requerido
-  ensurePage(doc, layout, 20);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text("g) Elementos de Protección Personal:", layout.margin + 4, layout.y + 6);
-  layout.y += 8;
-  const eppLines = wrap(doc, safeText(c.epp_requerido_info), layout.width - 8);
-  const eppH = Math.max(12, 6 + eppLines.length * 8);
-  ensurePage(doc, layout, eppH);
-  doc.rect(layout.margin, layout.y, layout.width, eppH);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  eppLines.forEach((line, i) => {
-    doc.text(line, layout.margin + 4, layout.y + 8 + i * 8);
-  });
-  layout.y += eppH + 6;
+  drawContentBox("g) Elementos de Protección Personal:", safeText(c.epp_requerido_info));
 }
 
 function drawRiesgos4Section(
@@ -944,74 +874,70 @@ function drawRiesgos4Section(
     subtitle: string,
     rows: Array<{ peligro: string; consecuencia: string; medida: string }>,
   ) => {
-    ensurePage(doc, layout, 8);
+    ensurePage(doc, layout, 12);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.text(subtitle, layout.margin + 4, layout.y + 6);
-    layout.y += 8;
+    doc.setFontSize(8.5);
+    doc.text(subtitle, layout.margin + 4, layout.y + 8);
+    layout.y += 12;
 
     if (!rows || rows.length === 0) {
-      ensurePage(doc, layout, 10);
-      doc.rect(layout.margin, layout.y, layout.width, 10);
+      ensurePage(doc, layout, 14);
+      doc.setFillColor(248, 249, 250);
+      doc.rect(layout.margin, layout.y, layout.width, 14, "F");
+      doc.rect(layout.margin, layout.y, layout.width, 14);
       doc.setFont("helvetica", "italic");
-      doc.setFontSize(6.5);
-      doc.text("Sin información registrada", layout.margin + 4, layout.y + 8);
-      layout.y += 10;
+      doc.setFontSize(7.5);
+      doc.text("Sin información registrada", layout.margin + 8, layout.y + 9);
+      layout.y += 14;
       return;
     }
 
-    const col1 = layout.width * 0.25;
-    const col2 = layout.width * 0.25;
-    const col3 = layout.width * 0.25;
-    const col4 = layout.width * 0.25;
+    const col1 = layout.width * 0.28;
+    const col2 = layout.width * 0.28;
+    const col3 = layout.width * 0.28;
+    const col4 = layout.width * 0.16;
+    const headerH = 14;
 
-    ensurePage(doc, layout, 14);
+    ensurePage(doc, layout, headerH);
+    doc.setFillColor(26, 82, 118);
+    doc.rect(layout.margin, layout.y, layout.width, headerH, "F");
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(6.5);
-    doc.rect(layout.margin, layout.y, col1, 12);
-    doc.text("RIESGOS", layout.margin + 2, layout.y + 8);
-    doc.rect(layout.margin + col1, layout.y, col2, 12);
-    doc.text("CONSECUENCIAS", layout.margin + col1 + 2, layout.y + 8);
-    doc.rect(layout.margin + col1 + col2, layout.y, col3, 12);
-    doc.text("MEDIDAS PREVENTIVAS", layout.margin + col1 + col2 + 2, layout.y + 8);
-    doc.rect(layout.margin + col1 + col2 + col3, layout.y, col4, 12);
-    doc.text("MÉTODOS/PROCEDIMIENTOS", layout.margin + col1 + col2 + col3 + 2, layout.y + 8);
-    layout.y += 12;
+    doc.setFontSize(7);
+    doc.setTextColor(255, 255, 255);
+    doc.text("RIESGOS", layout.margin + 4, layout.y + 9);
+    doc.text("CONSECUENCIAS", layout.margin + col1 + 4, layout.y + 9);
+    doc.text("MEDIDAS PREVENTIVAS", layout.margin + col1 + col2 + 4, layout.y + 9);
+    doc.text("MÉTODOS", layout.margin + col1 + col2 + col3 + 4, layout.y + 9);
+    doc.setTextColor(0, 0, 0);
+    layout.y += headerH;
 
-    rows.forEach((row) => {
-      const t1 = wrap(doc, safeText(row.peligro), col1 - 4);
-      const t2 = wrap(doc, safeText(row.consecuencia), col2 - 4);
-      const t3 = wrap(doc, safeText(row.medida), col3 - 4);
-      const t4: string[] = []; // métodos (placeholder)
-      const h = Math.max(12, 6 + Math.max(t1.length, t2.length, t3.length, t4.length) * 6);
+    rows.forEach((row, rowIdx) => {
+      const t1 = wrap(doc, safeText(row.peligro), col1 - 10);
+      const t2 = wrap(doc, safeText(row.consecuencia), col2 - 10);
+      const t3 = wrap(doc, safeText(row.medida), col3 - 10);
+      const lineH = 7.5;
+      const h = Math.max(18, 8 + Math.max(t1.length, t2.length, t3.length) * lineH);
       ensurePage(doc, layout, h);
 
+      if (rowIdx % 2 === 0) {
+        doc.setFillColor(248, 249, 250);
+        doc.rect(layout.margin, layout.y, layout.width, h, "F");
+      }
       doc.rect(layout.margin, layout.y, col1, h);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(6);
-      t1.forEach((line, i) => {
-        doc.text(line, layout.margin + 2, layout.y + 8 + i * 6);
-      });
-
       doc.rect(layout.margin + col1, layout.y, col2, h);
-      t2.forEach((line, i) => {
-        doc.text(line, layout.margin + col1 + 2, layout.y + 8 + i * 6);
-      });
-
       doc.rect(layout.margin + col1 + col2, layout.y, col3, h);
-      t3.forEach((line, i) => {
-        doc.text(line, layout.margin + col1 + col2 + 2, layout.y + 8 + i * 6);
-      });
-
       doc.rect(layout.margin + col1 + col2 + col3, layout.y, col4, h);
-      doc.setFont("helvetica", "italic");
-      doc.setFontSize(6);
-      doc.text("(vacío)", layout.margin + col1 + col2 + col3 + 2, layout.y + 8);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      t1.forEach((line, i) => { doc.text(line, layout.margin + 4, layout.y + 10 + i * lineH); });
+      t2.forEach((line, i) => { doc.text(line, layout.margin + col1 + 4, layout.y + 10 + i * lineH); });
+      t3.forEach((line, i) => { doc.text(line, layout.margin + col1 + col2 + 4, layout.y + 10 + i * lineH); });
 
       layout.y += h;
     });
 
-    layout.y += 4;
+    layout.y += 6;
   };
 
   drawRiskSubsection("4.1 Riesgos generales", c.riesgos_generales_tabla ?? []);
@@ -1045,33 +971,36 @@ function drawNormas5Section(
   ];
 
   normas.forEach((norma) => {
-    ensurePage(doc, layout, 10);
-    const cbY = layout.y + 4;
-    drawCheckbox(doc, layout.margin + 2, cbY, false);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
-    doc.text(
-      `${norma.num}.- ${norma.title}`,
-      layout.margin + 12,
-      cbY + 4,
-    );
-    layout.y += 10;
+    const hasText = safeText(norma.text) !== "-";
+    const titleH = 14;
+    ensurePage(doc, layout, titleH + (hasText ? 20 : 0));
 
-    if (safeText(norma.text) !== "-") {
-      ensurePage(doc, layout, 14);
+    doc.setFillColor(240, 244, 248);
+    doc.rect(layout.margin, layout.y, layout.width, titleH, "F");
+    doc.rect(layout.margin, layout.y, layout.width, titleH);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(`${norma.num}.- ${norma.title}`, layout.margin + 6, layout.y + 9);
+    layout.y += titleH;
+
+    if (hasText) {
       const lines = wrap(doc, safeText(norma.text), layout.width - 16);
-      const h = Math.max(12, 6 + lines.length * 6);
-      doc.rect(layout.margin + 8, layout.y, layout.width - 8, h);
+      const lineH = 7.5;
+      const h = Math.max(16, 8 + lines.length * lineH);
+      ensurePage(doc, layout, h);
+      doc.rect(layout.margin, layout.y, layout.width, h);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(6);
+      doc.setFontSize(7.5);
       lines.forEach((line, i) => {
-        doc.text(line, layout.margin + 12, layout.y + 8 + i * 6);
+        doc.text(line, layout.margin + 8, layout.y + 10 + i * lineH);
       });
-      layout.y += h + 2;
+      layout.y += h;
     }
+
+    layout.y += 3;
   });
 
-  layout.y += 4;
+  layout.y += 6;
 }
 
 function drawAntecedentes6Section(
