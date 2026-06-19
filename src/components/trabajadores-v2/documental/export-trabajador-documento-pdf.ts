@@ -1456,6 +1456,80 @@ async function renderStructuredIrlPdf(
   }
 }
 
+function drawEppHeaderCorporativo(
+  doc: jsPDF,
+  layout: Layout,
+  params: ExportTrabajadorDocumentoPdfParams,
+  fecha?: string | null,
+) {
+  const headerH = 48;
+  ensurePage(doc, layout, headerH);
+
+  const logoColW = layout.width * 0.18;
+  const midColW = layout.width * 0.52;
+  const rightColW = layout.width * 0.30;
+
+  doc.rect(layout.margin, layout.y, logoColW, headerH);
+  if (params.empresa?.logoUrl) {
+    try {
+      doc.addImage(params.empresa.logoUrl, "PNG", layout.margin + 4, layout.y + 4, logoColW - 8, headerH - 8);
+    } catch {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text("[LOGO]", layout.margin + logoColW / 2, layout.y + headerH / 2, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+    }
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text("[LOGO\nCLIENTE]", layout.margin + logoColW / 2, layout.y + 18, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  const midX = layout.margin + logoColW;
+  doc.rect(midX, layout.y, midColW, headerH / 2);
+  doc.rect(midX, layout.y + headerH / 2, midColW, headerH / 2);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text("EMPRESA", midX + 4, layout.y + 9);
+  doc.setFont("helvetica", "normal");
+  doc.text(safeText(params.empresa?.razonSocial ?? params.empresa?.nombre), midX + 68, layout.y + 9);
+  doc.setFont("helvetica", "bold");
+  doc.text("DOCUMENTO", midX + 4, layout.y + headerH / 2 + 9);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.text("ACTA DE ENTREGA DE\nELEMENTOS DE PROTECCIÓN\nPERSONAL", midX + 68, layout.y + headerH / 2 + 7);
+
+  const rightX = layout.margin + logoColW + midColW;
+  doc.rect(rightX, layout.y, rightColW, headerH / 2);
+  doc.rect(rightX, layout.y + headerH / 2, rightColW, headerH / 2);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text("REG-EPP-01", rightX + 4, layout.y + 9);
+  doc.text("VER: 01", rightX + 4, layout.y + 17);
+  doc.text(`Fecha: ${safeText(fecha || formatDate(new Date()))}`, rightX + 4, layout.y + headerH / 2 + 9);
+  doc.setFont("helvetica", "normal");
+  doc.text("Página: 1", rightX + 4, layout.y + headerH / 2 + 17);
+
+  layout.y += headerH + 8;
+
+  const titleBarH = 32;
+  ensurePage(doc, layout, titleBarH);
+  doc.setFillColor(26, 82, 118);
+  doc.rect(layout.margin, layout.y, layout.width, titleBarH, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.setTextColor(255, 255, 255);
+  doc.text("ACTA DE ENTREGA DE EPP", layout.margin + layout.width / 2, layout.y + 13, { align: "center" });
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text("Registro de entrega, uso, cuidado y reposición de EPP", layout.margin + layout.width / 2, layout.y + 24, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  layout.y += titleBarH + 8;
+}
+
 async function renderStructuredEppPdf(
   doc: jsPDF,
   params: ExportTrabajadorDocumentoPdfParams,
@@ -1465,52 +1539,211 @@ async function renderStructuredEppPdf(
   const c = data.campos;
   const pageWidth = doc.internal.pageSize.getWidth();
   const layout: Layout = {
-    margin: 32,
-    width: pageWidth - 64,
+    margin: 28,
+    width: pageWidth - 56,
     pageHeight: doc.internal.pageSize.getHeight(),
-    y: 36,
+    y: 20,
   };
 
-  drawHeader(doc, layout, "ACTA ESTRUCTURADA DE ENTREGA DE EPP", "NEXTPREV TEMPLATE-02");
-  drawLabelValue(
-    doc,
-    layout,
-    "Trabajador",
-    safeText(c.trabajador_nombre || `${params.trabajador.nombre} ${params.trabajador.apellido}`),
-  );
-  drawLabelValue(doc, layout, "RUN", safeText(c.trabajador_rut || params.trabajador.rut));
-  drawLabelValue(doc, layout, "Area", safeText(c.area || params.trabajador.area));
-  drawLabelValue(doc, layout, "Fecha", safeText(c.fecha));
+  drawEppHeaderCorporativo(doc, layout, params, c.fecha);
+
+  // ===== 1. IDENTIFICACIÓN =====
+  drawFormTableHeader(doc, layout, "1. IDENTIFICACIÓN DEL TRABAJADOR");
+  const idColW1 = layout.width * 0.33;
+  const idColW2 = layout.width * 0.33;
+  const idColW3 = layout.width * 0.34;
+  const idRowH = 24;
+
+  ensurePage(doc, layout, idRowH);
+  drawTableCell(doc, layout.margin, layout.y, idColW1, idRowH, `NOMBRE Y APELLIDOS\n${safeText(c.trabajador_nombre || `${params.trabajador.nombre} ${params.trabajador.apellido}`)}`, true);
+  drawTableCell(doc, layout.margin + idColW1, layout.y, idColW2, idRowH, `RUN\n${safeText(c.trabajador_rut || params.trabajador.rut)}`, true);
+  drawTableCell(doc, layout.margin + idColW1 + idColW2, layout.y, idColW3, idRowH, `CARGO\n${safeText(params.trabajador.cargo)}`, true);
+  layout.y += idRowH;
+
+  ensurePage(doc, layout, idRowH);
+  drawTableCell(doc, layout.margin, layout.y, idColW1, idRowH, `ÁREA\n${safeText(c.area || params.trabajador.area)}`, true);
+  drawTableCell(doc, layout.margin + idColW1, layout.y, idColW2, idRowH, `EMPRESA\n${safeText(params.empresa?.nombre ?? params.empresa?.razonSocial)}`, true);
+  drawTableCell(doc, layout.margin + idColW1 + idColW2, layout.y, idColW3, idRowH, `FECHA ENTREGA\n${safeText(c.fecha)}`, true);
+  layout.y += idRowH + 8;
+
+  // ===== 2. ELEMENTOS ENTREGADOS =====
+  drawFormTableHeader(doc, layout, "2. ELEMENTOS DE PROTECCIÓN PERSONAL ENTREGADOS");
 
   const rows = c.epp_tabla ?? [];
-  rows.forEach((row) => {
-    drawLabelValue(
-      doc,
-      layout,
-      `EPP (${safeText(row.cantidad)})`,
-      `${safeText(row.descripcion)} | Marca: ${safeText(row.marca)} | Modelo: ${safeText(row.modelo)} | Norma: ${safeText(row.norma_tecnica)}`,
-    );
-  });
+  if (rows.length > 0) {
+    const eppCols = [
+      { label: "EPP", w: layout.width * 0.25 },
+      { label: "CANT.", w: layout.width * 0.07 },
+      { label: "MARCA", w: layout.width * 0.13 },
+      { label: "MODELO", w: layout.width * 0.13 },
+      { label: "NORMA", w: layout.width * 0.17 },
+      { label: "TALLA", w: layout.width * 0.08 },
+      { label: "OBS.", w: layout.width * 0.17 },
+    ];
 
-  drawParagraph(doc, layout, safeText(c.observaciones_generales), 30);
-  drawParagraph(doc, layout, safeText(c.declaracion), 36);
+    const eppHeaderH = 14;
+    ensurePage(doc, layout, eppHeaderH);
+    doc.setFillColor(26, 82, 118);
+    doc.rect(layout.margin, layout.y, layout.width, eppHeaderH, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(255, 255, 255);
+    let hx = layout.margin;
+    eppCols.forEach((col) => {
+      doc.text(col.label, hx + 4, layout.y + 9);
+      hx += col.w;
+    });
+    doc.setTextColor(0, 0, 0);
+    layout.y += eppHeaderH;
 
-  const sigH = 72;
-  ensurePage(doc, layout, sigH);
-  const sigW = layout.width / 2;
-  doc.rect(layout.margin, layout.y, sigW, sigH);
-  doc.rect(layout.margin + sigW, layout.y, sigW, sigH);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.text(`Firma trabajador\n${safeText(c.firma_trabajador)}`, layout.margin + 6, layout.y + 14);
-  doc.text(`Entregado por\n${safeText(c.entregado_por)}`, layout.margin + sigW + 6, layout.y + 14);
+    rows.forEach((row, rowIdx) => {
+      const descLines = wrap(doc, safeText(row.descripcion), eppCols[0].w - 8);
+      const lineH = 8;
+      const rowH2 = Math.max(18, 8 + descLines.length * lineH);
+      ensurePage(doc, layout, rowH2);
 
-  drawBloqueFirmasDocumentoTrabajador(doc, layout, params);
+      if (rowIdx % 2 === 0) {
+        doc.setFillColor(248, 249, 250);
+        doc.rect(layout.margin, layout.y, layout.width, rowH2, "F");
+      }
 
+      let cx = layout.margin;
+      eppCols.forEach((col) => {
+        doc.rect(cx, layout.y, col.w, rowH2);
+        cx += col.w;
+      });
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      cx = layout.margin;
+      descLines.forEach((line, i) => { doc.text(line, cx + 4, layout.y + 10 + i * lineH); });
+      cx += eppCols[0].w;
+      doc.text(String(row.cantidad || "-"), cx + 4, layout.y + 10);
+      cx += eppCols[1].w;
+      doc.text(safeText(row.marca), cx + 4, layout.y + 10, { maxWidth: eppCols[2].w - 8 });
+      cx += eppCols[2].w;
+      doc.text(safeText(row.modelo), cx + 4, layout.y + 10, { maxWidth: eppCols[3].w - 8 });
+      cx += eppCols[3].w;
+      doc.text(safeText(row.norma_tecnica), cx + 4, layout.y + 10, { maxWidth: eppCols[4].w - 8 });
+      cx += eppCols[4].w;
+      doc.text(safeText(row.talla), cx + 4, layout.y + 10);
+      cx += eppCols[5].w;
+      doc.text(safeText(row.observaciones), cx + 4, layout.y + 10, { maxWidth: eppCols[6].w - 8 });
+
+      layout.y += rowH2;
+    });
+  } else {
+    ensurePage(doc, layout, 16);
+    doc.setFillColor(248, 249, 250);
+    doc.rect(layout.margin, layout.y, layout.width, 16, "F");
+    doc.rect(layout.margin, layout.y, layout.width, 16);
+    doc.setFont("helvetica", "italic");
+    doc.setFontSize(8);
+    doc.text("Sin elementos registrados", layout.margin + 8, layout.y + 10);
+    layout.y += 16;
+  }
+
+  layout.y += 6;
+
+  // ===== 3. OBSERVACIONES =====
+  if (safeText(c.observaciones_generales) !== "-") {
+    drawFormTableHeader(doc, layout, "3. OBSERVACIONES");
+    const obsLines = wrap(doc, safeText(c.observaciones_generales), layout.width - 16);
+    const obsH = Math.max(18, 10 + obsLines.length * 9);
+    ensurePage(doc, layout, obsH);
+    doc.rect(layout.margin, layout.y, layout.width, obsH);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    obsLines.forEach((line, i) => { doc.text(line, layout.margin + 8, layout.y + 10 + i * 9); });
+    layout.y += obsH + 6;
+  }
+
+  // ===== 4. DECLARACIÓN =====
+  drawFormTableHeader(doc, layout, "4. DECLARACIÓN DE RECEPCIÓN");
+  const declText = c.declaracion || "Declaro haber recibido los elementos de protección personal indicados, conocer su uso correcto, cuidado, mantención y procedimiento de reposición. Me comprometo a utilizarlos durante toda la jornada laboral cuando la tarea lo requiera.";
+  const declLines = wrap(doc, declText, layout.width - 16);
+  const declH = Math.max(24, 10 + declLines.length * 9);
+  ensurePage(doc, layout, declH);
+  doc.rect(layout.margin, layout.y, layout.width, declH);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(`Estado documental: ${estadoLabel(params.estado)} | Documento: ${tipoNombre}`, layout.margin, layout.pageHeight - 14);
-  doc.text("Generado por NextPrev", layout.margin + layout.width - 118, layout.pageHeight - 14);
+  declLines.forEach((line, i) => { doc.text(line, layout.margin + 8, layout.y + 10 + i * 9); });
+  layout.y += declH + 8;
+
+  // ===== 5. FIRMAS =====
+  const firmaTrabajador = params.firmas?.trabajador
+    ?? (params.firmadoPor
+      ? { nombreFirmante: params.firmadoPor, rutFirmante: params.trabajador.rut ?? null, fechaHora: params.firmadoEn ? new Date(params.firmadoEn).toISOString() : null, tokenTrazabilidad: null, estado: "firmado" as const }
+      : null);
+  const firmaPrevencionista = params.firmas?.prevencionista ?? null;
+
+  const sigColW = layout.width / 2;
+  const sigBoxH = 72;
+  ensurePage(doc, layout, sigBoxH + 18);
+
+  const sigHeaderH = 14;
+  doc.setFillColor(26, 82, 118);
+  doc.rect(layout.margin, layout.y, layout.width, sigHeaderH, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
+  doc.text("Persona trabajadora", layout.margin + sigColW * 0.5, layout.y + 9, { align: "center" });
+  doc.text("Entregado por / Prevencionista", layout.margin + sigColW * 1.5, layout.y + 9, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  layout.y += sigHeaderH;
+
+  doc.rect(layout.margin, layout.y, sigColW, sigBoxH);
+  doc.rect(layout.margin + sigColW, layout.y, sigColW, sigBoxH);
+
+  const drawSigCol = (colIdx: number, nombre: string, sub: string, firma: typeof firmaTrabajador) => {
+    const x = layout.margin + sigColW * colIdx + 6;
+    const maxW = sigColW - 12;
+    let ly = layout.y + 10;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text(`Nombre: ${safeText(nombre)}`, x, ly, { maxWidth: maxW });
+    ly += 9;
+    doc.text(sub, x, ly, { maxWidth: maxW });
+    ly += 12;
+    if (firma?.estado === "firmado") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(26, 82, 118);
+      doc.text("Firmado electrónicamente", x, ly);
+      doc.setTextColor(0, 0, 0);
+      ly += 8;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      if (firma.rutFirmante) { doc.text(`RUN: ${safeText(firma.rutFirmante)}`, x, ly); ly += 7; }
+      doc.text(`Fecha: ${formatDate(firma.fechaHora)}`, x, ly);
+    } else if (firma) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(7);
+      doc.text("Pendiente de firma", x, ly);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.text("Firma: ____________________", x, ly);
+      ly += 10;
+      doc.text(`Fecha: ${safeText(c.fecha || formatDate(new Date()))}`, x, ly);
+    }
+  };
+
+  drawSigCol(0, c.trabajador_nombre || `${params.trabajador.nombre} ${params.trabajador.apellido}`, `RUN: ${safeText(c.trabajador_rut || params.trabajador.rut)}`, firmaTrabajador);
+  drawSigCol(1, c.entregado_por || "", `Cargo: ${safeText(firmaPrevencionista?.nombreFirmante ? "Prevencionista de Riesgos" : "")}`, firmaPrevencionista);
+  layout.y += sigBoxH + 8;
+
+  // ===== 6. TRAZABILIDAD =====
+  drawTrazabilidad9Section(doc, layout, params);
+
+  // ===== FOOTER =====
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p += 1) {
+    doc.setPage(p);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("Generado por NextPrev | Registro de Entrega de EPP | Uso interno SST", layout.margin + layout.width / 2, layout.pageHeight - 14, { align: "center" });
+  }
 }
 
 export async function renderEppPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams, tipoNombre: string) {
@@ -1522,13 +1755,46 @@ export async function renderEppPdf(doc: jsPDF, params: ExportTrabajadorDocumento
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const layout: Layout = {
-    margin: 32,
-    width: pageWidth - 64,
+    margin: 28,
+    width: pageWidth - 56,
     pageHeight: doc.internal.pageSize.getHeight(),
-    y: 36,
+    y: 20,
   };
-  drawHeader(doc, layout, "REGISTRO DE ENTREGA DE EPP", "Formato simplificado");
-  drawParagraph(doc, layout, params.contenido || "Sin contenido", 80);
+
+  drawEppHeaderCorporativo(doc, layout, params);
+
+  drawFormTableHeader(doc, layout, "1. IDENTIFICACIÓN DEL TRABAJADOR");
+  const colW1 = layout.width * 0.33;
+  const colW2 = layout.width * 0.33;
+  const colW3 = layout.width * 0.34;
+  const rowH = 24;
+  ensurePage(doc, layout, rowH);
+  drawTableCell(doc, layout.margin, layout.y, colW1, rowH, `NOMBRE Y APELLIDOS\n${safeText(`${params.trabajador.nombre} ${params.trabajador.apellido}`)}`, true);
+  drawTableCell(doc, layout.margin + colW1, layout.y, colW2, rowH, `RUT\n${safeText(params.trabajador.rut)}`, true);
+  drawTableCell(doc, layout.margin + colW1 + colW2, layout.y, colW3, rowH, `CARGO\n${safeText(params.trabajador.cargo)}`, true);
+  layout.y += rowH + 8;
+
+  drawFormTableHeader(doc, layout, "2. CONTENIDO DEL DOCUMENTO");
+  const contenidoMarkdown = (params.documento?.contenidoMarkdown ?? params.contenido ?? "").trim();
+  const sections = parseMarkdownSections(contenidoMarkdown).filter(
+    (section) => section.title.toLowerCase() !== "identificacion del trabajador",
+  );
+  if (sections.length === 0) {
+    drawParagraph(doc, layout, contenidoMarkdown || "Sin contenido", 80);
+  } else {
+    sections.forEach((section) => { drawMarkdownSection(doc, layout, section); });
+  }
+
+  drawBloqueFirmasDocumentoTrabajador(doc, layout, params);
+  drawTrazabilidad9Section(doc, layout, params);
+
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p += 1) {
+    doc.setPage(p);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("Generado por NextPrev | Registro de Entrega de EPP | Uso interno SST", layout.margin + layout.width / 2, layout.pageHeight - 14, { align: "center" });
+  }
 }
 
 function renderMarkdownIrlPdfConDiseñoCorporativo(
