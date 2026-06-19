@@ -2835,69 +2835,92 @@ export async function validarTrabajadorDocumento(
   detalle?: string,
 ): Promise<{ id: string }> {
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
-  const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
-  await validateDocumentoReferencesInEmpresa(empresaId, documento);
+
+  let documento: Awaited<ReturnType<typeof getTrabajadorDocumentoInEmpresa>>;
+  try {
+    documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
+  } catch {
+    throw new Error("Documento de trabajador no encontrado");
+  }
+
+  try {
+    await validateDocumentoReferencesInEmpresa(empresaId, documento);
+  } catch {
+    throw new Error("Referencias del documento no válidas en la empresa actual");
+  }
 
   const estadoActual = (documento.estado ?? "").trim().toLowerCase();
   if (estadoActual !== "en_revision") {
     throw new Error("Solo se puede validar un documento en revisión");
   }
 
-  const updated = await prisma.trabajadorDocumento.update({
-    where: { id: documento.id },
-    data: {
-      estado: "validado",
-      subidoPorId: usuarioId,
-    },
-    select: { id: true, version: true },
-  });
-
-  await prisma.trabajadorDocumentoHistorial.create({
-    data: {
-      documentoId: updated.id,
-      usuarioId,
-      accion: "DOCUMENTO_VALIDADO",
-      detalle: detalle?.trim() || "Documento validado",
-      version: updated.version,
-    },
-  });
-
-  // Aplica firma automática del prevencionista si tiene perfil activo
-  const perfilFirma = await prisma.firmaUsuarioPerfil.findFirst({
-    where: { empresaId, usuarioId, activa: true },
-    select: { nombre: true, rut: true },
-  });
-
-  if (perfilFirma) {
-    const token = generarTokenFirma();
-    const timestamp = new Date().toISOString();
-    const hash = generarHashFirma({
-      documentoId: updated.id,
-      token,
-      timestamp,
-      firmante: perfilFirma.nombre,
-      rut: perfilFirma.rut,
-    });
-    await prisma.firmaDocumento.create({
+  let updated: { id: string; version: string };
+  try {
+    updated = await prisma.trabajadorDocumento.update({
+      where: { id: documento.id },
       data: {
-        empresaId,
-        usuarioPrevencionistaId: usuarioId,
+        estado: "validado",
+        subidoPorId: usuarioId,
+      },
+      select: { id: true, version: true },
+    });
+  } catch {
+    throw new Error("No se pudo actualizar el estado del documento");
+  }
+
+  try {
+    await prisma.trabajadorDocumentoHistorial.create({
+      data: {
         documentoId: updated.id,
-        documentoOrigen: "documento_trabajador",
-        token,
-        tipoFirmante: "prevencionista",
-        tipoFirma: "automatica",
-        estado: "firmado",
-        tituloDocumento: documento.nombre,
-        descripcion: "Firma automática del prevencionista al validar el documento",
-        nombreFirmante: perfilFirma.nombre,
-        rutFirmante: perfilFirma.rut,
-        tokenTrazabilidad: token,
-        hashDocumento: hash,
-        aceptoLectura: true,
-        firmadoAt: new Date(),
+        usuarioId,
+        accion: "DOCUMENTO_VALIDADO",
+        detalle: detalle?.trim() || "Documento validado",
+        version: updated.version,
       },
     });
+  } catch {
+    throw new Error("No se pudo registrar el historial de validación");
+  }
+
+  try {
+    const perfilFirma = await prisma.firmaUsuarioPerfil.findFirst({
+      where: { empresaId, usuarioId, activa: true },
+      select: { nombre: true, rut: true },
+    });
+
+    if (perfilFirma) {
+      const token = generarTokenFirma();
+      const timestamp = new Date().toISOString();
+      const hash = generarHashFirma({
+        documentoId: updated.id,
+        token,
+        timestamp,
+        firmante: perfilFirma.nombre,
+        rut: perfilFirma.rut,
+      });
+      await prisma.firmaDocumento.create({
+        data: {
+          empresaId,
+          usuarioPrevencionistaId: usuarioId,
+          documentoId: updated.id,
+          documentoOrigen: "documento_trabajador",
+          token,
+          tipoFirmante: "prevencionista",
+          tipoFirma: "automatica",
+          estado: "firmado",
+          tituloDocumento: documento.nombre,
+          descripcion: "Firma automática del prevencionista al validar el documento",
+          nombreFirmante: perfilFirma.nombre,
+          rutFirmante: perfilFirma.rut,
+          tokenTrazabilidad: token,
+          hashDocumento: hash,
+          aceptoLectura: true,
+          firmadoAt: new Date(),
+        },
+      });
+    }
+  } catch {
+    throw new Error("Documento validado, pero no se pudo aplicar la firma automática del prevencionista");
   }
 
   return { id: updated.id };
