@@ -48,6 +48,7 @@ import {
   getEmpresaDocumentoMeta,
   getVersionesTrabajadorDocumento,
   validarTrabajadorDocumento,
+  obtenerAdjuntosIrlTrabajador,
   type EstadoDocumentoTrabajadorInput,
   type EmpresaDocumentoMeta,
   type HistorialEntryView,
@@ -171,6 +172,8 @@ export function PendientesPanel({
         ? await obtenerBloqueFirmasDocumentoTrabajador(doc.documentoId)
         : undefined;
 
+      const adjuntosIrl = await obtenerAdjuntosIrlTrabajador(worker.id).catch(() => undefined);
+
       const pdf = await exportTrabajadorDocumentoPdf({
         documento: doc,
         trabajador: worker,
@@ -179,6 +182,7 @@ export function PendientesPanel({
         firmadoPor: doc.firmadoPor,
         firmadoEn: doc.firmadoEn,
         firmas,
+        adjuntosIrl,
         empresa: empresaMeta,
       });
 

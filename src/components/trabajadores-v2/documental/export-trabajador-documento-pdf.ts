@@ -17,6 +17,51 @@ type EmpresaPdfMeta = {
   logoUrl: string | null;
 };
 
+export type EstadoRecepcionAdjunto = "recibido" | "pendiente" | "no_aplica";
+
+export type DocumentoAdjuntoIrl = {
+  titulo: string;
+  nombre: string;
+  origen: "carpeta_trabajador" | "biblioteca_empresa" | "documentacion_empresa" | "manual";
+  estado: EstadoRecepcionAdjunto;
+  fechaRecepcion?: string | null;
+  trabajadorId?: string | null;
+  documentoId?: string | null;
+  tipoDocumento?: string | null;
+  token?: string | null;
+  hash?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+};
+
+export function buildAdjuntosIrlDesdeTexto(
+  c: { material_adjunto_pts?: string; material_adjunto_productos?: string; material_adjunto_cobertura?: string },
+): DocumentoAdjuntoIrl[] {
+  const adjuntos: DocumentoAdjuntoIrl[] = [];
+  const ptsText = (c.material_adjunto_pts ?? "").trim();
+  adjuntos.push({
+    titulo: "PROCEDIMIENTOS DE TRABAJO SEGURO (PTS)",
+    nombre: ptsText || "Sin documento registrado",
+    origen: ptsText ? "documentacion_empresa" : "manual",
+    estado: ptsText ? "pendiente" : "no_aplica",
+  });
+  const prodText = (c.material_adjunto_productos ?? "").trim();
+  adjuntos.push({
+    titulo: "PRODUCTOS Y SUSTANCIAS A MANIPULAR",
+    nombre: prodText || "Sin documento registrado",
+    origen: prodText ? "documentacion_empresa" : "manual",
+    estado: prodText ? "pendiente" : "no_aplica",
+  });
+  const cobText = (c.material_adjunto_cobertura ?? "").trim();
+  adjuntos.push({
+    titulo: "COBERTURA EN CASO DE ACCIDENTES",
+    nombre: cobText || "Cubierto por IRL",
+    origen: cobText ? "documentacion_empresa" : "manual",
+    estado: cobText ? "pendiente" : "no_aplica",
+  });
+  return adjuntos;
+}
+
 export type ExportTrabajadorDocumentoPdfParams = {
   documento: DocTrabajadorView | null;
   trabajador: Worker;
@@ -40,6 +85,7 @@ export type ExportTrabajadorDocumentoPdfParams = {
       estado: "firmado" | "pendiente" | "enviado_firma" | "expirado" | "rechazado";
     } | null;
   };
+  adjuntosIrl?: DocumentoAdjuntoIrl[];
   empresa?: EmpresaPdfMeta | null;
 };
 
@@ -1096,33 +1142,101 @@ function drawMaterial7Section(
   doc: jsPDF,
   layout: Layout,
   c: DocumentoIrlCampos,
+  params: ExportTrabajadorDocumentoPdfParams,
 ) {
   drawSectionTitle(doc, layout, "7. LA ENTIDAD EMPLEADORA ENTREGA MATERIAL ADJUNTO A ESTE DOCUMENTO");
 
-  const items = [
-    { title: "PROCEDIMIENTOS DE TRABAJO SEGURO (PTS)", content: c.material_adjunto_pts },
-    { title: "PRODUCTOS Y SUSTANCIAS A MANIPULAR", content: c.material_adjunto_productos },
-    { title: "COBERTURA EN CASO DE ACCIDENTES", content: c.material_adjunto_cobertura },
-  ];
+  const adjuntos: DocumentoAdjuntoIrl[] = params.adjuntosIrl?.length
+    ? params.adjuntosIrl
+    : buildAdjuntosIrlDesdeTexto(c);
 
-  items.forEach((item) => {
-    ensurePage(doc, layout, 8);
+  const colTitulo = layout.width * 0.35;
+  const colNombre = layout.width * 0.30;
+  const colEstado = layout.width * 0.20;
+  const colFecha = layout.width * 0.15;
+  const headerH = 14;
+
+  ensurePage(doc, layout, headerH);
+  doc.setFillColor(26, 82, 118);
+  doc.rect(layout.margin, layout.y, layout.width, headerH, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(255, 255, 255);
+  doc.text("DOCUMENTO", layout.margin + 6, layout.y + 9);
+  doc.text("NOMBRE / ORIGEN", layout.margin + colTitulo + 4, layout.y + 9);
+  doc.text("ESTADO", layout.margin + colTitulo + colNombre + 4, layout.y + 9);
+  doc.text("FECHA", layout.margin + colTitulo + colNombre + colEstado + 4, layout.y + 9);
+  doc.setTextColor(0, 0, 0);
+  layout.y += headerH;
+
+  adjuntos.forEach((adj, idx) => {
+    const tLines = wrap(doc, adj.titulo, colTitulo - 12);
+    const nLines = wrap(doc, adj.nombre, colNombre - 10);
+    const lineH = 8;
+    const rowH = Math.max(20, 8 + Math.max(tLines.length, nLines.length) * lineH);
+    ensurePage(doc, layout, rowH);
+
+    if (idx % 2 === 0) {
+      doc.setFillColor(248, 249, 250);
+      doc.rect(layout.margin, layout.y, layout.width, rowH, "F");
+    }
+    doc.rect(layout.margin, layout.y, colTitulo, rowH);
+    doc.rect(layout.margin + colTitulo, layout.y, colNombre, rowH);
+    doc.rect(layout.margin + colTitulo + colNombre, layout.y, colEstado, rowH);
+    doc.rect(layout.margin + colTitulo + colNombre + colEstado, layout.y, colFecha, rowH);
+
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
-    doc.text(`• ${item.title}`, layout.margin + 4, layout.y + 6);
-    layout.y += 8;
+    doc.setFontSize(7);
+    tLines.forEach((line, i) => {
+      doc.text(line, layout.margin + 6, layout.y + 10 + i * lineH);
+    });
 
-    const lines = wrap(doc, safeText(item.content), layout.width - 8);
-    const h = Math.max(12, 6 + lines.length * 6);
-    ensurePage(doc, layout, h);
-    doc.rect(layout.margin, layout.y, layout.width, h);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    nLines.forEach((line, i) => {
+      doc.text(line, layout.margin + colTitulo + 4, layout.y + 10 + i * lineH);
+    });
+
+    const estadoX = layout.margin + colTitulo + colNombre + 4;
+    if (adj.estado === "recibido") {
+      doc.setFillColor(22, 101, 52);
+      doc.rect(estadoX, layout.y + 5, 6, 6, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(5);
+      doc.text("OK", estadoX + 0.5, layout.y + 9.5);
+      doc.setTextColor(22, 101, 52);
+      doc.setFontSize(7);
+      doc.text("Recibido", estadoX + 9, layout.y + 10);
+      doc.setTextColor(0, 0, 0);
+    } else if (adj.estado === "pendiente") {
+      doc.setFillColor(220, 160, 0);
+      doc.rect(estadoX, layout.y + 5, 6, 6, "F");
+      doc.setTextColor(180, 120, 0);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.text("Pendiente", estadoX + 9, layout.y + 10);
+      doc.setTextColor(0, 0, 0);
+    } else {
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(120, 120, 120);
+      doc.setFontSize(7);
+      doc.text("No aplica", estadoX, layout.y + 10);
+      doc.setTextColor(0, 0, 0);
+    }
+
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);
-    lines.forEach((line, i) => {
-      doc.text(line, layout.margin + 4, layout.y + 8 + i * 6);
-    });
-    layout.y += h + 4;
+    doc.text(
+      adj.fechaRecepcion ? formatDate(adj.fechaRecepcion) : "-",
+      layout.margin + colTitulo + colNombre + colEstado + 4,
+      layout.y + 10,
+    );
+
+    layout.y += rowH;
   });
+
+  layout.y += 6;
 }
 
 function drawConsentimiento8Section(
@@ -1328,7 +1442,7 @@ async function renderStructuredIrlPdf(
   drawRiesgos4Section(doc, layout, c);
   drawNormas5Section(doc, layout, c);
   drawAntecedentes6Section(doc, layout, c);
-  drawMaterial7Section(doc, layout, c);
+  drawMaterial7Section(doc, layout, c, params);
   drawConsentimiento8Section(doc, layout, c, params);
   drawTrazabilidad9Section(doc, layout, params);
 
