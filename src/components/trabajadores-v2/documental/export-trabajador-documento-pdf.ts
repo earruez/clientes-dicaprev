@@ -1123,14 +1123,14 @@ function drawConsentimiento8Section(
   c: DocumentoIrlCampos,
   params: ExportTrabajadorDocumentoPdfParams,
 ) {
-  drawSectionTitle(doc, layout, "8. CONSENTIMIENTO Y FIRMA DE LA PERSONA TRABAJADORA");
+  drawSectionTitle(doc, layout, "8. DECLARACIÓN Y FIRMAS");
 
   const declaracionText =
     c.declaracion ||
-    `Declaro haber recibido la Información sobre los Riesgos Laborales, impartida por ${safeText(params.empresa?.razonSocial ?? params.empresa?.nombre ?? "la Empresa")}. Dicha actividad contempla todos los puntos indicados en el presente documento y se ha llevado a cabo antes de mi ingreso a las instalaciones. Se me ha informado sobre los riesgos a los cuales estaré expuesto, las medidas de prevención que debo adoptar y las herramientas necesarias para su aplicación. Entiendo y acepto que el incumplimiento de las medidas de control señaladas puede derivar en un proceso sancionatorio.`;
+    `Declaro haber recibido, leído y comprendido la información entregada en este Informe de Riesgos Laborales, comprometiéndome a cumplir las medidas preventivas, procedimientos y normas indicadas.`;
 
   const lines = wrap(doc, declaracionText, layout.width - 8);
-  const h = Math.max(36, 6 + lines.length * 7);
+  const h = Math.max(28, 6 + lines.length * 7);
   ensurePage(doc, layout, h);
   doc.rect(layout.margin, layout.y, layout.width, h);
   doc.setFont("helvetica", "normal");
@@ -1138,23 +1138,161 @@ function drawConsentimiento8Section(
   lines.forEach((line, i) => {
     doc.text(line, layout.margin + 4, layout.y + 8 + i * 7);
   });
-  layout.y += h + 8;
+  layout.y += h + 6;
 
-  // Firma table
-  ensurePage(doc, layout, 50);
-  const sigW = layout.width / 2;
-  doc.rect(layout.margin, layout.y, sigW, 40);
-  doc.rect(layout.margin + sigW, layout.y, sigW, 40);
+  const firmaTrabajador = params.firmas?.trabajador
+    ?? (params.firmadoPor
+      ? {
+          nombreFirmante: params.firmadoPor,
+          rutFirmante: params.trabajador.rut ?? null,
+          fechaHora: params.firmadoEn ? new Date(params.firmadoEn).toISOString() : null,
+          tokenTrazabilidad: null,
+          estado: "firmado" as const,
+        }
+      : null);
+  const firmaPrevencionista = params.firmas?.prevencionista ?? null;
 
+  const colW = layout.width / 3;
+  const sigBoxH = 72;
+  ensurePage(doc, layout, sigBoxH + 14);
+
+  // Header row
+  const headerH = 14;
+  doc.setFillColor(26, 82, 118);
+  doc.rect(layout.margin, layout.y, layout.width, headerH, "F");
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.text("PERSONA TRABAJADORA", layout.margin + 4, layout.y + 32);
-  doc.text(`${safeText(c.trabajador_nombre || "Nombre")}`, layout.margin + 4, layout.y + 36);
+  doc.setTextColor(255, 255, 255);
+  doc.text("Persona trabajadora", layout.margin + colW * 0.5, layout.y + 9, { align: "center" });
+  doc.text("Relator / prevencionista", layout.margin + colW * 1.5, layout.y + 9, { align: "center" });
+  doc.text("Representante empresa", layout.margin + colW * 2.5, layout.y + 9, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  layout.y += headerH;
 
-  doc.text("RELATOR (PREVENCIONISTA)", layout.margin + sigW + 4, layout.y + 32);
-  doc.text(`${safeText(c.relator_nombre || "Nombre")}`, layout.margin + sigW + 4, layout.y + 36);
+  // Signature boxes
+  for (let i = 0; i < 3; i++) {
+    doc.rect(layout.margin + colW * i, layout.y, colW, sigBoxH);
+  }
 
-  layout.y += 44;
+  const drawFirmaCol = (
+    colIndex: number,
+    nombre: string,
+    subtitulo: string,
+    firma: typeof firmaTrabajador,
+  ) => {
+    const x = layout.margin + colW * colIndex + 5;
+    const maxW = colW - 10;
+    let ly = layout.y + 10;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    doc.text(`Nombre: ${safeText(nombre)}`, x, ly, { maxWidth: maxW });
+    ly += 8;
+    doc.text(subtitulo, x, ly, { maxWidth: maxW });
+    ly += 12;
+
+    if (firma?.estado === "firmado") {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6);
+      doc.setTextColor(26, 82, 118);
+      doc.text("Firmado electrónicamente", x, ly);
+      doc.setTextColor(0, 0, 0);
+      ly += 8;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6);
+      if (firma.rutFirmante) {
+        doc.text(`RUN: ${safeText(firma.rutFirmante)}`, x, ly);
+        ly += 7;
+      }
+      doc.text(`Fecha: ${formatDate(firma.fechaHora)}`, x, ly);
+    } else if (firma) {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(6.5);
+      doc.text("Pendiente de firma", x, ly);
+    } else {
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.text("Firma: ____________________", x, ly);
+      ly += 10;
+      doc.text(`Fecha: ${safeText(c.fecha || formatDate(new Date()))}`, x, ly);
+    }
+  };
+
+  drawFirmaCol(
+    0,
+    c.trabajador_nombre || `${params.trabajador.nombre} ${params.trabajador.apellido}`,
+    `RUN: ${safeText(c.trabajador_rut || params.trabajador.rut)}`,
+    firmaTrabajador,
+  );
+  drawFirmaCol(
+    1,
+    c.relator_nombre || c.prevencionista_nombre || "",
+    `Cargo: ${safeText(c.relator_cargo || c.prevencionista_cargo || "Prevencionista de Riesgos")}`,
+    firmaPrevencionista,
+  );
+  drawFirmaCol(
+    2,
+    params.empresa?.nombre ?? params.empresa?.razonSocial ?? "",
+    `RUT: ${safeText(params.empresa?.rut)}`,
+    null,
+  );
+
+  layout.y += sigBoxH + 6;
+}
+
+function drawTrazabilidad9Section(
+  doc: jsPDF,
+  layout: Layout,
+  params: ExportTrabajadorDocumentoPdfParams,
+) {
+  drawSectionTitle(doc, layout, "9. TRAZABILIDAD DIGITAL NEXTPREV");
+
+  const firmaTrabajador = params.firmas?.trabajador ?? null;
+  const firmaPrevencionista = params.firmas?.prevencionista ?? null;
+
+  const rows = [
+    { label: "Estado documental", value: estadoLabel(params.estado) },
+    {
+      label: "Firma trabajador",
+      value: firmaTrabajador?.estado === "firmado"
+        ? `Firmado | ${formatDate(firmaTrabajador.fechaHora)}`
+        : "Pendiente de firma",
+    },
+    {
+      label: "Firma prevencionista",
+      value: firmaPrevencionista?.estado === "firmado"
+        ? `Firmado | ${formatDate(firmaPrevencionista.fechaHora)}`
+        : "Pendiente de firma",
+    },
+    {
+      label: "Token trazabilidad",
+      value: safeText(firmaPrevencionista?.tokenTrazabilidad || firmaTrabajador?.tokenTrazabilidad),
+    },
+  ];
+
+  const labelW = layout.width * 0.35;
+  const valueW = layout.width * 0.65;
+  const rowH = 14;
+
+  rows.forEach((row) => {
+    ensurePage(doc, layout, rowH);
+    doc.setFillColor(245, 245, 245);
+    doc.rect(layout.margin, layout.y, labelW, rowH, "F");
+    doc.rect(layout.margin, layout.y, labelW, rowH);
+    doc.rect(layout.margin + labelW, layout.y, valueW, rowH);
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7);
+    doc.text(row.label, layout.margin + 4, layout.y + 9);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text(row.value, layout.margin + labelW + 4, layout.y + 9, { maxWidth: valueW - 8 });
+
+    layout.y += rowH;
+  });
+
+  layout.y += 6;
 }
 
 async function renderStructuredIrlPdf(
@@ -1172,43 +1310,81 @@ async function renderStructuredIrlPdf(
     y: 20,
   };
 
-  // ===== HEADER SECTION =====
-  ensurePage(doc, layout, 28);
-  doc.setFillColor(240, 240, 240);
-  doc.rect(layout.margin, layout.y, layout.width, 28, "F");
-  doc.rect(layout.margin, layout.y, layout.width, 28);
+  // ===== HEADER CORPORATIVO =====
+  const headerH = 48;
+  ensurePage(doc, layout, headerH);
+
+  const logoColW = layout.width * 0.18;
+  const midColW = layout.width * 0.52;
+  const rightColW = layout.width * 0.30;
+
+  // Logo column
+  doc.rect(layout.margin, layout.y, logoColW, headerH);
+  if (params.empresa?.logoUrl) {
+    try {
+      doc.addImage(params.empresa.logoUrl, "PNG", layout.margin + 4, layout.y + 4, logoColW - 8, headerH - 8);
+    } catch {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text("[LOGO]", layout.margin + logoColW / 2, layout.y + headerH / 2, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+    }
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text("[LOGO\nCLIENTE]", layout.margin + logoColW / 2, layout.y + 18, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  // Mid column (empresa + documento)
+  const midX = layout.margin + logoColW;
+  doc.rect(midX, layout.y, midColW, headerH / 2);
+  doc.rect(midX, layout.y + headerH / 2, midColW, headerH / 2);
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.text(
-    "REGISTRO INFORMACIÓN DE LOS RIESGOS LABORALES",
-    layout.margin + layout.width / 2,
-    layout.y + 8,
-    { align: "center" },
-  );
-
+  doc.setFontSize(7);
+  doc.text("EMPRESA", midX + 4, layout.y + 9);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.text(
-    `Código: ${safeText(c.codigo_documento || "FORM-IRL 03")} | Aprobación: ${safeText(c.aprobacion_fecha || "01.12.2025")} | VER: ${safeText(c.version || "01")}`,
-    layout.margin + layout.width / 2,
-    layout.y + 16,
-    { align: "center" },
-  );
+  doc.text(safeText(params.empresa?.razonSocial ?? params.empresa?.nombre), midX + 68, layout.y + 9);
 
-  layout.y += 32;
-
-  // Subtitle
-  ensurePage(doc, layout, 14);
   doc.setFont("helvetica", "bold");
+  doc.text("DOCUMENTO", midX + 4, layout.y + headerH / 2 + 9);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.text("ACTA DE INFORMACIÓN\nSOBRE LOS RIESGOS\nLABORALES", midX + 68, layout.y + headerH / 2 + 7);
+
+  // Right column (código + fecha)
+  const rightX = layout.margin + logoColW + midColW;
+  doc.rect(rightX, layout.y, rightColW, headerH / 2);
+  doc.rect(rightX, layout.y + headerH / 2, rightColW, headerH / 2);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text(safeText(c.codigo_documento || "REG-IRL-03"), rightX + 4, layout.y + 9);
+  doc.text(`VER: ${safeText(c.version || "01")}`, rightX + 4, layout.y + 17);
+
+  doc.text(`Fecha: ${safeText(c.fecha || formatDate(new Date()))}`, rightX + 4, layout.y + headerH / 2 + 9);
+  doc.setFont("helvetica", "normal");
+  doc.text("Página: 1", rightX + 4, layout.y + headerH / 2 + 17);
+
+  layout.y += headerH + 8;
+
+  // Title bar
+  const titleBarH = 32;
+  ensurePage(doc, layout, titleBarH);
+  doc.setFillColor(26, 82, 118);
+  doc.rect(layout.margin, layout.y, layout.width, titleBarH, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(255, 255, 255);
+  doc.text("INFORME DE RIESGOS LABORALES (IRL)", layout.margin + layout.width / 2, layout.y + 14, { align: "center" });
   doc.setFontSize(8);
-  doc.text("SISTEMA DE GESTIÓN DE SEGURIDAD Y SALUD EN EL TRABAJO", layout.margin + layout.width / 2, layout.y + 6, {
-    align: "center",
-  });
-  doc.text("REGISTRO INFORMACIÓN DE LOS RIESGOS LABORALES", layout.margin + layout.width / 2, layout.y + 12, {
-    align: "center",
-  });
-  layout.y += 16;
+  doc.setFont("helvetica", "normal");
+  doc.text("Acta de información conforme DS 44 - inducción de trabajador", layout.margin + layout.width / 2, layout.y + 24, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  layout.y += titleBarH + 8;
 
   // ===== SECTIONS =====
   drawIdentificationTable(doc, layout, c, params);
@@ -1219,18 +1395,15 @@ async function renderStructuredIrlPdf(
   drawAntecedentes6Section(doc, layout, c);
   drawMaterial7Section(doc, layout, c);
   drawConsentimiento8Section(doc, layout, c, params);
-  drawBloqueFirmasDocumentoTrabajador(doc, layout, params);
+  drawTrazabilidad9Section(doc, layout, params);
 
   // ===== FOOTER WITH CORRECT PAGE NUMBERS =====
   const totalPages = doc.getNumberOfPages();
-  const footer = `${safeText(c.codigo_documento || "FORM-IRL 03")} | VER:${safeText(c.version || "01")} | IRL - INFORME DE RIESGOS LABORALES`;
   for (let p = 1; p <= totalPages; p += 1) {
     doc.setPage(p);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(7);
-    doc.text(footer, layout.margin, layout.pageHeight - 14);
-    doc.text(`Página ${p} de ${totalPages}`, layout.margin + layout.width / 2, layout.pageHeight - 14, { align: "center" });
-    doc.text("Generado por NextPrev", layout.margin + layout.width - 118, layout.pageHeight - 14);
+    doc.text("Generado por NextPrev | Documento de inducción IRL | Uso interno SST", layout.margin + layout.width / 2, layout.pageHeight - 14, { align: "center" });
   }
 }
 
