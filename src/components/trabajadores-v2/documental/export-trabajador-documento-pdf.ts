@@ -255,6 +255,85 @@ function drawParagraph(doc: jsPDF, layout: Layout, text: string, minHeight = 24)
   layout.y += h;
 }
 
+function drawIrlHeaderCorporativo(
+  doc: jsPDF,
+  layout: Layout,
+  params: ExportTrabajadorDocumentoPdfParams,
+  codigoDocumento?: string | null,
+  version?: string | null,
+  fecha?: string | null,
+) {
+  const headerH = 48;
+  ensurePage(doc, layout, headerH);
+
+  const logoColW = layout.width * 0.18;
+  const midColW = layout.width * 0.52;
+  const rightColW = layout.width * 0.30;
+
+  doc.rect(layout.margin, layout.y, logoColW, headerH);
+  if (params.empresa?.logoUrl) {
+    try {
+      doc.addImage(params.empresa.logoUrl, "PNG", layout.margin + 4, layout.y + 4, logoColW - 8, headerH - 8);
+    } catch {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text("[LOGO]", layout.margin + logoColW / 2, layout.y + headerH / 2, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+    }
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text("[LOGO\nCLIENTE]", layout.margin + logoColW / 2, layout.y + 18, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  const midX = layout.margin + logoColW;
+  doc.rect(midX, layout.y, midColW, headerH / 2);
+  doc.rect(midX, layout.y + headerH / 2, midColW, headerH / 2);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text("EMPRESA", midX + 4, layout.y + 9);
+  doc.setFont("helvetica", "normal");
+  doc.text(safeText(params.empresa?.razonSocial ?? params.empresa?.nombre), midX + 68, layout.y + 9);
+
+  doc.setFont("helvetica", "bold");
+  doc.text("DOCUMENTO", midX + 4, layout.y + headerH / 2 + 9);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.text("ACTA DE INFORMACIÓN\nSOBRE LOS RIESGOS\nLABORALES", midX + 68, layout.y + headerH / 2 + 7);
+
+  const rightX = layout.margin + logoColW + midColW;
+  doc.rect(rightX, layout.y, rightColW, headerH / 2);
+  doc.rect(rightX, layout.y + headerH / 2, rightColW, headerH / 2);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text(safeText(codigoDocumento || "REG-IRL-03"), rightX + 4, layout.y + 9);
+  doc.text(`VER: ${safeText(version || "01")}`, rightX + 4, layout.y + 17);
+  doc.text(`Fecha: ${safeText(fecha || formatDate(new Date()))}`, rightX + 4, layout.y + headerH / 2 + 9);
+  doc.setFont("helvetica", "normal");
+  doc.text("Página: 1", rightX + 4, layout.y + headerH / 2 + 17);
+
+  layout.y += headerH + 8;
+
+  const titleBarH = 32;
+  ensurePage(doc, layout, titleBarH);
+  doc.setFillColor(26, 82, 118);
+  doc.rect(layout.margin, layout.y, layout.width, titleBarH, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
+  doc.setTextColor(255, 255, 255);
+  doc.text("INFORME DE RIESGOS LABORALES (IRL)", layout.margin + layout.width / 2, layout.y + 14, { align: "center" });
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text("Acta de información conforme DS 44 - inducción de trabajador", layout.margin + layout.width / 2, layout.y + 24, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  layout.y += titleBarH + 8;
+}
+
 // ========== FORM-IRL 03 Helpers ==========
 
 function drawFormTableHeader(
@@ -1311,80 +1390,7 @@ async function renderStructuredIrlPdf(
   };
 
   // ===== HEADER CORPORATIVO =====
-  const headerH = 48;
-  ensurePage(doc, layout, headerH);
-
-  const logoColW = layout.width * 0.18;
-  const midColW = layout.width * 0.52;
-  const rightColW = layout.width * 0.30;
-
-  // Logo column
-  doc.rect(layout.margin, layout.y, logoColW, headerH);
-  if (params.empresa?.logoUrl) {
-    try {
-      doc.addImage(params.empresa.logoUrl, "PNG", layout.margin + 4, layout.y + 4, logoColW - 8, headerH - 8);
-    } catch {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text("[LOGO]", layout.margin + logoColW / 2, layout.y + headerH / 2, { align: "center" });
-      doc.setTextColor(0, 0, 0);
-    }
-  } else {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text("[LOGO\nCLIENTE]", layout.margin + logoColW / 2, layout.y + 18, { align: "center" });
-    doc.setTextColor(0, 0, 0);
-  }
-
-  // Mid column (empresa + documento)
-  const midX = layout.margin + logoColW;
-  doc.rect(midX, layout.y, midColW, headerH / 2);
-  doc.rect(midX, layout.y + headerH / 2, midColW, headerH / 2);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7);
-  doc.text("EMPRESA", midX + 4, layout.y + 9);
-  doc.setFont("helvetica", "normal");
-  doc.text(safeText(params.empresa?.razonSocial ?? params.empresa?.nombre), midX + 68, layout.y + 9);
-
-  doc.setFont("helvetica", "bold");
-  doc.text("DOCUMENTO", midX + 4, layout.y + headerH / 2 + 9);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.5);
-  doc.text("ACTA DE INFORMACIÓN\nSOBRE LOS RIESGOS\nLABORALES", midX + 68, layout.y + headerH / 2 + 7);
-
-  // Right column (código + fecha)
-  const rightX = layout.margin + logoColW + midColW;
-  doc.rect(rightX, layout.y, rightColW, headerH / 2);
-  doc.rect(rightX, layout.y + headerH / 2, rightColW, headerH / 2);
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7);
-  doc.text(safeText(c.codigo_documento || "REG-IRL-03"), rightX + 4, layout.y + 9);
-  doc.text(`VER: ${safeText(c.version || "01")}`, rightX + 4, layout.y + 17);
-
-  doc.text(`Fecha: ${safeText(c.fecha || formatDate(new Date()))}`, rightX + 4, layout.y + headerH / 2 + 9);
-  doc.setFont("helvetica", "normal");
-  doc.text("Página: 1", rightX + 4, layout.y + headerH / 2 + 17);
-
-  layout.y += headerH + 8;
-
-  // Title bar
-  const titleBarH = 32;
-  ensurePage(doc, layout, titleBarH);
-  doc.setFillColor(26, 82, 118);
-  doc.rect(layout.margin, layout.y, layout.width, titleBarH, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.setTextColor(255, 255, 255);
-  doc.text("INFORME DE RIESGOS LABORALES (IRL)", layout.margin + layout.width / 2, layout.y + 14, { align: "center" });
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text("Acta de información conforme DS 44 - inducción de trabajador", layout.margin + layout.width / 2, layout.y + 24, { align: "center" });
-  doc.setTextColor(0, 0, 0);
-  layout.y += titleBarH + 8;
+  drawIrlHeaderCorporativo(doc, layout, params, c.codigo_documento, c.version, c.fecha);
 
   // ===== SECTIONS =====
   drawIdentificationTable(doc, layout, c, params);
@@ -1482,6 +1488,78 @@ export async function renderEppPdf(doc: jsPDF, params: ExportTrabajadorDocumento
   drawParagraph(doc, layout, params.contenido || "Sin contenido", 80);
 }
 
+function renderMarkdownIrlPdfConDiseñoCorporativo(
+  doc: jsPDF,
+  params: ExportTrabajadorDocumentoPdfParams,
+  tipoNombre: string,
+) {
+  const contenidoMarkdown = (params.documento?.contenidoMarkdown ?? params.contenido ?? "").trim();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const layout: Layout = {
+    margin: 28,
+    width: pageWidth - 56,
+    pageHeight: doc.internal.pageSize.getHeight(),
+    y: 20,
+  };
+
+  // ===== HEADER CORPORATIVO =====
+  drawIrlHeaderCorporativo(doc, layout, params);
+
+  // ===== IDENTIFICATION =====
+  drawFormTableHeader(doc, layout, "1. IDENTIFICACIÓN DE LA PERSONA TRABAJADORA");
+  const colW1 = layout.width * 0.33;
+  const colW2 = layout.width * 0.33;
+  const colW3 = layout.width * 0.34;
+  const rowH = 20;
+
+  ensurePage(doc, layout, rowH);
+  drawTableCell(doc, layout.margin, layout.y, colW1, rowH, `NOMBRE Y APELLIDOS\n${safeText(`${params.trabajador.nombre} ${params.trabajador.apellido}`)}`, true);
+  drawTableCell(doc, layout.margin + colW1, layout.y, colW2, rowH, `RUT\n${safeText(params.trabajador.rut)}`, true);
+  drawTableCell(doc, layout.margin + colW1 + colW2, layout.y, colW3, rowH, `CARGO\n${safeText(params.trabajador.cargo)}`, true);
+  layout.y += rowH;
+
+  ensurePage(doc, layout, rowH);
+  drawTableCell(doc, layout.margin, layout.y, colW1, rowH, `ÁREA\n${safeText(params.trabajador.area)}`, true);
+  drawTableCell(doc, layout.margin + colW1, layout.y, colW2, rowH, `ESTADO\n${estadoLabel(params.estado)}`, true);
+  drawTableCell(doc, layout.margin + colW1 + colW2, layout.y, colW3, rowH, `FECHA\n${formatDate(new Date())}`, true);
+  layout.y += rowH + 8;
+
+  // ===== CONTENIDO MARKDOWN =====
+  const sections = parseMarkdownSections(contenidoMarkdown).filter(
+    (section) => section.title.toLowerCase() !== "identificacion del trabajador",
+  );
+
+  if (sections.length === 0) {
+    drawParagraph(doc, layout, contenidoMarkdown || "Sin contenido", 120);
+  } else {
+    sections.forEach((section) => {
+      drawMarkdownSection(doc, layout, section);
+    });
+  }
+
+  // ===== FIRMAS Y TRAZABILIDAD =====
+  drawConsentimiento8Section(doc, layout, {
+    trabajador_nombre: `${params.trabajador.nombre} ${params.trabajador.apellido}`,
+    trabajador_rut: params.trabajador.rut ?? "",
+    relator_nombre: params.firmas?.prevencionista?.nombreFirmante ?? "",
+    prevencionista_nombre: params.firmas?.prevencionista?.nombreFirmante ?? "",
+    relator_cargo: "",
+    prevencionista_cargo: "Prevencionista de Riesgos",
+    fecha: formatDate(new Date()),
+  } as DocumentoIrlCampos, params);
+
+  drawTrazabilidad9Section(doc, layout, params);
+
+  // ===== FOOTER =====
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p += 1) {
+    doc.setPage(p);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("Generado por NextPrev | Documento de inducción IRL | Uso interno SST", layout.margin + layout.width / 2, layout.pageHeight - 14, { align: "center" });
+  }
+}
+
 export async function renderIRLPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams, tipoNombre: string) {
   const structured = parseDocumentoEstructurado(params.contenido);
   if (structured?.plantillaCodigo === "IRL") {
@@ -1489,11 +1567,7 @@ export async function renderIRLPdf(doc: jsPDF, params: ExportTrabajadorDocumento
     return;
   }
 
-  renderMarkdownLikeIrlPdf(doc, params, tipoNombre, {
-    headerTitle: "ACTA DE INFORMACION DE RIESGOS LABORALES",
-    headerSubtitle: "NEXTPREV TEMPLATE-IRL",
-    footerPrefix: "Estado documental",
-  });
+  renderMarkdownIrlPdfConDiseñoCorporativo(doc, params, tipoNombre);
 }
 
 function renderGenericPdf(doc: jsPDF, params: ExportTrabajadorDocumentoPdfParams, tipoNombre: string) {
