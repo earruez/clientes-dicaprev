@@ -10,7 +10,6 @@ import {
   MAX_FILAS_TRABAJADORES,
   TIPOS_CONTRATO,
   normalizarClave,
-  normalizarRut,
   validarFilas,
   type CatalogosCarga,
   type FilaExcel,
