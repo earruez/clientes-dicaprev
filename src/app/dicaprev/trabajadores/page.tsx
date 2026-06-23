@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import Link from "next/link";
-import { UserPlus, FileStack, GraduationCap, Users } from "lucide-react";
+import { UserPlus, FileStack, FileSpreadsheet, GraduationCap, Users } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { KPIs, type KpiId } from "@/components/trabajadores-v2/KPIs";
 import { WorkersFilters } from "@/components/trabajadores-v2/WorkersFilters";
@@ -100,6 +100,14 @@ export default function TrabajadoresPage() {
             >
               <FileStack className="h-4 w-4 text-slate-500" />
               Control Documental
+            </Link>
+
+            <Link
+              href="/dicaprev/trabajadores/importar"
+              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:shadow-md"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-sky-700" />
+              Carga masiva
             </Link>
 
             <button

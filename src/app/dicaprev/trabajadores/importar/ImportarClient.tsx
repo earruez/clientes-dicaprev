@@ -2,375 +2,201 @@
 
 import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, XCircle, ArrowLeft, Download } from "lucide-react";
-import * as XLSX from "xlsx";
+import { useRouter } from "next/navigation";
+import { AlertCircle, ArrowLeft, CheckCircle2, Download, FileSpreadsheet, Loader2, RotateCcw, Upload, XCircle } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
-  importarTrabajadores,
-  type FilaTrabajadorImportar,
-  type ResultadoImportar,
+  descargarPlantillaTrabajadores,
+  importarArchivoTrabajadores,
+  validarArchivoTrabajadores,
+  type ResultadoImportacionCarga,
+  type ResumenValidacionCarga,
 } from "@/actions/trabajadores/importar";
 
-// ─── column header aliases ─────────────────────────────────────────────────
-const COLUMNAS: Record<keyof FilaTrabajadorImportar, string[]> = {
-  rut: ["rut"],
-  nombres: ["nombres", "nombre"],
-  apellidos: ["apellidos", "apellido"],
-  email: ["email", "correo"],
-  cargo: ["cargo"],
-  area: ["area", "área"],
-  centroTrabajo: ["centrotrabajo", "centro_trabajo", "centro"],
-  tipoContrato: ["tipocontrato", "tipo_contrato", "contrato"],
-};
+type Fase = "inicial" | "seleccionado" | "analizando" | "revisar" | "importando" | "exito" | "error";
 
-function mapHeader(raw: string): keyof FilaTrabajadorImportar | null {
-  const norm = raw.toLowerCase().replace(/\s+/g, "");
-  for (const [field, aliases] of Object.entries(COLUMNAS)) {
-    if (aliases.includes(norm)) return field as keyof FilaTrabajadorImportar;
-  }
-  return null;
+function descargarBase64(base64: string, nombre: string) {
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = nombre;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
-
-function parseSheet(wb: XLSX.WorkBook): FilaTrabajadorImportar[] {
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
-  if (!rows.length) return [];
-
-  return rows.map((row) => {
-    const mapped: Partial<FilaTrabajadorImportar> = {};
-    for (const [rawKey, value] of Object.entries(row)) {
-      const field = mapHeader(rawKey);
-      if (field) mapped[field] = String(value).trim();
-    }
-    return mapped as FilaTrabajadorImportar;
-  });
-}
-
-const PREVIEW_LIMIT = 20;
 
 export default function ImportarClient() {
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [filas, setFilas] = useState<FilaTrabajadorImportar[]>([]);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
-  const [resultado, setResultado] = useState<ResultadoImportar | null>(null);
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [fase, setFase] = useState<Fase>("inicial");
+  const [validacion, setValidacion] = useState<ResumenValidacionCarga | null>(null);
+  const [resultado, setResultado] = useState<ResultadoImportacionCarga | null>(null);
+  const [mensaje, setMensaje] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setParseError(null);
+  function seleccionar(file: File | null) {
+    setMensaje(null);
+    setValidacion(null);
     setResultado(null);
-    setFileName(file.name);
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = ev.target?.result;
-        const wb = XLSX.read(data, { type: "array" });
-        const parsed = parseSheet(wb);
-        if (!parsed.length) {
-          setParseError("El archivo no contiene filas o las columnas no coinciden con el formato esperado.");
-          setFilas([]);
-        } else {
-          setFilas(parsed);
-        }
-      } catch {
-        setParseError("No se pudo leer el archivo. Asegúrese de que sea un archivo Excel (.xlsx) o CSV válido.");
-        setFilas([]);
-      }
-    };
-    reader.readAsArrayBuffer(file);
+    if (!file) {
+      setArchivo(null);
+      setFase("inicial");
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setMensaje("Selecciona un archivo Excel con extensión .xlsx.");
+      setFase("error");
+      return;
+    }
+    setArchivo(file);
+    setFase("seleccionado");
   }
 
-  function handleImportar() {
-    if (!filas.length) return;
+  function formDataArchivo() {
+    const formData = new FormData();
+    if (archivo) formData.set("archivo", archivo);
+    return formData;
+  }
+
+  function descargarPlantilla() {
     startTransition(async () => {
       try {
-        const res = await importarTrabajadores(filas);
-        setResultado(res);
-        setFilas([]);
-        setFileName(null);
-        if (inputRef.current) inputRef.current.value = "";
-      } catch (err) {
-        setParseError(err instanceof Error ? err.message : "Error al importar trabajadores.");
+        const plantilla = await descargarPlantillaTrabajadores();
+        descargarBase64(plantilla.base64, plantilla.nombre);
+      } catch (error) {
+        setMensaje(error instanceof Error ? error.message : "No se pudo generar la plantilla.");
+        setFase("error");
       }
     });
   }
 
-  function handleReset() {
-    setFilas([]);
-    setFileName(null);
-    setParseError(null);
+  function analizar() {
+    if (!archivo) return;
+    setMensaje(null);
+    setFase("analizando");
+    startTransition(async () => {
+      try {
+        const response = await validarArchivoTrabajadores(formDataArchivo());
+        setValidacion(response);
+        setFase("revisar");
+      } catch (error) {
+        setMensaje(error instanceof Error ? error.message : "No fue posible analizar el archivo.");
+        setFase("error");
+      }
+    });
+  }
+
+  function importar() {
+    if (!archivo || !validacion?.puedeImportar) return;
+    setMensaje(null);
+    setFase("importando");
+    startTransition(async () => {
+      try {
+        const response = await importarArchivoTrabajadores(formDataArchivo());
+        setResultado(response);
+        setFase("exito");
+        router.refresh();
+      } catch (error) {
+        setMensaje(error instanceof Error ? error.message : "No fue posible completar la importación.");
+        setFase("error");
+      }
+    });
+  }
+
+  function reiniciar() {
+    setArchivo(null);
+    setFase("inicial");
+    setValidacion(null);
     setResultado(null);
+    setMensaje(null);
     if (inputRef.current) inputRef.current.value = "";
   }
 
-  const preview = filas.slice(0, PREVIEW_LIMIT);
+  const bloqueado = isPending || fase === "analizando" || fase === "importando";
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
+    <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm">
+      <main className="ml-auto h-full w-full max-w-6xl overflow-y-auto bg-slate-50 shadow-2xl">
+      <div className="space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <StandardPageHeader
           moduleLabel="Módulo Personas"
-          title="Importar Trabajadores"
-          description="Carga masiva desde archivo Excel o CSV"
-          icon={<Upload className="h-6 w-6" />}
+          title="Carga masiva de trabajadores"
+          description="Descarga la plantilla, valida todas las filas y confirma la importación."
+          icon={<FileSpreadsheet className="h-6 w-6" />}
           iconWrapClassName="bg-sky-700"
-          actions={
-            <Link
-              href="/dicaprev/trabajadores"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:shadow-md"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </Link>
-          }
+          actions={<Link href="/dicaprev/trabajadores" className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"><ArrowLeft className="h-4 w-4" />Volver</Link>}
         />
 
-        {/* Instrucciones y zona de carga */}
-        {!resultado && (
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <CardHeader className="border-b border-slate-100 px-6 py-4">
-              <h2 className="text-base font-semibold text-slate-800">
-                Formato esperado del archivo
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                El archivo debe contener las siguientes columnas (en cualquier orden):
-              </p>
-            </CardHeader>
-            <CardContent className="px-6 py-4">
-              <div className="mb-4 flex flex-wrap gap-2">
-                {(
-                  [
-                    { col: "rut", req: true },
-                    { col: "nombres", req: true },
-                    { col: "apellidos", req: true },
-                    { col: "email", req: false },
-                    { col: "cargo", req: false },
-                    { col: "area", req: false },
-                    { col: "centroTrabajo", req: false },
-                    { col: "tipoContrato", req: false },
-                  ] as { col: string; req: boolean }[]
-                ).map(({ col, req }) => (
-                  <span
-                    key={col}
-                    className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-mono font-medium ${
-                      req
-                        ? "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {col}
-                    {req && <span className="ml-1 text-sky-500">*</span>}
-                  </span>
-                ))}
+        <div className="grid gap-3 sm:grid-cols-3">
+          {["Descargar plantilla", "Validar archivo", "Confirmar carga"].map((label, index) => {
+            const active = index === 0 ? fase === "inicial" || fase === "seleccionado" : index === 1 ? ["analizando", "revisar", "error"].includes(fase) : ["importando", "exito"].includes(fase);
+            return <div key={label} className={`rounded-lg border px-4 py-3 text-sm font-semibold ${active ? "border-sky-300 bg-sky-50 text-sky-800" : "border-slate-200 bg-white text-slate-500"}`}>{index + 1}. {label}</div>;
+          })}
+        </div>
+
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div><h2 className="font-semibold text-slate-900">1. Plantilla oficial</h2><p className="text-sm text-slate-500">Incluye instrucciones y catálogos actuales de tu empresa.</p></div>
+            <Button variant="outline" onClick={descargarPlantilla} disabled={bloqueado}><Download className="mr-2 h-4 w-4" />Descargar plantilla</Button>
+          </CardHeader>
+          <CardContent className="p-5">
+            <label
+              htmlFor="archivo-trabajadores"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => { event.preventDefault(); seleccionar(event.dataTransfer.files?.[0] ?? null); }}
+              className="flex min-h-44 cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-sky-400 hover:bg-sky-50"
+            >
+              <Upload className="h-9 w-9 text-sky-700" />
+              <div><p className="font-semibold text-slate-800">{archivo?.name ?? "Selecciona o arrastra el archivo .xlsx"}</p><p className="mt-1 text-xs text-slate-500">Máximo 5 MB y 1.000 trabajadores.</p></div>
+            </label>
+            <input ref={inputRef} id="archivo-trabajadores" type="file" accept=".xlsx" className="sr-only" disabled={bloqueado} onChange={(event) => seleccionar(event.target.files?.[0] ?? null)} />
+            {archivo && fase !== "exito" ? <div className="mt-4 flex flex-wrap justify-end gap-2"><Button variant="outline" onClick={reiniciar} disabled={bloqueado}>Cambiar archivo</Button><Button onClick={analizar} disabled={bloqueado}>{fase === "analizando" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <FileSpreadsheet className="mr-2 h-4 w-4" />}Validar archivo</Button></div> : null}
+          </CardContent>
+        </Card>
+
+        {mensaje ? <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{mensaje}</div> : null}
+
+        {validacion && fase !== "exito" ? (
+          <Card className="border-slate-200 shadow-sm">
+            <CardHeader className="border-b border-slate-100 px-5 py-4"><h2 className="font-semibold text-slate-900">2. Resultado de la validación</h2></CardHeader>
+            <CardContent className="space-y-5 p-5">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {[
+                  { label: "Total de filas", value: validacion.totalFilas, className: "border-slate-200 bg-slate-50 text-slate-700" },
+                  { label: "Filas válidas", value: validacion.filasValidas, className: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+                  { label: "Filas con error", value: validacion.filasConError, className: "border-red-200 bg-red-50 text-red-700" },
+                  { label: "Advertencias", value: validacion.advertencias, className: "border-amber-200 bg-amber-50 text-amber-700" },
+                ].map((item) => <div key={item.label} className={`rounded-lg border p-4 ${item.className}`}><p className="text-2xl font-bold">{item.value}</p><p className="text-xs font-medium">{item.label}</p></div>)}
               </div>
-              <p className="mb-5 text-xs text-slate-400">
-                * Campo requerido. Los campos opcionales se omiten si están vacíos. El campo{" "}
-                <span className="font-medium">tipoContrato</span> acepta: Indefinido, Plazo Fijo, Por Obra, Part Time.
-              </p>
 
-              {/* File input */}
-              <label
-                className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 px-6 py-10 transition hover:border-sky-400 hover:bg-sky-50"
-                htmlFor="archivo-importar"
-              >
-                <FileSpreadsheet className="h-10 w-10 text-slate-300" />
-                <span className="text-sm font-medium text-slate-600">
-                  {fileName ? fileName : "Haga clic para seleccionar un archivo .xlsx o .csv"}
-                </span>
-                {fileName && (
-                  <span className="text-xs text-slate-400">{filas.length} filas detectadas</span>
-                )}
-              </label>
-              <input
-                ref={inputRef}
-                id="archivo-importar"
-                type="file"
-                accept=".xlsx,.csv,.xls"
-                className="sr-only"
-                onChange={handleFile}
-                disabled={isPending}
-              />
-
-              {parseError && (
-                <div className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  {parseError}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Vista previa */}
-        {filas.length > 0 && !resultado && (
-          <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 px-6 py-4">
-              <div>
-                <h2 className="text-base font-semibold text-slate-800">Vista previa</h2>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {filas.length > PREVIEW_LIMIT
-                    ? `Mostrando las primeras ${PREVIEW_LIMIT} de ${filas.length} filas`
-                    : `${filas.length} fila${filas.length !== 1 ? "s" : ""} detectadas`}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleReset}
-                  disabled={isPending}
-                  className="rounded-xl"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleImportar}
-                  disabled={isPending}
-                  className="rounded-xl bg-sky-700 text-white hover:bg-sky-800"
-                >
-                  {isPending ? "Importando…" : `Importar ${filas.length} trabajador${filas.length !== 1 ? "es" : ""}`}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="overflow-x-auto p-0">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      #
-                    </th>
-                    {(
-                      ["rut", "nombres", "apellidos", "email", "cargo", "area", "centroTrabajo", "tipoContrato"] as (keyof FilaTrabajadorImportar)[]
-                    ).map((col) => (
-                      <th
-                        key={col}
-                        className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
-                      >
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {preview.map((row, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 text-xs text-slate-400">{idx + 1}</td>
-                      {(
-                        ["rut", "nombres", "apellidos", "email", "cargo", "area", "centroTrabajo", "tipoContrato"] as (keyof FilaTrabajadorImportar)[]
-                      ).map((col) => (
-                        <td key={col} className="px-4 py-2.5 text-slate-700">
-                          {row[col] ?? (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Resultado */}
-        {resultado && (
-          <div className="space-y-4">
-            <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <CardHeader className="border-b border-slate-100 px-6 py-4">
-                <h2 className="text-base font-semibold text-slate-800">Resultado de la importación</h2>
-              </CardHeader>
-              <CardContent className="px-6 py-5">
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  <div className="rounded-xl bg-emerald-50 px-4 py-3">
-                    <p className="text-2xl font-bold text-emerald-700">{resultado.creados}</p>
-                    <p className="mt-0.5 text-xs text-emerald-600">Trabajadores creados</p>
-                  </div>
-                  <div className="rounded-xl bg-amber-50 px-4 py-3">
-                    <p className="text-2xl font-bold text-amber-700">{resultado.omitidos}</p>
-                    <p className="mt-0.5 text-xs text-amber-600">Omitidos (RUT duplicado)</p>
-                  </div>
-                  <div className="rounded-xl bg-sky-50 px-4 py-3">
-                    <p className="text-2xl font-bold text-sky-700">{resultado.induccionesCreadas}</p>
-                    <p className="mt-0.5 text-xs text-sky-600">Inducciones creadas</p>
-                  </div>
-                  <div className="rounded-xl bg-red-50 px-4 py-3">
-                    <p className="text-2xl font-bold text-red-700">{resultado.errores.length}</p>
-                    <p className="mt-0.5 text-xs text-red-600">Errores</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {resultado.errores.length > 0 && (
-              <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <CardHeader className="border-b border-slate-100 px-6 py-4">
-                  <h2 className="flex items-center gap-2 text-sm font-semibold text-red-700">
-                    <XCircle className="h-4 w-4" />
-                    Errores en la importación
-                  </h2>
-                </CardHeader>
-                <CardContent className="overflow-x-auto p-0">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100 bg-slate-50">
-                        <th className="px-5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Fila
-                        </th>
-                        <th className="px-5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          RUT
-                        </th>
-                        <th className="px-5 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Mensaje
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {resultado.errores.map((e, idx) => (
-                        <tr key={idx} className="hover:bg-red-50">
-                          <td className="px-5 py-2.5 text-xs text-slate-500">{e.fila}</td>
-                          <td className="px-5 py-2.5 font-mono text-sm text-slate-700">{e.rut}</td>
-                          <td className="px-5 py-2.5 text-sm text-red-700">{e.mensaje}</td>
-                        </tr>
-                      ))}
-                    </tbody>
+              {validacion.incidencias.length > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="min-w-full text-sm"><thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Fila</th><th className="px-4 py-3">Trabajador</th><th className="px-4 py-3">Campo</th><th className="px-4 py-3">Detalle</th></tr></thead>
+                    <tbody className="divide-y divide-slate-100">{validacion.incidencias.map((item, index) => <tr key={`${item.fila}-${item.campo}-${index}`}><td className="px-4 py-3">{item.fila}</td><td className="px-4 py-3 font-medium">{item.trabajador}</td><td className="px-4 py-3">{item.campo}</td><td className={`px-4 py-3 ${item.tipo === "error" ? "text-red-700" : "text-amber-700"}`}>{item.tipo === "error" ? <XCircle className="mr-1 inline h-4 w-4" /> : <AlertCircle className="mr-1 inline h-4 w-4" />}{item.mensaje}</td></tr>)}</tbody>
                   </table>
-                </CardContent>
-              </Card>
-            )}
+                </div>
+              ) : <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="h-5 w-5" />Todas las filas están listas para importar.</div>}
 
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={handleReset}
-                className="rounded-xl"
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                Nueva importación
-              </Button>
-              <Link
-                href="/dicaprev/trabajadores"
-                className="inline-flex items-center gap-2 rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Ver trabajadores
-              </Link>
-              <Link
-                href="/dicaprev/trabajadores/inducciones"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
-              >
-                <Download className="h-4 w-4" />
-                Ver inducciones
-              </Link>
-            </div>
-          </div>
-        )}
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Fila</th><th className="px-4 py-3">RUT</th><th className="px-4 py-3">Trabajador</th><th className="px-4 py-3">Cargo</th><th className="px-4 py-3">Centro</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100">{validacion.vistaPrevia.map((item) => <tr key={`${item.fila}-${item.rut}`}><td className="px-4 py-3">{item.fila}</td><td className="px-4 py-3 font-mono">{item.rut}</td><td className="px-4 py-3 font-medium">{item.nombres} {item.apellidos}</td><td className="px-4 py-3">{item.cargo}</td><td className="px-4 py-3">{item.centroTrabajo}</td></tr>)}</tbody>
+                </table>
+              </div>
+
+              <div className="flex flex-col justify-end gap-2 sm:flex-row"><Button variant="outline" onClick={reiniciar} disabled={bloqueado}><RotateCcw className="mr-2 h-4 w-4" />Reiniciar</Button><Button onClick={importar} disabled={!validacion.puedeImportar || bloqueado}>{fase === "importando" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}Confirmar importación</Button></div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {fase === "exito" && resultado ? (
+          <Card className="border-emerald-200 shadow-sm"><CardContent className="flex flex-col items-center gap-4 p-8 text-center"><CheckCircle2 className="h-12 w-12 text-emerald-600" /><div><h2 className="text-xl font-bold text-slate-900">Importación completada</h2><p className="mt-1 text-slate-600">Se crearon {resultado.creados} trabajadores y se evaluaron documentos para {resultado.documentosEvaluados}.</p></div>{resultado.advertencias.length > 0 ? <div className="w-full rounded-lg bg-amber-50 p-4 text-left text-sm text-amber-800">{resultado.advertencias.map((item) => <p key={item}>{item}</p>)}</div> : null}<div className="flex flex-wrap justify-center gap-2"><Button variant="outline" onClick={reiniciar}>Nueva importación</Button><Link href="/dicaprev/trabajadores" className="inline-flex items-center rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Volver al listado</Link></div></CardContent></Card>
+        ) : null}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }
