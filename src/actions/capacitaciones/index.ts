@@ -673,78 +673,169 @@ async function buildCertificadoCapacitacionPdf(input: {
   const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const marginX = 36;
+  const marginX = 30;
   const contentWidth = pageWidth - marginX * 2;
+  let y = 24;
 
-  doc.setDrawColor(203, 213, 225);
-  doc.rect(marginX, 34, contentWidth, 76);
-  // jsPDF may handle URLs if enabled; fallback is text-only header.
+  const ensurePage = (requiredHeight: number) => {
+    const bottom = pageHeight - 32;
+    if (y + requiredHeight <= bottom) return;
+    doc.addPage();
+    y = marginX;
+  };
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("CERTIFICADO DE CAPACITACIÓN", marginX + 14, 58);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(safeText(input.empresaNombre), marginX + 14, 74);
-  doc.text(`RUT: ${safeText(input.empresaRut)}`, marginX + 14, 88);
-
-  const rows: Array<[string, string]> = [
-    ["Trabajador", safeText(input.trabajadorNombre)],
-    ["RUT", safeText(input.trabajadorRut)],
-    ["Capacitación", safeText(input.capacitacionNombre)],
-    ["Categoría", safeText(input.capacitacionCategoria)],
-    ["Modalidad", safeText(input.modalidad)],
-    ["Fecha de realización", formatDate(input.fechaEvaluacion)],
-    ["Vigencia hasta", input.vigenciaHasta ? formatDate(input.vigenciaHasta) : "No aplica"],
-    ["Resultado", safeText(input.resultado)],
-    ["Nota", input.nota === null ? "-" : input.nota.toFixed(1)],
-    ["Responsable", safeText(input.responsable)],
-  ];
-
-  let y = 130;
-  rows.forEach(([label, value]) => {
-    doc.rect(marginX, y, 150, 24);
-    doc.rect(marginX + 150, y, contentWidth - 150, 24);
+  const drawSectionTitle = (title: string) => {
+    ensurePage(20);
+    doc.setFillColor(26, 82, 118);
+    doc.rect(marginX, y, contentWidth, 18, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
-    doc.text(label, marginX + 8, y + 15);
+    doc.setTextColor(255, 255, 255);
+    doc.text(title, marginX + 8, y + 12);
+    doc.setTextColor(0, 0, 0);
+    y += 18;
+  };
+
+  const drawRow = (label: string, value: string) => {
+    const labelW = 160;
+    const valueW = contentWidth - labelW;
+    const valueLines = doc.splitTextToSize(safeText(value), valueW - 12) as string[];
+    const rowH = Math.max(22, 10 + valueLines.length * 9);
+    ensurePage(rowH);
+    doc.rect(marginX, y, labelW, rowH);
+    doc.rect(marginX + labelW, y, valueW, rowH);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(label, marginX + 8, y + 13);
     doc.setFont("helvetica", "normal");
-    doc.text(value, marginX + 158, y + 15);
-    y += 24;
-  });
+    doc.setFontSize(8);
+    valueLines.forEach((line, index) => {
+      doc.text(line, marginX + labelW + 8, y + 13 + index * 9);
+    });
+    y += rowH;
+  };
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(
-    "El presente certificado acredita la capacitación realizada con datos reales de la empresa activa.",
-    marginX,
-    y + 28,
-    { maxWidth: contentWidth },
-  );
+  const headerH = 48;
+  ensurePage(headerH + 40);
+  const logoColW = contentWidth * 0.18;
+  const midColW = contentWidth * 0.52;
+  const rightColW = contentWidth * 0.30;
 
-  doc.rect(marginX, pageHeight - 180, contentWidth, 92);
-  doc.line(marginX + contentWidth / 2, pageHeight - 180, marginX + contentWidth / 2, pageHeight - 88);
+  doc.rect(marginX, y, logoColW, headerH);
+  if (input.empresaLogoUrl) {
+    try {
+      doc.addImage(input.empresaLogoUrl, "PNG", marginX + 4, y + 4, logoColW - 8, headerH - 8);
+    } catch {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text("[LOGO]", marginX + logoColW / 2, y + headerH / 2, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+    }
+  } else {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text("[LOGO\nCLIENTE]", marginX + logoColW / 2, y + 18, { align: "center" });
+    doc.setTextColor(0, 0, 0);
+  }
 
+  const midX = marginX + logoColW;
+  doc.rect(midX, y, midColW, headerH / 2);
+  doc.rect(midX, y + headerH / 2, midColW, headerH / 2);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.text("Firma prevencionista", marginX + 10, pageHeight - 162);
-  doc.text("Firma trabajador", marginX + contentWidth / 2 + 10, pageHeight - 162);
-
+  doc.setFontSize(7);
+  doc.text("EMPRESA", midX + 4, y + 9);
   doc.setFont("helvetica", "normal");
-  doc.text(safeText(input.prevencionistaNombre || input.responsable || "Pendiente"), marginX + 10, pageHeight - 146);
-  doc.text(`RUT: ${safeText(input.prevencionistaRut)}`, marginX + 10, pageHeight - 132);
-  doc.text(`Cargo: ${safeText(input.prevencionistaCargo || "Prevencionista")}`, marginX + 10, pageHeight - 118);
+  doc.text(safeText(input.empresaNombre), midX + 68, y + 9);
+  doc.setFont("helvetica", "bold");
+  doc.text("DOCUMENTO", midX + 4, y + headerH / 2 + 9);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.text("CERTIFICADO DE CAPACITACIÓN", midX + 68, y + headerH / 2 + 9);
 
-  doc.text(safeText(input.trabajadorNombre), marginX + contentWidth / 2 + 10, pageHeight - 146);
-  doc.text(`RUT: ${safeText(input.trabajadorRut)}`, marginX + contentWidth / 2 + 10, pageHeight - 132);
-  doc.text("Firma manual desde enlace seguro", marginX + contentWidth / 2 + 10, pageHeight - 118);
+  const rightX = marginX + logoColW + midColW;
+  doc.rect(rightX, y, rightColW, headerH / 2);
+  doc.rect(rightX, y + headerH / 2, rightColW, headerH / 2);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text("REG-CAP-01", rightX + 4, y + 9);
+  doc.text("VER: 01", rightX + 4, y + 17);
+  doc.text(`Fecha: ${formatDate(new Date())}`, rightX + 4, y + headerH / 2 + 9);
+  doc.setFont("helvetica", "normal");
+  doc.text("Página: ver pie", rightX + 4, y + headerH / 2 + 17);
+  y += headerH + 8;
 
-  doc.text(`Fecha de emisión: ${formatDate(new Date())}`, marginX + 10, pageHeight - 102);
-  doc.text(`Trazabilidad: ${safeText(input.tokenTrazabilidad)}`, marginX + 10, pageHeight - 92, { maxWidth: contentWidth - 20 });
-
+  doc.setFillColor(26, 82, 118);
+  doc.rect(marginX, y, contentWidth, 30, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.setTextColor(255, 255, 255);
+  doc.text("CERTIFICADO DE CAPACITACIÓN", marginX + contentWidth / 2, y + 13, { align: "center" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text("Generado por NextPrev", marginX, pageHeight - 12);
+  doc.text("Documento formativo homologado NextPrev", marginX + contentWidth / 2, y + 23, { align: "center" });
+  doc.setTextColor(0, 0, 0);
+  y += 38;
+
+  drawSectionTitle("1. DATOS DEL TRABAJADOR");
+  drawRow("Nombre trabajador", safeText(input.trabajadorNombre));
+  drawRow("RUN trabajador", safeText(input.trabajadorRut));
+
+  drawSectionTitle("2. DATOS DE EMPRESA");
+  drawRow("Empresa", safeText(input.empresaNombre));
+  drawRow("RUT empresa", safeText(input.empresaRut));
+
+  drawSectionTitle("3. DATOS DE CAPACITACIÓN");
+  drawRow("Capacitación", safeText(input.capacitacionNombre));
+  drawRow("Categoría", safeText(input.capacitacionCategoria));
+  drawRow("Modalidad", safeText(input.modalidad));
+  drawRow("Fecha de realización", formatDate(input.fechaEvaluacion));
+  drawRow("Vigencia hasta", input.vigenciaHasta ? formatDate(input.vigenciaHasta) : "No aplica");
+
+  drawSectionTitle("4. RESULTADO");
+  drawRow("Resultado", safeText(input.resultado));
+  drawRow("Nota", input.nota === null ? "-" : input.nota.toFixed(1));
+  drawRow("Responsable", safeText(input.responsable));
+
+  drawSectionTitle("5. BLOQUE DE FIRMAS");
+  const firmaH = 84;
+  ensurePage(firmaH);
+  const firmaColW = contentWidth / 2;
+  doc.rect(marginX, y, firmaColW, firmaH);
+  doc.rect(marginX + firmaColW, y, firmaColW, firmaH);
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text("Firma prevencionista", marginX + 8, y + 12);
+  doc.text("Firma trabajador", marginX + firmaColW + 8, y + 12);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+  doc.text(safeText(input.prevencionistaNombre || input.responsable || "Pendiente"), marginX + 8, y + 26, { maxWidth: firmaColW - 16 });
+  doc.text(`RUT: ${safeText(input.prevencionistaRut)}`, marginX + 8, y + 37, { maxWidth: firmaColW - 16 });
+  doc.text(`Cargo: ${safeText(input.prevencionistaCargo || "Prevencionista")}`, marginX + 8, y + 48, { maxWidth: firmaColW - 16 });
+
+  doc.text(safeText(input.trabajadorNombre), marginX + firmaColW + 8, y + 26, { maxWidth: firmaColW - 16 });
+  doc.text(`RUT: ${safeText(input.trabajadorRut)}`, marginX + firmaColW + 8, y + 37, { maxWidth: firmaColW - 16 });
+  doc.text("Firma desde enlace seguro", marginX + firmaColW + 8, y + 48, { maxWidth: firmaColW - 16 });
+  y += firmaH;
+
+  drawSectionTitle("6. TRAZABILIDAD DOCUMENTAL");
+  drawRow("Fecha de emisión", formatDate(new Date()));
+  drawRow("Token de trazabilidad", safeText(input.tokenTrazabilidad));
+
+  const totalPages = doc.getNumberOfPages();
+  for (let page = 1; page <= totalPages; page += 1) {
+    doc.setPage(page);
+    doc.setDrawColor(200, 210, 220);
+    doc.line(marginX, pageHeight - 24, marginX + contentWidth, pageHeight - 24);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7);
+    doc.text("Generado por NextPrev", marginX, pageHeight - 14);
+    doc.text("Certificado de capacitación", marginX + contentWidth / 2, pageHeight - 14, { align: "center" });
+    doc.text(`Página ${page} de ${totalPages}`, marginX + contentWidth, pageHeight - 14, { align: "right" });
+  }
 
   return doc.output("blob");
 }
