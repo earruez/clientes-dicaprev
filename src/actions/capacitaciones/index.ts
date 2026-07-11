@@ -1,6 +1,6 @@
 "use server";
 
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import type { Prisma } from "@prisma/client";
@@ -12,6 +12,9 @@ import {
 import { registrarDocumentoGenerado } from "@/actions/documentos-generados";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
+
+const CERTIFICADO_CAPACITACION_CODIGO = "CERTIFICADO_CAPACITACION";
+const CERTIFICADO_CAPACITACION_NOMBRE = "Certificado de capacitación";
 
 export type CapacitacionCatalogo = {
   id: string;
@@ -59,6 +62,12 @@ function normalizeCodigo(value: string): string {
 
 function normalizeText(value: string | undefined | null): string {
   return (value ?? "").trim();
+}
+
+function addMonths(value: Date, months: number): Date {
+  const next = new Date(value);
+  next.setMonth(next.getMonth() + months);
+  return next;
 }
 
 function toCatalogoShape(row: {
@@ -637,6 +646,13 @@ function slugify(value: string): string {
 
 async function persistirBlobCertificado(blob: Blob): Promise<{ archivoNombre: string; archivoUrl: string; archivoPeso: number }> {
   const archivoNombre = `${randomUUID()}.pdf`;
+  return persistirBlobCertificadoConNombre(blob, archivoNombre);
+}
+
+async function persistirBlobCertificadoConNombre(
+  blob: Blob,
+  archivoNombre: string,
+): Promise<{ archivoNombre: string; archivoUrl: string; archivoPeso: number }> {
   const archivoUrl = construirArchivoSeguroUrl(archivoNombre);
   const destino = path.join(CERTIFICADOS_UPLOAD_DIR, archivoNombre);
   const buffer = new Uint8Array(await blob.arrayBuffer());
@@ -649,6 +665,472 @@ async function persistirBlobCertificado(blob: Blob): Promise<{ archivoNombre: st
     archivoUrl,
     archivoPeso: buffer.byteLength,
   };
+}
+
+async function ensureTipoCertificadoCapacitacion(empresaId: string) {
+  const tipo = await prisma.documentoTipoTrabajador.upsert({
+    where: { empresaId_codigo: { empresaId, codigo: CERTIFICADO_CAPACITACION_CODIGO } },
+    create: {
+      empresaId,
+      codigo: CERTIFICADO_CAPACITACION_CODIGO,
+      nombre: CERTIFICADO_CAPACITACION_NOMBRE,
+      descripcion: "Certificado generado al aprobar o completar una capacitación.",
+      requiereVencimiento: true,
+      requiereArchivo: true,
+      activo: true,
+    },
+    update: {
+      nombre: CERTIFICADO_CAPACITACION_NOMBRE,
+      descripcion: "Certificado generado al aprobar o completar una capacitación.",
+      requiereVencimiento: true,
+      requiereArchivo: true,
+      activo: true,
+    },
+    select: { id: true, codigo: true, nombre: true, requiereVencimiento: true },
+  });
+
+  const reglaExistente = await prisma.reglaDocumentoTrabajador.findFirst({
+    where: {
+      empresaId,
+      tipoDocumentoId: tipo.id,
+      cargoId: null,
+      areaId: null,
+      centroTrabajoId: null,
+      tipoContrato: null,
+    },
+    select: { id: true },
+  });
+
+  if (!reglaExistente) {
+    await prisma.reglaDocumentoTrabajador.create({
+      data: {
+        empresaId,
+        tipoDocumentoId: tipo.id,
+        cargoId: null,
+        areaId: null,
+        centroTrabajoId: null,
+        tipoContrato: null,
+        obligatorio: true,
+        activo: true,
+      },
+    });
+  }
+
+  return tipo;
+}
+
+type CertificadoCapacitacionSyncInput = {
+  empresaId: string;
+  trabajadorId: string;
+  capacitacionId: string;
+  asignacionId: string;
+  usuarioId?: string | null;
+};
+
+type CertificadoCapacitacionSyncResult = {
+  documentoId: string;
+  archivoNombre: string;
+  archivoUrl: string;
+  estado: "creado" | "actualizado" | "sin_cambios";
+};
+
+type CertificadoCapacitacionRuntime = {
+  buildPdf: typeof buildCertificadoCapacitacionPdf;
+  persistBlobConNombre: typeof persistirBlobCertificadoConNombre;
+};
+
+function construirHuellaCertificado(input: {
+  asignacionId: string;
+  trabajadorId: string;
+  capacitacionId: string;
+  estado: string;
+  aprobado: boolean | null;
+  nota: number | null;
+  fechaCompletada: Date | null;
+  fechaVencimiento: Date | null;
+  vigenciaMeses: number;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify(input))
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function construirArchivoCertificadoNombre(params: {
+  trabajadorNombre: string;
+  capacitacionNombre: string;
+  huella: string;
+}): string {
+  return `certificado-capacitacion-${slugify(params.capacitacionNombre)}-${slugify(params.trabajadorNombre)}-${params.huella}.pdf`;
+}
+
+async function generarDocumentoCertificadoCapacitacion(
+  input: CertificadoCapacitacionSyncInput,
+  runtimeOverrides?: Partial<CertificadoCapacitacionRuntime>,
+): Promise<CertificadoCapacitacionSyncResult | null> {
+  const runtime: CertificadoCapacitacionRuntime = {
+    buildPdf: buildCertificadoCapacitacionPdf,
+    persistBlobConNombre: persistirBlobCertificadoConNombre,
+    ...runtimeOverrides,
+  };
+
+  const asignacion = await prisma.capacitacionAsignacion.findFirst({
+    where: {
+      id: input.asignacionId,
+      empresaId: input.empresaId,
+      trabajadorId: input.trabajadorId,
+      capacitacionId: input.capacitacionId,
+    },
+    select: {
+      id: true,
+      empresaId: true,
+      trabajadorId: true,
+      capacitacionId: true,
+      estado: true,
+      aprobado: true,
+      nota: true,
+      fechaAsignacion: true,
+      fechaCompletada: true,
+      fechaVencimiento: true,
+      updatedAt: true,
+      certificadoDocumentoId: true,
+      trabajador: {
+        select: {
+          nombres: true,
+          apellidos: true,
+          rut: true,
+        },
+      },
+      capacitacion: {
+        select: {
+          nombre: true,
+          codigo: true,
+          categoria: true,
+          modalidad: true,
+          vigenciaMeses: true,
+          generaCertificado: true,
+        },
+      },
+      certificadoDocumento: {
+        select: {
+          id: true,
+          archivoNombre: true,
+          archivoUrl: true,
+          version: true,
+          versionNumero: true,
+        },
+      },
+      empresa: {
+        select: {
+          nombre: true,
+          rut: true,
+          logoUrl: true,
+        },
+      },
+    },
+  });
+
+  if (!asignacion) {
+    throw new Error("Asignación de capacitación no encontrada en la empresa");
+  }
+
+  if (!asignacion.capacitacion.generaCertificado) {
+    return null;
+  }
+
+  if (asignacion.aprobado === false || asignacion.estado === "cancelada" || asignacion.estado === "vencida") {
+    return null;
+  }
+
+  const esFinalizable = asignacion.aprobado === true || asignacion.estado === "completada";
+  if (!esFinalizable) {
+    return null;
+  }
+
+  const tipoCertificado = await ensureTipoCertificadoCapacitacion(input.empresaId);
+  const trabajadorNombre = `${asignacion.trabajador.nombres} ${asignacion.trabajador.apellidos}`.trim();
+  const vigenciaMeses = asignacion.capacitacion.vigenciaMeses ?? 0;
+  const fechaEmision = asignacion.fechaCompletada ?? asignacion.updatedAt ?? asignacion.fechaAsignacion;
+  const fechaVencimiento = asignacion.fechaVencimiento ?? (vigenciaMeses > 0 ? addMonths(new Date(fechaEmision), vigenciaMeses) : null);
+
+  const huella = construirHuellaCertificado({
+    asignacionId: asignacion.id,
+    trabajadorId: asignacion.trabajadorId,
+    capacitacionId: asignacion.capacitacionId,
+    estado: asignacion.estado,
+    aprobado: asignacion.aprobado,
+    nota: asignacion.nota,
+    fechaCompletada: asignacion.fechaCompletada,
+    fechaVencimiento,
+    vigenciaMeses,
+  });
+
+  const archivoNombreOriginal = construirArchivoCertificadoNombre({
+    trabajadorNombre,
+    capacitacionNombre: asignacion.capacitacion.nombre,
+    huella,
+  });
+
+  if (asignacion.certificadoDocumento?.archivoNombre === archivoNombreOriginal) {
+    return {
+      documentoId: asignacion.certificadoDocumento.id,
+      archivoNombre: asignacion.certificadoDocumento.archivoNombre ?? archivoNombreOriginal,
+      archivoUrl: asignacion.certificadoDocumento.archivoUrl ?? construirArchivoSeguroUrl(archivoNombreOriginal),
+      estado: "sin_cambios",
+    };
+  }
+
+  if (!asignacion.certificadoDocumentoId) {
+    const documentoYaRegistrado = await prisma.trabajadorDocumento.findFirst({
+      where: {
+        empresaId: input.empresaId,
+        trabajadorId: asignacion.trabajadorId,
+        tipo: tipoCertificado.codigo,
+        archivoNombreOriginal,
+      },
+      select: {
+        id: true,
+        archivoNombre: true,
+        archivoUrl: true,
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    if (documentoYaRegistrado) {
+      await prisma.capacitacionAsignacion.update({
+        where: { id: asignacion.id },
+        data: { certificadoDocumentoId: documentoYaRegistrado.id },
+      });
+
+      return {
+        documentoId: documentoYaRegistrado.id,
+        archivoNombre: documentoYaRegistrado.archivoNombre ?? archivoNombreOriginal,
+        archivoUrl: documentoYaRegistrado.archivoUrl ?? construirArchivoSeguroUrl(archivoNombreOriginal),
+        estado: "sin_cambios",
+      };
+    }
+  }
+
+  const firmaPrevencionista = input.usuarioId
+    ? await prisma.firmaUsuarioPerfil.findFirst({
+        where: {
+          empresaId: input.empresaId,
+          usuarioId: input.usuarioId,
+          activa: true,
+        },
+        select: {
+          nombre: true,
+          rut: true,
+          cargo: true,
+        },
+        orderBy: { updatedAt: "desc" },
+      })
+    : null;
+
+  const tokenTrazabilidad = construirHuellaCertificado({
+    asignacionId: asignacion.id,
+    trabajadorId: asignacion.trabajadorId,
+    capacitacionId: asignacion.capacitacionId,
+    estado: asignacion.estado,
+    aprobado: asignacion.aprobado,
+    nota: asignacion.nota,
+    fechaCompletada: asignacion.fechaCompletada,
+    fechaVencimiento,
+    vigenciaMeses,
+  });
+
+  const blob = await runtime.buildPdf({
+    empresaNombre: asignacion.empresa.nombre,
+    empresaRut: asignacion.empresa.rut,
+    empresaLogoUrl: asignacion.empresa.logoUrl,
+    trabajadorNombre,
+    trabajadorRut: asignacion.trabajador.rut ?? "",
+    prevencionistaNombre: firmaPrevencionista?.nombre ?? null,
+    prevencionistaRut: firmaPrevencionista?.rut ?? null,
+    prevencionistaCargo: firmaPrevencionista?.cargo ?? null,
+    capacitacionNombre: asignacion.capacitacion.nombre,
+    capacitacionCategoria: asignacion.capacitacion.categoria,
+    modalidad: asignacion.capacitacion.modalidad,
+    fechaEvaluacion: fechaEmision,
+    vigenciaHasta: fechaVencimiento,
+    resultado: asignacion.aprobado === true ? "Aprobado" : "Completado",
+    nota: asignacion.nota,
+    responsable: firmaPrevencionista?.nombre ?? "Sistema NextPrev",
+    tokenTrazabilidad,
+    fechaEmision,
+  });
+
+  const persistido = await runtime.persistBlobConNombre(blob, archivoNombreOriginal);
+  const nombreDocumento = `${CERTIFICADO_CAPACITACION_NOMBRE} - ${asignacion.capacitacion.nombre}`;
+  const observaciones = [
+    `Origen: capacitación`,
+    `Capacitación: ${asignacion.capacitacion.codigo} - ${asignacion.capacitacion.nombre}`,
+    `Asignación: ${asignacion.id}`,
+  ].join(" | ");
+
+  const documento = await prisma.$transaction(async (tx) => {
+    const currentDocumento = asignacion.certificadoDocumentoId
+      ? await tx.trabajadorDocumento.findFirst({
+          where: {
+            id: asignacion.certificadoDocumentoId,
+            empresaId: input.empresaId,
+          },
+          select: { id: true },
+        })
+      : null;
+
+    if (currentDocumento) {
+      await tx.trabajadorDocumento.update({
+        where: { id: currentDocumento.id },
+        data: {
+          nombre: nombreDocumento,
+          tipo: tipoCertificado.codigo,
+          categoria: "trabajador",
+          estado: "completo",
+          origen: "sistema",
+          archivoNombre: persistido.archivoNombre,
+          archivoNombreOriginal,
+          archivoUrl: persistido.archivoUrl,
+          archivoTipo: "application/pdf",
+          archivoPeso: persistido.archivoPeso,
+          tieneVencimiento: Boolean(fechaVencimiento),
+          fechaEmision,
+          fechaVencimiento,
+          observaciones,
+          subidoPorId: input.usuarioId ?? undefined,
+          firmado: true,
+          firmadoPor: firmaPrevencionista?.nombre ?? "Sistema NextPrev",
+          firmadoEn: fechaEmision,
+        },
+      });
+
+      await tx.trabajadorDocumentoHistorial.create({
+        data: {
+          documentoId: currentDocumento.id,
+          usuarioId: input.usuarioId ?? null,
+          accion: "CERTIFICADO_ACTUALIZADO",
+          detalle: `Certificado de capacitación actualizado para ${asignacion.capacitacion.nombre}`,
+          version: "1.0",
+          origen: "sistema",
+          contenidoSnapshot: observaciones,
+          archivoNombre: persistido.archivoNombre,
+          archivoNombreOriginal,
+          archivoUrl: persistido.archivoUrl,
+          archivoTipo: "application/pdf",
+          archivoPeso: persistido.archivoPeso,
+        },
+      });
+
+      await tx.capacitacionAsignacion.update({
+        where: { id: asignacion.id },
+        data: { certificadoDocumentoId: currentDocumento.id },
+      });
+
+      return { id: currentDocumento.id };
+    }
+
+    const created = await tx.trabajadorDocumento.create({
+      data: {
+        trabajadorId: asignacion.trabajadorId,
+        empresaId: input.empresaId,
+        nombre: nombreDocumento,
+        tipo: tipoCertificado.codigo,
+        categoria: "trabajador",
+        estado: "completo",
+        version: "1.0",
+        esVigente: true,
+        versionNumero: 1,
+        origen: "sistema",
+        archivoNombre: persistido.archivoNombre,
+        archivoNombreOriginal,
+        archivoUrl: persistido.archivoUrl,
+        archivoTipo: "application/pdf",
+        archivoPeso: persistido.archivoPeso,
+        tieneVencimiento: Boolean(fechaVencimiento),
+        fechaEmision,
+        fechaVencimiento,
+        observaciones,
+        subidoPorId: input.usuarioId ?? undefined,
+        firmado: true,
+        firmadoPor: firmaPrevencionista?.nombre ?? "Sistema NextPrev",
+        firmadoEn: fechaEmision,
+      },
+      select: { id: true, version: true },
+    });
+
+    await tx.trabajadorDocumentoHistorial.create({
+      data: {
+        documentoId: created.id,
+        usuarioId: input.usuarioId ?? null,
+        accion: "CERTIFICADO_CREADO",
+        detalle: `Certificado de capacitación generado para ${asignacion.capacitacion.nombre}`,
+        version: created.version,
+        origen: "sistema",
+        contenidoSnapshot: observaciones,
+        archivoNombre: persistido.archivoNombre,
+        archivoNombreOriginal,
+        archivoUrl: persistido.archivoUrl,
+        archivoTipo: "application/pdf",
+        archivoPeso: persistido.archivoPeso,
+      },
+    });
+
+    await tx.capacitacionAsignacion.update({
+      where: { id: asignacion.id },
+      data: { certificadoDocumentoId: created.id },
+    });
+
+    return created;
+  });
+
+  return {
+    documentoId: documento.id,
+    archivoNombre: persistido.archivoNombre,
+    archivoUrl: persistido.archivoUrl,
+    estado: asignacion.certificadoDocumentoId ? "actualizado" : "creado",
+  };
+}
+
+export const __capacitacionesTestables = {
+  generarDocumentoCertificadoCapacitacion,
+};
+
+async function sincronizarCertificadoDesdeAsistenciaConfirmada(input: {
+  empresaId: string;
+  trabajadorId: string;
+  sesionId: string;
+  estadoAsistencia: EstadoAsistencia;
+  usuarioId: string | null;
+}): Promise<void> {
+  if (input.estadoAsistencia !== "presente" && input.estadoAsistencia !== "justificado") {
+    return;
+  }
+
+  const asignaciones = await prisma.capacitacionAsignacion.findMany({
+    where: {
+      empresaId: input.empresaId,
+      trabajadorId: input.trabajadorId,
+      sesionId: input.sesionId,
+      estado: "completada",
+      aprobado: { not: false },
+    },
+    select: {
+      id: true,
+      capacitacionId: true,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+  });
+
+  for (const asignacion of asignaciones) {
+    await generarDocumentoCertificadoCapacitacion({
+      empresaId: input.empresaId,
+      trabajadorId: input.trabajadorId,
+      capacitacionId: asignacion.capacitacionId,
+      asignacionId: asignacion.id,
+      usuarioId: input.usuarioId,
+    });
+  }
 }
 
 async function buildCertificadoCapacitacionPdf(input: {
@@ -669,6 +1151,7 @@ async function buildCertificadoCapacitacionPdf(input: {
   nota: number | null;
   responsable: string | null;
   tokenTrazabilidad: string;
+  fechaEmision?: Date | string | null;
 }): Promise<Blob> {
   const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -676,6 +1159,7 @@ async function buildCertificadoCapacitacionPdf(input: {
   const marginX = 30;
   const contentWidth = pageWidth - marginX * 2;
   let y = 24;
+  const fechaEmision = input.fechaEmision ? new Date(input.fechaEmision) : new Date();
 
   const ensurePage = (requiredHeight: number) => {
     const bottom = pageHeight - 32;
@@ -790,7 +1274,7 @@ async function buildCertificadoCapacitacionPdf(input: {
   drawRow("Capacitación", safeText(input.capacitacionNombre));
   drawRow("Categoría", safeText(input.capacitacionCategoria));
   drawRow("Modalidad", safeText(input.modalidad));
-  drawRow("Fecha de realización", formatDate(input.fechaEvaluacion));
+  drawRow("Fecha de realización", formatDate(fechaEmision));
   drawRow("Vigencia hasta", input.vigenciaHasta ? formatDate(input.vigenciaHasta) : "No aplica");
 
   drawSectionTitle("4. RESULTADO");
@@ -822,7 +1306,7 @@ async function buildCertificadoCapacitacionPdf(input: {
   y += firmaH;
 
   drawSectionTitle("6. TRAZABILIDAD DOCUMENTAL");
-  drawRow("Fecha de emisión", formatDate(new Date()));
+  drawRow("Fecha de emisión", formatDate(fechaEmision));
   drawRow("Token de trazabilidad", safeText(input.tokenTrazabilidad));
 
   const totalPages = doc.getNumberOfPages();
@@ -925,6 +1409,7 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
     nota: asignacion.nota,
     responsable: asignacion.historial[0]?.usuarioId ? `Usuario ${asignacion.historial[0].usuarioId}` : asignacion.trabajador.cargo?.nombre ?? null,
     tokenTrazabilidad,
+    fechaEmision: asignacion.fechaCompletada ?? new Date(),
   });
 
   const nombreArchivo = `certificado-${slugify(asignacion.capacitacion.nombre)}-${slugify(trabajadorNombre) || asignacion.id}.pdf`;
@@ -1385,6 +1870,16 @@ export async function cambiarEstadoCapacitacionAsignacion(
       fechaEvento,
     });
 
+    if (nextEstado === "completada" && updated.aprobado !== false) {
+      await generarDocumentoCertificadoCapacitacion({
+        empresaId,
+        trabajadorId: updated.trabajadorId,
+        capacitacionId: updated.capacitacionId,
+        asignacionId: updated.id,
+        usuarioId,
+      });
+    }
+
     return updated;
   });
 
@@ -1600,6 +2095,7 @@ export async function avanzarCapacitacionAsignacionPublica(
         capacitacionId: true,
         sesionId: true,
         estado: true,
+        aprobado: true,
         fechaInicio: true,
         fechaCompletada: true,
         fechaVencimiento: true,
@@ -1674,6 +2170,16 @@ export async function avanzarCapacitacionAsignacionPublica(
       vigenciaHasta: updated.fechaVencimiento,
       fechaEvento,
     });
+
+    if (nextEstado === "completada" && (input.aprobado ?? existing.aprobado) !== false) {
+      await generarDocumentoCertificadoCapacitacion({
+        empresaId: existing.empresaId,
+        trabajadorId: existing.trabajadorId,
+        capacitacionId: existing.capacitacionId,
+        asignacionId: existing.id,
+        usuarioId: null,
+      });
+    }
 
     return updated;
   });
@@ -2567,6 +3073,14 @@ export async function registrarAsistenciaCapacitacion(
     return result_row;
   });
 
+  await sincronizarCertificadoDesdeAsistenciaConfirmada({
+    empresaId,
+    trabajadorId,
+    sesionId,
+    estadoAsistencia,
+    usuarioId,
+  });
+
   return toAsistenciaShape(result);
 }
 
@@ -2839,11 +3353,23 @@ export async function registrarResultadoEvaluacion(
   id: string,
   resultado: { nota: number; aprobado: boolean; observacion?: string | null },
 ): Promise<CapacitacionEvaluacion> {
-  return updateCapacitacionEvaluacion(id, {
+  const updated = await updateCapacitacionEvaluacion(id, {
     nota: resultado.nota,
     aprobado: resultado.aprobado,
     observacion: resultado.observacion,
   });
+
+  if (updated.aprobado && updated.asignacionId) {
+    await generarDocumentoCertificadoCapacitacion({
+      empresaId: updated.empresaId,
+      trabajadorId: updated.trabajadorId,
+      capacitacionId: updated.capacitacionId,
+      asignacionId: updated.asignacionId,
+      usuarioId: null,
+    });
+  }
+
+  return updated;
 }
 
 // ─── Historial ────────────────────────────────────────────────────────────────
