@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   getCapacitacionAsignaciones,
   getCapacitaciones,
+  getTrabajadoresAsignablesCapacitacion,
   createCapacitacionAsignacion,
   updateCapacitacionAsignacion,
   cambiarEstadoCapacitacionAsignacion,
@@ -12,8 +13,8 @@ import {
   descargarCertificadoCapacitacionPdf,
   type AsignacionCapacitacion,
   type CapacitacionCatalogo,
+  type TrabajadorAsignableCapacitacion,
 } from "@/actions/capacitaciones";
-import { getTrabajadores, type Worker } from "@/actions/trabajadores";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,6 +42,13 @@ import {
   ClipboardCheck, ChevronDown, Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  loadTabAsignacionesData,
+  normalizeAvanceEstado,
+  normalizeEnvioEstado,
+  type AvanceEstadoUI,
+  type EnvioEstadoUI,
+} from "@/lib/capacitacion/asignaciones-ui";
 
 function fmt(iso?: string) {
   if (!iso) return "—";
@@ -90,9 +98,6 @@ const ESTADO_ASIG_CFG: Record<EstadoUI, { label: string; cls: string; dot: strin
 type EnrichedAsignacion = AsignacionCapacitacion & {
   estadoUi: EstadoUI;
 };
-
-type EnvioEstadoUI = "no_enviado" | "enviado" | "fallido" | "reenviado";
-type AvanceEstadoUI = "pendiente" | "link_abierto" | "iniciada" | "completada" | "aprobada" | "reprobada";
 
 const ENVIO_CFG: Record<EnvioEstadoUI, { label: string; cls: string }> = {
   no_enviado: { label: "No enviado", cls: "bg-slate-50 text-slate-700 border-slate-200" },
@@ -253,6 +258,7 @@ function DetalleDrawer({
   if (!item) return null;
   const cfg = ESTADO_ASIG_CFG[item.estadoUi];
   const origenUi = normalizeOrigen(item.origen);
+  const envioEstado = normalizeEnvioEstado(item.envioEstado);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const link = item.token ? `/capacitacion/externa/${item.token}` : null;
 
@@ -315,8 +321,8 @@ function DetalleDrawer({
           <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3 space-y-2">
             <p className="text-[10px] text-slate-400 uppercase font-semibold">Seguimiento de envío</p>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border", ENVIO_CFG[(item.envioEstado ?? "no_enviado") as EnvioEstadoUI].cls)}>
-                {ENVIO_CFG[(item.envioEstado ?? "no_enviado") as EnvioEstadoUI].label}
+              <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border", ENVIO_CFG[envioEstado].cls)}>
+                {ENVIO_CFG[envioEstado].label}
               </span>
               <span className="text-xs text-slate-500">Último envío: {fmt(item.fechaUltimoEnvio ?? item.fechaEnvio)}</span>
               <span className="text-xs text-slate-500">Intentos: {item.cantidadEnvios ?? 0}</span>
@@ -461,9 +467,10 @@ function DetalleDrawer({
 export default function TabAsignaciones() {
   const [asignaciones, setAsignaciones] = useState<AsignacionCapacitacion[]>([]);
   const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
-  const [trabajadores, setTrabajadores] = useState<Worker[]>([]);
+  const [trabajadores, setTrabajadores] = useState<TrabajadorAsignableCapacitacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [trabajadoresError, setTrabajadoresError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoUI | "todos">("todos");
   const [filtroOrigen, setFiltroOrigen] = useState<"todos" | "automatica" | "manual">("todos");
@@ -482,17 +489,18 @@ export default function TabAsignaciones() {
     async function loadData() {
       try {
         setLoading(true);
-        const [asignacionesData, catalogoData, trabajadoresData] = await Promise.all([
-          getCapacitacionAsignaciones(),
-          getCapacitaciones(),
-          getTrabajadores(),
-        ]);
-        setAsignaciones(asignacionesData);
-        setCatalogo(catalogoData);
-        setTrabajadores(trabajadoresData);
+        const data = await loadTabAsignacionesData({
+          getAsignaciones: getCapacitacionAsignaciones,
+          getCatalogo: getCapacitaciones,
+          getTrabajadoresAsignables: getTrabajadoresAsignablesCapacitacion,
+        });
+        setAsignaciones(data.asignaciones);
+        setCatalogo(data.catalogo);
+        setTrabajadores(data.trabajadores);
+        setTrabajadoresError(data.trabajadoresError);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al cargar datos");
+        setError(err instanceof Error ? err.message : "Error al cargar datos de capacitaciones");
         console.error(err);
       } finally {
         setLoading(false);
@@ -743,6 +751,11 @@ export default function TabAsignaciones() {
           {error}
         </div>
       )}
+      {trabajadoresError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-amber-800 text-sm">
+          {trabajadoresError}
+        </div>
+      )}
 
       {loading ? (
         <div className="bg-white border border-slate-200 rounded-2xl px-6 py-12 shadow-sm text-center">
@@ -867,6 +880,8 @@ export default function TabAsignaciones() {
                             .map((a) => {
                               const cfg = ESTADO_ASIG_CFG[a.estadoUi];
                               const origenUi = normalizeOrigen(a.origen);
+                              const envioEstado = normalizeEnvioEstado(a.envioEstado);
+                              const avanceEstado = normalizeAvanceEstado(a.avanceEstado);
                               return (
                                 <div
                                   key={a.id}
@@ -877,11 +892,11 @@ export default function TabAsignaciones() {
                                     <p className="text-sm font-medium text-slate-800 truncate">{a.capacitacionNombre}</p>
                                     <div className="flex items-center gap-2 mt-0.5">
                                       <p className="text-xs text-slate-400 truncate">{a.categoria}</p>
-                                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border", ENVIO_CFG[(a.envioEstado ?? "no_enviado") as EnvioEstadoUI].cls)}>
-                                        {ENVIO_CFG[(a.envioEstado ?? "no_enviado") as EnvioEstadoUI].label}
+                                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border", ENVIO_CFG[envioEstado].cls)}>
+                                        {ENVIO_CFG[envioEstado].label}
                                       </span>
-                                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border", AVANCE_CFG[(a.avanceEstado ?? "pendiente") as AvanceEstadoUI].cls)}>
-                                        {AVANCE_CFG[(a.avanceEstado ?? "pendiente") as AvanceEstadoUI].label}
+                                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border", AVANCE_CFG[avanceEstado].cls)}>
+                                        {AVANCE_CFG[avanceEstado].label}
                                       </span>
                                       {isVideoModalidad(a.modalidad) && (
                                         <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border bg-cyan-50 text-cyan-700 border-cyan-200">
@@ -1035,15 +1050,24 @@ export default function TabAsignaciones() {
             <div className="space-y-1">
               <Label className="text-xs font-medium text-slate-600">Trabajador</Label>
               <Select value={formNueva.trabajadorId} onValueChange={(v) => setFormNueva((p) => ({ ...p, trabajadorId: v }))}>
-                <SelectTrigger className="rounded-xl border-slate-200 text-sm">
+                <SelectTrigger className="rounded-xl border-slate-200 text-sm" disabled={trabajadores.length === 0}>
                   <SelectValue placeholder="Seleccionar trabajador…" />
                 </SelectTrigger>
                 <SelectContent>
-                  {trabajadores.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>{w.nombre} {w.apellido} — {w.cargo}</SelectItem>
-                  ))}
+                  {trabajadores.length > 0 ? (
+                    trabajadores.map((w) => (
+                      <SelectItem key={w.id} value={w.id}>{w.nombre} {w.apellido} — {w.cargo}</SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="__sin-trabajadores" disabled>Sin trabajadores asignables</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
+              {trabajadores.length === 0 && !trabajadoresError && (
+                <p className="text-xs text-slate-500">
+                  No hay trabajadores activos disponibles para asignar capacitaciones.
+                </p>
+              )}
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-medium text-slate-600">Capacitación</Label>
