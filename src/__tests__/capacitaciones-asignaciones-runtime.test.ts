@@ -133,4 +133,47 @@ describe("Capacitaciones Asignaciones runtime safeguards", () => {
 
     expect(tx.capacitacion.findFirst).not.toHaveBeenCalled();
   });
+
+  it("expone error claro cuando no se puede resolver empresa activa", async () => {
+    requirePermissionMock.mockRejectedValue(new Error("El usuario autenticado no tiene empresa asignada"));
+
+    const { getCapacitacionAsignaciones } = await import("@/actions/capacitaciones");
+
+    await expect(getCapacitacionAsignaciones()).rejects.toThrow(
+      "No se pudo resolver la empresa activa para cargar capacitaciones.",
+    );
+  });
+
+  it("registra error runtime sanitizado en produccion", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      requirePermissionMock.mockResolvedValue({
+        empresaId: "emp-1",
+        usuarioId: "user-1",
+        rol: "ADMIN_EMPRESA",
+        email: "admin@empresa.cl",
+      });
+
+      prismaMock.trabajador.findMany.mockRejectedValue(
+        Object.assign(new Error("db-down"), { code: "P1001" }),
+      );
+
+      const { getTrabajadoresAsignablesCapacitacion } = await import("@/actions/capacitaciones");
+
+      await expect(getTrabajadoresAsignablesCapacitacion()).rejects.toThrow(
+        "No se pudieron cargar trabajadores asignables.",
+      );
+
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const payload = consoleErrorSpy.mock.calls[0]?.[1] as { actionName?: string; errorCode?: string; stack?: string };
+      expect(payload?.actionName).toBe("getTrabajadoresAsignablesCapacitacion.read");
+      expect(payload?.errorCode).toBe("P1001");
+      expect(payload?.stack).toBeUndefined();
+    } finally {
+      consoleErrorSpy.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
 });
