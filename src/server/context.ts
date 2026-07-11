@@ -89,6 +89,39 @@ async function resolveEmpresaActivaId(input: {
     if (found) {
       return found.empresaId;
     }
+
+    // Fallback compatible con datos legacy: usuario con empresaId persistido
+    // pero sin fila en usuarioEmpresa. Si la empresa existe y está activa,
+    // se permite y se sanea creando la relación faltante.
+    const empresaDirecta = await prisma.empresa.findFirst({
+      where: {
+        id: input.empresaId,
+        activa: true,
+      },
+      select: { id: true },
+    });
+
+    if (empresaDirecta) {
+      await prisma.usuarioEmpresa.upsert({
+        where: {
+          usuarioId_empresaId: {
+            usuarioId: input.usuarioId,
+            empresaId: empresaDirecta.id,
+          },
+        },
+        update: {
+          activo: true,
+        },
+        create: {
+          usuarioId: input.usuarioId,
+          empresaId: empresaDirecta.id,
+          rol: input.rol,
+          activo: true,
+        },
+      });
+
+      return empresaDirecta.id;
+    }
   }
 
   if (asignaciones.length > 0) {

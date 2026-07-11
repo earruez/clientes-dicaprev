@@ -73,6 +73,85 @@ export type TrabajadorAsignableCapacitacion = {
   estado: string;
 };
 
+export type CapacitacionesRuntimeDiagnostic = {
+  ok: boolean;
+  usuarioId: string;
+  email: string;
+  rol: string;
+  empresaId: string;
+  empresasActivasSistema: number;
+  metricas: {
+    catalogo: number;
+    asignaciones: number;
+    sesiones: number;
+    historial: number;
+    trabajadoresActivos: number;
+  };
+};
+
+type CapacitacionesLogContext = {
+  usuarioId?: string;
+  email?: string;
+  rol?: string;
+  empresaId?: string;
+  empresaActiva?: string;
+};
+
+function normalizeCapacitacionesReadError(message: string, fallbackMessage: string): Error {
+  if (message === "No hay sesion activa") {
+    return new Error("No hay sesión activa.");
+  }
+
+  if (
+    message.includes("empresa asignada") ||
+    message.includes("empresa activa") ||
+    message.includes("No hay empresas registradas")
+  ) {
+    return new Error("No se pudo resolver la empresa activa para cargar capacitaciones.");
+  }
+
+  if (message.includes("No autorizado")) {
+    return new Error("No autorizado para cargar capacitaciones.");
+  }
+
+  return new Error(fallbackMessage);
+}
+
+function logCapacitacionesError(actionName: string, error: unknown, context?: CapacitacionesLogContext): void {
+  const err = error instanceof Error ? error : new Error("Error desconocido en módulo Capacitaciones");
+  const errorCode =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code?: unknown }).code ?? "")
+      : undefined;
+
+  console.error("[capacitaciones][runtime]", {
+    actionName,
+    usuarioId: context?.usuarioId ?? null,
+    email: context?.email ?? null,
+    rol: context?.rol ?? null,
+    empresaId: context?.empresaId ?? null,
+    empresaActiva: context?.empresaActiva ?? context?.empresaId ?? null,
+    errorName: err.name,
+    errorMessage: err.message,
+    errorCode: errorCode || null,
+    stack: process.env.NODE_ENV === "production" ? undefined : err.stack,
+  });
+}
+
+async function requireCapacitacionesReadContext(actionName: string) {
+  try {
+    const context = await requirePermission("canReadCapacitaciones");
+    if (!context.empresaId) {
+      throw new Error("No se pudo resolver la empresa activa para cargar capacitaciones.");
+    }
+    return context;
+  } catch (error) {
+    logCapacitacionesError(actionName, error);
+    const message = error instanceof Error ? error.message : "Error desconocido";
+    throw normalizeCapacitacionesReadError(message, "No se pudo cargar la sección solicitada de capacitaciones.");
+  }
+}
+
 function normalizeCodigo(value: string): string {
   return value.trim().toUpperCase();
 }
@@ -349,7 +428,8 @@ export async function asegurarCatalogoCapacitacionesBase(empresaId: string): Pro
 }
 
 export async function getCapacitaciones(): Promise<CapacitacionCatalogo[]> {
-  const { empresaId } = await requirePermission("canReadCapacitaciones");
+  const context = await requireCapacitacionesReadContext("getCapacitaciones");
+  const { empresaId } = context;
 
   try {
     const existentesBase = await prisma.capacitacion.findMany({
@@ -364,11 +444,11 @@ export async function getCapacitaciones(): Promise<CapacitacionCatalogo[]> {
       await asegurarCatalogoCapacitacionesBase(empresaId);
     }
   } catch (error) {
+    logCapacitacionesError("getCapacitaciones.bootstrap", error, context);
     const existentesTotales = await prisma.capacitacion.count({ where: { empresaId } });
     if (existentesTotales === 0) {
       throw new Error("No se pudo inicializar el catálogo de capacitaciones. Reintenta o contacta soporte.");
     }
-    console.error("[capacitaciones] bootstrap catalogo base fallido", error);
   }
 
   try {
@@ -394,8 +474,54 @@ export async function getCapacitaciones(): Promise<CapacitacionCatalogo[]> {
     });
 
     return rows.map(toCatalogoShape);
-  } catch {
+  } catch (error) {
+    logCapacitacionesError("getCapacitaciones.read", error, context);
     throw new Error("No se pudo cargar el catálogo de capacitaciones.");
+  }
+}
+
+export async function getCapacitacionesRuntimeDiagnostic(): Promise<CapacitacionesRuntimeDiagnostic> {
+  const context = await requirePermission("canManageCapacitaciones");
+
+  if (!context.empresaId) {
+    throw new Error("No se pudo resolver la empresa activa para cargar capacitaciones.");
+  }
+
+  try {
+    const [empresasActivasSistema, catalogo, asignaciones, sesiones, historial, trabajadoresActivos] = await Promise.all([
+      prisma.empresa.count({ where: { activa: true } }),
+      prisma.capacitacion.count({ where: { empresaId: context.empresaId } }),
+      prisma.capacitacionAsignacion.count({ where: { empresaId: context.empresaId } }),
+      prisma.capacitacionSesion.count({ where: { empresaId: context.empresaId } }),
+      prisma.capacitacionHistorial.count({ where: { empresaId: context.empresaId } }),
+      prisma.trabajador.count({
+        where: {
+          empresaId: context.empresaId,
+          estado: {
+            notIn: ["inactivo", "Inactivo"],
+          },
+        },
+      }),
+    ]);
+
+    return {
+      ok: true,
+      usuarioId: context.usuarioId,
+      email: context.email,
+      rol: context.rol,
+      empresaId: context.empresaId,
+      empresasActivasSistema,
+      metricas: {
+        catalogo,
+        asignaciones,
+        sesiones,
+        historial,
+        trabajadoresActivos,
+      },
+    };
+  } catch (error) {
+    logCapacitacionesError("getCapacitacionesRuntimeDiagnostic", error, context);
+    throw new Error("No se pudo generar el diagnóstico runtime de capacitaciones.");
   }
 }
 
@@ -426,7 +552,8 @@ export async function getCapacitacionById(id: string): Promise<CapacitacionCatal
 }
 
 export async function getTrabajadoresAsignablesCapacitacion(): Promise<TrabajadorAsignableCapacitacion[]> {
-  const { empresaId } = await requirePermission("canReadCapacitaciones");
+  const context = await requireCapacitacionesReadContext("getTrabajadoresAsignablesCapacitacion");
+  const { empresaId } = context;
 
   try {
     const rows = await prisma.trabajador.findMany({
@@ -463,7 +590,8 @@ export async function getTrabajadoresAsignablesCapacitacion(): Promise<Trabajado
         centroTrabajo: row.centroTrabajo?.nombre ?? "Sin centro",
         estado: row.estado,
       }));
-  } catch {
+  } catch (error) {
+    logCapacitacionesError("getTrabajadoresAsignablesCapacitacion.read", error, context);
     throw new Error("No se pudieron cargar trabajadores asignables.");
   }
 }
@@ -1904,7 +2032,8 @@ async function getAsignacionByIdOrThrow(id: string, empresaId: string) {
 export async function getCapacitacionAsignaciones(
   filters?: GetCapacitacionAsignacionesFilters,
 ): Promise<AsignacionCapacitacion[]> {
-  const { empresaId } = await requirePermission("canReadCapacitaciones");
+  const context = await requireCapacitacionesReadContext("getCapacitacionAsignaciones");
+  const { empresaId } = context;
 
   try {
     const where: Prisma.CapacitacionAsignacionWhereInput = {
@@ -1980,7 +2109,8 @@ export async function getCapacitacionAsignaciones(
 
       return toAsignacionShape(row, tracking);
     });
-  } catch {
+  } catch (error) {
+    logCapacitacionesError("getCapacitacionAsignaciones.read", error, context);
     throw new Error("No se pudieron cargar las asignaciones.");
   }
 }
@@ -3198,7 +3328,8 @@ async function createHistorialEventoSesionMasivo(
 ───────────────────────────────────────────────────────────────────────────── */
 
 export async function getCapacitacionSesiones(): Promise<CapacitacionSesion[]> {
-  const { empresaId } = await requirePermission("canReadCapacitaciones");
+  const context = await requireCapacitacionesReadContext("getCapacitacionSesiones");
+  const { empresaId } = context;
 
   try {
     const rows = await prisma.capacitacionSesion.findMany({
@@ -3211,7 +3342,8 @@ export async function getCapacitacionSesiones(): Promise<CapacitacionSesion[]> {
     });
 
     return rows.map(toSesionShape);
-  } catch {
+  } catch (error) {
+    logCapacitacionesError("getCapacitacionSesiones.read", error, context);
     throw new Error("No se pudieron cargar las sesiones.");
   }
 }
@@ -4107,7 +4239,8 @@ export async function getCapacitacionHistorial(filters?: {
   estado?: string;
   tipoEvento?: string;
 }): Promise<CapacitacionHistorialEvento[]> {
-  const { empresaId } = await requirePermission("canReadCapacitaciones");
+  const context = await requireCapacitacionesReadContext("getCapacitacionHistorial");
+  const { empresaId } = context;
 
   try {
     const rows = await prisma.capacitacionHistorial.findMany({
@@ -4123,7 +4256,8 @@ export async function getCapacitacionHistorial(filters?: {
     });
 
     return rows.map(toHistorialShape);
-  } catch {
+  } catch (error) {
+    logCapacitacionesError("getCapacitacionHistorial.read", error, context);
     throw new Error("No se pudo cargar el historial de capacitaciones.");
   }
 }
