@@ -470,6 +470,7 @@ export default function TabAsignaciones() {
   const [trabajadores, setTrabajadores] = useState<TrabajadorAsignableCapacitacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [catalogoError, setCatalogoError] = useState<string | null>(null);
   const [trabajadoresError, setTrabajadoresError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoUI | "todos">("todos");
@@ -497,10 +498,11 @@ export default function TabAsignaciones() {
         setAsignaciones(data.asignaciones);
         setCatalogo(data.catalogo);
         setTrabajadores(data.trabajadores);
+        setError(data.asignacionesError);
+        setCatalogoError(data.catalogoError);
         setTrabajadoresError(data.trabajadoresError);
-        setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Error al cargar datos de capacitaciones");
+        setError(err instanceof Error ? err.message : "No se pudieron cargar las asignaciones.");
         console.error(err);
       } finally {
         setLoading(false);
@@ -749,6 +751,11 @@ export default function TabAsignaciones() {
       {error && (
         <div className="bg-rose-50 border border-rose-200 rounded-2xl px-4 py-3 text-rose-700 text-sm">
           {error}
+        </div>
+      )}
+      {catalogoError && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-amber-800 text-sm">
+          {catalogoError}
         </div>
       )}
       {trabajadoresError && (

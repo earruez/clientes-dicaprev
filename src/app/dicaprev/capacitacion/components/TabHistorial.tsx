@@ -70,8 +70,8 @@ export default function TabHistorial() {
     try {
       const data = await getCapacitacionHistorial();
       setHistorial(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible cargar el historial");
+    } catch {
+      setError("No se pudo cargar el historial de capacitaciones.");
     } finally {
       setLoading(false);
     }

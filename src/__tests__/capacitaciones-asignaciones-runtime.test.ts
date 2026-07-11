@@ -49,7 +49,9 @@ describe("Capacitaciones Asignaciones runtime safeguards", () => {
     expect(result.asignaciones).toEqual([{ id: "a1" }]);
     expect(result.catalogo).toEqual([{ id: "c1" }]);
     expect(result.trabajadores).toEqual([]);
-    expect(result.trabajadoresError).toBe("No se pudieron cargar trabajadores para asignar capacitación.");
+    expect(result.asignacionesError).toBeNull();
+    expect(result.catalogoError).toBeNull();
+    expect(result.trabajadoresError).toBe("No se pudieron cargar trabajadores asignables.");
   });
 
   it("obtiene trabajadores asignables con permisos de capacitaciones", async () => {
