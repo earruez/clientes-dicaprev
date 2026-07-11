@@ -57,6 +57,18 @@ export type CreateCapacitacionInput = {
 
 export type UpdateCapacitacionInput = Partial<CreateCapacitacionInput>;
 
+export type TrabajadorAsignableCapacitacion = {
+  id: string;
+  nombre: string;
+  apellido: string;
+  rut: string;
+  email: string;
+  cargo: string;
+  area: string;
+  centroTrabajo: string;
+  estado: string;
+};
+
 function normalizeCodigo(value: string): string {
   return value.trim().toUpperCase();
 }
@@ -162,6 +174,45 @@ export async function getCapacitacionById(id: string): Promise<CapacitacionCatal
   });
 
   return row ? toCatalogoShape(row) : null;
+}
+
+export async function getTrabajadoresAsignablesCapacitacion(): Promise<TrabajadorAsignableCapacitacion[]> {
+  const { empresaId } = await requirePermission("canReadCapacitaciones");
+
+  const rows = await prisma.trabajador.findMany({
+    where: {
+      empresaId,
+      estado: {
+        notIn: ["inactivo", "Inactivo"],
+      },
+    },
+    select: {
+      id: true,
+      nombres: true,
+      apellidos: true,
+      rut: true,
+      email: true,
+      estado: true,
+      cargo: { select: { nombre: true } },
+      area: { select: { nombre: true } },
+      centroTrabajo: { select: { nombre: true } },
+    },
+    orderBy: [{ nombres: "asc" }, { apellidos: "asc" }],
+  });
+
+  return rows
+    .filter((row) => row.estado !== "inactivo" && row.estado !== "Inactivo")
+    .map((row) => ({
+      id: row.id,
+      nombre: row.nombres,
+      apellido: row.apellidos,
+      rut: row.rut ?? "",
+      email: row.email ?? "",
+      cargo: row.cargo?.nombre ?? "Sin cargo",
+      area: row.area?.nombre ?? "Sin área",
+      centroTrabajo: row.centroTrabajo?.nombre ?? "Sin centro",
+      estado: row.estado,
+    }));
 }
 
 export async function createCapacitacion(input: CreateCapacitacionInput): Promise<CapacitacionCatalogo> {
@@ -1688,10 +1739,14 @@ export async function createCapacitacionAsignacion(
   const result = await prisma.$transaction(async (tx) => {
     const trabajador = await tx.trabajador.findFirst({
       where: { id: input.trabajadorId, empresaId },
-      select: { id: true },
+      select: { id: true, estado: true },
     });
     if (!trabajador) {
       throw new Error("Trabajador no encontrado en la empresa");
+    }
+
+    if (trabajador.estado === "inactivo" || trabajador.estado === "Inactivo") {
+      throw new Error("El trabajador seleccionado está inactivo y no puede recibir capacitaciones");
     }
 
     const capacitacion = await tx.capacitacion.findFirst({
