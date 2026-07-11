@@ -91,13 +91,34 @@ type EnrichedAsignacion = AsignacionCapacitacion & {
   estadoUi: EstadoUI;
 };
 
+type EnvioEstadoUI = "no_enviado" | "enviado" | "fallido" | "reenviado";
+type AvanceEstadoUI = "pendiente" | "link_abierto" | "iniciada" | "completada" | "aprobada" | "reprobada";
+
+const ENVIO_CFG: Record<EnvioEstadoUI, { label: string; cls: string }> = {
+  no_enviado: { label: "No enviado", cls: "bg-slate-50 text-slate-700 border-slate-200" },
+  enviado: { label: "Enviado", cls: "bg-cyan-50 text-cyan-700 border-cyan-200" },
+  fallido: { label: "Fallido", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+  reenviado: { label: "Reenviado", cls: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+};
+
+const AVANCE_CFG: Record<AvanceEstadoUI, { label: string; cls: string }> = {
+  pendiente: { label: "Pendiente", cls: "bg-slate-50 text-slate-600 border-slate-200" },
+  link_abierto: { label: "Link abierto", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+  iniciada: { label: "Iniciada", cls: "bg-violet-50 text-violet-700 border-violet-200" },
+  completada: { label: "Completada", cls: "bg-teal-50 text-teal-700 border-teal-200" },
+  aprobada: { label: "Aprobada", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  reprobada: { label: "Reprobada", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+};
+
 // ─── Per-state action buttons (compact, for table row) ──────────────────── //
 function AccionesRow({
   item,
   onAccion,
+  loading,
 }: {
   item: EnrichedAsignacion;
   onAccion: (accion: string, item: EnrichedAsignacion) => void;
+  loading: boolean;
 }) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const link = item.token ? `${origin}/capacitacion/externa/${item.token}` : "";
@@ -109,9 +130,10 @@ function AccionesRow({
           <button
             onClick={(e) => { e.stopPropagation(); onAccion("enviar", item); }}
             title="Enviar capacitación"
+            disabled={loading}
             className="flex items-center gap-1 px-2 py-1 rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-200 text-[11px] font-medium hover:bg-cyan-100 transition-colors"
           >
-            <Send className="h-3 w-3" /> Enviar
+            <Send className="h-3 w-3" /> {loading ? "Enviando..." : "Enviar"}
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onAccion("cancelar", item); }}
@@ -128,9 +150,10 @@ function AccionesRow({
           <button
             onClick={(e) => { e.stopPropagation(); onAccion("reenviar", item); }}
             title="Reenviar enlace"
+            disabled={loading}
             className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium hover:bg-blue-100 transition-colors"
           >
-            <RefreshCw className="h-3 w-3" /> Reenviar
+            <RefreshCw className="h-3 w-3" /> {loading ? "Reenviando..." : "Reenviar"}
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); copyToClipboard(link); }}
@@ -289,6 +312,22 @@ function DetalleDrawer({
             ))}
           </div>
 
+          <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3 space-y-2">
+            <p className="text-[10px] text-slate-400 uppercase font-semibold">Seguimiento de envío</p>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border", ENVIO_CFG[(item.envioEstado ?? "no_enviado") as EnvioEstadoUI].cls)}>
+                {ENVIO_CFG[(item.envioEstado ?? "no_enviado") as EnvioEstadoUI].label}
+              </span>
+              <span className="text-xs text-slate-500">Último envío: {fmt(item.fechaUltimoEnvio ?? item.fechaEnvio)}</span>
+              <span className="text-xs text-slate-500">Intentos: {item.cantidadEnvios ?? 0}</span>
+            </div>
+            {item.ultimoErrorEnvio && (
+              <p className="text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded-lg px-2.5 py-1.5">
+                Último error: {item.ultimoErrorEnvio}
+              </p>
+            )}
+          </div>
+
           {/* Nota */}
           {item.nota !== undefined && (
             <div className="bg-white rounded-2xl border border-slate-100 px-4 py-3 flex items-center justify-between">
@@ -436,6 +475,7 @@ export default function TabAsignaciones() {
   const [formNueva, setFormNueva] = useState({ trabajadorId: "", capacitacionId: "", observacion: "" });
   const [notaRevisar, setNotaRevisar] = useState("");
   const [expandedTrabajadores, setExpandedTrabajadores] = useState<Record<string, boolean>>({});
+  const [accionLoadingId, setAccionLoadingId] = useState<string | null>(null);
 
   // Cargar datos al montar
   useEffect(() => {
@@ -542,6 +582,7 @@ export default function TabAsignaciones() {
       switch (accion) {
         case "enviar":
         case "reenviar":
+          setAccionLoadingId(item.id);
           await enviarCapacitacionAsignacion(item.id, { reenviar: accion === "reenviar" });
           registrarAccion({
             accion: "enviar", modulo: "capacitacion", entidadTipo: "Asignación", entidadId: item.id,
@@ -552,6 +593,7 @@ export default function TabAsignaciones() {
             const updated = asignaciones.find((a) => a.id === item.id);
             if (updated) setSelected({ ...item, ...updated, estadoUi: mapEstadoUi(updated) });
           }
+          setAccionLoadingId(null);
           break;
 
         case "revisar":
@@ -615,7 +657,9 @@ export default function TabAsignaciones() {
       }
     } catch (err) {
       console.error("Error en handleAccion:", err);
-      setError(err instanceof Error ? err.message : "Error al procesar acción");
+      setError(err instanceof Error ? err.message : "No se pudo enviar el correo. Revisa la configuración de email o el correo del trabajador.");
+    } finally {
+      setAccionLoadingId((current) => (current === item.id ? null : current));
     }
   }
 
@@ -833,6 +877,12 @@ export default function TabAsignaciones() {
                                     <p className="text-sm font-medium text-slate-800 truncate">{a.capacitacionNombre}</p>
                                     <div className="flex items-center gap-2 mt-0.5">
                                       <p className="text-xs text-slate-400 truncate">{a.categoria}</p>
+                                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border", ENVIO_CFG[(a.envioEstado ?? "no_enviado") as EnvioEstadoUI].cls)}>
+                                        {ENVIO_CFG[(a.envioEstado ?? "no_enviado") as EnvioEstadoUI].label}
+                                      </span>
+                                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border", AVANCE_CFG[(a.avanceEstado ?? "pendiente") as AvanceEstadoUI].cls)}>
+                                        {AVANCE_CFG[(a.avanceEstado ?? "pendiente") as AvanceEstadoUI].label}
+                                      </span>
                                       {isVideoModalidad(a.modalidad) && (
                                         <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border bg-cyan-50 text-cyan-700 border-cyan-200">
                                           <Video className="h-3 w-3" />
@@ -856,7 +906,7 @@ export default function TabAsignaciones() {
                                     {fmt(a.fechaVencimiento)}
                                   </span>
                                   <div onClick={(e) => e.stopPropagation()}>
-                                    <AccionesRow item={a} onAccion={handleAccion} />
+                                    <AccionesRow item={a} onAccion={handleAccion} loading={accionLoadingId === a.id} />
                                   </div>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setSelected(a); }}
