@@ -142,6 +142,8 @@ export default function TabCalendario() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [catalogoError, setCatalogoError] = useState<string | null>(null);
+  const [sesionesError, setSesionesError] = useState<string | null>(null);
   const [modal, setModal] = useState<"crear" | "editar" | null>(null);
   const [editTarget, setEditTarget] = useState<CapacitacionSesion | null>(null);
   const [form, setForm] = useState<FormSesion>(EMPTY_FORM);
@@ -149,12 +151,32 @@ export default function TabCalendario() {
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setCatalogoError(null);
+    setSesionesError(null);
     try {
-      const [ses, caps] = await Promise.all([getCapacitacionSesiones(), getCapacitaciones()]);
-      setSesiones(ses);
-      setCatalogo(caps);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No fue posible cargar sesiones");
+      const [sesionesResult, catalogoResult] = await Promise.allSettled([
+        getCapacitacionSesiones(),
+        getCapacitaciones(),
+      ]);
+
+      if (sesionesResult.status === "fulfilled") {
+        setSesiones(sesionesResult.value);
+      } else {
+        setSesiones([]);
+        setSesionesError("No se pudieron cargar las sesiones.");
+      }
+
+      if (catalogoResult.status === "fulfilled") {
+        setCatalogo(catalogoResult.value);
+      } else {
+        setCatalogo([]);
+        setCatalogoError("No se pudo cargar el catálogo de capacitaciones.");
+      }
+    } catch {
+      setSesiones([]);
+      setCatalogo([]);
+      setSesionesError("No se pudieron cargar las sesiones.");
+      setCatalogoError("No se pudo cargar el catálogo de capacitaciones.");
     } finally {
       setLoading(false);
     }
@@ -289,6 +311,16 @@ export default function TabCalendario() {
       {error && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
+        </div>
+      )}
+      {sesionesError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {sesionesError}
+        </div>
+      )}
+      {catalogoError && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          {catalogoError}
         </div>
       )}
 

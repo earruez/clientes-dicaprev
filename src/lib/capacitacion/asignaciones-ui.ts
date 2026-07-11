@@ -35,27 +35,31 @@ export async function loadTabAsignacionesData<TAsignacion, TCatalogo, TTrabajado
   asignaciones: TAsignacion[];
   catalogo: TCatalogo[];
   trabajadores: TTrabajador[];
+  asignacionesError: string | null;
+  catalogoError: string | null;
   trabajadoresError: string | null;
 }> {
-  const [asignaciones, catalogo] = await Promise.all([
+  const [asignacionesResult, catalogoResult, trabajadoresResult] = await Promise.allSettled([
     deps.getAsignaciones(),
     deps.getCatalogo(),
+    deps.getTrabajadoresAsignables(),
   ]);
 
-  try {
-    const trabajadores = await deps.getTrabajadoresAsignables();
-    return {
-      asignaciones,
-      catalogo,
-      trabajadores,
-      trabajadoresError: null,
-    };
-  } catch {
-    return {
-      asignaciones,
-      catalogo,
-      trabajadores: [],
-      trabajadoresError: "No se pudieron cargar trabajadores para asignar capacitación.",
-    };
-  }
+  return {
+    asignaciones: asignacionesResult.status === "fulfilled" ? asignacionesResult.value : [],
+    catalogo: catalogoResult.status === "fulfilled" ? catalogoResult.value : [],
+    trabajadores: trabajadoresResult.status === "fulfilled" ? trabajadoresResult.value : [],
+    asignacionesError:
+      asignacionesResult.status === "rejected"
+        ? "No se pudieron cargar las asignaciones."
+        : null,
+    catalogoError:
+      catalogoResult.status === "rejected"
+        ? "No se pudo cargar el catálogo de capacitaciones."
+        : null,
+    trabajadoresError:
+      trabajadoresResult.status === "rejected"
+        ? "No se pudieron cargar trabajadores asignables."
+        : null,
+  };
 }

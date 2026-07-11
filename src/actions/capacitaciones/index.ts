@@ -11,6 +11,10 @@ import {
   construirMetadataDocumentoPdf,
 } from "@/lib/documentacion/registro-documento-generado";
 import { registrarDocumentoGenerado } from "@/actions/documentos-generados";
+import {
+  CATALOGO_CAPACITACIONES_SST,
+  type CapacitacionSSTDef,
+} from "@/lib/capacitacion/catalogo-capacitaciones-sst";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -123,31 +127,276 @@ function toCatalogoShape(row: {
   };
 }
 
-export async function getCapacitaciones(): Promise<CapacitacionCatalogo[]> {
-  const { empresaId } = await requirePermission("canReadCapacitaciones");
+const CODIGOS_CATALOGO_BASE_SST = CATALOGO_CAPACITACIONES_SST.map((item) => item.codigo);
 
-  const rows = await prisma.capacitacion.findMany({
-    where: { empresaId },
-    orderBy: [{ activa: "desc" }, { nombre: "asc" }],
+function normalizeKeywordValue(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function matchesAnyKeyword(text: string, keywords?: string[]): boolean {
+  if (!keywords || keywords.length === 0) return false;
+  const normalizedText = normalizeKeywordValue(text);
+  return keywords.some((keyword) => normalizedText.includes(normalizeKeywordValue(keyword)));
+}
+
+function buildReglaKey(input: {
+  cargoId?: string | null;
+  areaId?: string | null;
+  centroTrabajoId?: string | null;
+  tipoContrato?: string | null;
+  periodicidad: string;
+  obligatorio: boolean;
+}): string {
+  return [
+    input.cargoId ?? "",
+    input.areaId ?? "",
+    input.centroTrabajoId ?? "",
+    input.tipoContrato ?? "",
+    input.periodicidad,
+    input.obligatorio ? "1" : "0",
+  ].join("|");
+}
+
+async function asegurarReglasBaseCapacitacion(input: {
+  empresaId: string;
+  capacitacionId: string;
+  definicion: CapacitacionSSTDef;
+  cantidadTrabajadores: number;
+  cargosEmpresa: Array<{ id: string; nombre: string; areaId: string | null }>;
+  areasEmpresa: Array<{ id: string; nombre: string }>;
+}): Promise<number> {
+  const regla = input.definicion.regla;
+  if (regla.cantidadMinTrabajadores && input.cantidadTrabajadores < regla.cantidadMinTrabajadores) {
+    return 0;
+  }
+
+  const periodicidad = input.definicion.vigenciaMeses > 0 ? "anual" : "unica";
+  const existentes = await prisma.reglaCapacitacionCargo.findMany({
+    where: {
+      empresaId: input.empresaId,
+      capacitacionId: input.capacitacionId,
+    },
     select: {
-      id: true,
-      nombre: true,
-      codigo: true,
-      categoria: true,
-      descripcion: true,
-      modalidad: true,
-      duracionHoras: true,
-      requiereEvaluacion: true,
-      requiereFirma: true,
-      generaCertificado: true,
-      vigenciaMeses: true,
-      esObligatoria: true,
-      activa: true,
-      createdAt: true,
+      cargoId: true,
+      areaId: true,
+      centroTrabajoId: true,
+      tipoContrato: true,
+      periodicidad: true,
+      obligatorio: true,
     },
   });
 
-  return rows.map(toCatalogoShape);
+  const existentesSet = new Set(
+    existentes.map((item) =>
+      buildReglaKey({
+        cargoId: item.cargoId,
+        areaId: item.areaId,
+        centroTrabajoId: item.centroTrabajoId,
+        tipoContrato: item.tipoContrato,
+        periodicidad: item.periodicidad,
+        obligatorio: item.obligatorio,
+      }),
+    ),
+  );
+
+  const porCrear: Array<{ cargoId?: string | null; areaId?: string | null }> = [];
+
+  if (regla.todosTrabajadores) {
+    porCrear.push({ cargoId: null, areaId: null });
+  } else {
+    const areaMatches = regla.areaKeywords
+      ? input.areasEmpresa.filter((area) => matchesAnyKeyword(area.nombre, regla.areaKeywords))
+      : [];
+    const areaMatchIds = new Set(areaMatches.map((area) => area.id));
+
+    const cargoMatchesByNombre = regla.cargoKeywords
+      ? input.cargosEmpresa.filter((cargo) => matchesAnyKeyword(cargo.nombre, regla.cargoKeywords))
+      : [];
+    const cargoMatchesByArea = input.cargosEmpresa.filter((cargo) =>
+      cargo.areaId ? areaMatchIds.has(cargo.areaId) : false,
+    );
+
+    const cargoIds = new Set([
+      ...cargoMatchesByNombre.map((cargo) => cargo.id),
+      ...cargoMatchesByArea.map((cargo) => cargo.id),
+    ]);
+
+    for (const area of areaMatches) {
+      porCrear.push({ cargoId: null, areaId: area.id });
+    }
+
+    for (const cargoId of cargoIds) {
+      porCrear.push({ cargoId, areaId: null });
+    }
+  }
+
+  let creadas = 0;
+  for (const reglaDef of porCrear) {
+    const key = buildReglaKey({
+      cargoId: reglaDef.cargoId,
+      areaId: reglaDef.areaId,
+      centroTrabajoId: null,
+      tipoContrato: null,
+      periodicidad,
+      obligatorio: true,
+    });
+
+    if (existentesSet.has(key)) continue;
+
+    await prisma.reglaCapacitacionCargo.create({
+      data: {
+        empresaId: input.empresaId,
+        capacitacionId: input.capacitacionId,
+        cargoId: reglaDef.cargoId ?? null,
+        areaId: reglaDef.areaId ?? null,
+        centroTrabajoId: null,
+        tipoContrato: null,
+        obligatorio: true,
+        periodicidad,
+        activo: true,
+      },
+    });
+    existentesSet.add(key);
+    creadas += 1;
+  }
+
+  return creadas;
+}
+
+export async function asegurarCatalogoCapacitacionesBase(empresaId: string): Promise<{
+  capacitacionesCreadas: number;
+  reglasCreadas: number;
+}> {
+  const empresa = await prisma.empresa.findFirst({
+    where: { id: empresaId },
+    select: { id: true, cantidadTrabajadores: true },
+  });
+
+  if (!empresa) {
+    throw new Error("Empresa activa no encontrada para inicializar catálogo de capacitaciones.");
+  }
+
+  const [capacitacionesActuales, cargosEmpresa, areasEmpresa] = await Promise.all([
+    prisma.capacitacion.findMany({
+      where: {
+        empresaId,
+        codigo: { in: CODIGOS_CATALOGO_BASE_SST },
+      },
+      select: { id: true, codigo: true },
+    }),
+    prisma.cargo.findMany({
+      where: { empresaId },
+      select: { id: true, nombre: true, areaId: true },
+    }),
+    prisma.area.findMany({
+      where: { empresaId },
+      select: { id: true, nombre: true },
+    }),
+  ]);
+
+  const capsByCodigo = new Map(
+    capacitacionesActuales.map((capacitacion) => [capacitacion.codigo, capacitacion]),
+  );
+
+  let capacitacionesCreadas = 0;
+  let reglasCreadas = 0;
+
+  for (const definicion of CATALOGO_CAPACITACIONES_SST) {
+    let capacitacion = capsByCodigo.get(definicion.codigo);
+
+    if (!capacitacion) {
+      const created = await prisma.capacitacion.create({
+        data: {
+          empresaId,
+          codigo: definicion.codigo,
+          nombre: definicion.nombre,
+          descripcion: definicion.descripcion,
+          categoria: definicion.categoria,
+          modalidad: definicion.modalidad,
+          duracionHoras: definicion.duracionHoras,
+          vigenciaMeses: definicion.vigenciaMeses,
+          requiereEvaluacion: definicion.requiereEvaluacion,
+          requiereFirma: definicion.requiereFirma,
+          generaCertificado: definicion.generaCertificado,
+          esObligatoria: definicion.esObligatoria,
+          activa: true,
+        },
+        select: { id: true, codigo: true },
+      });
+
+      capacitacion = created;
+      capsByCodigo.set(definicion.codigo, created);
+      capacitacionesCreadas += 1;
+    }
+
+    reglasCreadas += await asegurarReglasBaseCapacitacion({
+      empresaId,
+      capacitacionId: capacitacion.id,
+      definicion,
+      cantidadTrabajadores: empresa.cantidadTrabajadores ?? 0,
+      cargosEmpresa,
+      areasEmpresa,
+    });
+  }
+
+  return {
+    capacitacionesCreadas,
+    reglasCreadas,
+  };
+}
+
+export async function getCapacitaciones(): Promise<CapacitacionCatalogo[]> {
+  const { empresaId } = await requirePermission("canReadCapacitaciones");
+
+  try {
+    const existentesBase = await prisma.capacitacion.findMany({
+      where: {
+        empresaId,
+        codigo: { in: CODIGOS_CATALOGO_BASE_SST },
+      },
+      select: { codigo: true },
+    });
+
+    if (existentesBase.length < CODIGOS_CATALOGO_BASE_SST.length) {
+      await asegurarCatalogoCapacitacionesBase(empresaId);
+    }
+  } catch (error) {
+    const existentesTotales = await prisma.capacitacion.count({ where: { empresaId } });
+    if (existentesTotales === 0) {
+      throw new Error("No se pudo inicializar el catálogo de capacitaciones. Reintenta o contacta soporte.");
+    }
+    console.error("[capacitaciones] bootstrap catalogo base fallido", error);
+  }
+
+  try {
+    const rows = await prisma.capacitacion.findMany({
+      where: { empresaId },
+      orderBy: [{ activa: "desc" }, { nombre: "asc" }],
+      select: {
+        id: true,
+        nombre: true,
+        codigo: true,
+        categoria: true,
+        descripcion: true,
+        modalidad: true,
+        duracionHoras: true,
+        requiereEvaluacion: true,
+        requiereFirma: true,
+        generaCertificado: true,
+        vigenciaMeses: true,
+        esObligatoria: true,
+        activa: true,
+        createdAt: true,
+      },
+    });
+
+    return rows.map(toCatalogoShape);
+  } catch {
+    throw new Error("No se pudo cargar el catálogo de capacitaciones.");
+  }
 }
 
 export async function getCapacitacionById(id: string): Promise<CapacitacionCatalogo | null> {
@@ -179,40 +428,44 @@ export async function getCapacitacionById(id: string): Promise<CapacitacionCatal
 export async function getTrabajadoresAsignablesCapacitacion(): Promise<TrabajadorAsignableCapacitacion[]> {
   const { empresaId } = await requirePermission("canReadCapacitaciones");
 
-  const rows = await prisma.trabajador.findMany({
-    where: {
-      empresaId,
-      estado: {
-        notIn: ["inactivo", "Inactivo"],
+  try {
+    const rows = await prisma.trabajador.findMany({
+      where: {
+        empresaId,
+        estado: {
+          notIn: ["inactivo", "Inactivo"],
+        },
       },
-    },
-    select: {
-      id: true,
-      nombres: true,
-      apellidos: true,
-      rut: true,
-      email: true,
-      estado: true,
-      cargo: { select: { nombre: true } },
-      area: { select: { nombre: true } },
-      centroTrabajo: { select: { nombre: true } },
-    },
-    orderBy: [{ nombres: "asc" }, { apellidos: "asc" }],
-  });
+      select: {
+        id: true,
+        nombres: true,
+        apellidos: true,
+        rut: true,
+        email: true,
+        estado: true,
+        cargo: { select: { nombre: true } },
+        area: { select: { nombre: true } },
+        centroTrabajo: { select: { nombre: true } },
+      },
+      orderBy: [{ nombres: "asc" }, { apellidos: "asc" }],
+    });
 
-  return rows
-    .filter((row) => row.estado !== "inactivo" && row.estado !== "Inactivo")
-    .map((row) => ({
-      id: row.id,
-      nombre: row.nombres,
-      apellido: row.apellidos,
-      rut: row.rut ?? "",
-      email: row.email ?? "",
-      cargo: row.cargo?.nombre ?? "Sin cargo",
-      area: row.area?.nombre ?? "Sin área",
-      centroTrabajo: row.centroTrabajo?.nombre ?? "Sin centro",
-      estado: row.estado,
-    }));
+    return rows
+      .filter((row) => row.estado !== "inactivo" && row.estado !== "Inactivo")
+      .map((row) => ({
+        id: row.id,
+        nombre: row.nombres,
+        apellido: row.apellidos,
+        rut: row.rut ?? "",
+        email: row.email ?? "",
+        cargo: row.cargo?.nombre ?? "Sin cargo",
+        area: row.area?.nombre ?? "Sin área",
+        centroTrabajo: row.centroTrabajo?.nombre ?? "Sin centro",
+        estado: row.estado,
+      }));
+  } catch {
+    throw new Error("No se pudieron cargar trabajadores asignables.");
+  }
 }
 
 export async function createCapacitacion(input: CreateCapacitacionInput): Promise<CapacitacionCatalogo> {
@@ -1216,6 +1469,7 @@ async function generarDocumentoCertificadoCapacitacion(
 
 export const __capacitacionesTestables = {
   generarDocumentoCertificadoCapacitacion,
+  asegurarCatalogoCapacitacionesBase,
 };
 
 async function sincronizarCertificadoDesdeAsistenciaConfirmada(input: {
@@ -1652,79 +1906,83 @@ export async function getCapacitacionAsignaciones(
 ): Promise<AsignacionCapacitacion[]> {
   const { empresaId } = await requirePermission("canReadCapacitaciones");
 
-  const where: Prisma.CapacitacionAsignacionWhereInput = {
-    empresaId,
-    trabajadorId: filters?.trabajadorId,
-    capacitacionId: filters?.capacitacionId,
-    estado: filters?.estado,
-  };
+  try {
+    const where: Prisma.CapacitacionAsignacionWhereInput = {
+      empresaId,
+      trabajadorId: filters?.trabajadorId,
+      capacitacionId: filters?.capacitacionId,
+      estado: filters?.estado,
+    };
 
-  if (!filters?.includeCanceladas && !filters?.estado) {
-    where.estado = { not: "cancelada" };
-  }
+    if (!filters?.includeCanceladas && !filters?.estado) {
+      where.estado = { not: "cancelada" };
+    }
 
-  const rows = await prisma.capacitacionAsignacion.findMany({
-    where,
-    include: {
-      trabajador: { select: { nombres: true, apellidos: true } },
-      capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
-    },
-    orderBy: [{ fechaAsignacion: "desc" }, { createdAt: "desc" }],
-  });
-
-  const asignacionIds = rows.map((row) => row.id);
-  const eventos = asignacionIds.length
-    ? await prisma.capacitacionHistorial.findMany({
-        where: {
-          empresaId,
-          asignacionId: { in: asignacionIds },
-          tipoEvento: {
-            in: [
-              "correo_enviado",
-              "correo_fallido",
-              "correo_reenviado",
-              "asignacion_enviada_email",
-              "asignacion_reenviada_email",
-              "trabajador_abre_link",
-              "capacitacion_iniciada",
-              "asignacion_iniciada_publica",
-              "capacitacion_completada",
-              "asignacion_completada_publica",
-              "capacitacion_aprobada",
-              "capacitacion_reprobada",
-            ],
-          },
-        },
-        select: {
-          asignacionId: true,
-          tipoEvento: true,
-          detalle: true,
-          fechaEvento: true,
-        },
-        orderBy: { fechaEvento: "desc" },
-      })
-    : [];
-
-  const eventosPorAsignacion = new Map<string, Array<{ tipoEvento: string; detalle: string | null; fechaEvento: Date }>>();
-  for (const evento of eventos) {
-    if (!evento.asignacionId) continue;
-    const current = eventosPorAsignacion.get(evento.asignacionId) ?? [];
-    current.push({ tipoEvento: evento.tipoEvento, detalle: evento.detalle, fechaEvento: evento.fechaEvento });
-    eventosPorAsignacion.set(evento.asignacionId, current);
-  }
-
-  return rows.map((row) => {
-    const tracking = deriveTrackingFromHistorial({
-      row: {
-        aprobado: row.aprobado,
-        fechaInicio: row.fechaInicio,
-        fechaCompletada: row.fechaCompletada,
+    const rows = await prisma.capacitacionAsignacion.findMany({
+      where,
+      include: {
+        trabajador: { select: { nombres: true, apellidos: true } },
+        capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
       },
-      eventos: eventosPorAsignacion.get(row.id) ?? [],
+      orderBy: [{ fechaAsignacion: "desc" }, { createdAt: "desc" }],
     });
 
-    return toAsignacionShape(row, tracking);
-  });
+    const asignacionIds = rows.map((row) => row.id);
+    const eventos = asignacionIds.length
+      ? await prisma.capacitacionHistorial.findMany({
+          where: {
+            empresaId,
+            asignacionId: { in: asignacionIds },
+            tipoEvento: {
+              in: [
+                "correo_enviado",
+                "correo_fallido",
+                "correo_reenviado",
+                "asignacion_enviada_email",
+                "asignacion_reenviada_email",
+                "trabajador_abre_link",
+                "capacitacion_iniciada",
+                "asignacion_iniciada_publica",
+                "capacitacion_completada",
+                "asignacion_completada_publica",
+                "capacitacion_aprobada",
+                "capacitacion_reprobada",
+              ],
+            },
+          },
+          select: {
+            asignacionId: true,
+            tipoEvento: true,
+            detalle: true,
+            fechaEvento: true,
+          },
+          orderBy: { fechaEvento: "desc" },
+        })
+      : [];
+
+    const eventosPorAsignacion = new Map<string, Array<{ tipoEvento: string; detalle: string | null; fechaEvento: Date }>>();
+    for (const evento of eventos) {
+      if (!evento.asignacionId) continue;
+      const current = eventosPorAsignacion.get(evento.asignacionId) ?? [];
+      current.push({ tipoEvento: evento.tipoEvento, detalle: evento.detalle, fechaEvento: evento.fechaEvento });
+      eventosPorAsignacion.set(evento.asignacionId, current);
+    }
+
+    return rows.map((row) => {
+      const tracking = deriveTrackingFromHistorial({
+        row: {
+          aprobado: row.aprobado,
+          fechaInicio: row.fechaInicio,
+          fechaCompletada: row.fechaCompletada,
+        },
+        eventos: eventosPorAsignacion.get(row.id) ?? [],
+      });
+
+      return toAsignacionShape(row, tracking);
+    });
+  } catch {
+    throw new Error("No se pudieron cargar las asignaciones.");
+  }
 }
 
 export async function createCapacitacionAsignacion(
@@ -2942,16 +3200,20 @@ async function createHistorialEventoSesionMasivo(
 export async function getCapacitacionSesiones(): Promise<CapacitacionSesion[]> {
   const { empresaId } = await requirePermission("canReadCapacitaciones");
 
-  const rows = await prisma.capacitacionSesion.findMany({
-    where: { empresaId },
-    include: {
-      capacitacion: { select: { nombre: true } },
-      asistencias: { select: { id: true } },
-    },
-    orderBy: [{ fecha: "desc" }, { horaInicio: "desc" }],
-  });
+  try {
+    const rows = await prisma.capacitacionSesion.findMany({
+      where: { empresaId },
+      include: {
+        capacitacion: { select: { nombre: true } },
+        asistencias: { select: { id: true } },
+      },
+      orderBy: [{ fecha: "desc" }, { horaInicio: "desc" }],
+    });
 
-  return rows.map(toSesionShape);
+    return rows.map(toSesionShape);
+  } catch {
+    throw new Error("No se pudieron cargar las sesiones.");
+  }
 }
 
 export async function getCapacitacionSesionById(id: string): Promise<CapacitacionSesion | null> {
@@ -3847,17 +4109,21 @@ export async function getCapacitacionHistorial(filters?: {
 }): Promise<CapacitacionHistorialEvento[]> {
   const { empresaId } = await requirePermission("canReadCapacitaciones");
 
-  const rows = await prisma.capacitacionHistorial.findMany({
-    where: {
-      empresaId,
-      ...(filters?.trabajadorId ? { trabajadorId: filters.trabajadorId } : {}),
-      ...(filters?.capacitacionId ? { capacitacionId: filters.capacitacionId } : {}),
-      ...(filters?.estado ? { estado: filters.estado } : {}),
-      ...(filters?.tipoEvento ? { tipoEvento: filters.tipoEvento } : {}),
-    },
-    orderBy: { fechaEvento: "desc" },
-    include: HISTORIAL_INCLUDE,
-  });
+  try {
+    const rows = await prisma.capacitacionHistorial.findMany({
+      where: {
+        empresaId,
+        ...(filters?.trabajadorId ? { trabajadorId: filters.trabajadorId } : {}),
+        ...(filters?.capacitacionId ? { capacitacionId: filters.capacitacionId } : {}),
+        ...(filters?.estado ? { estado: filters.estado } : {}),
+        ...(filters?.tipoEvento ? { tipoEvento: filters.tipoEvento } : {}),
+      },
+      orderBy: { fechaEvento: "desc" },
+      include: HISTORIAL_INCLUDE,
+    });
 
-  return rows.map(toHistorialShape);
+    return rows.map(toHistorialShape);
+  } catch {
+    throw new Error("No se pudo cargar el historial de capacitaciones.");
+  }
 }

@@ -134,6 +134,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 export default function TabCatalogo() {
   const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState<string | "todos">("todos");
   const [modal, setModal] = useState<"crear" | "editar" | null>(null);
@@ -143,8 +144,12 @@ export default function TabCatalogo() {
   const reloadCatalogo = async () => {
     setLoading(true);
     try {
+      setError(null);
       const rows = await getCapacitaciones();
       setCatalogo(rows);
+    } catch {
+      setCatalogo([]);
+      setError("No se pudo cargar el catálogo de capacitaciones.");
     } finally {
       setLoading(false);
     }
@@ -239,6 +244,12 @@ export default function TabCatalogo() {
 
   return (
     <div className="space-y-5">
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
       {/* Filter bar */}
       <div className="flex flex-wrap gap-3 items-center justify-between bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
         <div className="flex flex-wrap gap-2 items-center flex-1">
@@ -280,19 +291,12 @@ export default function TabCatalogo() {
           <BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" />
           <p className="text-sm text-slate-500">
             {catalogo.length === 0
-              ? "No hay capacitaciones en el catálogo de esta empresa."
+              ? "No se pudo inicializar el catálogo de capacitaciones. Reintenta o contacta soporte."
               : "No hay resultados para los filtros aplicados."}
           </p>
           {catalogo.length === 0 ? (
             <div className="mt-3 flex flex-col items-center gap-2">
-              <p className="text-xs text-slate-400">Crea la primera capacitación para iniciar el catálogo.</p>
-              <button
-                onClick={openCrear}
-                className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-cyan-700 px-4 py-2 text-xs font-semibold text-white hover:bg-cyan-800 transition-colors"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Nueva capacitación
-              </button>
+              <p className="text-xs text-slate-400">Si el problema persiste, contacta soporte.</p>
             </div>
           ) : (
             <p className="text-xs text-slate-400 mt-1">Ajusta los filtros para ver otros resultados.</p>
