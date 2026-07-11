@@ -6,6 +6,7 @@ import path from "path";
 import type { Prisma } from "@prisma/client";
 import { jsPDF } from "jspdf";
 import { construirArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
+import { EmailConfigurationError, sendEmail } from "@/lib/email/send-email";
 import {
   construirMetadataDocumentoPdf,
 } from "@/lib/documentacion/registro-documento-generado";
@@ -382,6 +383,12 @@ export type AsignacionCapacitacion = {
   evidenciaId?: string;
   certificadoId?: string;
   documentoId?: string;
+  envioEstado?: "no_enviado" | "enviado" | "fallido" | "reenviado";
+  fechaUltimoEnvio?: string;
+  cantidadEnvios?: number;
+  ultimoErrorEnvio?: string;
+  fechaAperturaLink?: string;
+  avanceEstado?: "pendiente" | "link_abierto" | "iniciada" | "completada" | "aprobada" | "reprobada";
   createdAt: string;
   updatedAt: string;
 };
@@ -529,62 +536,127 @@ function resolvePublicBaseUrl(): string {
 async function sendCapacitacionEmail(input: {
   to: string;
   trabajadorNombre: string;
+  empresaNombre: string;
   capacitacionNombre: string;
   capacitacionCodigo?: string;
   modalidad?: string;
+  fechaLimite?: Date | null;
   url: string;
-}): Promise<"resend" | "dev-log"> {
-  const resendApiKey = process.env.RESEND_API_KEY;
-  const fromEmail =
-    process.env.CAPACITACION_FROM_EMAIL ||
-    process.env.FROM_EMAIL ||
-    "onboarding@resend.dev";
+}): Promise<"resend"> {
+  const subject = "Tienes una capacitación pendiente en NextPrev";
+  const fechaLimite = input.fechaLimite ? formatDate(input.fechaLimite) : "Sin fecha límite";
 
-  const subject = `Capacitación asignada: ${input.capacitacionNombre}`;
   const html = `
-    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a;">
-      <h2 style="margin-bottom: 8px;">Nueva capacitación asignada</h2>
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #0f172a; max-width: 560px; margin: 0 auto;">
+      <h2 style="margin-bottom: 8px;">Tienes una capacitación pendiente en NextPrev</h2>
       <p>Hola <strong>${input.trabajadorNombre}</strong>,</p>
-      <p>Se te ha asignado la capacitación <strong>${input.capacitacionNombre}</strong>${
+      <p>La empresa <strong>${input.empresaNombre}</strong> te asignó la capacitación <strong>${input.capacitacionNombre}</strong>${
         input.capacitacionCodigo ? ` (${input.capacitacionCodigo})` : ""
       }.</p>
       <p>Modalidad: <strong>${input.modalidad || "No definida"}</strong></p>
-      <p>Para iniciar, abre el siguiente enlace:</p>
-      <p><a href="${input.url}">${input.url}</a></p>
-      <p style="margin-top: 18px; font-size: 12px; color: #64748b;">Correo enviado por NEXTPREV.</p>
+      <p>Fecha límite: <strong>${fechaLimite}</strong></p>
+      <p>Para iniciar tu capacitación, usa este enlace personal:</p>
+      <p style="margin: 16px 0;">
+        <a href="${input.url}" style="display: inline-block; background: #0891b2; color: #ffffff; text-decoration: none; padding: 10px 16px; border-radius: 8px; font-weight: 600;">Iniciar capacitación</a>
+      </p>
+      <p style="font-size: 12px; color: #334155;">Si el botón no funciona, copia este enlace en tu navegador:</p>
+      <p style="font-size: 12px; color: #0f172a; word-break: break-all;"><a href="${input.url}">${input.url}</a></p>
+      <p style="margin-top: 10px; font-size: 12px; color: #64748b;">Este enlace es personal. No lo compartas.</p>
+      <p style="margin-top: 16px; font-size: 12px; color: #64748b;">Generado por NextPrev.</p>
     </div>
   `;
 
-  if (!resendApiKey) {
-    console.info("[capacitacion-email][dev-log]", {
-      to: input.to,
-      subject,
-      url: input.url,
-      modalidad: input.modalidad,
-    });
-    return "dev-log";
-  }
+  const text = [
+    "Tienes una capacitación pendiente en NextPrev",
+    `Trabajador: ${input.trabajadorNombre}`,
+    `Empresa: ${input.empresaNombre}`,
+    `Capacitación: ${input.capacitacionNombre}${input.capacitacionCodigo ? ` (${input.capacitacionCodigo})` : ""}`,
+    `Modalidad: ${input.modalidad || "No definida"}`,
+    `Fecha límite: ${fechaLimite}`,
+    `Enlace personal: ${input.url}`,
+    "Este enlace es personal. No lo compartas.",
+    "Generado por NextPrev.",
+  ].join("\n");
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromEmail,
-      to: [input.to],
-      subject,
-      html,
-    }),
+  await sendEmail({
+    to: input.to,
+    subject,
+    html,
+    text,
   });
 
-  if (!response.ok) {
-    const payload = await response.text();
-    throw new Error(`No fue posible enviar correo de capacitación: ${payload}`);
+  return "resend";
+}
+
+type AsignacionTrackingSummary = {
+  envioEstado: "no_enviado" | "enviado" | "fallido" | "reenviado";
+  fechaUltimoEnvio?: string;
+  cantidadEnvios: number;
+  ultimoErrorEnvio?: string;
+  fechaAperturaLink?: string;
+  avanceEstado: "pendiente" | "link_abierto" | "iniciada" | "completada" | "aprobada" | "reprobada";
+};
+
+function deriveTrackingFromHistorial(params: {
+  row: {
+    aprobado: boolean | null;
+    fechaInicio: Date | null;
+    fechaCompletada: Date | null;
+  };
+  eventos: Array<{
+    tipoEvento: string;
+    detalle: string | null;
+    fechaEvento: Date;
+  }>;
+}): AsignacionTrackingSummary {
+  const enviados = params.eventos.filter((e) =>
+    ["correo_enviado", "correo_reenviado", "asignacion_enviada_email", "asignacion_reenviada_email"].includes(e.tipoEvento),
+  );
+  const reenviados = params.eventos.some((e) =>
+    ["correo_reenviado", "asignacion_reenviada_email"].includes(e.tipoEvento),
+  );
+  const fallos = params.eventos.filter((e) => e.tipoEvento === "correo_fallido");
+  const aperturas = params.eventos
+    .filter((e) => e.tipoEvento === "trabajador_abre_link")
+    .sort((a, b) => a.fechaEvento.getTime() - b.fechaEvento.getTime());
+
+  const ultimoEnvio = enviados.sort((a, b) => b.fechaEvento.getTime() - a.fechaEvento.getTime())[0];
+  const ultimoFallo = fallos.sort((a, b) => b.fechaEvento.getTime() - a.fechaEvento.getTime())[0];
+
+  let envioEstado: AsignacionTrackingSummary["envioEstado"] = "no_enviado";
+  if (ultimoFallo && (!ultimoEnvio || ultimoFallo.fechaEvento > ultimoEnvio.fechaEvento)) {
+    envioEstado = "fallido";
+  } else if (enviados.length > 0) {
+    envioEstado = reenviados ? "reenviado" : "enviado";
   }
 
-  return "resend";
+  let avanceEstado: AsignacionTrackingSummary["avanceEstado"] = "pendiente";
+  const tieneApertura = aperturas.length > 0;
+  const inicioDetectado = params.row.fechaInicio || params.eventos.some((e) => ["capacitacion_iniciada", "asignacion_iniciada_publica"].includes(e.tipoEvento));
+  const completadaDetectada = params.row.fechaCompletada || params.eventos.some((e) => ["capacitacion_completada", "asignacion_completada_publica"].includes(e.tipoEvento));
+  const aprobadaDetectada = params.row.aprobado === true || params.eventos.some((e) => e.tipoEvento === "capacitacion_aprobada");
+  const reprobadaDetectada = params.row.aprobado === false || params.eventos.some((e) => e.tipoEvento === "capacitacion_reprobada");
+
+  if (reprobadaDetectada) {
+    avanceEstado = "reprobada";
+  } else if (aprobadaDetectada) {
+    avanceEstado = "aprobada";
+  } else if (completadaDetectada) {
+    avanceEstado = "completada";
+  } else if (inicioDetectado) {
+    avanceEstado = "iniciada";
+  } else if (tieneApertura) {
+    avanceEstado = "link_abierto";
+  }
+
+  return {
+    envioEstado,
+    fechaUltimoEnvio: ultimoEnvio ? formatDateOnly(ultimoEnvio.fechaEvento) : undefined,
+    cantidadEnvios: enviados.length,
+    ultimoErrorEnvio: ultimoFallo?.detalle ?? undefined,
+    fechaAperturaLink: aperturas[0] ? formatDateOnly(aperturas[0].fechaEvento) : undefined,
+    avanceEstado,
+  };
 }
 
 async function createHistorialCapacitacion(
@@ -1448,7 +1520,8 @@ export async function descargarCertificadoCapacitacionPdf(asignacionId: string):
   return blob;
 }
 
-function toAsignacionShape(row: {
+function toAsignacionShape(
+  row: {
   id: string;
   trabajadorId: string;
   capacitacionId: string;
@@ -1471,7 +1544,9 @@ function toAsignacionShape(row: {
   updatedAt: Date;
   trabajador: { nombres: string; apellidos: string };
   capacitacion: { nombre: string; categoria: string; modalidad: string; generaCertificado: boolean };
-}): AsignacionCapacitacion {
+},
+  tracking?: AsignacionTrackingSummary,
+): AsignacionCapacitacion {
   return {
     id: row.id,
     trabajadorId: row.trabajadorId,
@@ -1500,6 +1575,12 @@ function toAsignacionShape(row: {
     evidenciaId: row.evidenciaDocumentoId ?? undefined,
     certificadoId: row.certificadoDocumentoId ?? undefined,
     documentoId: row.certificadoDocumentoId ?? row.evidenciaDocumentoId ?? undefined,
+    envioEstado: tracking?.envioEstado,
+    fechaUltimoEnvio: tracking?.fechaUltimoEnvio,
+    cantidadEnvios: tracking?.cantidadEnvios,
+    ultimoErrorEnvio: tracking?.ultimoErrorEnvio,
+    fechaAperturaLink: tracking?.fechaAperturaLink,
+    avanceEstado: tracking?.avanceEstado,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -1540,7 +1621,59 @@ export async function getCapacitacionAsignaciones(
     orderBy: [{ fechaAsignacion: "desc" }, { createdAt: "desc" }],
   });
 
-  return rows.map(toAsignacionShape);
+  const asignacionIds = rows.map((row) => row.id);
+  const eventos = asignacionIds.length
+    ? await prisma.capacitacionHistorial.findMany({
+        where: {
+          empresaId,
+          asignacionId: { in: asignacionIds },
+          tipoEvento: {
+            in: [
+              "correo_enviado",
+              "correo_fallido",
+              "correo_reenviado",
+              "asignacion_enviada_email",
+              "asignacion_reenviada_email",
+              "trabajador_abre_link",
+              "capacitacion_iniciada",
+              "asignacion_iniciada_publica",
+              "capacitacion_completada",
+              "asignacion_completada_publica",
+              "capacitacion_aprobada",
+              "capacitacion_reprobada",
+            ],
+          },
+        },
+        select: {
+          asignacionId: true,
+          tipoEvento: true,
+          detalle: true,
+          fechaEvento: true,
+        },
+        orderBy: { fechaEvento: "desc" },
+      })
+    : [];
+
+  const eventosPorAsignacion = new Map<string, Array<{ tipoEvento: string; detalle: string | null; fechaEvento: Date }>>();
+  for (const evento of eventos) {
+    if (!evento.asignacionId) continue;
+    const current = eventosPorAsignacion.get(evento.asignacionId) ?? [];
+    current.push({ tipoEvento: evento.tipoEvento, detalle: evento.detalle, fechaEvento: evento.fechaEvento });
+    eventosPorAsignacion.set(evento.asignacionId, current);
+  }
+
+  return rows.map((row) => {
+    const tracking = deriveTrackingFromHistorial({
+      row: {
+        aprobado: row.aprobado,
+        fechaInicio: row.fechaInicio,
+        fechaCompletada: row.fechaCompletada,
+      },
+      eventos: eventosPorAsignacion.get(row.id) ?? [],
+    });
+
+    return toAsignacionShape(row, tracking);
+  });
 }
 
 export async function createCapacitacionAsignacion(
@@ -1870,6 +2003,68 @@ export async function cambiarEstadoCapacitacionAsignacion(
       fechaEvento,
     });
 
+    if (nextEstado === "en_progreso") {
+      await createHistorialCapacitacion(tx, {
+        empresaId,
+        usuarioId,
+        trabajadorId: updated.trabajadorId,
+        capacitacionId: updated.capacitacionId,
+        asignacionId: updated.id,
+        sesionId: updated.sesionId,
+        tipoEvento: "capacitacion_iniciada",
+        detalle: "Capacitación iniciada",
+        estado: updated.estado,
+        vigenciaHasta: updated.fechaVencimiento,
+        fechaEvento,
+      });
+    }
+
+    if (nextEstado === "completada") {
+      await createHistorialCapacitacion(tx, {
+        empresaId,
+        usuarioId,
+        trabajadorId: updated.trabajadorId,
+        capacitacionId: updated.capacitacionId,
+        asignacionId: updated.id,
+        sesionId: updated.sesionId,
+        tipoEvento: "capacitacion_completada",
+        detalle: "Capacitación completada",
+        estado: updated.estado,
+        vigenciaHasta: updated.fechaVencimiento,
+        fechaEvento,
+      });
+
+      if (updated.aprobado === true) {
+        await createHistorialCapacitacion(tx, {
+          empresaId,
+          usuarioId,
+          trabajadorId: updated.trabajadorId,
+          capacitacionId: updated.capacitacionId,
+          asignacionId: updated.id,
+          sesionId: updated.sesionId,
+          tipoEvento: "capacitacion_aprobada",
+          detalle: "Capacitación aprobada",
+          estado: updated.estado,
+          vigenciaHasta: updated.fechaVencimiento,
+          fechaEvento,
+        });
+      } else if (updated.aprobado === false) {
+        await createHistorialCapacitacion(tx, {
+          empresaId,
+          usuarioId,
+          trabajadorId: updated.trabajadorId,
+          capacitacionId: updated.capacitacionId,
+          asignacionId: updated.id,
+          sesionId: updated.sesionId,
+          tipoEvento: "capacitacion_reprobada",
+          detalle: "Capacitación reprobada",
+          estado: updated.estado,
+          vigenciaHasta: updated.fechaVencimiento,
+          fechaEvento,
+        });
+      }
+    }
+
     if (nextEstado === "completada" && updated.aprobado !== false) {
       await generarDocumentoCertificadoCapacitacion({
         empresaId,
@@ -1922,84 +2117,138 @@ export async function enviarCapacitacionAsignacion(
   input?: { reenviar?: boolean },
 ): Promise<AsignacionCapacitacion> {
   const { empresaId, usuarioId } = await requirePermission("canManageCapacitaciones");
+  const reenviar = input?.reenviar === true;
 
-  const result = await prisma.$transaction(async (tx) => {
-    const existing = await tx.capacitacionAsignacion.findFirst({
-      where: { id, empresaId },
-      include: {
-        trabajador: { select: { nombres: true, apellidos: true, email: true } },
-        capacitacion: {
-          select: {
-            nombre: true,
-            codigo: true,
-            modalidad: true,
-            categoria: true,
-            generaCertificado: true,
-          },
+  const existing = await prisma.capacitacionAsignacion.findFirst({
+    where: { id, empresaId },
+    include: {
+      trabajador: { select: { nombres: true, apellidos: true, email: true } },
+      empresa: { select: { nombre: true } },
+      capacitacion: {
+        select: {
+          nombre: true,
+          codigo: true,
+          modalidad: true,
+          categoria: true,
+          generaCertificado: true,
+          activa: true,
         },
       },
-    });
+    },
+  });
 
-    if (!existing) throw new Error("Asignacion no encontrada");
-    if (existing.estado === "cancelada") {
-      throw new Error("No se puede enviar una asignación cancelada");
+  if (!existing) throw new Error("Asignacion no encontrada");
+  if (existing.estado === "cancelada") {
+    throw new Error("No se puede enviar una asignación cancelada");
+  }
+
+  if (!existing.capacitacion.activa) {
+    throw new Error("No se puede enviar una capacitación inactiva");
+  }
+
+  if (reenviar) {
+    if (!["pendiente", "enviada", "en_progreso"].includes(existing.estado)) {
+      throw new Error("Solo puedes reenviar asignaciones pendientes o en curso");
     }
+  } else if (existing.estado !== "pendiente") {
+    throw new Error("Solo puedes enviar asignaciones en estado pendiente");
+  }
 
-    const email = normalizeEmail(existing.trabajador.email);
-    if (!email) {
-      throw new Error("El trabajador no tiene correo válido para recibir la capacitación");
-    }
+  const email = normalizeEmail(existing.trabajador.email);
+  if (!email) {
+    throw new Error("El trabajador no tiene correo válido para recibir la capacitación");
+  }
 
-    const token = existing.token || buildToken();
-    if (!existing.token) {
-      await tx.capacitacionAsignacion.update({
-        where: { id: existing.id },
-        data: { token },
-      });
-    }
+  const token = existing.token || buildToken();
+  const url = `${resolvePublicBaseUrl()}/capacitacion/externa/${token}`;
 
-    const url = `${resolvePublicBaseUrl()}/capacitacion/externa/${token}`;
+  try {
     const provider = await sendCapacitacionEmail({
       to: email,
       trabajadorNombre: `${existing.trabajador.nombres} ${existing.trabajador.apellidos}`.trim(),
+      empresaNombre: existing.empresa.nombre,
       capacitacionNombre: existing.capacitacion.nombre,
       capacitacionCodigo: existing.capacitacion.codigo,
       modalidad: existing.capacitacion.modalidad,
+      fechaLimite: existing.fechaVencimiento,
       url,
     });
 
-    const now = new Date();
-    const updated = await tx.capacitacionAsignacion.update({
-      where: { id: existing.id },
+    const result = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const updated = await tx.capacitacionAsignacion.update({
+        where: { id: existing.id },
+        data: {
+          estado: existing.estado === "en_progreso" ? "en_progreso" : "enviada",
+          fechaEnvio: now,
+          token,
+        },
+        include: {
+          trabajador: { select: { nombres: true, apellidos: true } },
+          capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
+        },
+      });
+
+      await createHistorialCapacitacion(tx, {
+        empresaId,
+        usuarioId,
+        trabajadorId: updated.trabajadorId,
+        capacitacionId: updated.capacitacionId,
+        asignacionId: updated.id,
+        sesionId: updated.sesionId,
+        tipoEvento: reenviar ? "correo_reenviado" : "correo_enviado",
+        detalle: `Correo ${reenviar ? "reenviado" : "enviado"} vía ${provider}`,
+        estado: updated.estado,
+        vigenciaHasta: updated.fechaVencimiento,
+        fechaEvento: now,
+      });
+
+      await createHistorialCapacitacion(tx, {
+        empresaId,
+        usuarioId,
+        trabajadorId: updated.trabajadorId,
+        capacitacionId: updated.capacitacionId,
+        asignacionId: updated.id,
+        sesionId: updated.sesionId,
+        tipoEvento: reenviar ? "asignacion_reenviada_email" : "asignacion_enviada_email",
+        detalle: `Correo ${reenviar ? "reenviado" : "enviado"} vía ${provider}`,
+        estado: updated.estado,
+        vigenciaHasta: updated.fechaVencimiento,
+        fechaEvento: now,
+      });
+
+      return updated;
+    });
+
+    return toAsignacionShape(result);
+  } catch (error) {
+    await prisma.capacitacionHistorial.create({
       data: {
-        estado: "enviada",
-        fechaEnvio: now,
-        token,
-      },
-      include: {
-        trabajador: { select: { nombres: true, apellidos: true } },
-        capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
+        empresaId,
+        usuarioId,
+        trabajadorId: existing.trabajadorId,
+        capacitacionId: existing.capacitacionId,
+        asignacionId: existing.id,
+        sesionId: existing.sesionId,
+        tipoEvento: "correo_fallido",
+        detalle: error instanceof Error ? error.message : "Error desconocido de envío",
+        estado: existing.estado,
+        vigenciaHasta: existing.fechaVencimiento,
       },
     });
 
-    await createHistorialCapacitacion(tx, {
-      empresaId,
-      usuarioId,
-      trabajadorId: updated.trabajadorId,
-      capacitacionId: updated.capacitacionId,
-      asignacionId: updated.id,
-      sesionId: updated.sesionId,
-      tipoEvento: input?.reenviar ? "asignacion_reenviada_email" : "asignacion_enviada_email",
-      detalle: `Correo ${input?.reenviar ? "reenviado" : "enviado"} vía ${provider}`,
-      estado: updated.estado,
-      vigenciaHasta: updated.fechaVencimiento,
-      fechaEvento: now,
-    });
+    if (error instanceof EmailConfigurationError) {
+      throw new Error("No se pudo enviar el correo. Revisa la configuración de email o el correo del trabajador.");
+    }
+    throw new Error("No se pudo enviar el correo. Revisa la configuración de email o el correo del trabajador.");
+  }
+}
 
-    return updated;
-  });
-
-  return toAsignacionShape(result);
+export async function enviarCapacitacionAsignada(
+  asignacionId: string,
+  input?: { reenviar?: boolean },
+): Promise<AsignacionCapacitacion> {
+  return enviarCapacitacionAsignacion(asignacionId, input);
 }
 
 // ─── Flujo público por token ───────────────────────────────────────────────
@@ -2045,6 +2294,31 @@ export async function getCapacitacionAsignacionPublica(token: string): Promise<{
   });
 
   if (!row) return null;
+
+  const aperturaExistente = await prisma.capacitacionHistorial.findFirst({
+    where: {
+      empresaId: row.empresaId,
+      asignacionId: row.id,
+      tipoEvento: "trabajador_abre_link",
+    },
+    select: { id: true },
+  });
+
+  if (!aperturaExistente) {
+    await prisma.capacitacionHistorial.create({
+      data: {
+        empresaId: row.empresaId,
+        usuarioId: null,
+        trabajadorId: row.trabajadorId,
+        capacitacionId: row.capacitacionId,
+        asignacionId: row.id,
+        sesionId: row.sesionId,
+        tipoEvento: "trabajador_abre_link",
+        detalle: "Trabajador abrió el enlace personal de capacitación",
+        estado: row.estado,
+      },
+    });
+  }
 
   return {
     asignacion: toAsignacionShape(row),
@@ -2170,6 +2444,68 @@ export async function avanzarCapacitacionAsignacionPublica(
       vigenciaHasta: updated.fechaVencimiento,
       fechaEvento,
     });
+
+    if (nextEstado === "en_progreso") {
+      await createHistorialCapacitacion(tx, {
+        empresaId: existing.empresaId,
+        usuarioId: null,
+        trabajadorId: existing.trabajadorId,
+        capacitacionId: existing.capacitacionId,
+        asignacionId: existing.id,
+        sesionId: existing.sesionId,
+        tipoEvento: "capacitacion_iniciada",
+        detalle: "Trabajador inició la capacitación",
+        estado: updated.estado,
+        vigenciaHasta: updated.fechaVencimiento,
+        fechaEvento,
+      });
+    }
+
+    if (nextEstado === "completada") {
+      await createHistorialCapacitacion(tx, {
+        empresaId: existing.empresaId,
+        usuarioId: null,
+        trabajadorId: existing.trabajadorId,
+        capacitacionId: existing.capacitacionId,
+        asignacionId: existing.id,
+        sesionId: existing.sesionId,
+        tipoEvento: "capacitacion_completada",
+        detalle: "Trabajador completó la capacitación",
+        estado: updated.estado,
+        vigenciaHasta: updated.fechaVencimiento,
+        fechaEvento,
+      });
+
+      if ((input.aprobado ?? existing.aprobado) === true) {
+        await createHistorialCapacitacion(tx, {
+          empresaId: existing.empresaId,
+          usuarioId: null,
+          trabajadorId: existing.trabajadorId,
+          capacitacionId: existing.capacitacionId,
+          asignacionId: existing.id,
+          sesionId: existing.sesionId,
+          tipoEvento: "capacitacion_aprobada",
+          detalle: "Capacitación aprobada",
+          estado: updated.estado,
+          vigenciaHasta: updated.fechaVencimiento,
+          fechaEvento,
+        });
+      } else if ((input.aprobado ?? existing.aprobado) === false) {
+        await createHistorialCapacitacion(tx, {
+          empresaId: existing.empresaId,
+          usuarioId: null,
+          trabajadorId: existing.trabajadorId,
+          capacitacionId: existing.capacitacionId,
+          asignacionId: existing.id,
+          sesionId: existing.sesionId,
+          tipoEvento: "capacitacion_reprobada",
+          detalle: "Capacitación reprobada",
+          estado: updated.estado,
+          vigenciaHasta: updated.fechaVencimiento,
+          fechaEvento,
+        });
+      }
+    }
 
     if (nextEstado === "completada" && (input.aprobado ?? existing.aprobado) !== false) {
       await generarDocumentoCertificadoCapacitacion({
@@ -3341,6 +3677,20 @@ export async function updateCapacitacionEvaluacion(
         ].filter(Boolean).join(" · "),
         estado: updated.aprobado != null ? (updated.aprobado ? "aprobado" : "reprobado") : "registrada",
       });
+
+      if (aprobadoCambio && existing.asignacionId) {
+        await createHistorialCapacitacion(tx, {
+          empresaId,
+          usuarioId,
+          trabajadorId: existing.trabajadorId,
+          capacitacionId: existing.capacitacionId,
+          asignacionId: existing.asignacionId,
+          sesionId: existing.sesionId,
+          tipoEvento: input.aprobado ? "capacitacion_aprobada" : "capacitacion_reprobada",
+          detalle: input.aprobado ? "Capacitación aprobada desde evaluación" : "Capacitación reprobada desde evaluación",
+          estado: updated.aprobado != null ? (updated.aprobado ? "aprobado" : "reprobado") : "registrada",
+        });
+      }
     }
 
     return updated;
