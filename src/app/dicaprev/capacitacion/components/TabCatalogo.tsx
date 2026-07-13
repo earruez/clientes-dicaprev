@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import {
   getCapacitaciones,
+  inicializarCatalogoCapacitacionesEmpresa,
   createCapacitacion,
   updateCapacitacion,
   deleteCapacitacion,
@@ -134,6 +135,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 export default function TabCatalogo() {
   const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [retryingInit, setRetryingInit] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState<string | "todos">("todos");
@@ -152,6 +154,19 @@ export default function TabCatalogo() {
       setError("No se pudo cargar el catálogo de capacitaciones.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRetryInit = async () => {
+    setRetryingInit(true);
+    try {
+      await inicializarCatalogoCapacitacionesEmpresa();
+      await reloadCatalogo();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "No se pudo inicializar el catálogo de capacitaciones.";
+      setError(message);
+    } finally {
+      setRetryingInit(false);
     }
   };
 
@@ -291,12 +306,22 @@ export default function TabCatalogo() {
           <BookOpen className="h-8 w-8 text-slate-200 mx-auto mb-2" />
           <p className="text-sm text-slate-500">
             {catalogo.length === 0
-              ? "No se pudo inicializar el catálogo de capacitaciones. Reintenta o contacta soporte."
+              ? "No se pudo inicializar el catálogo de capacitaciones. Revisa logs de producción."
               : "No hay resultados para los filtros aplicados."}
           </p>
           {catalogo.length === 0 ? (
             <div className="mt-3 flex flex-col items-center gap-2">
-              <p className="text-xs text-slate-400">Si el problema persiste, contacta soporte.</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-xl"
+                onClick={() => void handleRetryInit()}
+                disabled={retryingInit}
+              >
+                {retryingInit ? "Reintentando..." : "Reintentar inicialización"}
+              </Button>
+              <p className="text-xs text-slate-400">Si el problema persiste, revisa logs de producción.</p>
             </div>
           ) : (
             <p className="text-xs text-slate-400 mt-1">Ajusta los filtros para ver otros resultados.</p>
