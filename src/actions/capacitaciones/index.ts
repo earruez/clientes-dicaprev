@@ -138,6 +138,29 @@ function logCapacitacionesError(actionName: string, error: unknown, context?: Ca
   });
 }
 
+function logCapacitacionesBootstrap(input: {
+  fase: "catalogo" | "reglas";
+  empresaId: string;
+  codigoCapacitacion?: string;
+  error: unknown;
+}): void {
+  const err = input.error instanceof Error ? input.error : new Error("Error desconocido en bootstrap");
+  const errorCode =
+    typeof input.error === "object" && input.error !== null && "code" in input.error
+      ? String((input.error as { code?: unknown }).code ?? "")
+      : undefined;
+
+  console.error("[capacitaciones][bootstrap]", {
+    fase: input.fase,
+    empresaId: input.empresaId,
+    codigoCapacitacion: input.codigoCapacitacion ?? null,
+    errorName: err.name,
+    errorMessage: err.message,
+    errorCode: errorCode || null,
+    stack: process.env.NODE_ENV === "production" ? undefined : err.stack,
+  });
+}
+
 async function requireCapacitacionesReadContext(actionName: string) {
   try {
     const context = await requirePermission("canReadCapacitaciones");
@@ -348,33 +371,15 @@ async function asegurarReglasBaseCapacitacion(input: {
 export async function asegurarCatalogoCapacitacionesBase(empresaId: string): Promise<{
   capacitacionesCreadas: number;
   reglasCreadas: number;
+  warnings: string[];
 }> {
-  const empresa = await prisma.empresa.findFirst({
-    where: { id: empresaId },
-    select: { id: true, cantidadTrabajadores: true },
+  const capacitacionesActuales = await prisma.capacitacion.findMany({
+    where: {
+      empresaId,
+      codigo: { in: CODIGOS_CATALOGO_BASE_SST },
+    },
+    select: { id: true, codigo: true },
   });
-
-  if (!empresa) {
-    throw new Error("Empresa activa no encontrada para inicializar catálogo de capacitaciones.");
-  }
-
-  const [capacitacionesActuales, cargosEmpresa, areasEmpresa] = await Promise.all([
-    prisma.capacitacion.findMany({
-      where: {
-        empresaId,
-        codigo: { in: CODIGOS_CATALOGO_BASE_SST },
-      },
-      select: { id: true, codigo: true },
-    }),
-    prisma.cargo.findMany({
-      where: { empresaId },
-      select: { id: true, nombre: true, areaId: true },
-    }),
-    prisma.area.findMany({
-      where: { empresaId },
-      select: { id: true, nombre: true },
-    }),
-  ]);
 
   const capsByCodigo = new Map(
     capacitacionesActuales.map((capacitacion) => [capacitacion.codigo, capacitacion]),
@@ -382,11 +387,13 @@ export async function asegurarCatalogoCapacitacionesBase(empresaId: string): Pro
 
   let capacitacionesCreadas = 0;
   let reglasCreadas = 0;
+  const warnings: string[] = [];
 
+  // Fase A: catálogo base obligatorio (sin depender de reglas/cargos/areas/trabajadores)
   for (const definicion of CATALOGO_CAPACITACIONES_SST) {
-    let capacitacion = capsByCodigo.get(definicion.codigo);
+    if (capsByCodigo.has(definicion.codigo)) continue;
 
-    if (!capacitacion) {
+    try {
       const created = await prisma.capacitacion.create({
         data: {
           empresaId,
@@ -406,30 +413,104 @@ export async function asegurarCatalogoCapacitacionesBase(empresaId: string): Pro
         select: { id: true, codigo: true },
       });
 
-      capacitacion = created;
       capsByCodigo.set(definicion.codigo, created);
       capacitacionesCreadas += 1;
-    }
+    } catch (error) {
+      const errorCode =
+        typeof error === "object" && error !== null && "code" in error
+          ? String((error as { code?: unknown }).code ?? "")
+          : "";
 
-    reglasCreadas += await asegurarReglasBaseCapacitacion({
+      // Si otra transacción la creó, recuperar y continuar.
+      if (errorCode === "P2002") {
+        const existente = await prisma.capacitacion.findFirst({
+          where: { empresaId, codigo: definicion.codigo },
+          select: { id: true, codigo: true },
+        });
+        if (existente) {
+          capsByCodigo.set(definicion.codigo, existente);
+          continue;
+        }
+      }
+
+      logCapacitacionesBootstrap({
+        fase: "catalogo",
+        empresaId,
+        codigoCapacitacion: definicion.codigo,
+        error,
+      });
+
+      throw new Error(`No se pudo crear la capacitación base ${definicion.codigo}.`);
+    }
+  }
+
+  // Fase B: reglas sugeridas (best-effort)
+  let cantidadTrabajadores = 0;
+  let cargosEmpresa: Array<{ id: string; nombre: string; areaId: string | null }> = [];
+  let areasEmpresa: Array<{ id: string; nombre: string }> = [];
+
+  try {
+    [cantidadTrabajadores, cargosEmpresa, areasEmpresa] = await Promise.all([
+      prisma.trabajador.count({ where: { empresaId } }),
+      prisma.cargo.findMany({
+        where: { empresaId },
+        select: { id: true, nombre: true, areaId: true },
+      }),
+      prisma.area.findMany({
+        where: { empresaId },
+        select: { id: true, nombre: true },
+      }),
+    ]);
+  } catch (error) {
+    logCapacitacionesBootstrap({
+      fase: "reglas",
       empresaId,
-      capacitacionId: capacitacion.id,
-      definicion,
-      cantidadTrabajadores: empresa.cantidadTrabajadores ?? 0,
-      cargosEmpresa,
-      areasEmpresa,
+      error,
     });
+    warnings.push("No se pudieron preparar datos de reglas sugeridas.");
+    return {
+      capacitacionesCreadas,
+      reglasCreadas,
+      warnings,
+    };
+  }
+
+  for (const definicion of CATALOGO_CAPACITACIONES_SST) {
+    const capacitacion = capsByCodigo.get(definicion.codigo);
+    if (!capacitacion) continue;
+
+    try {
+      reglasCreadas += await asegurarReglasBaseCapacitacion({
+        empresaId,
+        capacitacionId: capacitacion.id,
+        definicion,
+        cantidadTrabajadores,
+        cargosEmpresa,
+        areasEmpresa,
+      });
+    } catch (error) {
+      logCapacitacionesBootstrap({
+        fase: "reglas",
+        empresaId,
+        codigoCapacitacion: definicion.codigo,
+        error,
+      });
+      warnings.push(`No se pudieron crear reglas sugeridas para ${definicion.codigo}.`);
+    }
   }
 
   return {
     capacitacionesCreadas,
     reglasCreadas,
+    warnings,
   };
 }
 
 export async function getCapacitaciones(): Promise<CapacitacionCatalogo[]> {
   const context = await requireCapacitacionesReadContext("getCapacitaciones");
   const { empresaId } = context;
+
+  let bootstrapError: unknown = null;
 
   try {
     const existentesBase = await prisma.capacitacion.findMany({
@@ -444,11 +525,13 @@ export async function getCapacitaciones(): Promise<CapacitacionCatalogo[]> {
       await asegurarCatalogoCapacitacionesBase(empresaId);
     }
   } catch (error) {
+    bootstrapError = error;
+    logCapacitacionesBootstrap({
+      fase: "catalogo",
+      empresaId,
+      error,
+    });
     logCapacitacionesError("getCapacitaciones.bootstrap", error, context);
-    const existentesTotales = await prisma.capacitacion.count({ where: { empresaId } });
-    if (existentesTotales === 0) {
-      throw new Error("No se pudo inicializar el catálogo de capacitaciones. Reintenta o contacta soporte.");
-    }
   }
 
   try {
@@ -473,11 +556,36 @@ export async function getCapacitaciones(): Promise<CapacitacionCatalogo[]> {
       },
     });
 
+    if (rows.length > 0) {
+      return rows.map(toCatalogoShape);
+    }
+
+    if (bootstrapError) {
+      throw new Error("No se pudo inicializar el catálogo de capacitaciones. Revisa logs de producción.");
+    }
+
     return rows.map(toCatalogoShape);
   } catch (error) {
     logCapacitacionesError("getCapacitaciones.read", error, context);
+    if (error instanceof Error && error.message.includes("No se pudo inicializar el catálogo")) {
+      throw error;
+    }
     throw new Error("No se pudo cargar el catálogo de capacitaciones.");
   }
+}
+
+export async function inicializarCatalogoCapacitacionesEmpresa(): Promise<{
+  capacitacionesCreadas: number;
+  reglasCreadas: number;
+  warnings: string[];
+}> {
+  const context = await requirePermission("canManageCapacitaciones");
+
+  if (!context.empresaId) {
+    throw new Error("No se pudo resolver la empresa activa para inicializar capacitaciones.");
+  }
+
+  return asegurarCatalogoCapacitacionesBase(context.empresaId);
 }
 
 export async function getCapacitacionesRuntimeDiagnostic(): Promise<CapacitacionesRuntimeDiagnostic> {

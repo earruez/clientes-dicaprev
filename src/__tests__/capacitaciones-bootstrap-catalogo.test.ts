@@ -47,6 +47,9 @@ const prismaMock = vi.hoisted(() => ({
   area: {
     findMany: vi.fn(),
   },
+  trabajador: {
+    count: vi.fn(),
+  },
   reglaCapacitacionCargo: {
     findMany: vi.fn(),
     create: vi.fn(),
@@ -88,6 +91,7 @@ function setupInMemoryDb(params?: {
   cantidadTrabajadores?: number;
   caps?: CapRow[];
   reglas?: ReglaRow[];
+  failReglas?: boolean;
   cargos?: Array<{ id: string; nombre: string; areaId: string | null }>;
   areas?: Array<{ id: string; nombre: string }>;
 }) {
@@ -141,6 +145,8 @@ function setupInMemoryDb(params?: {
     return caps.filter((cap) => cap.empresaId === where.empresaId).length;
   });
 
+  prismaMock.trabajador.count.mockResolvedValue(params?.cantidadTrabajadores ?? 40);
+
   prismaMock.cargo.findMany.mockResolvedValue(cargos);
   prismaMock.area.findMany.mockResolvedValue(areas);
 
@@ -151,6 +157,9 @@ function setupInMemoryDb(params?: {
   });
 
   prismaMock.reglaCapacitacionCargo.create.mockImplementation(async ({ data }: { data: Omit<ReglaRow, "id"> }) => {
+    if (params?.failReglas) {
+      throw Object.assign(new Error("regla-fail"), { code: "P2022" });
+    }
     const created: ReglaRow = {
       ...data,
       id: `reg-${seq++}`,
@@ -294,5 +303,64 @@ describe("Bootstrap catálogo base de Capacitaciones", () => {
 
     expect(result.capacitacionesCreadas).toBe(CATALOGO_CAPACITACIONES_SST.length);
     expect(countBaseCaps(db.caps, "emp-1")).toBe(CATALOGO_CAPACITACIONES_SST.length);
+  });
+
+  it("si falla creacion de reglas el catalogo igual se crea", async () => {
+    const db = setupInMemoryDb({
+      caps: [],
+      failReglas: true,
+    });
+
+    const { __testAsegurarCatalogoCapacitacionesBase } = await import("@/actions/capacitaciones");
+    const result = await __testAsegurarCatalogoCapacitacionesBase("emp-1");
+
+    expect(result.capacitacionesCreadas).toBe(CATALOGO_CAPACITACIONES_SST.length);
+    expect(result.reglasCreadas).toBe(0);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(countBaseCaps(db.caps, "emp-1")).toBe(CATALOGO_CAPACITACIONES_SST.length);
+  });
+
+  it("getCapacitaciones devuelve catalogo aunque fallen reglas", async () => {
+    const db = setupInMemoryDb({
+      caps: [],
+      failReglas: true,
+    });
+
+    const { getCapacitaciones } = await import("@/actions/capacitaciones");
+    const rows = await getCapacitaciones();
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(countBaseCaps(db.caps, "emp-1")).toBe(CATALOGO_CAPACITACIONES_SST.length);
+  });
+
+  it("accion manual protegida inicializa catalogo por empresa activa", async () => {
+    setupInMemoryDb({ caps: [] });
+
+    const { inicializarCatalogoCapacitacionesEmpresa } = await import("@/actions/capacitaciones");
+    const result = await inicializarCatalogoCapacitacionesEmpresa();
+
+    expect(requirePermissionMock).toHaveBeenCalledWith("canManageCapacitaciones");
+    expect(result.capacitacionesCreadas).toBeGreaterThan(0);
+  });
+
+  it("logs de bootstrap no exponen stack en produccion", async () => {
+    setupInMemoryDb({ caps: [], failReglas: true });
+    vi.stubEnv("NODE_ENV", "production");
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    try {
+      const { __testAsegurarCatalogoCapacitacionesBase } = await import("@/actions/capacitaciones");
+      await __testAsegurarCatalogoCapacitacionesBase("emp-1");
+
+      const bootstrapCall = consoleErrorSpy.mock.calls.find((call) => call[0] === "[capacitaciones][bootstrap]");
+      expect(bootstrapCall).toBeDefined();
+      const payload = bootstrapCall?.[1] as Record<string, unknown>;
+      expect(payload.stack).toBeUndefined();
+      expect(payload.password).toBeUndefined();
+      expect(payload.token).toBeUndefined();
+    } finally {
+      consoleErrorSpy.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 });
