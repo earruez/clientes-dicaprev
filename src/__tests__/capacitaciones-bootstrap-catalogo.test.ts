@@ -189,8 +189,8 @@ describe("Bootstrap catálogo base de Capacitaciones", () => {
     const parcial = [buildCap({ codigo: "CAP-SST-001" }), buildCap({ codigo: "CAP-SST-002" })];
     const db = setupInMemoryDb({ caps: parcial });
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
-    await __capacitacionesTestables.asegurarCatalogoCapacitacionesBase("emp-1");
+    const { __testAsegurarCatalogoCapacitacionesBase } = await import("@/actions/capacitaciones");
+    await __testAsegurarCatalogoCapacitacionesBase("emp-1");
 
     expect(countBaseCaps(db.caps, "emp-1")).toBe(CATALOGO_CAPACITACIONES_SST.length);
   });
@@ -201,13 +201,13 @@ describe("Bootstrap catálogo base de Capacitaciones", () => {
       areas: [{ id: "area-1", nombre: "transporte" }],
     });
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
+    const { __testAsegurarCatalogoCapacitacionesBase } = await import("@/actions/capacitaciones");
 
-    await __capacitacionesTestables.asegurarCatalogoCapacitacionesBase("emp-1");
+    await __testAsegurarCatalogoCapacitacionesBase("emp-1");
     const capsPrimera = db.caps.length;
     const reglasPrimera = db.reglas.length;
 
-    await __capacitacionesTestables.asegurarCatalogoCapacitacionesBase("emp-1");
+    await __testAsegurarCatalogoCapacitacionesBase("emp-1");
 
     expect(db.caps.length).toBe(capsPrimera);
     expect(db.reglas.length).toBe(reglasPrimera);
@@ -224,8 +224,8 @@ describe("Bootstrap catálogo base de Capacitaciones", () => {
       ],
     });
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
-    await __capacitacionesTestables.asegurarCatalogoCapacitacionesBase("emp-1");
+    const { __testAsegurarCatalogoCapacitacionesBase } = await import("@/actions/capacitaciones");
+    await __testAsegurarCatalogoCapacitacionesBase("emp-1");
 
     const cap = db.caps.find((item) => item.codigo === "CAP-SST-003");
     expect(cap?.nombre).toBe("Nombre personalizado por empresa");
@@ -239,8 +239,8 @@ describe("Bootstrap catálogo base de Capacitaciones", () => {
       ],
     });
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
-    await __capacitacionesTestables.asegurarCatalogoCapacitacionesBase("emp-1");
+    const { __testAsegurarCatalogoCapacitacionesBase } = await import("@/actions/capacitaciones");
+    await __testAsegurarCatalogoCapacitacionesBase("emp-1");
 
     const capsEmp2 = db.caps.filter((cap) => cap.empresaId === "emp-2");
     expect(capsEmp2).toHaveLength(1);
@@ -262,9 +262,9 @@ describe("Bootstrap catálogo base de Capacitaciones", () => {
       areas: [{ id: "area-1", nombre: "mantenimiento electrica" }],
     });
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
-    await __capacitacionesTestables.asegurarCatalogoCapacitacionesBase("emp-1");
-    await __capacitacionesTestables.asegurarCatalogoCapacitacionesBase("emp-1");
+    const { __testAsegurarCatalogoCapacitacionesBase } = await import("@/actions/capacitaciones");
+    await __testAsegurarCatalogoCapacitacionesBase("emp-1");
+    await __testAsegurarCatalogoCapacitacionesBase("emp-1");
 
     const keys = new Set(
       db.reglas.map((regla) =>
@@ -289,8 +289,8 @@ describe("Bootstrap catálogo base de Capacitaciones", () => {
       caps: [],
     });
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
-    const result = await __capacitacionesTestables.asegurarCatalogoCapacitacionesBase("emp-1");
+    const { __testAsegurarCatalogoCapacitacionesBase } = await import("@/actions/capacitaciones");
+    const result = await __testAsegurarCatalogoCapacitacionesBase("emp-1");
 
     expect(result.capacitacionesCreadas).toBe(CATALOGO_CAPACITACIONES_SST.length);
     expect(countBaseCaps(db.caps, "emp-1")).toBe(CATALOGO_CAPACITACIONES_SST.length);

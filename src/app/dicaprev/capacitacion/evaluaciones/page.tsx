@@ -35,7 +35,7 @@ import { getTrabajadores } from "@/actions/trabajadores";
 import type {
   CapacitacionEvaluacion,
   CapacitacionCatalogo,
-} from "@/actions/capacitaciones";
+} from "@/actions/capacitaciones/types";
 import type { Worker } from "@/actions/trabajadores";
 
 type NuevaForm = {

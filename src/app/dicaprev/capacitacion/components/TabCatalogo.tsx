@@ -6,8 +6,8 @@ import {
   createCapacitacion,
   updateCapacitacion,
   deleteCapacitacion,
-  type CapacitacionCatalogo,
 } from "@/actions/capacitaciones";
+import type { CapacitacionCatalogo } from "@/actions/capacitaciones/types";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

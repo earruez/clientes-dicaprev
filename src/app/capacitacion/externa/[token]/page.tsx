@@ -5,10 +5,12 @@ import { useParams } from "next/navigation";
 import {
   avanzarCapacitacionAsignacionPublica,
   getCapacitacionAsignacionPublica,
-  type AsignacionCapacitacion,
-  type CapacitacionCatalogo,
-  type CapacitacionSesionPregunta,
 } from "@/actions/capacitaciones";
+import type {
+  AsignacionCapacitacion,
+  CapacitacionCatalogo,
+  CapacitacionSesionPregunta,
+} from "@/actions/capacitaciones/types";
 import { CheckCircle2, BookOpen, Video, FileText, Clock, AlertTriangle, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 

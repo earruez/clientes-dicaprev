@@ -131,9 +131,9 @@ describe("Integración capacitación -> control documental", () => {
     prismaMock.$transaction.mockImplementation(async (cb: (txInput: TxMock) => Promise<unknown>) => cb(tx));
     prismaMock.capacitacionAsignacion.findFirst.mockResolvedValue(buildAsignacion());
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
+    const { __testGenerarDocumentoCertificadoCapacitacion } = await import("@/actions/capacitaciones");
 
-    const result = await __capacitacionesTestables.generarDocumentoCertificadoCapacitacion(
+    const result = await __testGenerarDocumentoCertificadoCapacitacion(
       {
         empresaId: "emp-a",
         trabajadorId: "trab-1",
@@ -164,9 +164,9 @@ describe("Integración capacitación -> control documental", () => {
 
     prismaMock.capacitacionAsignacion.findFirst.mockResolvedValueOnce(buildAsignacion());
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
+    const { __testGenerarDocumentoCertificadoCapacitacion } = await import("@/actions/capacitaciones");
 
-    const first = await __capacitacionesTestables.generarDocumentoCertificadoCapacitacion(
+    const first = await __testGenerarDocumentoCertificadoCapacitacion(
       {
         empresaId: "emp-a",
         trabajadorId: "trab-1",
@@ -190,7 +190,7 @@ describe("Integración capacitación -> control documental", () => {
       }),
     );
 
-    const second = await __capacitacionesTestables.generarDocumentoCertificadoCapacitacion(
+    const second = await __testGenerarDocumentoCertificadoCapacitacion(
       {
         empresaId: "emp-a",
         trabajadorId: "trab-1",
@@ -208,10 +208,10 @@ describe("Integración capacitación -> control documental", () => {
   it("bloquea vínculo cruzado entre empresas", async () => {
     prismaMock.capacitacionAsignacion.findFirst.mockResolvedValue(null);
 
-    const { __capacitacionesTestables } = await import("@/actions/capacitaciones");
+    const { __testGenerarDocumentoCertificadoCapacitacion } = await import("@/actions/capacitaciones");
 
     await expect(
-      __capacitacionesTestables.generarDocumentoCertificadoCapacitacion(
+      __testGenerarDocumentoCertificadoCapacitacion(
         {
           empresaId: "emp-a",
           trabajadorId: "trab-otra",
