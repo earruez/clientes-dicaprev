@@ -4,61 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
 import { requirePermission } from "@/server/auth/permissions";
 import { generarDocumentosInduccionDesdePlantillasTx } from "@/actions/inducciones/documentos-generados";
-
-export type CrearInduccionTrabajadorInput = {
-  empresaId: string;
-  trabajadorId: string;
-  observaciones?: string;
-};
-
-export type InduccionListItem = {
-  id: string;
-  token: string;
-  estado: string;
-  trabajador: {
-    nombres: string;
-    apellidos: string;
-    rut: string | null;
-    cargo: string | null;
-  };
-  firmasTotales: number;
-  firmasFirmadas: number;
-  fechaInicio: string | null;
-  fechaTermino: string | null;
-  createdAt: string;
-};
-
-export type InduccionPublicaView = {
-  id: string;
-  token: string;
-  estado: string;
-  nombreTrabajador: string;
-  rutTrabajador: string | null;
-  cargoTrabajador: string | null;
-  fechaInicio: string | null;
-  fechaTermino: string | null;
-  documentosGenerados: {
-    id: string;
-    tipo: string;
-    titulo: string;
-    contenidoMarkdown: string;
-    estado: string;
-    firma: {
-      token: string;
-      estado: string;
-      firmadoAt: string | null;
-    } | null;
-  }[];
-  firmas: {
-    id: string;
-    token: string;
-    tituloDocumento: string;
-    descripcion: string | null;
-    estado: string;
-    firmadoAt: string | null;
-    expiresAt: string | null;
-  }[];
-};
+import { sincronizarDocumentoInduccionEnCarpetaTrabajadorTx } from "@/lib/documentacion/induccion-control-documental";
+import type {
+  CrearInduccionTrabajadorInput,
+  InduccionListItem,
+  InduccionPublicaView,
+  SincronizacionBackfillResumen,
+} from "./types";
 
 export async function crearInduccionTrabajador(input: CrearInduccionTrabajadorInput) {
   const { empresaId: empresaActivaId, usuarioId } = await requirePermission("canManageDocumentacion");
@@ -82,7 +34,7 @@ export async function crearInduccionTrabajador(input: CrearInduccionTrabajadorIn
 
   const token = generarTokenFirma();
 
-  const { induccion, documentosGenerados } = await prisma.$transaction(async (tx) => {
+  const { induccion, documentosGenerados, documentosSincronizados } = await prisma.$transaction(async (tx) => {
     const creada = await tx.induccionTrabajador.create({
       data: {
         empresaId: input.empresaId,
@@ -102,7 +54,11 @@ export async function crearInduccionTrabajador(input: CrearInduccionTrabajadorIn
       generadoPor: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
     });
 
-    return { induccion: creada, documentosGenerados: docs.documentosGenerados };
+    return {
+      induccion: creada,
+      documentosGenerados: docs.documentosGenerados,
+      documentosSincronizados: docs.documentosSincronizados,
+    };
   });
 
   return {
@@ -110,7 +66,90 @@ export async function crearInduccionTrabajador(input: CrearInduccionTrabajadorIn
     token: induccion.token,
     link: `/induccion/${induccion.token}`,
     firmasCreadas: documentosGenerados,
+    documentosCarpetaSincronizados: documentosSincronizados,
   };
+}
+
+export async function sincronizarInduccionesExistentesConCarpetaTrabajador(): Promise<SincronizacionBackfillResumen> {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+
+  const inducciones = await prisma.induccionTrabajador.findMany({
+    where: { empresaId },
+    select: {
+      id: true,
+      trabajadorId: true,
+      documentosGenerados: {
+        select: {
+          id: true,
+          tipo: true,
+          titulo: true,
+          contenidoMarkdown: true,
+          estado: true,
+          firmadoPor: true,
+          firmadoEn: true,
+        },
+      },
+    },
+  });
+
+  const resumen: SincronizacionBackfillResumen = {
+    revisados: 0,
+    creados: 0,
+    actualizados: 0,
+    omitidos: 0,
+    errores: [],
+  };
+
+  for (const induccion of inducciones) {
+    for (const documento of induccion.documentosGenerados) {
+      resumen.revisados += 1;
+
+      try {
+        const resultado = await prisma.$transaction((tx) =>
+          sincronizarDocumentoInduccionEnCarpetaTrabajadorTx(tx, {
+            empresaId,
+            trabajadorId: induccion.trabajadorId,
+            tipoInduccion: documento.tipo,
+            tituloDocumento: documento.titulo,
+            contenidoMarkdown: documento.contenidoMarkdown,
+            estado: documento.estado,
+            firmadoPor: documento.firmadoPor,
+            firmadoEn: documento.firmadoEn,
+            actorUsuarioId: null,
+            documentoInduccionId: documento.id,
+            origenEvento: "backfill_induccion",
+          }),
+        );
+
+        if (resultado.operacion === "creado") {
+          resumen.creados += 1;
+          continue;
+        }
+
+        if (resultado.operacion === "actualizado") {
+          resumen.actualizados += 1;
+          continue;
+        }
+
+        resumen.omitidos += 1;
+      } catch (error) {
+        console.error("[inducciones][backfill] error al sincronizar documento", {
+          empresaId,
+          induccionId: induccion.id,
+          documentoId: documento.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+
+        resumen.errores.push({
+          induccionId: induccion.id,
+          documentoId: documento.id,
+          mensaje: "Error al sincronizar documento de inducción.",
+        });
+      }
+    }
+  }
+
+  return resumen;
 }
 
 export async function getInduccionesTrabajador(trabajadorId?: string): Promise<InduccionListItem[]> {
