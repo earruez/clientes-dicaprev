@@ -827,85 +827,85 @@ export default function TabAsignaciones() {
             </Button>
           </div>
 
-          {/* Table */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="grid grid-cols-[1fr_120px_120px_120px_40px] gap-2 px-5 py-3 bg-slate-50 border-b border-slate-100 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
-              <span>Trabajador</span>
-              <span>Pendientes</span>
-              <span>En curso</span>
-              <span>Completadas</span>
-              <span />
+          {/* Lista agrupada por trabajador */}
+          {grouped.length === 0 ? (
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm py-14 text-center px-6">
+              <ClipboardList className="h-8 w-8 text-slate-200 mx-auto mb-2" />
+              <p className="text-sm text-slate-500 font-medium">
+                {catalogo.length === 0
+                  ? "No hay capacitaciones en el catálogo."
+                  : "Sin asignaciones para los filtros aplicados."}
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                {catalogo.length === 0
+                  ? "Agrega capacitaciones en la pestaña Catálogo antes de asignarlas a trabajadores."
+                  : "Usa el botón \"Nueva asignación\" para asignar una capacitación a un trabajador."}
+              </p>
             </div>
-            {grouped.length === 0 ? (
-              <div className="py-14 text-center px-6">
-                <ClipboardList className="h-8 w-8 text-slate-200 mx-auto mb-2" />
-                <p className="text-sm text-slate-500 font-medium">
-                  {catalogo.length === 0
-                    ? "No hay capacitaciones en el catálogo."
-                    : "Sin asignaciones para los filtros aplicados."}
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  {catalogo.length === 0
-                    ? "Agrega capacitaciones en la pestaña Catálogo antes de asignarlas a trabajadores."
-                    : "Usa el botón \"Nueva asignación\" para asignar una capacitación a un trabajador."}
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-50">
-                {grouped.map((g) => {
-                  const isOpen = expandedTrabajadores[g.trabajadorId] ?? true;
-                  return (
-                    <div key={g.trabajadorId}>
-                      <div className="grid grid-cols-[1fr_120px_120px_120px_40px] gap-2 px-5 py-3.5 items-center hover:bg-slate-50/60 transition-colors">
+          ) : (
+            <div className="space-y-4">
+              {grouped.map((g) => {
+                const isOpen = expandedTrabajadores[g.trabajadorId] ?? true;
+
+                return (
+                  <section
+                    key={g.trabajadorId}
+                    className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"
+                  >
+                    <div className="bg-slate-50/90 border-b border-slate-200 px-4 sm:px-5 py-3.5 flex items-start gap-3 justify-between">
+                      <button
+                        onClick={() => setExpandedTrabajadores((prev) => ({
+                          ...prev,
+                          [g.trabajadorId]: !isOpen,
+                        }))}
+                        className="min-w-0 text-left flex-1"
+                      >
+                        <p className="text-sm sm:text-base font-semibold text-slate-800 truncate">{g.trabajadorNombre}</p>
+                        <p className="text-xs text-slate-500 mt-1 truncate">
+                          {g.items.length} asignaciones · {g.pendientes} pendientes · {g.enCurso} en curso · {g.completadas} completadas
+                        </p>
+                      </button>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border bg-slate-100 text-slate-700 border-slate-200">
+                          {g.items.length}
+                        </span>
                         <button
                           onClick={() => setExpandedTrabajadores((prev) => ({
                             ...prev,
                             [g.trabajadorId]: !isOpen,
                           }))}
-                          className="min-w-0 text-left"
+                          className="flex items-center justify-center h-8 w-8 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors bg-white"
                         >
-                          <p className="text-sm font-semibold text-slate-800 truncate">{g.trabajadorNombre}</p>
-                          <p className="text-xs text-slate-400 truncate">{g.items.length} asignaciones</p>
-                        </button>
-                        <span className="text-sm font-semibold text-slate-600">{g.pendientes}</span>
-                        <span className="text-sm font-semibold text-blue-600">{g.enCurso}</span>
-                        <span className="text-sm font-semibold text-emerald-600">{g.completadas}</span>
-                        <button
-                          onClick={() => setExpandedTrabajadores((prev) => ({
-                            ...prev,
-                            [g.trabajadorId]: !isOpen,
-                          }))}
-                          className="flex items-center justify-center h-7 w-7 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
-                        >
-                          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", isOpen ? "rotate-180" : "rotate-0")} />
+                          <ChevronDown className={cn("h-4 w-4 transition-transform", isOpen ? "rotate-180" : "rotate-0")} />
                         </button>
                       </div>
+                    </div>
 
-                      {isOpen && (
-                        <div className="bg-slate-50/40 border-t border-slate-100">
-                          {g.items
-                            .slice()
-                            .sort((a, b) => a.capacitacionNombre.localeCompare(b.capacitacionNombre, "es"))
-                            .map((a) => {
-                              const cfg = ESTADO_ASIG_CFG[a.estadoUi];
-                              const origenUi = normalizeOrigen(a.origen);
-                              const envioEstado = normalizeEnvioEstado(a.envioEstado);
-                              const avanceEstado = normalizeAvanceEstado(a.avanceEstado);
-                              return (
-                                <div
-                                  key={a.id}
-                                  className="grid grid-cols-[1fr_155px_120px_95px_95px_185px_40px] gap-2 px-6 py-3 items-center hover:bg-white/70 transition-colors cursor-pointer"
-                                  onClick={() => setSelected(a)}
-                                >
+                    {isOpen && (
+                      <div className="divide-y divide-slate-100">
+                        {g.items
+                          .slice()
+                          .sort((a, b) => a.capacitacionNombre.localeCompare(b.capacitacionNombre, "es"))
+                          .map((a) => {
+                            const cfg = ESTADO_ASIG_CFG[a.estadoUi];
+                            const origenUi = normalizeOrigen(a.origen);
+                            const envioEstado = normalizeEnvioEstado(a.envioEstado);
+                            const avanceEstado = normalizeAvanceEstado(a.avanceEstado);
+
+                            return (
+                              <article
+                                key={a.id}
+                                className="px-4 sm:px-5 py-3.5 hover:bg-slate-50/70 transition-colors cursor-pointer"
+                                onClick={() => setSelected(a)}
+                              >
+                                <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_220px_minmax(220px,auto)] lg:items-center">
                                   <div className="min-w-0">
-                                    <p className="text-sm font-medium text-slate-800 truncate">{a.capacitacionNombre}</p>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      <p className="text-xs text-slate-400 truncate">{a.categoria}</p>
+                                    <p className="text-sm font-semibold text-slate-800 truncate">{a.capacitacionNombre}</p>
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                      <span className="text-xs text-slate-500">{a.categoria}</span>
                                       <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border", ENVIO_CFG[envioEstado].cls)}>
                                         {ENVIO_CFG[envioEstado].label}
-                                      </span>
-                                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium border", AVANCE_CFG[avanceEstado].cls)}>
-                                        {AVANCE_CFG[avanceEstado].label}
                                       </span>
                                       {isVideoModalidad(a.modalidad) && (
                                         <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border bg-cyan-50 text-cyan-700 border-cyan-200">
@@ -915,40 +915,58 @@ export default function TabAsignaciones() {
                                       )}
                                     </div>
                                   </div>
-                                  <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit", cfg.cls)}>
-                                    <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dot)} />
-                                    {cfg.label}
-                                  </span>
-                                  <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border w-fit",
-                                    origenUi === "automatica" ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-violet-50 text-violet-700 border-violet-200"
-                                  )}>
-                                    {origenUi === "automatica" ? <Bot className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
-                                    {origenUi === "automatica" ? "Auto" : "Manual"}
-                                  </span>
-                                  <span className="text-xs text-slate-500">{fmt(a.fechaAsignacion)}</span>
-                                  <span className={cn("text-xs", a.fechaVencimiento && new Date(a.fechaVencimiento) < new Date() ? "text-rose-600 font-medium" : "text-slate-500")}>
-                                    {fmt(a.fechaVencimiento)}
-                                  </span>
-                                  <div onClick={(e) => e.stopPropagation()}>
-                                    <AccionesRow item={a} onAccion={handleAccion} loading={accionLoadingId === a.id} />
+
+                                  <div className="flex flex-wrap items-center gap-2 lg:justify-start">
+                                    <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium border", AVANCE_CFG[avanceEstado].cls)}>
+                                      {AVANCE_CFG[avanceEstado].label}
+                                    </span>
+                                    <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium border", cfg.cls)}>
+                                      <span className={cn("h-1.5 w-1.5 rounded-full shrink-0", cfg.dot)} />
+                                      {cfg.label}
+                                    </span>
+                                    <span className={cn(
+                                      "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium border",
+                                      origenUi === "automatica"
+                                        ? "bg-blue-50 text-blue-700 border-blue-200"
+                                        : "bg-violet-50 text-violet-700 border-violet-200",
+                                    )}>
+                                      {origenUi === "automatica" ? <Bot className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
+                                      {origenUi === "automatica" ? "Auto" : "Manual"}
+                                    </span>
                                   </div>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setSelected(a); }}
-                                    className="flex items-center justify-center h-7 w-7 rounded-lg border border-slate-200 text-slate-400 hover:text-slate-700 hover:border-slate-300 transition-colors"
-                                  >
-                                    <Eye className="h-3.5 w-3.5" />
-                                  </button>
+
+                                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-end gap-2">
+                                    <div className="text-[11px] text-slate-500 sm:text-right whitespace-nowrap">
+                                      <p>Asignada: {fmt(a.fechaAsignacion)}</p>
+                                      <p className={cn(
+                                        a.fechaVencimiento && new Date(a.fechaVencimiento) < new Date()
+                                          ? "text-rose-600 font-medium"
+                                          : "text-slate-500",
+                                      )}>
+                                        Vence: {fmt(a.fechaVencimiento)}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center justify-between sm:justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                                      <AccionesRow item={a} onAccion={handleAccion} loading={accionLoadingId === a.id} />
+                                      <button
+                                        onClick={() => setSelected(a)}
+                                        className="flex items-center justify-center h-8 w-8 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 hover:border-slate-300 transition-colors bg-white"
+                                      >
+                                        <Eye className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
                                 </div>
-                              );
-                            })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                              </article>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 
