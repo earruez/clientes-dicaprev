@@ -35,7 +35,7 @@ import type {
   CapacitacionSesion,
   CapacitacionCatalogo,
   EstadoCapacitacionSesion,
-} from "@/actions/capacitaciones";
+} from "@/actions/capacitaciones/types";
 
 const ESTADO_LABEL: Record<EstadoCapacitacionSesion, string> = {
   programada: "Programada",

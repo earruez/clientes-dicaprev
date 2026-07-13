@@ -21,7 +21,7 @@ import { requirePermission } from "@/server/auth/permissions";
 const CERTIFICADO_CAPACITACION_CODIGO = "CERTIFICADO_CAPACITACION";
 const CERTIFICADO_CAPACITACION_NOMBRE = "Certificado de capacitación";
 
-export type CapacitacionCatalogo = {
+type CapacitacionCatalogo = {
   id: string;
   nombre: string;
   codigo: string;
@@ -44,7 +44,7 @@ export type CapacitacionCatalogo = {
   createdAt: string;
 };
 
-export type CreateCapacitacionInput = {
+type CreateCapacitacionInput = {
   codigo: string;
   nombre: string;
   categoria: string;
@@ -59,9 +59,9 @@ export type CreateCapacitacionInput = {
   activa?: boolean;
 };
 
-export type UpdateCapacitacionInput = Partial<CreateCapacitacionInput>;
+type UpdateCapacitacionInput = Partial<CreateCapacitacionInput>;
 
-export type TrabajadorAsignableCapacitacion = {
+type TrabajadorAsignableCapacitacion = {
   id: string;
   nombre: string;
   apellido: string;
@@ -73,7 +73,7 @@ export type TrabajadorAsignableCapacitacion = {
   estado: string;
 };
 
-export type CapacitacionesRuntimeDiagnostic = {
+type CapacitacionesRuntimeDiagnostic = {
   ok: boolean;
   usuarioId: string;
   email: string;
@@ -779,7 +779,7 @@ export async function deleteCapacitacion(id: string): Promise<CapacitacionCatalo
   return toCatalogoShape(deleted);
 }
 
-export type EstadoCapacitacionAsignacion =
+type EstadoCapacitacionAsignacion =
   | "pendiente"
   | "enviada"
   | "en_progreso"
@@ -787,7 +787,7 @@ export type EstadoCapacitacionAsignacion =
   | "vencida"
   | "cancelada";
 
-export type AsignacionCapacitacion = {
+type AsignacionCapacitacion = {
   id: string;
   trabajadorId: string;
   trabajadorNombre: string;
@@ -825,14 +825,14 @@ export type AsignacionCapacitacion = {
   updatedAt: string;
 };
 
-export type GetCapacitacionAsignacionesFilters = {
+type GetCapacitacionAsignacionesFilters = {
   trabajadorId?: string;
   capacitacionId?: string;
   estado?: EstadoCapacitacionAsignacion;
   includeCanceladas?: boolean;
 };
 
-export type CreateCapacitacionAsignacionInput = {
+type CreateCapacitacionAsignacionInput = {
   trabajadorId: string;
   capacitacionId: string;
   sesionId?: string | null;
@@ -853,7 +853,7 @@ export type CreateCapacitacionAsignacionInput = {
   forceReasignar?: boolean;
 };
 
-export type UpdateCapacitacionAsignacionInput = {
+type UpdateCapacitacionAsignacionInput = {
   trabajadorId?: string;
   capacitacionId?: string;
   sesionId?: string | null;
@@ -873,7 +873,7 @@ export type UpdateCapacitacionAsignacionInput = {
   certificadoDocumentoId?: string | null;
 };
 
-export type CambiarEstadoCapacitacionAsignacionInput = {
+type CambiarEstadoCapacitacionAsignacionInput = {
   estado: EstadoCapacitacionAsignacion;
   observacion?: string | null;
   nota?: number | null;
@@ -1595,10 +1595,15 @@ async function generarDocumentoCertificadoCapacitacion(
   };
 }
 
-export const __capacitacionesTestables = {
-  generarDocumentoCertificadoCapacitacion,
-  asegurarCatalogoCapacitacionesBase,
-};
+export async function __testGenerarDocumentoCertificadoCapacitacion(
+  ...args: Parameters<typeof generarDocumentoCertificadoCapacitacion>
+) {
+  return generarDocumentoCertificadoCapacitacion(...args);
+}
+
+export async function __testAsegurarCatalogoCapacitacionesBase(empresaId: string) {
+  return asegurarCatalogoCapacitacionesBase(empresaId);
+}
 
 async function sincronizarCertificadoDesdeAsistenciaConfirmada(input: {
   empresaId: string;
@@ -2969,26 +2974,26 @@ export async function avanzarCapacitacionAsignacionPublica(
   TIPOS DE SESIÓN Y ASISTENCIA
 ───────────────────────────────────────────────────────────────────────────── */
 
-export type EstadoCapacitacionSesion =
+type EstadoCapacitacionSesion =
   | "programada"
   | "en_curso"
   | "finalizada"
   | "cancelada";
 
-export type EstadoAsistencia =
+type EstadoAsistencia =
   | "presente"
   | "ausente"
   | "justificado"
   | "parcial";
 
-export type CapacitacionSesionPregunta = {
+type CapacitacionSesionPregunta = {
   id: string;
   texto: string;
   opciones: string[];
   correcta: number;
 };
 
-export type CapacitacionSesion = {
+type CapacitacionSesion = {
   id: string;
   empresaId: string;
   capacitacionId: string;
@@ -3012,7 +3017,7 @@ export type CapacitacionSesion = {
   updatedAt: string;
 };
 
-export type AsistenciaCapacitacion = {
+type AsistenciaCapacitacion = {
   id: string;
   empresaId: string;
   sesionId: string;
@@ -3023,7 +3028,7 @@ export type AsistenciaCapacitacion = {
   registradoEn: string;
 };
 
-export type CreateCapacitacionSesionInput = {
+type CreateCapacitacionSesionInput = {
   capacitacionId: string;
   titulo: string;
   fecha: string | Date;
@@ -3040,7 +3045,7 @@ export type CreateCapacitacionSesionInput = {
   evaluacionMinimoAprobacion?: number | null;
 };
 
-export type UpdateCapacitacionSesionInput = {
+type UpdateCapacitacionSesionInput = {
   titulo?: string;
   fecha?: string | Date;
   horaInicio?: string | null;
@@ -3056,13 +3061,13 @@ export type UpdateCapacitacionSesionInput = {
   evaluacionMinimoAprobacion?: number | null;
 };
 
-export type CambiarEstadoCapacitacionSesionInput = {
+type CambiarEstadoCapacitacionSesionInput = {
   estado: EstadoCapacitacionSesion;
   observacion?: string | null;
   fechaEvento?: string | Date;
 };
 
-export type CreateAsistenciaInput = {
+type CreateAsistenciaInput = {
   sesionId: string;
   trabajadorId: string;
   estadoAsistencia: EstadoAsistencia;
@@ -3873,7 +3878,7 @@ export async function registrarAsistenciaCapacitacion(
    TIPOS DE EVALUACIÓN
 ───────────────────────────────────────────────────────────────────────────── */
 
-export type CapacitacionEvaluacion = {
+type CapacitacionEvaluacion = {
   id: string;
   empresaId: string;
   trabajadorId: string;
@@ -3892,7 +3897,7 @@ export type CapacitacionEvaluacion = {
   updatedAt: string;
 };
 
-export type CreateCapacitacionEvaluacionInput = {
+type CreateCapacitacionEvaluacionInput = {
   trabajadorId: string;
   capacitacionId: string;
   asignacionId?: string | null;
@@ -3904,7 +3909,7 @@ export type CreateCapacitacionEvaluacionInput = {
   observacion?: string | null;
 };
 
-export type UpdateCapacitacionEvaluacionInput = {
+type UpdateCapacitacionEvaluacionInput = {
   asistencia?: boolean | null;
   nota?: number | null;
   aprobado?: boolean | null;
@@ -4173,7 +4178,7 @@ export async function registrarResultadoEvaluacion(
 
 // ─── Historial ────────────────────────────────────────────────────────────────
 
-export type CapacitacionHistorialEvento = {
+type CapacitacionHistorialEvento = {
   id: string;
   empresaId: string;
   trabajadorId: string;

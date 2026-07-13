@@ -4,14 +4,14 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
-export type PlanCapacitacionEstado =
+type PlanCapacitacionEstado =
   | "borrador"
   | "en_revision"
   | "aprobado"
   | "rechazado"
   | "cerrado";
 
-export type PlanCapacitacionItemEstado =
+type PlanCapacitacionItemEstado =
   | "pendiente"
   | "programado"
   | "ejecutado"
@@ -34,7 +34,7 @@ const PLAN_ITEM_ESTADOS_VALIDOS: readonly PlanCapacitacionItemEstado[] = [
   "cancelado",
 ] as const;
 
-export type PlanCapacitacionItemView = {
+type PlanCapacitacionItemView = {
   id: string;
   planId: string;
   capacitacionId: string;
@@ -56,7 +56,7 @@ export type PlanCapacitacionItemView = {
   updatedAt: string;
 };
 
-export type PlanCapacitacionView = {
+type PlanCapacitacionView = {
   id: string;
   empresaId: string;
   nombre: string;
@@ -75,7 +75,7 @@ export type PlanCapacitacionView = {
   items: PlanCapacitacionItemView[];
 };
 
-export type CreatePlanCapacitacionInput = {
+type CreatePlanCapacitacionInput = {
   nombre: string;
   periodo?: string | null;
   anio: number;
@@ -86,7 +86,7 @@ export type CreatePlanCapacitacionInput = {
   observaciones?: string | null;
 };
 
-export type UpdatePlanCapacitacionInput = {
+type UpdatePlanCapacitacionInput = {
   nombre?: string;
   periodo?: string | null;
   anio?: number;
@@ -99,9 +99,9 @@ export type UpdatePlanCapacitacionInput = {
   observaciones?: string | null;
 };
 
-export type CreatePlanDesdePlantillaInput = CreatePlanCapacitacionInput;
+type CreatePlanDesdePlantillaInput = CreatePlanCapacitacionInput;
 
-export type GenerarItemsPlanDesdeReglasResult = {
+type GenerarItemsPlanDesdeReglasResult = {
   planId: string;
   creados: number;
   omitidos: number;
@@ -756,7 +756,7 @@ export async function generarItemsPlanDesdeReglas(
 
 // ─── Tipos para edición de ítems ─────────────────────────────────────────────
 
-export type UpdatePlanCapacitacionItemInput = {
+type UpdatePlanCapacitacionItemInput = {
   periodicidad?: string;
   mesProgramado?: number | null;
   obligatorio?: boolean;
@@ -891,7 +891,7 @@ export async function deletePlanCapacitacionItem(itemId: string): Promise<PlanCa
 
 // ─── mergePlantillaEnPlan ─────────────────────────────────────────────────────
 
-export type MergePlantillaEnPlanResult = {
+type MergePlantillaEnPlanResult = {
   itemsCreados: number;
   itemsOmitidos: number;
   totalPlantillaItems: number;

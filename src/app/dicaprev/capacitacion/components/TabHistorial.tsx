@@ -1,10 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  getCapacitacionHistorial,
-  type CapacitacionHistorialEvento,
-} from "@/actions/capacitaciones";
+import { getCapacitacionHistorial } from "@/actions/capacitaciones";
+import type { CapacitacionHistorialEvento } from "@/actions/capacitaciones/types";
 import { Input } from "@/components/ui/input";
 import {
   Select,

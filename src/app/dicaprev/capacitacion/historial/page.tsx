@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { AlertCircle, ClipboardList, Loader2 } from "lucide-react";
 import { getCapacitacionHistorial } from "@/actions/capacitaciones";
-import type { CapacitacionHistorialEvento } from "@/actions/capacitaciones";
+import type { CapacitacionHistorialEvento } from "@/actions/capacitaciones/types";
 
 const ESTADO_STYLE: Record<string, { label: string; className: string }> = {
   vigente: { label: "Vigente", className: "bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full" },

@@ -7,10 +7,12 @@ import {
   getCapacitacionSesiones,
   getCapacitaciones,
   updateCapacitacionSesion,
-  type CapacitacionCatalogo,
-  type CapacitacionSesion,
-  type EstadoCapacitacionSesion,
 } from "@/actions/capacitaciones";
+import type {
+  CapacitacionCatalogo,
+  CapacitacionSesion,
+  EstadoCapacitacionSesion,
+} from "@/actions/capacitaciones/types";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

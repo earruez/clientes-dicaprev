@@ -24,7 +24,7 @@ import type {
   CapacitacionSesion,
   AsistenciaCapacitacion,
   EstadoAsistencia,
-} from "@/actions/capacitaciones";
+} from "@/actions/capacitaciones/types";
 
 const estadoConfig: Record<EstadoAsistencia, { label: string; className: string }> = {
   presente: {

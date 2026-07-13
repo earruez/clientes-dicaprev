@@ -19,9 +19,11 @@ import {
   updatePlanCapacitacion,
   updatePlanCapacitacionItem,
   mergePlantillaEnPlan,
-  type PlanCapacitacionItemEstado,
-  type PlanCapacitacionView,
 } from "@/actions/capacitaciones/plan";
+import type {
+  PlanCapacitacionItemEstado,
+  PlanCapacitacionView,
+} from "@/actions/capacitaciones/plan/types";
 
 import {
   TrainingStatus,

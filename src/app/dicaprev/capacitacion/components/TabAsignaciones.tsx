@@ -11,10 +11,12 @@ import {
   enviarCapacitacionAsignacion,
   deleteCapacitacionAsignacion,
   descargarCertificadoCapacitacionPdf,
-  type AsignacionCapacitacion,
-  type CapacitacionCatalogo,
-  type TrabajadorAsignableCapacitacion,
 } from "@/actions/capacitaciones";
+import type {
+  AsignacionCapacitacion,
+  CapacitacionCatalogo,
+  TrabajadorAsignableCapacitacion,
+} from "@/actions/capacitaciones/types";
 import { registrarAccion } from "@/lib/auditoria/audit-store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
