@@ -3,6 +3,8 @@ import Link from "next/link";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { getInduccionesTrabajador } from "@/actions/inducciones";
 import { Badge } from "@/components/ui/badge";
+import { requirePermission } from "@/server/auth/permissions";
+import BackfillInduccionesButton from "./BackfillInduccionesButton";
 
 const ESTADO_CONFIG: Record<
   string,
@@ -36,6 +38,14 @@ const ESTADO_CONFIG: Record<
 
 export default async function InduccionesPage() {
   const inducciones = await getInduccionesTrabajador();
+  let canManageDocumentacion = false;
+
+  try {
+    await requirePermission("canManageDocumentacion");
+    canManageDocumentacion = true;
+  } catch {
+    canManageDocumentacion = false;
+  }
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -47,12 +57,15 @@ export default async function InduccionesPage() {
           icon={<BookOpen className="h-6 w-6" />}
           iconWrapClassName="bg-sky-700"
           actions={
-            <Link
-              href="/dicaprev/trabajadores"
-              className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:shadow-md"
-            >
-              ← Trabajadores
-            </Link>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {canManageDocumentacion ? <BackfillInduccionesButton /> : null}
+              <Link
+                href="/dicaprev/trabajadores"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:shadow-md"
+              >
+                ← Trabajadores
+              </Link>
+            </div>
           }
         />
 

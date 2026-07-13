@@ -19,6 +19,7 @@ import { crearFirmaDocumento } from "@/actions/firmas";
 import { requirePermission } from "@/server/auth/permissions";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
 import { generarHashFirma } from "@/lib/firmas/hash";
+import { mapCodigoDocumentoInduccionACodigoControl } from "@/lib/documentacion/induccion-control-codes";
 import type { Worker } from "@/components/trabajadores-v2/types";
 import type {
   DocumentoTrabajador,
@@ -53,17 +54,6 @@ export type ControlDocumentalTrabajadoresPayload = {
   reglas: ReglaDocumental[];
   documentos: DocumentoTrabajador[];
 };
-
-const CODIGOS_INDUCCION_A_TIPO_CONTROL: Record<string, string> = {
-  IRL: "IRL_RIESGOS",
-  ENTREGA_EPP: "ENTREGA_EPP",
-  RECEPCION_RI: "REGLAMENTO_INTERNO_RECIBIDO",
-  REGISTRO_INDUCCION: "CAPACITACION_INICIAL",
-};
-
-function mapCodigoDocumentoInduccionACodigoControl(codigo: string): string | null {
-  return CODIGOS_INDUCCION_A_TIPO_CONTROL[codigo.trim().toUpperCase()] ?? null;
-}
 
 export type EmpresaDocumentoMeta = {
   id: string;
@@ -1889,7 +1879,7 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
         firmadoEn: row.firmadoEn ? row.firmadoEn.toISOString() : undefined,
         esVigente: row.esVigente,
         versionNumero: row.versionNumero,
-        origen: (row.origen as "ia" | "manual" | "sistema") ?? "manual",
+        origen: (row.origen as "ia" | "manual" | "sistema" | "induccion") ?? "manual",
         reemplazadoPorId: row.reemplazadoPorId ?? undefined,
         totalVersiones,
       } satisfies DocumentoTrabajador;
@@ -1900,6 +1890,15 @@ export async function getControlDocumentalTrabajadores(includeInactivos = false)
     .map((row) => {
       const codigoControl = mapCodigoDocumentoInduccionACodigoControl(row.tipo);
       if (!codigoControl) return null;
+
+      const yaSincronizado = docsRows.some(
+        (doc) =>
+          doc.trabajadorId === row.trabajadorId &&
+          doc.tipo.toUpperCase() === codigoControl.toUpperCase() &&
+          doc.origen === "induccion",
+      );
+
+      if (yaSincronizado) return null;
 
       const tipoDocumentoId = tipoByCodigo.get(codigoControl.toLowerCase());
       if (!tipoDocumentoId) return null;

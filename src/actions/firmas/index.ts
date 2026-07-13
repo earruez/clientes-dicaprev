@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { generarHashFirma } from "@/lib/firmas/hash";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
+import { sincronizarDocumentoInduccionEnCarpetaTrabajadorTx } from "@/lib/documentacion/induccion-control-documental";
 import { requirePermission } from "@/server/auth/permissions";
 
 type JsonObject = Record<string, unknown>;
@@ -538,6 +539,22 @@ export async function completarFirmaDocumento(input: CompletarFirmaDocumentoInpu
   }
 
   if (firma.documentoOrigen === "induccion") {
+    const documentoInduccion = await prisma.documentoInduccionGenerado.findUnique({
+      where: { id: firma.documentoId },
+      select: {
+        id: true,
+        empresaId: true,
+        trabajadorId: true,
+        tipo: true,
+        titulo: true,
+        contenidoMarkdown: true,
+      },
+    });
+
+    if (!documentoInduccion) {
+      throw new Error("Documento de inducción no encontrado para completar la firma.");
+    }
+
     await prisma.documentoInduccionGenerado.updateMany({
       where: { id: firma.documentoId },
       data: {
@@ -545,6 +562,20 @@ export async function completarFirmaDocumento(input: CompletarFirmaDocumentoInpu
         firmadoPor: input.nombreFirmante.trim(),
         firmadoEn: firmadoAt,
       },
+    });
+
+    await sincronizarDocumentoInduccionEnCarpetaTrabajadorTx(prisma, {
+      empresaId: documentoInduccion.empresaId,
+      trabajadorId: documentoInduccion.trabajadorId,
+      tipoInduccion: documentoInduccion.tipo,
+      tituloDocumento: documentoInduccion.titulo,
+      contenidoMarkdown: documentoInduccion.contenidoMarkdown,
+      estado: "firmado",
+      firmadoPor: input.nombreFirmante.trim(),
+      firmadoEn: firmadoAt,
+      actorUsuarioId: null,
+      documentoInduccionId: documentoInduccion.id,
+      origenEvento: "firma_induccion",
     });
   }
 

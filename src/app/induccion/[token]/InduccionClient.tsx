@@ -4,7 +4,7 @@ import Link from "next/link";
 import { CheckCircle2, Clock, XCircle, AlertCircle, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { InduccionPublicaView } from "@/actions/inducciones";
+import type { InduccionPublicaView } from "@/actions/inducciones/types";
 
 type Props = {
   induccion: InduccionPublicaView;

@@ -12,6 +12,7 @@ import {
   type DocumentTemplateCode,
   type DocumentoPlantillaRenderizada,
 } from "@/lib/documentacion/templates";
+import { sincronizarDocumentoInduccionEnCarpetaTrabajadorTx } from "@/lib/documentacion/induccion-control-documental";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
 
 type TxClient = Prisma.TransactionClient;
@@ -330,13 +331,13 @@ function construirDocumentosBase(params: {
 export async function generarDocumentosInduccionDesdePlantillasTx(
   tx: TxClient,
   input: GenerarDocumentosInduccionInput,
-): Promise<{ documentosGenerados: number }> {
+): Promise<{ documentosGenerados: number; documentosSincronizados: number }> {
   const induccionExistente = await tx.documentoInduccionGenerado.count({
     where: { induccionId: input.induccionId },
   });
 
   if (induccionExistente > 0) {
-    return { documentosGenerados: induccionExistente };
+    return { documentosGenerados: induccionExistente, documentosSincronizados: induccionExistente };
   }
 
   const [empresa, trabajador, entregaEpp] = await Promise.all([
@@ -415,6 +416,8 @@ export async function generarDocumentosInduccionDesdePlantillasTx(
     incluirPts,
   });
 
+  let documentosSincronizados = 0;
+
   for (const documento of documentos) {
     const contenidoMarkdown = renderDocumentoComoMarkdown(documento.renderizado);
 
@@ -435,6 +438,22 @@ export async function generarDocumentosInduccionDesdePlantillasTx(
       },
     });
 
+    const sincronizado = await sincronizarDocumentoInduccionEnCarpetaTrabajadorTx(tx, {
+      empresaId: input.empresaId,
+      trabajadorId: input.trabajadorId,
+      tipoInduccion: creado.tipo,
+      tituloDocumento: creado.titulo,
+      contenidoMarkdown,
+      estado: "pendiente",
+      actorUsuarioId: null,
+      documentoInduccionId: creado.id,
+      origenEvento: "generacion_induccion",
+    });
+
+    if (sincronizado.sincronizado) {
+      documentosSincronizados += 1;
+    }
+
     await tx.firmaDocumento.create({
       data: {
         empresaId: input.empresaId,
@@ -452,5 +471,5 @@ export async function generarDocumentosInduccionDesdePlantillasTx(
     });
   }
 
-  return { documentosGenerados: documentos.length };
+  return { documentosGenerados: documentos.length, documentosSincronizados };
 }
