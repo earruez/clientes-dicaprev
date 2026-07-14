@@ -71,8 +71,15 @@ function tipoColor(tipo: Tipo): string {
 }
 
 function nextCodigo(cargos: Cargo[]): string {
-  // Just return a placeholder; user defines codes manually
-  return `CAR-${String(cargos.length + 1).padStart(3, "0")}`;
+  const maxCorrelativo = cargos.reduce((max, cargo) => {
+    const match = cargo.codigo.trim().match(/^CAR-(\d+)$/i);
+    if (!match) return max;
+    const correlativo = Number.parseInt(match[1], 10);
+    return Number.isNaN(correlativo) ? max : Math.max(max, correlativo);
+  }, 0);
+
+  const siguiente = maxCorrelativo > 0 ? maxCorrelativo + 1 : cargos.length + 1;
+  return `CAR-${String(siguiente).padStart(3, "0")}`;
 }
 
 type DbArea = {
