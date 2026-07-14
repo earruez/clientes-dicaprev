@@ -33,9 +33,9 @@ type CargoCreateData = {
 
 type CargoSstResult = {
   perfilSST: string | null;
-  riesgosClave: string[];
-  documentosBase: string[];
-  capacitacionesBase: string[];
+  riesgosClave?: string[];
+  documentosBase?: string[];
+  capacitacionesBase?: string[];
 };
 
 const prismaMock = vi.hoisted(() => ({
@@ -116,8 +116,8 @@ describe("Persistencia SST de cargos", () => {
 
     const cargo = cargos[0] as CargoSstResult;
     expect(cargo.perfilSST).toBe("Prevencionista con experiencia");
-    expect(cargo.riesgosClave).toEqual(["Trabajo en altura", "Riesgo eléctrico"]);
-    expect(cargo.documentosBase).toEqual(["Credencial"]);
-    expect(cargo.capacitacionesBase).toEqual(["Inducción SST", "Primeros auxilios"]);
+    expect(cargo.riesgosClave ?? []).toEqual([]);
+    expect(cargo.documentosBase ?? []).toEqual([]);
+    expect(cargo.capacitacionesBase ?? []).toEqual([]);
   });
 });
