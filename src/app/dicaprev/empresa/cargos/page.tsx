@@ -32,6 +32,9 @@ import {
   desactivarCargo,
   evaluarEliminacionCargo,
   eliminarCargoDefinitivo,
+  getCargoCatalogosFormData,
+  crearDocumentoEspecificoCargo,
+  crearCapacitacionEspecificaCargo,
 } from "./actions";
 
 /* ─────────────────────────────────────────────
@@ -102,9 +105,41 @@ type DbCargo = {
   area: DbArea | null;
 };
 
+type DocumentoCatalogoItem = {
+  id: string;
+  nombre: string;
+  codigo: string;
+  origen: "base" | "especifica";
+};
+
+type CapacitacionCatalogoItem = {
+  id: string;
+  nombre: string;
+  codigo: string;
+  categoria: string;
+  origen: "base" | "especifica";
+};
+
+type SugerenciaCatalogoItem = {
+  id: string;
+  nombre: string;
+  motivo: string;
+  confianza: number;
+  fuente: "reglas" | "ia";
+};
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string");
+}
+
+function normalizeKey(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function riesgosToText(value: unknown): string {
@@ -245,8 +280,14 @@ export default function CargosPage() {
   const [submitting, setSubmitting] = useState(false);
 
   /* docs/caps input helpers */
-  const [docInput, setDocInput]   = useState("");
-  const [capInput, setCapInput]   = useState("");
+  const [docInput, setDocInput] = useState("");
+  const [capInput, setCapInput] = useState("");
+  const [documentosCatalogo, setDocumentosCatalogo] = useState<DocumentoCatalogoItem[]>([]);
+  const [capacitacionesCatalogo, setCapacitacionesCatalogo] = useState<CapacitacionCatalogoItem[]>([]);
+  const [documentosSeleccionadosIds, setDocumentosSeleccionadosIds] = useState<string[]>([]);
+  const [capacitacionesSeleccionadasIds, setCapacitacionesSeleccionadasIds] = useState<string[]>([]);
+  const [documentosSugeridos, setDocumentosSugeridos] = useState<SugerenciaCatalogoItem[]>([]);
+  const [capacitacionesSugeridas, setCapacitacionesSugeridas] = useState<SugerenciaCatalogoItem[]>([]);
 
   const isEdit = editingId !== null;
 
@@ -276,7 +317,12 @@ export default function CargosPage() {
     setEditingId(null);
     setForm({ ...emptyForm(), codigo: nextCodigo(cargos) });
     setSubmitError(null);
-    setDocInput(""); setCapInput("");
+    setDocInput("");
+    setCapInput("");
+    setDocumentosSeleccionadosIds([]);
+    setCapacitacionesSeleccionadasIds([]);
+    setDocumentosSugeridos([]);
+    setCapacitacionesSugeridas([]);
     setModalOpen(true);
   }, [cargos]);
 
@@ -284,7 +330,12 @@ export default function CargosPage() {
     setEditingId(c.id);
     setForm({ nombre: c.nombre, codigo: c.codigo, areaId: c.areaId, areaNombre: c.areaNombre, tipo: c.tipo, descripcion: c.descripcion, perfilSST: c.perfilSST, riesgosClave: c.riesgosClave, requiereDS44: c.requiereDS44, documentosBase: [...c.documentosBase], capacitacionesBase: [...c.capacitacionesBase], estado: c.estado });
     setSubmitError(null);
-    setDocInput(""); setCapInput("");
+    setDocInput("");
+    setCapInput("");
+    setDocumentosSeleccionadosIds([]);
+    setCapacitacionesSeleccionadasIds([]);
+    setDocumentosSugeridos([]);
+    setCapacitacionesSugeridas([]);
     setModalOpen(true);
     setDrawerCargo(null);
   }, []);
@@ -359,19 +410,149 @@ export default function CargosPage() {
     setForm((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
   };
 
-  const addDoc = () => {
-    const v = docInput.trim();
-    if (v && !form.documentosBase.includes(v)) setForm((p) => ({ ...p, documentosBase: [...p.documentosBase, v] }));
+  const filteredDocumentos = useMemo(() => {
+    const q = normalizeKey(docInput);
+    if (!q) return documentosCatalogo.slice(0, 8);
+    return documentosCatalogo
+      .filter((item) => {
+        const key = `${normalizeKey(item.nombre)} ${normalizeKey(item.codigo)}`;
+        return key.includes(q);
+      })
+      .slice(0, 8);
+  }, [docInput, documentosCatalogo]);
+
+  const filteredCapacitaciones = useMemo(() => {
+    const q = normalizeKey(capInput);
+    if (!q) return capacitacionesCatalogo.slice(0, 8);
+    return capacitacionesCatalogo
+      .filter((item) => {
+        const key = `${normalizeKey(item.nombre)} ${normalizeKey(item.codigo)} ${normalizeKey(item.categoria)}`;
+        return key.includes(q);
+      })
+      .slice(0, 8);
+  }, [capInput, capacitacionesCatalogo]);
+
+  const selectedDocumentos = useMemo(
+    () => documentosCatalogo.filter((item) => documentosSeleccionadosIds.includes(item.id)),
+    [documentosCatalogo, documentosSeleccionadosIds],
+  );
+
+  const selectedCapacitaciones = useMemo(
+    () => capacitacionesCatalogo.filter((item) => capacitacionesSeleccionadasIds.includes(item.id)),
+    [capacitacionesCatalogo, capacitacionesSeleccionadasIds],
+  );
+
+  const addDocumentoId = (id: string) => {
+    setDocumentosSeleccionadosIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     setDocInput("");
   };
-  const removeDoc = (d: string) => setForm((p) => ({ ...p, documentosBase: p.documentosBase.filter((x) => x !== d) }));
 
-  const addCap = () => {
-    const v = capInput.trim();
-    if (v && !form.capacitacionesBase.includes(v)) setForm((p) => ({ ...p, capacitacionesBase: [...p.capacitacionesBase, v] }));
+  const removeDocumentoId = (id: string) => {
+    setDocumentosSeleccionadosIds((prev) => prev.filter((item) => item !== id));
+  };
+
+  const addCapacitacionId = (id: string) => {
+    setCapacitacionesSeleccionadasIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     setCapInput("");
   };
-  const removeCap = (c: string) => setForm((p) => ({ ...p, capacitacionesBase: p.capacitacionesBase.filter((x) => x !== c) }));
+
+  const removeCapacitacionId = (id: string) => {
+    setCapacitacionesSeleccionadasIds((prev) => prev.filter((item) => item !== id));
+  };
+
+  const createDocumentoEspecifico = async () => {
+    const nombre = docInput.trim();
+    if (!nombre) return;
+
+    const duplicate = documentosCatalogo.find((item) => normalizeKey(item.nombre) === normalizeKey(nombre));
+    if (duplicate) {
+      setSubmitError(`Ya existe un documento similar (${duplicate.nombre}). Usa el existente.`);
+      return;
+    }
+
+    try {
+      const created = await crearDocumentoEspecificoCargo({ nombre });
+      setDocumentosCatalogo((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      addDocumentoId(created.id);
+      setSubmitError(null);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "No se pudo crear el documento específico.");
+    }
+  };
+
+  const createCapacitacionEspecifica = async () => {
+    const nombre = capInput.trim();
+    if (!nombre) return;
+
+    const duplicate = capacitacionesCatalogo.find((item) => normalizeKey(item.nombre) === normalizeKey(nombre));
+    if (duplicate) {
+      setSubmitError(`Ya existe una capacitación similar (${duplicate.nombre}). Usa la existente.`);
+      return;
+    }
+
+    try {
+      const created = await crearCapacitacionEspecificaCargo({ nombre });
+      setCapacitacionesCatalogo((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+      addCapacitacionId(created.id);
+      setSubmitError(null);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "No se pudo crear la capacitación específica.");
+    }
+  };
+
+  useEffect(() => {
+    if (!modalOpen) return;
+
+    let active = true;
+    (async () => {
+      try {
+        const data = await getCargoCatalogosFormData(editingId ?? undefined);
+        if (!active) return;
+
+        setDocumentosCatalogo(data.documentosCatalogo);
+        setCapacitacionesCatalogo(data.capacitacionesCatalogo);
+
+        if (editingId) {
+          const legacyDocIds = form.documentosBase
+            .map((legacy) => {
+              const key = normalizeKey(legacy);
+              const match = data.documentosCatalogo.find(
+                (item) => normalizeKey(item.nombre) === key || normalizeKey(item.codigo) === key,
+              );
+              return match?.id;
+            })
+            .filter((item): item is string => Boolean(item));
+
+          const legacyCapIds = form.capacitacionesBase
+            .map((legacy) => {
+              const key = normalizeKey(legacy);
+              const match = data.capacitacionesCatalogo.find(
+                (item) => normalizeKey(item.nombre) === key || normalizeKey(item.codigo) === key,
+              );
+              return match?.id;
+            })
+            .filter((item): item is string => Boolean(item));
+
+          const mergedDocIds = Array.from(new Set([...data.documentosSeleccionadosIds, ...legacyDocIds]));
+          const mergedCapIds = Array.from(new Set([...data.capacitacionesSeleccionadasIds, ...legacyCapIds]));
+
+          setDocumentosSeleccionadosIds(mergedDocIds);
+          setCapacitacionesSeleccionadasIds(mergedCapIds);
+        }
+
+        setDocumentosSugeridos(data.documentosSugeridos);
+        setCapacitacionesSugeridas(data.capacitacionesSugeridas);
+      } catch {
+        if (!active) return;
+        setDocumentosCatalogo([]);
+        setCapacitacionesCatalogo([]);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [modalOpen, editingId, form.documentosBase, form.capacitacionesBase]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -388,8 +569,10 @@ export default function CargosPage() {
         perfilSST: merged.perfilSST,
         perfilSstRequerido: merged.perfilSST,
         riesgosClave: riesgosToList(merged.riesgosClave),
-        documentosBase: merged.documentosBase,
-        capacitacionesBase: merged.capacitacionesBase,
+        documentosBase: selectedDocumentos.map((item) => item.nombre),
+        capacitacionesBase: selectedCapacitaciones.map((item) => item.nombre),
+        documentoTipoIds: documentosSeleccionadosIds,
+        capacitacionIds: capacitacionesSeleccionadasIds,
         estado: merged.estado,
         esCritico: merged.requiereDS44,
       };
@@ -838,38 +1021,134 @@ export default function CargosPage() {
             {/* BLOQUE: Documentos base */}
             <FormSection label="Documentos base obligatorios">
               <div className="flex gap-2">
-                <Input value={docInput} onChange={(e) => setDocInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addDoc(); } }} placeholder="Ej: Credencial prevención vigente" className="rounded-xl flex-1" />
-                <Button type="button" variant="outline" onClick={addDoc} className="rounded-xl px-4 shrink-0">Agregar</Button>
+                <Input
+                  value={docInput}
+                  onChange={(e) => setDocInput(e.target.value)}
+                  placeholder="Buscar documento en catálogo..."
+                  className="rounded-xl flex-1"
+                />
+                <Button type="button" variant="outline" onClick={createDocumentoEspecifico} className="rounded-xl px-4 shrink-0">
+                  Crear específico
+                </Button>
               </div>
-              {form.documentosBase.length > 0 && (
+
+              {filteredDocumentos.length > 0 && (
+                <div className="mt-2 grid gap-1.5">
+                  {filteredDocumentos.map((doc) => (
+                    <button
+                      key={doc.id}
+                      type="button"
+                      onClick={() => addDocumentoId(doc.id)}
+                      className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="flex-1">{doc.nombre}</span>
+                      <span className="text-[11px] text-slate-400 font-mono">{doc.codigo}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {selectedDocumentos.length > 0 && (
                 <ul className="mt-2 space-y-1.5">
-                  {form.documentosBase.map((d) => (
-                    <li key={d} className="flex items-center gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-1.5 text-sm text-slate-700">
+                  {selectedDocumentos.map((d) => (
+                    <li key={d.id} className="flex items-center gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-1.5 text-sm text-slate-700">
                       <FileText className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                      <span className="flex-1">{d}</span>
-                      <button type="button" onClick={() => removeDoc(d)} className="text-slate-400 hover:text-rose-500 transition"><X className="h-3.5 w-3.5" /></button>
+                      <span className="flex-1">{d.nombre}</span>
+                      <span className="text-[11px] text-slate-400 font-mono">{d.codigo}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${d.origen === "base" ? "border-slate-200 bg-slate-100 text-slate-600" : "border-amber-200 bg-amber-100 text-amber-700"}`}>
+                        {d.origen === "base" ? "Catálogo" : "Específico"}
+                      </span>
+                      <button type="button" onClick={() => removeDocumentoId(d.id)} className="text-slate-400 hover:text-rose-500 transition"><X className="h-3.5 w-3.5" /></button>
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {documentosSugeridos.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Sugerencias</p>
+                  <div className="flex flex-wrap gap-2">
+                    {documentosSugeridos.map((sugerida) => (
+                      <button
+                        key={sugerida.id}
+                        type="button"
+                        onClick={() => addDocumentoId(sugerida.id)}
+                        className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-800 hover:bg-amber-100"
+                        title={`${sugerida.motivo} (confianza ${Math.round(sugerida.confianza * 100)}%)`}
+                      >
+                        + {sugerida.nombre}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </FormSection>
 
             {/* BLOQUE: Capacitaciones base */}
             <FormSection label="Capacitaciones base obligatorias">
               <div className="flex gap-2">
-                <Input value={capInput} onChange={(e) => setCapInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCap(); } }} placeholder="Ej: Trabajo en altura básico" className="rounded-xl flex-1" />
-                <Button type="button" variant="outline" onClick={addCap} className="rounded-xl px-4 shrink-0">Agregar</Button>
+                <Input
+                  value={capInput}
+                  onChange={(e) => setCapInput(e.target.value)}
+                  placeholder="Buscar capacitación en catálogo..."
+                  className="rounded-xl flex-1"
+                />
+                <Button type="button" variant="outline" onClick={createCapacitacionEspecifica} className="rounded-xl px-4 shrink-0">
+                  Crear específica
+                </Button>
               </div>
-              {form.capacitacionesBase.length > 0 && (
+
+              {filteredCapacitaciones.length > 0 && (
+                <div className="mt-2 grid gap-1.5">
+                  {filteredCapacitaciones.map((cap) => (
+                    <button
+                      key={cap.id}
+                      type="button"
+                      onClick={() => addCapacitacionId(cap.id)}
+                      className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      <GraduationCap className="h-3.5 w-3.5 text-emerald-500" />
+                      <span className="flex-1">{cap.nombre}</span>
+                      <span className="text-[11px] text-slate-400 font-mono">{cap.codigo}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {selectedCapacitaciones.length > 0 && (
                 <ul className="mt-2 space-y-1.5">
-                  {form.capacitacionesBase.map((cap) => (
-                    <li key={cap} className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-sm text-slate-700">
+                  {selectedCapacitaciones.map((cap) => (
+                    <li key={cap.id} className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-sm text-slate-700">
                       <GraduationCap className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                      <span className="flex-1">{cap}</span>
-                      <button type="button" onClick={() => removeCap(cap)} className="text-slate-400 hover:text-rose-500 transition"><X className="h-3.5 w-3.5" /></button>
+                      <span className="flex-1">{cap.nombre}</span>
+                      <span className="text-[11px] text-slate-400 font-mono">{cap.codigo}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${cap.origen === "base" ? "border-slate-200 bg-slate-100 text-slate-600" : "border-emerald-200 bg-emerald-100 text-emerald-700"}`}>
+                        {cap.origen === "base" ? "Catálogo" : "Específica"}
+                      </span>
+                      <button type="button" onClick={() => removeCapacitacionId(cap.id)} className="text-slate-400 hover:text-rose-500 transition"><X className="h-3.5 w-3.5" /></button>
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {capacitacionesSugeridas.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Sugerencias</p>
+                  <div className="flex flex-wrap gap-2">
+                    {capacitacionesSugeridas.map((sugerida) => (
+                      <button
+                        key={sugerida.id}
+                        type="button"
+                        onClick={() => addCapacitacionId(sugerida.id)}
+                        className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-800 hover:bg-emerald-100"
+                        title={`${sugerida.motivo} (confianza ${Math.round(sugerida.confianza * 100)}%)`}
+                      >
+                        + {sugerida.nombre}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </FormSection>
 
