@@ -98,7 +98,7 @@ type DbCargo = {
   capacitacionesBase?: unknown;
   estado: string;
   esCritico: boolean;
-  createdAt: Date;
+  createdAt: Date | string;
   area: DbArea | null;
 };
 
@@ -119,6 +119,13 @@ function riesgosToList(value: string): string[] {
     .filter((item) => item.length > 0);
 }
 
+function toDateYmd(value: Date | string | null | undefined): string {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString().slice(0, 10);
+  return parsed.toISOString().slice(0, 10);
+}
+
 function mapDbCargoToUi(cargo: DbCargo): Cargo {
   return {
     id: cargo.id,
@@ -136,7 +143,7 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
     estado: cargo.estado === "inactivo" ? "inactivo" : "activo",
     trabajadores: 0,
     centros: [],
-    creadoEl: cargo.createdAt.toISOString().slice(0, 10),
+    creadoEl: toDateYmd(cargo.createdAt),
   };
 }
 
@@ -187,14 +194,23 @@ export default function CargosPage() {
           setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
         }
 
-        const [cargoRows, areaRows] = await Promise.all([getCargos(), getAreas()]);
+        const [cargoRows, areaRows] = await Promise.allSettled([getCargos(), getAreas()]);
         if (!mounted) return;
 
-        const mappedAreas = areaRows.map((area) => ({ id: area.id, nombre: area.nombre }));
-        const mappedCargos = cargoRows.map((cargo) => mapDbCargoToUi(cargo as DbCargo));
+        if (areaRows.status === "fulfilled") {
+          const mappedAreas = areaRows.value.map((area) => ({ id: area.id, nombre: area.nombre }));
+          setAreas(mappedAreas);
+        } else {
+          setAreas([]);
+        }
 
-        setAreas(mappedAreas);
-        setCargos(mappedCargos);
+        if (cargoRows.status === "fulfilled") {
+          const mappedCargos = cargoRows.value.map((cargo) => mapDbCargoToUi(cargo as DbCargo));
+          setCargos(mappedCargos);
+        } else {
+          setCargos([]);
+          setLoadError("No se pudieron cargar los cargos de la empresa. Recarga la página para reintentar.");
+        }
       } catch {
         if (mounted) {
           setAreas([]);
