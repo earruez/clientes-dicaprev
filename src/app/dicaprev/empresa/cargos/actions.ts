@@ -12,6 +12,20 @@ type CargoInput = {
   esCritico?: boolean;
 };
 
+export type CargoRelacionUso = {
+  trabajadores: number;
+  dotacion: number;
+  documentos: number;
+  actividades: number;
+  registros: number;
+};
+
+export type EvaluacionEliminacionCargo = {
+  puedeEliminarDefinitivo: boolean;
+  uso: CargoRelacionUso;
+  bloqueos: string[];
+};
+
 function normalizeText(value?: string) {
   return (value ?? "").trim();
 }
@@ -76,6 +90,83 @@ export async function getCargos() {
   });
 }
 
+async function calcularUsoCargo(empresaId: string, cargoId: string): Promise<CargoRelacionUso> {
+  const [trabajadores, dotacion, documentos, actividades, registros] = await Promise.all([
+    prisma.trabajador.count({
+      where: {
+        empresaId,
+        cargoId,
+      },
+    }),
+    prisma.posicionDotacion.count({
+      where: {
+        empresaId,
+        cargoId,
+      },
+    }),
+    prisma.reglaDocumentoTrabajador.count({
+      where: {
+        empresaId,
+        cargoId,
+      },
+    }),
+    prisma.planCapacitacionItem.count({
+      where: {
+        cargoId,
+        plan: {
+          empresaId,
+        },
+      },
+    }),
+    prisma.reglaCapacitacionCargo.count({
+      where: {
+        empresaId,
+        cargoId,
+      },
+    }),
+  ]);
+
+  return {
+    trabajadores,
+    dotacion,
+    documentos,
+    actividades,
+    registros,
+  };
+}
+
+function construirBloqueosCargo(uso: CargoRelacionUso): string[] {
+  const bloqueos: string[] = [];
+  if (uso.trabajadores > 0) bloqueos.push(`${uso.trabajadores} trabajador(es) asociado(s)`);
+  if (uso.dotacion > 0) bloqueos.push(`${uso.dotacion} registro(s) de dotación`);
+  if (uso.documentos > 0) bloqueos.push(`${uso.documentos} regla(s) documental(es)`);
+  if (uso.actividades > 0) bloqueos.push(`${uso.actividades} actividad(es) asociada(s)`);
+  if (uso.registros > 0) bloqueos.push(`${uso.registros} registro(s) asociado(s)`);
+  return bloqueos;
+}
+
+export async function evaluarEliminacionCargo(id: string): Promise<EvaluacionEliminacionCargo> {
+  const { empresaId } = await requirePermission("canManageEmpresa");
+
+  const cargo = await prisma.cargo.findFirst({
+    where: { id, empresaId },
+    select: { id: true },
+  });
+
+  if (!cargo) {
+    throw new Error("Cargo no encontrado en la empresa activa");
+  }
+
+  const uso = await calcularUsoCargo(empresaId, id);
+  const bloqueos = construirBloqueosCargo(uso);
+
+  return {
+    puedeEliminarDefinitivo: bloqueos.length === 0,
+    uso,
+    bloqueos,
+  };
+}
+
 export async function crearCargo(data: CargoInput) {
   const { empresaId } = await requirePermission("canManageEmpresa");
   const payload = await validateCargo(data);
@@ -102,11 +193,11 @@ export async function crearCargo(data: CargoInput) {
 }
 
 export async function actualizarCargo(id: string, data: CargoInput) {
-  await requirePermission("canManageEmpresa");
+  const { empresaId } = await requirePermission("canManageEmpresa");
   const payload = await validateCargo(data);
 
-  return prisma.cargo.update({
-    where: { id },
+  const updated = await prisma.cargo.updateMany({
+    where: { id, empresaId },
     data: {
       nombre: payload.nombre,
       areaId: payload.areaId,
@@ -115,6 +206,14 @@ export async function actualizarCargo(id: string, data: CargoInput) {
       estado: payload.estado,
       esCritico: payload.esCritico,
     },
+  });
+
+  if (updated.count === 0) {
+    throw new Error("Cargo no encontrado en la empresa activa");
+  }
+
+  return prisma.cargo.findFirstOrThrow({
+    where: { id, empresaId },
     include: {
       area: {
         select: {
@@ -127,12 +226,20 @@ export async function actualizarCargo(id: string, data: CargoInput) {
 }
 
 export async function desactivarCargo(id: string) {
-  await requirePermission("canManageEmpresa");
-  return prisma.cargo.update({
-    where: { id },
+  const { empresaId } = await requirePermission("canManageEmpresa");
+  const updated = await prisma.cargo.updateMany({
+    where: { id, empresaId },
     data: {
       estado: "inactivo",
     },
+  });
+
+  if (updated.count === 0) {
+    throw new Error("Cargo no encontrado en la empresa activa");
+  }
+
+  return prisma.cargo.findFirstOrThrow({
+    where: { id, empresaId },
     include: {
       area: {
         select: {
@@ -142,4 +249,26 @@ export async function desactivarCargo(id: string) {
       },
     },
   });
+}
+
+export async function eliminarCargoDefinitivo(id: string) {
+  const { empresaId } = await requirePermission("canManageEmpresa");
+
+  const evaluacion = await evaluarEliminacionCargo(id);
+  if (!evaluacion.puedeEliminarDefinitivo) {
+    throw new Error("No se puede eliminar definitivamente el cargo porque tiene relaciones activas.");
+  }
+
+  const deleted = await prisma.cargo.deleteMany({
+    where: {
+      id,
+      empresaId,
+    },
+  });
+
+  if (deleted.count === 0) {
+    throw new Error("Cargo no encontrado en la empresa activa");
+  }
+
+  return { ok: true };
 }

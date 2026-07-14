@@ -25,7 +25,14 @@ import {
 } from "@/lib/empresa/empresa-store";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { getAreas } from "@/app/dicaprev/empresa/areas/actions";
-import { getCargos, crearCargo, actualizarCargo, desactivarCargo } from "./actions";
+import {
+  getCargos,
+  crearCargo,
+  actualizarCargo,
+  desactivarCargo,
+  evaluarEliminacionCargo,
+  eliminarCargoDefinitivo,
+} from "./actions";
 
 /* ─────────────────────────────────────────────
    TYPES
@@ -35,6 +42,13 @@ type Tipo   = CargoTipoUI;
 type Cargo  = EmpresaCargo;
 
 type CargoForm = Omit<Cargo, "id" | "creadoEl" | "trabajadores" | "centros">;
+
+type DeleteResolution = {
+  targetId: string;
+  targetName: string;
+  puedeEliminarDefinitivo: boolean;
+  bloqueos: string[];
+};
 
 /* ─────────────────────────────────────────────
    MOCK DATA
@@ -127,6 +141,8 @@ export default function CargosPage() {
   /* drawer */
   const [drawerCargo, setDrawerCargo] = useState<Cargo | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Cargo | null>(null);
+  const [deleteResolution, setDeleteResolution] = useState<DeleteResolution | null>(null);
+  const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
   const [plantillaActiva, setPlantillaActiva] = useState<string | null>(null);
 
   // Initialise store on client mount and sync state
@@ -239,17 +255,40 @@ export default function CargosPage() {
     setDrawerCargo((prev) => (prev?.id === id ? { ...prev, ...mapped } : prev));
   };
 
-  const tryDeleteCargo = (cargo: Cargo) => {
+  const tryDeleteCargo = async (cargo: Cargo) => {
     setDeleteTarget(cargo);
+    setDeleteLoadingId(cargo.id);
+    try {
+      const evaluacion = await evaluarEliminacionCargo(cargo.id);
+      setDeleteResolution({
+        targetId: cargo.id,
+        targetName: cargo.nombre,
+        puedeEliminarDefinitivo: evaluacion.puedeEliminarDefinitivo,
+        bloqueos: evaluacion.bloqueos,
+      });
+    } finally {
+      setDeleteLoadingId(null);
+    }
   };
 
   const confirmDeleteCargo = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !deleteResolution) return;
+
+    if (deleteResolution.puedeEliminarDefinitivo) {
+      await eliminarCargoDefinitivo(deleteTarget.id);
+      updateCargos((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      if (drawerCargo?.id === deleteTarget.id) setDrawerCargo(null);
+      setDeleteTarget(null);
+      setDeleteResolution(null);
+      return;
+    }
+
     const updated = await desactivarCargo(deleteTarget.id);
     const mapped = mapDbCargoToUi(updated as DbCargo);
     updateCargos((prev) => prev.map((c) => (c.id === deleteTarget.id ? { ...c, ...mapped } : c)));
     if (drawerCargo?.id === deleteTarget.id) setDrawerCargo(mapped);
     setDeleteTarget(null);
+    setDeleteResolution(null);
   };
 
   const handleInput = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -766,88 +805,50 @@ export default function CargosPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── DELETE DIALOG ── Blocked (has deps) ── */}
-      {deleteTarget !== null &&
-        (deleteTarget.trabajadores > 0 || deleteTarget.centros.length > 0) && (
-          <Dialog open onOpenChange={() => setDeleteTarget(null)}>
-            <DialogContent className="max-w-md rounded-3xl border border-slate-200 shadow-2xl">
-              <DialogHeader>
-                <div className="flex items-center gap-3 mb-1">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50">
-                    <AlertTriangle className="h-4 w-4 text-rose-600" />
-                  </div>
-                  <DialogTitle className="text-xl font-semibold text-slate-900">
-                    No se puede eliminar
-                  </DialogTitle>
+      {/* ── DELETE DIALOG ── */}
+      {deleteTarget !== null && (
+        <Dialog open onOpenChange={() => { setDeleteTarget(null); setDeleteResolution(null); }}>
+          <DialogContent className="max-w-md rounded-3xl border border-slate-200 shadow-2xl">
+            <DialogHeader>
+              <div className="flex items-center gap-3 mb-1">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50">
+                  <AlertTriangle className="h-4 w-4 text-rose-600" />
                 </div>
-                <DialogDescription className="text-sm text-slate-600 ml-[3rem] leading-relaxed">
-                  <strong>{deleteTarget.nombre}</strong> tiene dependencias activas.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="mt-2 space-y-1.5 ml-1">
-                {deleteTarget.trabajadores > 0 && (
-                  <p className="text-sm text-slate-700">
-                    &bull; <strong>{deleteTarget.trabajadores}</strong> trabajador{deleteTarget.trabajadores > 1 ? "es" : ""} con este cargo
-                  </p>
-                )}
-                {deleteTarget.centros.length > 0 && (
-                  <p className="text-sm text-slate-700">
-                    &bull; <strong>{deleteTarget.centros.length}</strong> centro{deleteTarget.centros.length > 1 ? "s" : ""} con posiciones activas
-                  </p>
-                )}
+                <DialogTitle className="text-xl font-semibold text-slate-900">
+                  {deleteResolution?.puedeEliminarDefinitivo ? "¿Eliminar cargo definitivamente?" : "No se puede eliminar definitivamente"}
+                </DialogTitle>
               </div>
-              <p className="mt-3 text-sm text-slate-500">
-                Puedes <strong>desactivar</strong> el cargo para ocultarlo sin perder informaci&oacute;n.
-              </p>
-              <DialogFooter className="mt-4 flex items-center justify-end gap-3">
-                <Button type="button" variant="outline" className="rounded-xl" onClick={() => setDeleteTarget(null)}>
-                  Cancelar
-                </Button>
-                <Button
-                  type="button"
-                  className="rounded-xl bg-slate-700 hover:bg-slate-800 text-white"
-                  onClick={() => {
-                    toggleEstado(deleteTarget.id);
-                    setDeleteTarget(null);
-                  }}
-                >
-                  Desactivar cargo
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
-
-      {/* ── DELETE DIALOG ── Confirm (no deps) ── */}
-      {deleteTarget !== null &&
-        deleteTarget.trabajadores === 0 &&
-        deleteTarget.centros.length === 0 && (
-          <Dialog open onOpenChange={() => setDeleteTarget(null)}>
-            <DialogContent className="max-w-md rounded-3xl border border-slate-200 shadow-2xl">
-              <DialogHeader>
-                <div className="flex items-center gap-3 mb-1">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50">
-                    <AlertTriangle className="h-4 w-4 text-rose-600" />
-                  </div>
-                  <DialogTitle className="text-xl font-semibold text-slate-900">
-                    &iquest;Eliminar cargo?
-                  </DialogTitle>
-                </div>
-                <DialogDescription className="text-sm text-slate-600 ml-[3rem] leading-relaxed">
-                  Se eliminar&aacute; <strong>{deleteTarget.nombre}</strong> de forma permanente. Esta acci&oacute;n no se puede deshacer.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter className="mt-4 flex items-center justify-end gap-3">
-                <Button type="button" variant="outline" className="rounded-xl" onClick={() => setDeleteTarget(null)}>
-                  Cancelar
-                </Button>
-                <Button type="button" className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white" onClick={confirmDeleteCargo}>
-                  S&iacute;, eliminar
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+              <DialogDescription className="text-sm text-slate-600 ml-[3rem] leading-relaxed">
+                {deleteLoadingId === deleteTarget.id
+                  ? "Validando relaciones del cargo..."
+                  : deleteResolution?.puedeEliminarDefinitivo
+                    ? <>Se eliminará <strong>{deleteTarget.nombre}</strong> de forma permanente. Esta acción no se puede deshacer.</>
+                    : <><strong>{deleteTarget.nombre}</strong> tiene relaciones activas y solo se puede inactivar.</>}
+              </DialogDescription>
+            </DialogHeader>
+            {deleteResolution && !deleteResolution.puedeEliminarDefinitivo && deleteResolution.bloqueos.length > 0 && (
+              <ul className="mt-2 space-y-1.5 ml-1 list-disc text-sm text-slate-700">
+                {deleteResolution.bloqueos.map((bloqueo) => (
+                  <li key={bloqueo}>{bloqueo}</li>
+                ))}
+              </ul>
+            )}
+            <DialogFooter className="mt-4 flex items-center justify-end gap-3">
+              <Button type="button" variant="outline" className="rounded-xl" onClick={() => { setDeleteTarget(null); setDeleteResolution(null); }}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={deleteLoadingId === deleteTarget.id}
+                className={deleteResolution?.puedeEliminarDefinitivo ? "rounded-xl bg-rose-600 hover:bg-rose-700 text-white" : "rounded-xl bg-slate-700 hover:bg-slate-800 text-white"}
+                onClick={confirmDeleteCargo}
+              >
+                {deleteResolution?.puedeEliminarDefinitivo ? "Eliminar definitivamente" : "Inactivar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

@@ -27,8 +27,22 @@ import {
   type CargoEstado,
   type CargoTipoUI,
 } from "@/lib/empresa/empresa-store";
-import { getAreas, crearArea, actualizarArea, desactivarArea } from "./actions";
-import { getCargos, crearCargo, actualizarCargo, desactivarCargo } from "@/app/dicaprev/empresa/cargos/actions";
+import {
+  getAreas,
+  crearArea,
+  actualizarArea,
+  desactivarArea,
+  evaluarEliminacionArea,
+  eliminarAreaDefinitiva,
+} from "./actions";
+import {
+  getCargos,
+  crearCargo,
+  actualizarCargo,
+  desactivarCargo,
+  evaluarEliminacionCargo,
+  eliminarCargoDefinitivo,
+} from "@/app/dicaprev/empresa/cargos/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -226,6 +240,13 @@ function FormSection({ label, children }: { label: string; children: React.React
 
 export default function AreasCargosPage() {
 
+  type DeleteResolution = {
+    targetId: string;
+    targetName: string;
+    puedeEliminarDefinitivo: boolean;
+    bloqueos: string[];
+  };
+
   // ── Shared state ──
   const [mainTab, setMainTab] = useState<MainTab>("areas");
   const [plantillaActiva, setPlantillaActiva] = useState<string | null>(null);
@@ -241,6 +262,8 @@ export default function AreasCargosPage() {
   const [editingAreaId, setEditingAreaId]   = useState<string | null>(null);
   const [aForm, setAForm]                   = useState<AreaForm>(EMPTY_AREA_FORM);
   const [aDeleteTarget, setADeleteTarget]   = useState<Area | null>(null);
+  const [aDeleteResolution, setADeleteResolution] = useState<DeleteResolution | null>(null);
+  const [aDeleteLoadingId, setADeleteLoadingId] = useState<string | null>(null);
 
   // ── Cargos state ──
   const [cargos, setCargos]                     = useState<Cargo[]>([]);
@@ -251,6 +274,8 @@ export default function AreasCargosPage() {
   const [cFDs44, setCFDs44]                     = useState(false);
   const [drawerCargo, setDrawerCargo]           = useState<Cargo | null>(null);
   const [cDeleteTarget, setCDeleteTarget]       = useState<Cargo | null>(null);
+  const [cDeleteResolution, setCDeleteResolution] = useState<DeleteResolution | null>(null);
+  const [cDeleteLoadingId, setCDeleteLoadingId] = useState<string | null>(null);
   const [cModalOpen, setCModalOpen]             = useState(false);
   const [editingCargoId, setEditingCargoId]     = useState<string | null>(null);
   const [cForm, setCForm]                       = useState<CargoForm>(emptyCargoForm());
@@ -373,6 +398,37 @@ export default function AreasCargosPage() {
     updateAreas((prev) => prev.map((a) => (a.id === id ? { ...a, ...mapped } : a)));
   }
 
+  async function aPrepareDelete(area: Area) {
+    setADeleteTarget(area);
+    setADeleteLoadingId(area.id);
+    try {
+      const evaluacion = await evaluarEliminacionArea(area.id);
+      setADeleteResolution({
+        targetId: area.id,
+        targetName: area.nombre,
+        puedeEliminarDefinitivo: evaluacion.puedeEliminarDefinitivo,
+        bloqueos: evaluacion.bloqueos,
+      });
+    } finally {
+      setADeleteLoadingId(null);
+    }
+  }
+
+  async function aConfirmDelete() {
+    if (!aDeleteTarget || !aDeleteResolution) return;
+
+    if (aDeleteResolution.puedeEliminarDefinitivo) {
+      await eliminarAreaDefinitiva(aDeleteTarget.id);
+      updateAreas((prev) => prev.filter((a) => a.id !== aDeleteTarget.id));
+      if (selectedAreaId === aDeleteTarget.id) setSelectedAreaId(null);
+    } else {
+      await aToggleEstado(aDeleteTarget.id);
+    }
+
+    setADeleteTarget(null);
+    setADeleteResolution(null);
+  }
+
   // ─── Cargos KPIs ───
   const cActivos    = cargos.filter((c) => c.estado === "activo");
   const kpiCActivos = cActivos.length;
@@ -438,6 +494,37 @@ export default function AreasCargosPage() {
     const mapped = mapDbCargoToUi(updated as DbCargo);
     updateCargos((prev) => prev.map((c) => (c.id === id ? { ...c, ...mapped } : c)));
     setDrawerCargo((prev) => (prev?.id === id ? { ...prev, ...mapped } : prev));
+  }
+
+  async function cPrepareDelete(cargo: Cargo) {
+    setCDeleteTarget(cargo);
+    setCDeleteLoadingId(cargo.id);
+    try {
+      const evaluacion = await evaluarEliminacionCargo(cargo.id);
+      setCDeleteResolution({
+        targetId: cargo.id,
+        targetName: cargo.nombre,
+        puedeEliminarDefinitivo: evaluacion.puedeEliminarDefinitivo,
+        bloqueos: evaluacion.bloqueos,
+      });
+    } finally {
+      setCDeleteLoadingId(null);
+    }
+  }
+
+  async function cConfirmDelete() {
+    if (!cDeleteTarget || !cDeleteResolution) return;
+
+    if (cDeleteResolution.puedeEliminarDefinitivo) {
+      await eliminarCargoDefinitivo(cDeleteTarget.id);
+      updateCargos((prev) => prev.filter((c) => c.id !== cDeleteTarget.id));
+      if (drawerCargo?.id === cDeleteTarget.id) setDrawerCargo(null);
+    } else {
+      await cToggleEstado(cDeleteTarget.id);
+    }
+
+    setCDeleteTarget(null);
+    setCDeleteResolution(null);
   }
   function cHandleInput(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const { name, value, type } = e.target;
@@ -967,7 +1054,7 @@ export default function AreasCargosPage() {
                   className="text-sm text-slate-500 hover:text-slate-700 underline underline-offset-2 transition">
                   {selectedArea.estado === "activa" ? "Desactivar área" : "Reactivar área"}
                 </button>
-                <button type="button" onClick={() => setADeleteTarget(selectedArea)}
+                <button type="button" onClick={() => aPrepareDelete(selectedArea)}
                   className="text-sm text-rose-500 hover:text-rose-700 underline underline-offset-2 transition">Eliminar</button>
               </div>
               <div className="flex gap-2">
@@ -1079,7 +1166,7 @@ export default function AreasCargosPage() {
                   drawerCargo.estado === "activo" ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-emerald-600 text-white hover:bg-emerald-700")}>
                 {drawerCargo.estado === "activo" ? "Desactivar" : "Reactivar"}
               </button>
-              <button onClick={() => setCDeleteTarget(drawerCargo)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition border border-rose-100">Eliminar</button>
+              <button onClick={() => cPrepareDelete(drawerCargo)} className="rounded-xl px-4 py-2.5 text-sm font-semibold text-rose-600 hover:bg-rose-50 transition border border-rose-100">Eliminar</button>
             </div>
           </>
         )}
@@ -1301,88 +1388,92 @@ export default function AreasCargosPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── DELETE ÁREA dialogs ── */}
-      {aDeleteTarget !== null && (aDeleteTarget.cargosIds.length > 0 || aDeleteTarget.dotacionTotal > 0 || aDeleteTarget.trabajadores > 0) && (
-        <Dialog open onOpenChange={() => setADeleteTarget(null)}>
+      {/* ── DELETE ÁREA dialog ── */}
+      {aDeleteTarget !== null && (
+        <Dialog open onOpenChange={() => { setADeleteTarget(null); setADeleteResolution(null); }}>
           <DialogContent className="max-w-md rounded-3xl">
             <DialogHeader>
               <div className="flex items-center gap-3 mb-1">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50"><AlertTriangle className="h-4 w-4 text-rose-600" /></div>
-                <DialogTitle className="text-xl font-semibold text-slate-900">No se puede eliminar</DialogTitle>
-              </div>
-              <DialogDescription className="text-sm text-slate-600 ml-[3rem]"><strong>{aDeleteTarget.nombre}</strong> tiene dependencias activas.</DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" className="rounded-xl" onClick={() => setADeleteTarget(null)}>Cancelar</Button>
-              <Button type="button" className="rounded-xl bg-slate-700 text-white" onClick={() => { aToggleEstado(aDeleteTarget.id); setADeleteTarget(null); }}>Desactivar área</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-      {aDeleteTarget !== null && aDeleteTarget.cargosIds.length === 0 && aDeleteTarget.dotacionTotal === 0 && aDeleteTarget.trabajadores === 0 && (
-        <Dialog open onOpenChange={() => setADeleteTarget(null)}>
-          <DialogContent className="max-w-md rounded-3xl">
-            <DialogHeader>
-              <div className="flex items-center gap-3 mb-1">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50"><AlertTriangle className="h-4 w-4 text-rose-600" /></div>
-                <DialogTitle className="text-xl font-semibold text-slate-900">¿Desactivar área?</DialogTitle>
+                <DialogTitle className="text-xl font-semibold text-slate-900">
+                  {aDeleteResolution?.puedeEliminarDefinitivo ? "¿Eliminar área definitivamente?" : "No se puede eliminar definitivamente"}
+                </DialogTitle>
               </div>
               <DialogDescription className="text-sm text-slate-600 ml-[3rem]">
-                Se desactivará <strong>{aDeleteTarget.nombre}</strong>.
+                {aDeleteLoadingId === aDeleteTarget.id
+                  ? "Validando relaciones del área..."
+                  : aDeleteResolution?.puedeEliminarDefinitivo
+                    ? <>Se eliminará <strong>{aDeleteTarget.nombre}</strong> de forma permanente. Esta acción no se puede deshacer.</>
+                    : <><strong>{aDeleteTarget.nombre}</strong> tiene relaciones activas y solo se puede inactivar.</>}
               </DialogDescription>
             </DialogHeader>
+            {aDeleteResolution && !aDeleteResolution.puedeEliminarDefinitivo && aDeleteResolution.bloqueos.length > 0 && (
+              <ul className="ml-2 list-disc space-y-1 text-sm text-slate-700">
+                {aDeleteResolution.bloqueos.map((bloqueo) => (
+                  <li key={bloqueo}>{bloqueo}</li>
+                ))}
+              </ul>
+            )}
             <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" className="rounded-xl" onClick={() => setADeleteTarget(null)}>Cancelar</Button>
-              <Button type="button" className="rounded-xl bg-slate-700 text-white"
-                onClick={async () => { await aToggleEstado(aDeleteTarget.id); if (selectedAreaId === aDeleteTarget.id) setSelectedAreaId(null); setADeleteTarget(null); }}>
-                Sí, desactivar
+              <Button type="button" variant="outline" className="rounded-xl" onClick={() => { setADeleteTarget(null); setADeleteResolution(null); }}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={aDeleteLoadingId === aDeleteTarget.id}
+                className={cn(
+                  "rounded-xl text-white",
+                  aDeleteResolution?.puedeEliminarDefinitivo ? "bg-rose-600 hover:bg-rose-700" : "bg-slate-700 hover:bg-slate-800",
+                )}
+                onClick={aConfirmDelete}
+              >
+                {aDeleteResolution?.puedeEliminarDefinitivo ? "Eliminar definitivamente" : "Inactivar"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
 
-      {/* ── DELETE CARGO dialogs ── */}
-      {cDeleteTarget !== null && (cDeleteTarget.trabajadores > 0 || cDeleteTarget.centros.length > 0) && (
-        <Dialog open onOpenChange={() => setCDeleteTarget(null)}>
+      {/* ── DELETE CARGO dialog ── */}
+      {cDeleteTarget !== null && (
+        <Dialog open onOpenChange={() => { setCDeleteTarget(null); setCDeleteResolution(null); }}>
           <DialogContent className="max-w-md rounded-3xl">
             <DialogHeader>
               <div className="flex items-center gap-3 mb-1">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50"><AlertTriangle className="h-4 w-4 text-rose-600" /></div>
-                <DialogTitle className="text-xl font-semibold text-slate-900">No se puede eliminar</DialogTitle>
-              </div>
-              <DialogDescription className="text-sm text-slate-600 ml-[3rem]"><strong>{cDeleteTarget.nombre}</strong> tiene dependencias activas.</DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" className="rounded-xl" onClick={() => setCDeleteTarget(null)}>Cancelar</Button>
-              <Button type="button" className="rounded-xl bg-slate-700 text-white" onClick={() => { cToggleEstado(cDeleteTarget.id); setCDeleteTarget(null); }}>Desactivar cargo</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-      {cDeleteTarget !== null && cDeleteTarget.trabajadores === 0 && cDeleteTarget.centros.length === 0 && (
-        <Dialog open onOpenChange={() => setCDeleteTarget(null)}>
-          <DialogContent className="max-w-md rounded-3xl">
-            <DialogHeader>
-              <div className="flex items-center gap-3 mb-1">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50"><AlertTriangle className="h-4 w-4 text-rose-600" /></div>
-                <DialogTitle className="text-xl font-semibold text-slate-900">¿Eliminar cargo?</DialogTitle>
+                <DialogTitle className="text-xl font-semibold text-slate-900">
+                  {cDeleteResolution?.puedeEliminarDefinitivo ? "¿Eliminar cargo definitivamente?" : "No se puede eliminar definitivamente"}
+                </DialogTitle>
               </div>
               <DialogDescription className="text-sm text-slate-600 ml-[3rem]">
-                Se eliminará <strong>{cDeleteTarget.nombre}</strong> de forma permanente.
+                {cDeleteLoadingId === cDeleteTarget.id
+                  ? "Validando relaciones del cargo..."
+                  : cDeleteResolution?.puedeEliminarDefinitivo
+                    ? <>Se eliminará <strong>{cDeleteTarget.nombre}</strong> de forma permanente. Esta acción no se puede deshacer.</>
+                    : <><strong>{cDeleteTarget.nombre}</strong> tiene relaciones activas y solo se puede inactivar.</>}
               </DialogDescription>
             </DialogHeader>
+            {cDeleteResolution && !cDeleteResolution.puedeEliminarDefinitivo && cDeleteResolution.bloqueos.length > 0 && (
+              <ul className="ml-2 list-disc space-y-1 text-sm text-slate-700">
+                {cDeleteResolution.bloqueos.map((bloqueo) => (
+                  <li key={bloqueo}>{bloqueo}</li>
+                ))}
+              </ul>
+            )}
             <DialogFooter className="mt-4">
-              <Button type="button" variant="outline" className="rounded-xl" onClick={() => setCDeleteTarget(null)}>Cancelar</Button>
-              <Button type="button" className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
-                onClick={async () => {
-                  const updated = await desactivarCargo(cDeleteTarget.id);
-                  const mapped = mapDbCargoToUi(updated as DbCargo);
-                  updateCargos((prev) => prev.map((c) => (c.id === cDeleteTarget.id ? { ...c, ...mapped } : c)));
-                  if (drawerCargo?.id === cDeleteTarget.id) setDrawerCargo(mapped);
-                  setCDeleteTarget(null);
-                }}>
-                Sí, eliminar
+              <Button type="button" variant="outline" className="rounded-xl" onClick={() => { setCDeleteTarget(null); setCDeleteResolution(null); }}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={cDeleteLoadingId === cDeleteTarget.id}
+                className={cn(
+                  "rounded-xl text-white",
+                  cDeleteResolution?.puedeEliminarDefinitivo ? "bg-rose-600 hover:bg-rose-700" : "bg-slate-700 hover:bg-slate-800",
+                )}
+                onClick={cConfirmDelete}
+              >
+                {cDeleteResolution?.puedeEliminarDefinitivo ? "Eliminar definitivamente" : "Inactivar"}
               </Button>
             </DialogFooter>
           </DialogContent>
