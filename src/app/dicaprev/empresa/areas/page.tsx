@@ -107,6 +107,25 @@ function areaCodeFromId(id: string) {
   return `AR-${id.slice(0, 4).toUpperCase()}`;
 }
 
+function toDateYmd(value: Date | string | null | undefined): string {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString().slice(0, 10);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function nextCodigoArea(areas: Area[]): string {
+  const maxCorrelativo = areas.reduce((max, area) => {
+    const match = area.codigo.trim().match(/^AR-(\d+)$/i);
+    if (!match) return max;
+    const correlativo = Number.parseInt(match[1], 10);
+    return Number.isNaN(correlativo) ? max : Math.max(max, correlativo);
+  }, 0);
+
+  const siguiente = maxCorrelativo > 0 ? maxCorrelativo + 1 : areas.length + 1;
+  return `AR-${String(siguiente).padStart(3, "0")}`;
+}
+
 function mapDbAreaToUi(area: DbArea): Area {
   return {
     id: area.id,
@@ -125,7 +144,7 @@ function mapDbAreaToUi(area: DbArea): Area {
     cumplimientoPromedio: 0,
     tieneDs44: false,
     estado: area.estado === "inactiva" ? "inactiva" : "activa",
-    creadaEl: area.createdAt.toISOString().slice(0, 10),
+    creadaEl: toDateYmd(area.createdAt),
   };
 }
 
@@ -146,7 +165,7 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
     estado: cargo.estado === "inactivo" ? "inactivo" : "activo",
     trabajadores: 0,
     centros: [],
-    creadoEl: cargo.createdAt.toISOString().slice(0, 10),
+    creadoEl: toDateYmd(cargo.createdAt),
   };
 }
 
@@ -161,7 +180,15 @@ function emptyCargoForm(): CargoForm {
 }
 
 function nextCodigoCargo(cargos: Cargo[]): string {
-  return `CAR-${String(cargos.length + 1).padStart(3, "0")}`;
+  const maxCorrelativo = cargos.reduce((max, cargo) => {
+    const match = cargo.codigo.trim().match(/^CAR-(\d+)$/i);
+    if (!match) return max;
+    const correlativo = Number.parseInt(match[1], 10);
+    return Number.isNaN(correlativo) ? max : Math.max(max, correlativo);
+  }, 0);
+
+  const siguiente = maxCorrelativo > 0 ? maxCorrelativo + 1 : cargos.length + 1;
+  return `CAR-${String(siguiente).padStart(3, "0")}`;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -318,18 +345,28 @@ export default function AreasCargosPage() {
           setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
         }
 
-        const [areaRows, cargoRows] = await Promise.all([getAreas(), getCargos()]);
+        const [areaRows, cargoRows] = await Promise.allSettled([getAreas(), getCargos()]);
         if (!mounted) return;
-        const mappedAreas = areaRows.map((row) => mapDbAreaToUi(row as DbArea));
-        const mappedCargos = cargoRows.map((row) => mapDbCargoToUi(row as DbCargo));
-        setAreas(mappedAreas);
-        setCargos(mappedCargos);
-      } catch {
-        if (mounted) {
+
+        if (areaRows.status === "fulfilled") {
+          const mappedAreas = areaRows.value.map((row) => mapDbAreaToUi(row as DbArea));
+          setAreas(mappedAreas);
+        } else {
           setAreas([]);
-          setCargos([]);
-          setAreasLoadError("No se pudo cargar la estructura de la empresa. Recarga la página para reintentar.");
+          setAreasLoadError("No se pudieron cargar las áreas de la empresa. Recarga la página para reintentar.");
         }
+
+        if (cargoRows.status === "fulfilled") {
+          const mappedCargos = cargoRows.value.map((row) => mapDbCargoToUi(row as DbCargo));
+          setCargos(mappedCargos);
+        } else {
+          setCargos([]);
+        }
+      } catch {
+        if (!mounted) return;
+        setAreas([]);
+        setCargos([]);
+        setAreasLoadError("No se pudo cargar la estructura de la empresa. Recarga la página para reintentar.");
       } finally {
         if (mounted) setAreasLoading(false);
       }
@@ -380,7 +417,10 @@ export default function AreasCargosPage() {
   // ─── Areas handlers ───
   function aOpenCreate() {
     setEditingAreaId(null);
-    setAForm(EMPTY_AREA_FORM);
+    setAForm({
+      ...EMPTY_AREA_FORM,
+      codigo: nextCodigoArea(areas),
+    });
     setAModalOpen(true);
   }
   function aOpenEdit(area: Area) {
