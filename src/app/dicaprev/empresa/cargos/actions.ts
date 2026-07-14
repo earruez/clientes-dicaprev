@@ -31,6 +31,25 @@ export type EvaluacionEliminacionCargo = {
   bloqueos: string[];
 };
 
+const cargoReadSelect = {
+  id: true,
+  nombre: true,
+  descripcion: true,
+  perfilSST: true,
+  riesgosClave: true,
+  documentosBase: true,
+  capacitacionesBase: true,
+  estado: true,
+  esCritico: true,
+  createdAt: true,
+  area: {
+    select: {
+      id: true,
+      nombre: true,
+    },
+  },
+} as const;
+
 function normalizeText(value?: string) {
   return (value ?? "").trim();
 }
@@ -79,7 +98,7 @@ async function validateAreaId(areaId: string | undefined, empresaId: string) {
 async function validateCargo(data: CargoInput) {
   const parsed = cargoInputSchema.parse(data);
   const descripcion = normalizeText(parsed.descripcion);
-  const perfilSstRequerido = normalizeText(parsed.perfilSstRequerido ?? parsed.perfilSST);
+  const perfilSST = normalizeText(parsed.perfilSstRequerido ?? parsed.perfilSST);
   const estado = normalizeText(parsed.estado) || "activo";
   const { empresaId } = await requirePermission("canManageEmpresa");
   const areaId = await validateAreaId(parsed.areaId, empresaId);
@@ -92,7 +111,7 @@ async function validateCargo(data: CargoInput) {
     nombre: parsed.nombre,
     areaId,
     descripcion: descripcion || null,
-    perfilSstRequerido: perfilSstRequerido || null,
+    perfilSST: perfilSST || null,
     riesgosClave,
     documentosBase,
     capacitacionesBase,
@@ -106,14 +125,7 @@ export async function getCargos() {
 
   return prisma.cargo.findMany({
     where: { empresaId },
-    include: {
-      area: {
-        select: {
-          id: true,
-          nombre: true,
-        },
-      },
-    },
+    select: cargoReadSelect,
     orderBy: { createdAt: "desc" },
   });
 }
@@ -123,14 +135,7 @@ export async function getCargoById(id: string) {
 
   return prisma.cargo.findFirst({
     where: { id, empresaId },
-    include: {
-      area: {
-        select: {
-          id: true,
-          nombre: true,
-        },
-      },
-    },
+    select: cargoReadSelect,
   });
 }
 
@@ -221,22 +226,14 @@ export async function crearCargo(data: CargoInput) {
       nombre: payload.nombre,
       areaId: payload.areaId,
       descripcion: payload.descripcion,
-      perfilSST: payload.perfilSstRequerido,
-      perfilSstRequerido: payload.perfilSstRequerido,
+      perfilSST: payload.perfilSST,
       riesgosClave: payload.riesgosClave,
       documentosBase: payload.documentosBase,
       capacitacionesBase: payload.capacitacionesBase,
       estado: payload.estado,
       esCritico: payload.esCritico,
     },
-    include: {
-      area: {
-        select: {
-          id: true,
-          nombre: true,
-        },
-      },
-    },
+    select: cargoReadSelect,
   });
 }
 
@@ -250,8 +247,7 @@ export async function actualizarCargo(id: string, data: CargoInput) {
       nombre: payload.nombre,
       areaId: payload.areaId,
       descripcion: payload.descripcion,
-      perfilSST: payload.perfilSstRequerido,
-      perfilSstRequerido: payload.perfilSstRequerido,
+      perfilSST: payload.perfilSST,
       riesgosClave: payload.riesgosClave,
       documentosBase: payload.documentosBase,
       capacitacionesBase: payload.capacitacionesBase,
@@ -266,14 +262,7 @@ export async function actualizarCargo(id: string, data: CargoInput) {
 
   return prisma.cargo.findFirstOrThrow({
     where: { id, empresaId },
-    include: {
-      area: {
-        select: {
-          id: true,
-          nombre: true,
-        },
-      },
-    },
+    select: cargoReadSelect,
   });
 }
 
@@ -292,14 +281,7 @@ export async function desactivarCargo(id: string) {
 
   return prisma.cargo.findFirstOrThrow({
     where: { id, empresaId },
-    include: {
-      area: {
-        select: {
-          id: true,
-          nombre: true,
-        },
-      },
-    },
+    select: cargoReadSelect,
   });
 }
 

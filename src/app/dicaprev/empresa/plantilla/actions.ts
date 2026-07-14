@@ -165,15 +165,14 @@ export async function aplicarPlantillaInicialEmpresa(
         areaId: areaIdByTemplateId.get(cargo.areaId) ?? null,
         descripcion: cargo.riesgosClave || null,
         perfilSST: cargo.riesgosClave || null,
-          perfilSstRequerido: cargo.riesgosClave || null,
-          riesgosClave: cargo.riesgosClave
-            ? cargo.riesgosClave
-                .split(",")
-                .map((item) => item.trim())
-                .filter((item) => item.length > 0)
-            : [],
-          documentosBase: cargo.documentosBase,
-          capacitacionesBase: cargo.capacitacionesBase,
+        riesgosClave: cargo.riesgosClave
+          ? cargo.riesgosClave
+              .split(",")
+              .map((item) => item.trim())
+              .filter((item) => item.length > 0)
+          : [],
+        documentosBase: cargo.documentosBase,
+        capacitacionesBase: cargo.capacitacionesBase,
         estado: "activo",
         esCritico: cargo.requiereDS44,
       },

@@ -32,7 +32,7 @@ type CargoCreateData = {
 };
 
 type CargoSstResult = {
-  perfilSstRequerido: string | null;
+  perfilSST: string | null;
   riesgosClave: string[];
   documentosBase: string[];
   capacitacionesBase: string[];
@@ -115,7 +115,7 @@ describe("Persistencia SST de cargos", () => {
     expect(cargos).toHaveLength(1);
 
     const cargo = cargos[0] as CargoSstResult;
-    expect(cargo.perfilSstRequerido).toBe("Prevencionista con experiencia");
+    expect(cargo.perfilSST).toBe("Prevencionista con experiencia");
     expect(cargo.riesgosClave).toEqual(["Trabajo en altura", "Riesgo eléctrico"]);
     expect(cargo.documentosBase).toEqual(["Credencial"]);
     expect(cargo.capacitacionesBase).toEqual(["Inducción SST", "Primeros auxilios"]);
