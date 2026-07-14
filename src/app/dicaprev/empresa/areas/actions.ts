@@ -110,12 +110,78 @@ async function calcularUsoArea(empresaId: string, areaId: string): Promise<AreaR
 function construirBloqueosArea(uso: AreaRelacionUso): string[] {
   const bloqueos: string[] = [];
   if (uso.trabajadores > 0) bloqueos.push(`${uso.trabajadores} trabajador(es) asociado(s)`);
-  if (uso.cargos > 0) bloqueos.push(`${uso.cargos} cargo(s) vinculado(s)`);
   if (uso.dotacion > 0) bloqueos.push(`${uso.dotacion} registro(s) de dotación`);
   if (uso.documentos > 0) bloqueos.push(`${uso.documentos} regla(s) documental(es)`);
   if (uso.actividades > 0) bloqueos.push(`${uso.actividades} actividad(es) asociada(s)`);
   if (uso.registros > 0) bloqueos.push(`${uso.registros} registro(s) asociado(s)`);
   return bloqueos;
+}
+
+type CargoBloqueoDetalle = {
+  cargoId: string;
+  nombre: string;
+  bloqueos: string[];
+};
+
+async function obtenerBloqueosPorCargo(empresaId: string, areaId: string): Promise<CargoBloqueoDetalle[]> {
+  const cargos = await prisma.cargo.findMany({
+    where: { empresaId, areaId },
+    select: { id: true, nombre: true },
+  });
+
+  const detalles = await Promise.all(
+    cargos.map(async (cargo) => {
+      const [trabajadores, dotacion, documentos, actividades, registros] = await Promise.all([
+        prisma.trabajador.count({
+          where: {
+            empresaId,
+            cargoId: cargo.id,
+          },
+        }),
+        prisma.posicionDotacion.count({
+          where: {
+            empresaId,
+            cargoId: cargo.id,
+          },
+        }),
+        prisma.reglaDocumentoTrabajador.count({
+          where: {
+            empresaId,
+            cargoId: cargo.id,
+          },
+        }),
+        prisma.planCapacitacionItem.count({
+          where: {
+            cargoId: cargo.id,
+            plan: {
+              empresaId,
+            },
+          },
+        }),
+        prisma.reglaCapacitacionCargo.count({
+          where: {
+            empresaId,
+            cargoId: cargo.id,
+          },
+        }),
+      ]);
+
+      const bloqueos: string[] = [];
+      if (trabajadores > 0) bloqueos.push(`${trabajadores} trabajador(es)`);
+      if (dotacion > 0) bloqueos.push(`${dotacion} registro(s) de dotación`);
+      if (documentos > 0) bloqueos.push(`${documentos} regla(s) documental(es)`);
+      if (actividades > 0) bloqueos.push(`${actividades} actividad(es)`);
+      if (registros > 0) bloqueos.push(`${registros} registro(s)`);
+
+      return {
+        cargoId: cargo.id,
+        nombre: cargo.nombre,
+        bloqueos,
+      };
+    }),
+  );
+
+  return detalles.filter((detalle) => detalle.bloqueos.length > 0);
 }
 
 export async function evaluarEliminacionArea(id: string): Promise<EvaluacionEliminacionArea> {
@@ -132,6 +198,11 @@ export async function evaluarEliminacionArea(id: string): Promise<EvaluacionElim
 
   const uso = await calcularUsoArea(empresaId, id);
   const bloqueos = construirBloqueosArea(uso);
+  const bloqueosPorCargo = await obtenerBloqueosPorCargo(empresaId, id);
+
+  for (const cargo of bloqueosPorCargo) {
+    bloqueos.push(`Cargo "${cargo.nombre}": ${cargo.bloqueos.join(", ")}`);
+  }
 
   return {
     puedeEliminarDefinitivo: bloqueos.length === 0,
@@ -202,16 +273,25 @@ export async function eliminarAreaDefinitiva(id: string) {
     throw new Error("No se puede eliminar definitivamente el área porque tiene relaciones activas.");
   }
 
-  const deleted = await prisma.area.deleteMany({
-    where: {
-      id,
-      empresaId,
-    },
-  });
+  await prisma.$transaction(async (tx) => {
+    await tx.cargo.deleteMany({
+      where: {
+        empresaId,
+        areaId: id,
+      },
+    });
 
-  if (deleted.count === 0) {
-    throw new Error("Área no encontrada en la empresa activa");
-  }
+    const deleted = await tx.area.deleteMany({
+      where: {
+        id,
+        empresaId,
+      },
+    });
+
+    if (deleted.count === 0) {
+      throw new Error("Área no encontrada en la empresa activa");
+    }
+  });
 
   return { ok: true };
 }
