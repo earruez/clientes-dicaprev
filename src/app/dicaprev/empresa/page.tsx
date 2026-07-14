@@ -114,8 +114,19 @@ export default function CompanyPage() {
   const [plantillaAplicada, setPlantillaAplicada] = useState<TipoEmpresa | null>(null);
 
   useEffect(() => {
-    empresaStore.init();
-    setPlantillaAplicada(empresaStore.getActivePlantillaTipo());
+    let mounted = true;
+
+    async function loadTemplateState() {
+      await empresaStore.init();
+      if (!mounted) return;
+      setPlantillaAplicada(empresaStore.getActivePlantillaTipo());
+    }
+
+    void loadTemplateState();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {

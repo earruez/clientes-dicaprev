@@ -151,10 +151,9 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
 }
 
 function emptyCargoForm(): CargoForm {
-  const areas = empresaStore.getAreas();
   return {
     nombre: "", codigo: "",
-    areaId: areas[0]?.id ?? "", areaNombre: areas[0]?.nombre ?? "",
+    areaId: "", areaNombre: "Sin área",
     tipo: "Operativo", descripcion: "", perfilSST: "",
     riesgosClave: "", requiereDS44: false,
     documentosBase: [], capacitacionesBase: [], estado: "activo",
@@ -272,7 +271,7 @@ export default function AreasCargosPage() {
   const [plantillaActiva, setPlantillaActiva] = useState<string | null>(null);
 
   // ── Areas state ──
-  const [areas, setAreas]                   = useState<Area[]>(() => empresaStore.getAreas());
+  const [areas, setAreas]                   = useState<Area[]>([]);
   const [aSearch, setASearch]               = useState("");
   const [aEstado, setAEstado]               = useState<AreaStatus | "todas">("todas");
   const [aConTrab, setAConTrab]             = useState(false);
@@ -304,27 +303,39 @@ export default function AreasCargosPage() {
   const [cargoSubmitError, setCargoSubmitError] = useState<string | null>(null);
   const [cargoSubmitting, setCargoSubmitting]   = useState(false);
   const [areasLoading, setAreasLoading]         = useState(false);
+  const [areasLoadError, setAreasLoadError]     = useState<string | null>(null);
 
   // ── Init ──
   useEffect(() => {
-    empresaStore.init();
-    setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
-
     let mounted = true;
     setAreasLoading(true);
-    Promise.all([getAreas(), getCargos()])
-      .then(([areaRows, cargoRows]) => {
+    setAreasLoadError(null);
+
+    async function loadData() {
+      try {
+        await empresaStore.init();
+        if (mounted) {
+          setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
+        }
+
+        const [areaRows, cargoRows] = await Promise.all([getAreas(), getCargos()]);
         if (!mounted) return;
         const mappedAreas = areaRows.map((row) => mapDbAreaToUi(row as DbArea));
         const mappedCargos = cargoRows.map((row) => mapDbCargoToUi(row as DbCargo));
         setAreas(mappedAreas);
         setCargos(mappedCargos);
-        empresaStore.setAreas(mappedAreas);
-        empresaStore.setCargos(mappedCargos);
-      })
-      .finally(() => {
+      } catch {
+        if (mounted) {
+          setAreas([]);
+          setCargos([]);
+          setAreasLoadError("No se pudo cargar la estructura de la empresa. Recarga la página para reintentar.");
+        }
+      } finally {
         if (mounted) setAreasLoading(false);
-      });
+      }
+    }
+
+    void loadData();
 
     return () => {
       mounted = false;
@@ -333,10 +344,10 @@ export default function AreasCargosPage() {
 
   // ── Store sync helpers ──
   function updateAreas(updater: (prev: Area[]) => Area[]) {
-    setAreas((prev) => { const next = updater(prev); empresaStore.setAreas(next); return next; });
+    setAreas((prev) => updater(prev));
   }
   function updateCargos(updater: (prev: Cargo[]) => Cargo[]) {
-    setCargos((prev) => { const next = updater(prev); empresaStore.setCargos(next); return next; });
+    setCargos((prev) => updater(prev));
   }
 
   // ── Cross-tab navigation: area → view its cargos ──
@@ -600,7 +611,7 @@ export default function AreasCargosPage() {
 
       const refreshed = await getCargos();
       const mappedCargos = refreshed.map((row) => mapDbCargoToUi(row as DbCargo));
-      updateCargos((_prev) => mappedCargos);
+      updateCargos(() => mappedCargos);
       if (editingCargoId) {
         const refreshedCargo = mappedCargos.find((cargo) => cargo.id === editingCargoId) ?? null;
         setDrawerCargo(refreshedCargo);
@@ -678,6 +689,13 @@ export default function AreasCargosPage() {
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-teal-600" />
                 <span className="flex-1">Estructura desde plantilla: <strong>{plantillaActiva}</strong></span>
                 <a href="/dicaprev/empresa" className="text-xs font-semibold underline underline-offset-2 hover:text-teal-600">Cambiar plantilla</a>
+              </div>
+            )}
+
+
+            {areasLoadError && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                {areasLoadError}
               </div>
             )}
 
