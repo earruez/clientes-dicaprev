@@ -158,6 +158,7 @@ export default function CargosPage() {
   const [cargos, setCargos]       = useState<Cargo[]>([]);
   const [areas, setAreas]         = useState<DbArea[]>([]);
   const [loading, setLoading]     = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   /* filters */
   const [search, setSearch]       = useState("");
@@ -175,14 +176,18 @@ export default function CargosPage() {
 
   // Initialise store on client mount and sync state
   useEffect(() => {
-    empresaStore.init();
-    setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
-
     let mounted = true;
     setLoading(true);
+    setLoadError(null);
 
-    Promise.all([getCargos(), getAreas()])
-      .then(([cargoRows, areaRows]) => {
+    async function loadData() {
+      try {
+        await empresaStore.init();
+        if (mounted) {
+          setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
+        }
+
+        const [cargoRows, areaRows] = await Promise.all([getCargos(), getAreas()]);
         if (!mounted) return;
 
         const mappedAreas = areaRows.map((area) => ({ id: area.id, nombre: area.nombre }));
@@ -190,11 +195,18 @@ export default function CargosPage() {
 
         setAreas(mappedAreas);
         setCargos(mappedCargos);
-        empresaStore.setCargos(mappedCargos);
-      })
-      .finally(() => {
+      } catch {
+        if (mounted) {
+          setAreas([]);
+          setCargos([]);
+          setLoadError("No se pudieron cargar los cargos de la empresa. Recarga la página para reintentar.");
+        }
+      } finally {
         if (mounted) setLoading(false);
-      });
+      }
+    }
+
+    void loadData();
 
     return () => {
       mounted = false;
@@ -205,7 +217,6 @@ export default function CargosPage() {
   function updateCargos(updater: (prev: Cargo[]) => Cargo[]) {
     setCargos((prev) => {
       const next = updater(prev);
-      empresaStore.setCargos(next);
       return next;
     });
   }
@@ -375,7 +386,7 @@ export default function CargosPage() {
 
       const refreshed = await getCargos();
       const mappedCargos = refreshed.map((cargo) => mapDbCargoToUi(cargo as DbCargo));
-      updateCargos((_prev) => mappedCargos);
+      updateCargos(() => mappedCargos);
       if (editingId) {
         const refreshedCargo = mappedCargos.find((cargo) => cargo.id === editingId) ?? null;
         setDrawerCargo(refreshedCargo);
@@ -421,6 +432,12 @@ export default function CargosPage() {
           <KpiCard icon={<FileText className="h-5 w-5 text-amber-600" />}       label="Documentos base"         value={kpiDocs}    bg="bg-amber-50" />
           <KpiCard icon={<GraduationCap className="h-5 w-5 text-emerald-600" />} label="Capacitaciones base"   value={kpiCaps}    bg="bg-emerald-50" />
         </div>
+
+        {loadError && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {loadError}
+          </div>
+        )}
 
         {/* ── PLANTILLA BANNER ── */}
         {plantillaActiva && (

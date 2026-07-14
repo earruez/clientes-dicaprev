@@ -13,7 +13,6 @@
  * No React — plain module singleton, safe to import from any component.
  */
 
-import { AREA_REFS, CARGO_REFS } from "./domain";
 import {
   PLANTILLAS,
   PLANTILLA_STORAGE_KEY,
@@ -88,93 +87,9 @@ export interface EmpresaStructure {
   tipoPlantilla: TipoEmpresa | null;
 }
 
-// ─── Default mock data (used when no template is active) ────────────────── //
-
-function cargosDeArea(areaId: string) {
-  return CARGO_REFS.filter((c) => c.areaId === areaId);
-}
-
-const DEFAULT_AREAS: EmpresaArea[] = [
-  {
-    ...AREA_REFS[0],
-    descripcion:
-      "Fabricación e instalación de ventanas y cerramientos de PVC y aluminio. Coordina cuadrillas en terreno, controla calidad de instalaciones y gestiona cumplimiento SST operativo.",
-    responsable: "Juan Muñoz Carvajal",
-    correoResponsable: "j.munoz@mvpchile.cl",
-    telefonoResponsable: "+56 9 8821 4402",
-    cargosIds: cargosDeArea("a01").map((c) => c.id),
-    cargosNombres: cargosDeArea("a01").map((c) => c.nombre),
-    tieneDs44: cargosDeArea("a01").some((c) => c.requiereDS44),
-    dotacionTotal: 5, asignadosTotal: 4, vacantesTotal: 1,
-    trabajadores: 4, cumplimientoPromedio: 58,
-    estado: "activa", creadaEl: "2024-01-10",
-  },
-  {
-    ...AREA_REFS[1],
-    descripcion:
-      "Gestión administrativa, soporte documental SST y coordinación de recursos humanos. Opera desde la sede central.",
-    responsable: "Cristina Reyes Soto",
-    correoResponsable: "c.reyes@mvpchile.cl",
-    telefonoResponsable: "+56 9 7741 3301",
-    cargosIds: cargosDeArea("a02").map((c) => c.id),
-    cargosNombres: cargosDeArea("a02").map((c) => c.nombre),
-    tieneDs44: cargosDeArea("a02").some((c) => c.requiereDS44),
-    dotacionTotal: 1, asignadosTotal: 1, vacantesTotal: 0,
-    trabajadores: 1, cumplimientoPromedio: 100,
-    estado: "activa", creadaEl: "2024-01-10",
-  },
-];
-
-const DEFAULT_CARGOS: EmpresaCargo[] = [
-  {
-    id: "c01", nombre: "Supervisor de Obra", codigo: "SUP-001",
-    areaId: "a01", areaNombre: "Producción e Instalación", tipo: "Supervisión",
-    descripcion: "Coordina cuadrillas de instalación, supervisa faenas en terreno y controla el cumplimiento SST en proyectos de ventanas PVC/aluminio.",
-    perfilSST: "Conocimiento trabajo en altura, procedimientos de seguridad en instalación.",
-    riesgosClave: "Trabajo en altura, coordinación de cuadrillas, herramientas eléctricas.",
-    requiereDS44: true,
-    documentosBase: ["Contrato de trabajo", "IRL firmada", "Notificación DS44", "Registro formación"],
-    capacitacionesBase: ["Inducción SST empresa", "IRL", "Trabajo en altura", "Investigación de incidentes", "Primeros auxilios"],
-    trabajadores: 1, centros: ["Sede Central MVP Chile"],
-    estado: "activo", creadoEl: "2024-01-10",
-  },
-  {
-    id: "c02", nombre: "Maestro PVC/Aluminio", codigo: "MPV-001",
-    areaId: "a01", areaNombre: "Producción e Instalación", tipo: "Técnico",
-    descripcion: "Fabrica e instala ventanas y cerramientos de PVC y aluminio. Opera en taller y en terreno.",
-    perfilSST: "Trabajo con herramientas eléctricas, riesgo de corte, ruido, polvo y trabajo en altura.",
-    riesgosClave: "Corte de perfiles, trabajo en altura, herramientas eléctricas, exposición a polvo.",
-    requiereDS44: true,
-    documentosBase: ["Contrato de trabajo", "IRL firmada", "Notificación DS44", "Certificado de competencia"],
-    capacitacionesBase: ["Inducción SST empresa", "IRL", "Trabajo en altura"],
-    trabajadores: 2, centros: ["Sede Central MVP Chile"],
-    estado: "activo", creadoEl: "2024-01-10",
-  },
-  {
-    id: "c03", nombre: "Instalador", codigo: "INS-001",
-    areaId: "a01", areaNombre: "Producción e Instalación", tipo: "Operativo",
-    descripcion: "Ejecuta la instalación de ventanas y cerramientos en obra. Opera en terreno bajo supervisión directa.",
-    perfilSST: "Trabajo en altura y andamios. Herramientas manuales y eléctricas.",
-    riesgosClave: "Trabajo en altura en fachadas, andamios, herramientas manuales y eléctricas, ruido.",
-    requiereDS44: true,
-    documentosBase: ["Contrato de trabajo", "IRL firmada", "Examen preocupacional"],
-    capacitacionesBase: ["Inducción SST empresa", "IRL", "Trabajo en altura"],
-    trabajadores: 1, centros: ["Sede Central MVP Chile"],
-    estado: "activo", creadoEl: "2024-01-10",
-  },
-  {
-    id: "c04", nombre: "Administrativa", codigo: "ADM-001",
-    areaId: "a02", areaNombre: "Administración", tipo: "Administración",
-    descripcion: "Gestiona documentación, facturación, coordinación de agenda y soporte administrativo general.",
-    perfilSST: "Ergonomía y pantallas. Pausas activas. Riesgo psicosocial.",
-    riesgosClave: "Trabajo repetitivo, pantalla, sedentarismo, carga mental.",
-    requiereDS44: false,
-    documentosBase: ["Contrato de trabajo", "Evaluación ergonómica"],
-    capacitacionesBase: ["Inducción SST empresa", "Ergonomía en oficina"],
-    trabajadores: 1, centros: ["Sede Central MVP Chile"],
-    estado: "activo", creadoEl: "2024-01-10",
-  },
-];
+type MePermissionsPayload = {
+  empresaId?: string;
+};
 
 // ─── Hydration helpers ────────────────────────────────────────────────── //
 
@@ -227,41 +142,37 @@ function hydrateCargos(saved: PlantillaAplicada): EmpresaCargo[] {
 
 // ─── Store ─────────────────────────────────────────────────────────────── //
 
-function loadInitialStructure(): EmpresaStructure {
+function buildScopedStorageKey(empresaId: string | null): string {
+  return `${PLANTILLA_STORAGE_KEY}:${empresaId ?? "sin-empresa"}`;
+}
+
+function loadInitialStructure(empresaId: string | null): EmpresaStructure {
   if (typeof window === "undefined") {
-    // SSR: return defaults, no localStorage access
-    return { areas: DEFAULT_AREAS, cargos: DEFAULT_CARGOS, tipoPlantilla: null };
+    // SSR: avoid localStorage and avoid mock data leakage.
+    return { areas: [], cargos: [], tipoPlantilla: null };
   }
   try {
-    const raw = localStorage.getItem(PLANTILLA_STORAGE_KEY);
+    const raw = localStorage.getItem(buildScopedStorageKey(empresaId));
     if (!raw) {
-      return { areas: DEFAULT_AREAS, cargos: DEFAULT_CARGOS, tipoPlantilla: null };
+      return { areas: [], cargos: [], tipoPlantilla: null };
     }
     const saved = JSON.parse(raw) as PlantillaAplicada;
     const hydratedAreas = hydrateAreas(saved);
     const hydratedCargos = hydrateCargos(saved);
     if (saved.modo === "agregar") {
-      const existingAreaIds = new Set(DEFAULT_AREAS.map((a) => a.id));
-      const existingCargoIds = new Set(DEFAULT_CARGOS.map((c) => c.id));
       return {
-        areas: [
-          ...DEFAULT_AREAS,
-          ...hydratedAreas.filter((a) => !existingAreaIds.has(a.id)),
-        ],
-        cargos: [
-          ...DEFAULT_CARGOS,
-          ...hydratedCargos.filter((c) => !existingCargoIds.has(c.id)),
-        ],
+        areas: hydratedAreas,
+        cargos: hydratedCargos,
         tipoPlantilla: saved.tipo,
       };
     }
     return { areas: hydratedAreas, cargos: hydratedCargos, tipoPlantilla: saved.tipo };
   } catch {
-    return { areas: DEFAULT_AREAS, cargos: DEFAULT_CARGOS, tipoPlantilla: null };
+    return { areas: [], cargos: [], tipoPlantilla: null };
   }
 }
 
-function persist(tipo: TipoEmpresa, modo: PlantillaModo): void {
+function persist(tipo: TipoEmpresa, modo: PlantillaModo, empresaId: string | null): void {
   if (typeof window === "undefined") return;
   const p = PLANTILLAS[tipo];
   const data: PlantillaAplicada = {
@@ -271,27 +182,41 @@ function persist(tipo: TipoEmpresa, modo: PlantillaModo): void {
     cargos: p.cargos,
     aplicadaEl: new Date().toISOString(),
   };
-  localStorage.setItem(PLANTILLA_STORAGE_KEY, JSON.stringify(data));
+  localStorage.setItem(buildScopedStorageKey(empresaId), JSON.stringify(data));
 }
 
-function clearPersistence(): void {
+function clearPersistence(empresaId: string | null): void {
   if (typeof window !== "undefined") {
-    localStorage.removeItem(PLANTILLA_STORAGE_KEY);
+    localStorage.removeItem(buildScopedStorageKey(empresaId));
   }
 }
 
 // ─── Singleton ─────────────────────────────────────────────────────────── //
 
 class EmpresaStore {
-  private _areas: EmpresaArea[] = DEFAULT_AREAS;
-  private _cargos: EmpresaCargo[] = DEFAULT_CARGOS;
+  private _areas: EmpresaArea[] = [];
+  private _cargos: EmpresaCargo[] = [];
   private _tipoPlantilla: TipoEmpresa | null = null;
+  private _empresaId: string | null = null;
   private _initialized = false;
 
   /** Must be called once on the client (in a useEffect). Safe to call multiple times. */
-  init(): void {
+  async init(): Promise<void> {
     if (this._initialized) return;
-    const s = loadInitialStructure();
+
+    if (typeof window !== "undefined") {
+      try {
+        const response = await fetch("/api/dicaprev/me/permissions", { cache: "no-store" });
+        if (response.ok) {
+          const payload = (await response.json()) as MePermissionsPayload;
+          this._empresaId = typeof payload.empresaId === "string" ? payload.empresaId : null;
+        }
+      } catch {
+        this._empresaId = null;
+      }
+    }
+
+    const s = loadInitialStructure(this._empresaId);
     this._areas = s.areas;
     this._cargos = s.cargos;
     this._tipoPlantilla = s.tipoPlantilla;
@@ -344,7 +269,7 @@ class EmpresaStore {
       throw new Error("El modo reemplazar queda pendiente para evitar afectar áreas o cargos existentes");
     }
 
-    persist(tipo, modo);
+    persist(tipo, modo, this._empresaId);
     const p = PLANTILLAS[tipo];
     const fake: PlantillaAplicada = {
       tipo,
@@ -377,9 +302,9 @@ class EmpresaStore {
 
   /** Reset to defaults and clear persistence. */
   clearTemplate(): void {
-    clearPersistence();
-    this._areas = DEFAULT_AREAS;
-    this._cargos = DEFAULT_CARGOS;
+    clearPersistence(this._empresaId);
+    this._areas = [];
+    this._cargos = [];
     this._tipoPlantilla = null;
   }
 }
