@@ -519,6 +519,10 @@ model Cargo {
   nombre      String
   descripcion String?
   perfilSST   String?
+  perfilSstRequerido String?
+  riesgosClave Json?
+  documentosBase Json?
+  capacitacionesBase Json?
   estado      String   @default("activo")
   esCritico   Boolean  @default(false)
   createdAt   DateTime @default(now())

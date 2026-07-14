@@ -74,6 +74,10 @@ type DbCargo = {
   nombre: string;
   descripcion: string | null;
   perfilSST: string | null;
+  perfilSstRequerido?: string | null;
+  riesgosClave?: unknown;
+  documentosBase?: unknown;
+  capacitacionesBase?: unknown;
   estado: string;
   esCritico: boolean;
   createdAt: Date;
@@ -82,6 +86,22 @@ type DbCargo = {
     nombre: string;
   } | null;
 };
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function riesgosToText(value: unknown): string {
+  return toStringArray(value).join("\n");
+}
+
+function riesgosToList(value: string): string[] {
+  return value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
 
 function areaCodeFromId(id: string) {
   return `AR-${id.slice(0, 4).toUpperCase()}`;
@@ -118,11 +138,11 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
     areaNombre: cargo.area?.nombre ?? "Sin área",
     tipo: "Operativo",
     descripcion: cargo.descripcion ?? "",
-    perfilSST: cargo.perfilSST ?? "",
-    riesgosClave: "",
+    perfilSST: cargo.perfilSstRequerido ?? cargo.perfilSST ?? "",
+    riesgosClave: riesgosToText(cargo.riesgosClave),
     requiereDS44: cargo.esCritico,
-    documentosBase: [],
-    capacitacionesBase: [],
+    documentosBase: toStringArray(cargo.documentosBase),
+    capacitacionesBase: toStringArray(cargo.capacitacionesBase),
     estado: cargo.estado === "inactivo" ? "inactivo" : "activo",
     trabajadores: 0,
     centros: [],
@@ -281,6 +301,8 @@ export default function AreasCargosPage() {
   const [cForm, setCForm]                       = useState<CargoForm>(emptyCargoForm());
   const [docInput, setDocInput]                 = useState("");
   const [capInput, setCapInput]                 = useState("");
+  const [cargoSubmitError, setCargoSubmitError] = useState<string | null>(null);
+  const [cargoSubmitting, setCargoSubmitting]   = useState(false);
   const [areasLoading, setAreasLoading]         = useState(false);
 
   // ── Init ──
@@ -453,6 +475,7 @@ export default function AreasCargosPage() {
   const cOpenCreate = useCallback(() => {
     setEditingCargoId(null);
     setCForm({ ...emptyCargoForm(), codigo: nextCodigoCargo(cargos) });
+    setCargoSubmitError(null);
     setDocInput(""); setCapInput("");
     setCModalOpen(true);
   }, [cargos]);
@@ -466,6 +489,7 @@ export default function AreasCargosPage() {
       documentosBase: [...c.documentosBase], capacitacionesBase: [...c.capacitacionesBase],
       estado: c.estado,
     });
+    setCargoSubmitError(null);
     setDocInput(""); setCapInput("");
     setCModalOpen(true);
     setDrawerCargo(null);
@@ -488,6 +512,10 @@ export default function AreasCargosPage() {
       areaId: current.areaId || undefined,
       descripcion: current.descripcion,
       perfilSST: current.perfilSST,
+      perfilSstRequerido: current.perfilSST,
+      riesgosClave: riesgosToList(current.riesgosClave),
+      documentosBase: current.documentosBase,
+      capacitacionesBase: current.capacitacionesBase,
       estado: "activo",
       esCritico: current.requiereDS44,
     });
@@ -548,32 +576,42 @@ export default function AreasCargosPage() {
     const area = areas.find((a) => a.id === cForm.areaId);
     const merged = { ...cForm, areaNombre: area?.nombre ?? "Sin área" };
 
-    if (editingCargoId) {
-      const updated = await actualizarCargo(editingCargoId, {
+    setCargoSubmitting(true);
+    setCargoSubmitError(null);
+    try {
+      const payload = {
         nombre: merged.nombre,
         areaId: merged.areaId || undefined,
         descripcion: merged.descripcion,
         perfilSST: merged.perfilSST,
+        perfilSstRequerido: merged.perfilSST,
+        riesgosClave: riesgosToList(merged.riesgosClave),
+        documentosBase: merged.documentosBase,
+        capacitacionesBase: merged.capacitacionesBase,
         estado: merged.estado,
         esCritico: merged.requiereDS44,
-      });
-      const mapped = mapDbCargoToUi(updated as DbCargo);
-      updateCargos((prev) => prev.map((c) => (c.id === editingCargoId ? { ...c, ...mapped } : c)));
-      setDrawerCargo((prev) => (prev?.id === editingCargoId ? { ...prev, ...mapped } : prev));
-    } else {
-      const created = await crearCargo({
-        nombre: merged.nombre,
-        areaId: merged.areaId || undefined,
-        descripcion: merged.descripcion,
-        perfilSST: merged.perfilSST,
-        estado: merged.estado,
-        esCritico: merged.requiereDS44,
-      });
-      const mapped = mapDbCargoToUi(created as DbCargo);
-      updateCargos((prev) => [mapped, ...prev]);
-    }
+      };
 
-    setCModalOpen(false);
+      if (editingCargoId) {
+        await actualizarCargo(editingCargoId, payload);
+      } else {
+        await crearCargo(payload);
+      }
+
+      const refreshed = await getCargos();
+      const mappedCargos = refreshed.map((row) => mapDbCargoToUi(row as DbCargo));
+      updateCargos((_prev) => mappedCargos);
+      if (editingCargoId) {
+        const refreshedCargo = mappedCargos.find((cargo) => cargo.id === editingCargoId) ?? null;
+        setDrawerCargo(refreshedCargo);
+      }
+
+      setCModalOpen(false);
+    } catch (error) {
+      setCargoSubmitError(error instanceof Error ? error.message : "No se pudo guardar el cargo.");
+    } finally {
+      setCargoSubmitting(false);
+    }
   }
   const cHasFilters = cSearch || cFArea !== "todas" || cFEstado !== "todos" || cFTipo !== "todos" || cFDs44;
 
@@ -1379,8 +1417,11 @@ export default function AreasCargosPage() {
               )}
             </FormSection>
             <DialogFooter className="pt-2">
+              {cargoSubmitError && (
+                <p className="w-full text-sm text-rose-600">{cargoSubmitError}</p>
+              )}
               <Button type="button" variant="outline" className="rounded-full px-5" onClick={() => setCModalOpen(false)}>Cancelar</Button>
-              <Button type="submit" className="rounded-full px-6 bg-violet-600 hover:bg-violet-700 text-white shadow-sm">
+              <Button type="submit" disabled={cargoSubmitting} className="rounded-full px-6 bg-violet-600 hover:bg-violet-700 text-white shadow-sm disabled:opacity-60">
                 {editingCargoId ? "Guardar cambios" : "Crear cargo"}
               </Button>
             </DialogFooter>
