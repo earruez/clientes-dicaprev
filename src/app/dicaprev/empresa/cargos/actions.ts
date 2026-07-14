@@ -2,12 +2,17 @@
 
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
+import { z } from "zod";
 
 type CargoInput = {
   nombre: string;
   areaId?: string;
   descripcion?: string;
   perfilSST?: string;
+  perfilSstRequerido?: string;
+  riesgosClave?: string[];
+  documentosBase?: string[];
+  capacitacionesBase?: string[];
   estado?: string;
   esCritico?: boolean;
 };
@@ -29,6 +34,26 @@ export type EvaluacionEliminacionCargo = {
 function normalizeText(value?: string) {
   return (value ?? "").trim();
 }
+
+function normalizeStringList(values: string[]) {
+  const cleaned = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return Array.from(new Set(cleaned));
+}
+
+const cargoInputSchema = z.object({
+  nombre: z.string().trim().min(1, "El nombre del cargo es obligatorio"),
+  areaId: z.string().optional(),
+  descripcion: z.string().optional(),
+  perfilSST: z.string().optional(),
+  perfilSstRequerido: z.string().optional(),
+  riesgosClave: z.array(z.string()).optional(),
+  documentosBase: z.array(z.string()).optional(),
+  capacitacionesBase: z.array(z.string()).optional(),
+  estado: z.string().optional(),
+  esCritico: z.boolean().optional(),
+});
 
 async function validateAreaId(areaId: string | undefined, empresaId: string) {
   const normalized = normalizeText(areaId);
@@ -52,24 +77,27 @@ async function validateAreaId(areaId: string | undefined, empresaId: string) {
 }
 
 async function validateCargo(data: CargoInput) {
-  const nombre = normalizeText(data.nombre);
-  const descripcion = normalizeText(data.descripcion);
-  const perfilSST = normalizeText(data.perfilSST);
-  const estado = normalizeText(data.estado) || "activo";
+  const parsed = cargoInputSchema.parse(data);
+  const descripcion = normalizeText(parsed.descripcion);
+  const perfilSstRequerido = normalizeText(parsed.perfilSstRequerido ?? parsed.perfilSST);
+  const estado = normalizeText(parsed.estado) || "activo";
   const { empresaId } = await requirePermission("canManageEmpresa");
-  const areaId = await validateAreaId(data.areaId, empresaId);
+  const areaId = await validateAreaId(parsed.areaId, empresaId);
 
-  if (!nombre) {
-    throw new Error("El nombre del cargo es obligatorio");
-  }
+  const riesgosClave = normalizeStringList(parsed.riesgosClave ?? []);
+  const documentosBase = normalizeStringList(parsed.documentosBase ?? []);
+  const capacitacionesBase = normalizeStringList(parsed.capacitacionesBase ?? []);
 
   return {
-    nombre,
+    nombre: parsed.nombre,
     areaId,
     descripcion: descripcion || null,
-    perfilSST: perfilSST || null,
+    perfilSstRequerido: perfilSstRequerido || null,
+    riesgosClave,
+    documentosBase,
+    capacitacionesBase,
     estado,
-    esCritico: Boolean(data.esCritico),
+    esCritico: Boolean(parsed.esCritico),
   };
 }
 
@@ -87,6 +115,22 @@ export async function getCargos() {
       },
     },
     orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function getCargoById(id: string) {
+  const { empresaId } = await requirePermission("canReadEmpresa");
+
+  return prisma.cargo.findFirst({
+    where: { id, empresaId },
+    include: {
+      area: {
+        select: {
+          id: true,
+          nombre: true,
+        },
+      },
+    },
   });
 }
 
@@ -177,7 +221,11 @@ export async function crearCargo(data: CargoInput) {
       nombre: payload.nombre,
       areaId: payload.areaId,
       descripcion: payload.descripcion,
-      perfilSST: payload.perfilSST,
+      perfilSST: payload.perfilSstRequerido,
+      perfilSstRequerido: payload.perfilSstRequerido,
+      riesgosClave: payload.riesgosClave,
+      documentosBase: payload.documentosBase,
+      capacitacionesBase: payload.capacitacionesBase,
       estado: payload.estado,
       esCritico: payload.esCritico,
     },
@@ -202,7 +250,11 @@ export async function actualizarCargo(id: string, data: CargoInput) {
       nombre: payload.nombre,
       areaId: payload.areaId,
       descripcion: payload.descripcion,
-      perfilSST: payload.perfilSST,
+      perfilSST: payload.perfilSstRequerido,
+      perfilSstRequerido: payload.perfilSstRequerido,
+      riesgosClave: payload.riesgosClave,
+      documentosBase: payload.documentosBase,
+      capacitacionesBase: payload.capacitacionesBase,
       estado: payload.estado,
       esCritico: payload.esCritico,
     },

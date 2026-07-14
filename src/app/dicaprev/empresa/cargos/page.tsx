@@ -85,11 +85,32 @@ type DbCargo = {
   nombre: string;
   descripcion: string | null;
   perfilSST: string | null;
+  perfilSstRequerido?: string | null;
+  riesgosClave?: unknown;
+  documentosBase?: unknown;
+  capacitacionesBase?: unknown;
   estado: string;
   esCritico: boolean;
   createdAt: Date;
   area: DbArea | null;
 };
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function riesgosToText(value: unknown): string {
+  const riesgos = toStringArray(value);
+  return riesgos.join("\n");
+}
+
+function riesgosToList(value: string): string[] {
+  return value
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
 
 function mapDbCargoToUi(cargo: DbCargo): Cargo {
   return {
@@ -100,11 +121,11 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
     areaNombre: cargo.area?.nombre ?? "Sin área",
     tipo: "Operativo",
     descripcion: cargo.descripcion ?? "",
-    perfilSST: cargo.perfilSST ?? "",
-    riesgosClave: "",
+    perfilSST: cargo.perfilSstRequerido ?? cargo.perfilSST ?? "",
+    riesgosClave: riesgosToText(cargo.riesgosClave),
     requiereDS44: cargo.esCritico,
-    documentosBase: [],
-    capacitacionesBase: [],
+    documentosBase: toStringArray(cargo.documentosBase),
+    capacitacionesBase: toStringArray(cargo.capacitacionesBase),
     estado: cargo.estado === "inactivo" ? "inactivo" : "activo",
     trabajadores: 0,
     centros: [],
@@ -186,6 +207,8 @@ export default function CargosPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm]           = useState<CargoForm>(emptyForm());
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   /* docs/caps input helpers */
   const [docInput, setDocInput]   = useState("");
@@ -218,6 +241,7 @@ export default function CargosPage() {
   const openCreate = useCallback(() => {
     setEditingId(null);
     setForm({ ...emptyForm(), codigo: nextCodigo(cargos) });
+    setSubmitError(null);
     setDocInput(""); setCapInput("");
     setModalOpen(true);
   }, [cargos]);
@@ -225,6 +249,7 @@ export default function CargosPage() {
   const openEdit = useCallback((c: Cargo) => {
     setEditingId(c.id);
     setForm({ nombre: c.nombre, codigo: c.codigo, areaId: c.areaId, areaNombre: c.areaNombre, tipo: c.tipo, descripcion: c.descripcion, perfilSST: c.perfilSST, riesgosClave: c.riesgosClave, requiereDS44: c.requiereDS44, documentosBase: [...c.documentosBase], capacitacionesBase: [...c.capacitacionesBase], estado: c.estado });
+    setSubmitError(null);
     setDocInput(""); setCapInput("");
     setModalOpen(true);
     setDrawerCargo(null);
@@ -247,6 +272,9 @@ export default function CargosPage() {
       areaId: current.areaId || undefined,
       descripcion: current.descripcion,
       perfilSST: current.perfilSST,
+        riesgosClave: riesgosToList(current.riesgosClave),
+        documentosBase: current.documentosBase,
+        capacitacionesBase: current.capacitacionesBase,
       estado: "activo",
       esCritico: current.requiereDS44,
     });
@@ -316,32 +344,42 @@ export default function CargosPage() {
     const area = areas.find((a) => a.id === form.areaId);
     const merged = { ...form, areaNombre: area?.nombre ?? "Sin área" };
 
-    if (isEdit && editingId) {
-      const updated = await actualizarCargo(editingId, {
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      const payload = {
         nombre: merged.nombre,
         areaId: merged.areaId || undefined,
         descripcion: merged.descripcion,
         perfilSST: merged.perfilSST,
+        perfilSstRequerido: merged.perfilSST,
+        riesgosClave: riesgosToList(merged.riesgosClave),
+        documentosBase: merged.documentosBase,
+        capacitacionesBase: merged.capacitacionesBase,
         estado: merged.estado,
         esCritico: merged.requiereDS44,
-      });
-      const mapped = mapDbCargoToUi(updated as DbCargo);
-      updateCargos((prev) => prev.map((c) => (c.id === editingId ? { ...c, ...mapped } : c)));
-      setDrawerCargo((prev) => (prev?.id === editingId ? { ...prev, ...mapped } : prev));
-    } else {
-      const created = await crearCargo({
-        nombre: merged.nombre,
-        areaId: merged.areaId || undefined,
-        descripcion: merged.descripcion,
-        perfilSST: merged.perfilSST,
-        estado: merged.estado,
-        esCritico: merged.requiereDS44,
-      });
-      const mapped = mapDbCargoToUi(created as DbCargo);
-      updateCargos((prev) => [mapped, ...prev]);
-    }
+      };
 
-    setModalOpen(false);
+      if (isEdit && editingId) {
+        await actualizarCargo(editingId, payload);
+      } else {
+        await crearCargo(payload);
+      }
+
+      const refreshed = await getCargos();
+      const mappedCargos = refreshed.map((cargo) => mapDbCargoToUi(cargo as DbCargo));
+      updateCargos((_prev) => mappedCargos);
+      if (editingId) {
+        const refreshedCargo = mappedCargos.find((cargo) => cargo.id === editingId) ?? null;
+        setDrawerCargo(refreshedCargo);
+      }
+
+      setModalOpen(false);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "No se pudo guardar el cargo.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const clearFilters = () => { setSearch(""); setFArea("todas"); setFEstado("todos"); setFTipo("todos"); setFDs44(false); };
@@ -796,8 +834,11 @@ export default function CargosPage() {
             </FormSection>
 
             <DialogFooter className="pt-2">
+              {submitError && (
+                <p className="w-full text-sm text-rose-600">{submitError}</p>
+              )}
               <Button type="button" variant="outline" className="rounded-full px-5" onClick={() => setModalOpen(false)}>Cancelar</Button>
-              <Button type="submit" className="rounded-full px-6 bg-violet-600 hover:bg-violet-700 text-white shadow-sm">
+              <Button type="submit" disabled={submitting} className="rounded-full px-6 bg-violet-600 hover:bg-violet-700 text-white shadow-sm disabled:opacity-60">
                 {isEdit ? "Guardar cambios" : "Crear cargo"}
               </Button>
             </DialogFooter>
