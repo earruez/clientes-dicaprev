@@ -17,6 +17,27 @@ type CargoRow = {
   area: { id: string; nombre: string } | null;
 };
 
+type CargoCreateData = {
+  empresaId: string;
+  areaId?: string | null;
+  nombre: string;
+  descripcion?: string | null;
+  perfilSST?: string | null;
+  perfilSstRequerido?: string | null;
+  riesgosClave?: string[];
+  documentosBase?: string[];
+  capacitacionesBase?: string[];
+  estado: string;
+  esCritico: boolean;
+};
+
+type CargoSstResult = {
+  perfilSstRequerido: string | null;
+  riesgosClave: string[];
+  documentosBase: string[];
+  capacitacionesBase: string[];
+};
+
 const prismaMock = vi.hoisted(() => ({
   area: {
     findFirst: vi.fn(),
@@ -52,7 +73,7 @@ describe("Persistencia SST de cargos", () => {
     requirePermissionMock.mockResolvedValue({ empresaId, usuarioId: "user-1" });
     prismaMock.area.findFirst.mockResolvedValue(null);
 
-    prismaMock.cargo.create.mockImplementation(async ({ data }: { data: any }) => {
+    prismaMock.cargo.create.mockImplementation(async ({ data }: { data: CargoCreateData }) => {
       const created: CargoRow = {
         id: "cargo-1",
         empresaId: data.empresaId,
@@ -93,7 +114,7 @@ describe("Persistencia SST de cargos", () => {
     const cargos = await getCargos();
     expect(cargos).toHaveLength(1);
 
-    const cargo = cargos[0] as any;
+    const cargo = cargos[0] as CargoSstResult;
     expect(cargo.perfilSstRequerido).toBe("Prevencionista con experiencia");
     expect(cargo.riesgosClave).toEqual(["Trabajo en altura", "Riesgo eléctrico"]);
     expect(cargo.documentosBase).toEqual(["Credencial"]);
