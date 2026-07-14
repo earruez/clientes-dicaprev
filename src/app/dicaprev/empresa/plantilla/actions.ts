@@ -10,6 +10,88 @@ type AplicarPlantillaResult = {
   cargosCreados: number;
 };
 
+async function eliminarCargosSinUso(empresaId: string) {
+  const cargos = await prisma.cargo.findMany({
+    where: { empresaId },
+    select: {
+      id: true,
+      _count: {
+        select: {
+          trabajadores: true,
+          posicionesDotacion: true,
+          reglasDocumentoTrabajador: true,
+          planCapacitacionItems: true,
+          reglasCapacitacionCargo: true,
+        },
+      },
+    },
+  });
+
+  const cargosEliminables = cargos
+    .filter((cargo) => {
+      const usoTotal =
+        cargo._count.trabajadores +
+        cargo._count.posicionesDotacion +
+        cargo._count.reglasDocumentoTrabajador +
+        cargo._count.planCapacitacionItems +
+        cargo._count.reglasCapacitacionCargo;
+      return usoTotal === 0;
+    })
+    .map((cargo) => cargo.id);
+
+  if (cargosEliminables.length === 0) {
+    return;
+  }
+
+  await prisma.cargo.deleteMany({
+    where: {
+      empresaId,
+      id: { in: cargosEliminables },
+    },
+  });
+}
+
+async function eliminarAreasSinUso(empresaId: string) {
+  const areas = await prisma.area.findMany({
+    where: { empresaId },
+    select: {
+      id: true,
+      _count: {
+        select: {
+          trabajadores: true,
+          cargos: true,
+          reglasDocumentoTrabajador: true,
+          planCapacitacionItems: true,
+          reglasCapacitacionCargo: true,
+        },
+      },
+    },
+  });
+
+  const areasEliminables = areas
+    .filter((area) => {
+      const usoTotal =
+        area._count.trabajadores +
+        area._count.cargos +
+        area._count.reglasDocumentoTrabajador +
+        area._count.planCapacitacionItems +
+        area._count.reglasCapacitacionCargo;
+      return usoTotal === 0;
+    })
+    .map((area) => area.id);
+
+  if (areasEliminables.length === 0) {
+    return;
+  }
+
+  await prisma.area.deleteMany({
+    where: {
+      empresaId,
+      id: { in: areasEliminables },
+    },
+  });
+}
+
 function getPlantilla(tipo: TipoEmpresa) {
   const plantilla = PLANTILLAS[tipo];
 
@@ -24,15 +106,16 @@ export async function aplicarPlantillaInicialEmpresa(
   tipo: TipoEmpresa,
   modo: PlantillaModo,
 ): Promise<AplicarPlantillaResult> {
-  if (modo !== "agregar") {
-    throw new Error("El modo reemplazar queda pendiente para evitar afectar áreas o cargos existentes");
-  }
-
   const { empresaId } = await requirePermission("canManageEmpresa");
   const plantilla = getPlantilla(tipo);
   let areasCreadas = 0;
   let cargosCreados = 0;
   const areaIdByTemplateId = new Map<string, string>();
+
+  if (modo === "reemplazar") {
+    await eliminarCargosSinUso(empresaId);
+    await eliminarAreasSinUso(empresaId);
+  }
 
   for (const area of plantilla.areas) {
     const existing = await prisma.area.findFirst({
