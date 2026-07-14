@@ -10,6 +10,17 @@ type AplicarPlantillaResult = {
   cargosCreados: number;
 };
 
+const CARGO_META_PREFIX = "__NEXTPREV_CARGO_META__";
+
+function encodeCargoCompatMeta(input: {
+  descripcion: string | null;
+  riesgosClave: string[];
+  documentosBase: string[];
+  capacitacionesBase: string[];
+}) {
+  return `${CARGO_META_PREFIX}${JSON.stringify(input)}`;
+}
+
 async function eliminarCargosSinUso(empresaId: string) {
   const cargos = await prisma.cargo.findMany({
     where: { empresaId },
@@ -163,7 +174,17 @@ export async function aplicarPlantillaInicialEmpresa(
         empresaId,
         nombre: cargo.nombre,
         areaId: areaIdByTemplateId.get(cargo.areaId) ?? null,
-        descripcion: cargo.riesgosClave || null,
+        descripcion: encodeCargoCompatMeta({
+          descripcion: cargo.riesgosClave || null,
+          riesgosClave: cargo.riesgosClave
+            ? cargo.riesgosClave
+                .split(",")
+                .map((item) => item.trim())
+                .filter((item) => item.length > 0)
+            : [],
+          documentosBase: cargo.documentosBase,
+          capacitacionesBase: cargo.capacitacionesBase,
+        }),
         perfilSST: cargo.riesgosClave || null,
         estado: "activo",
         esCritico: cargo.requiereDS44,

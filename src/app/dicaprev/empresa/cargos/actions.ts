@@ -31,6 +31,29 @@ export type EvaluacionEliminacionCargo = {
   bloqueos: string[];
 };
 
+const CARGO_META_PREFIX = "__NEXTPREV_CARGO_META__";
+
+type CargoCompatMeta = {
+  descripcion: string | null;
+  riesgosClave: string[];
+  documentosBase: string[];
+  capacitacionesBase: string[];
+};
+
+type CargoRow = {
+  id: string;
+  nombre: string;
+  descripcion: string | null;
+  perfilSST: string | null;
+  estado: string;
+  esCritico: boolean;
+  createdAt: Date;
+  area: {
+    id: string;
+    nombre: string;
+  } | null;
+};
+
 const cargoReadSelect = {
   id: true,
   nombre: true,
@@ -56,6 +79,60 @@ function normalizeStringList(values: string[]) {
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
   return Array.from(new Set(cleaned));
+}
+
+function encodeCargoCompatMeta(meta: CargoCompatMeta): string {
+  return `${CARGO_META_PREFIX}${JSON.stringify(meta)}`;
+}
+
+function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
+  if (!value) {
+    return {
+      descripcion: null,
+      riesgosClave: [],
+      documentosBase: [],
+      capacitacionesBase: [],
+    };
+  }
+
+  if (!value.startsWith(CARGO_META_PREFIX)) {
+    return {
+      descripcion: value,
+      riesgosClave: [],
+      documentosBase: [],
+      capacitacionesBase: [],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(value.slice(CARGO_META_PREFIX.length)) as Partial<CargoCompatMeta>;
+    return {
+      descripcion: typeof parsed.descripcion === "string" ? parsed.descripcion : null,
+      riesgosClave: Array.isArray(parsed.riesgosClave) ? normalizeStringList(parsed.riesgosClave) : [],
+      documentosBase: Array.isArray(parsed.documentosBase) ? normalizeStringList(parsed.documentosBase) : [],
+      capacitacionesBase: Array.isArray(parsed.capacitacionesBase) ? normalizeStringList(parsed.capacitacionesBase) : [],
+    };
+  } catch {
+    return {
+      descripcion: value,
+      riesgosClave: [],
+      documentosBase: [],
+      capacitacionesBase: [],
+    };
+  }
+}
+
+function hydrateCargo(row: CargoRow) {
+  const meta = decodeCargoCompatMeta(row.descripcion);
+
+  return {
+    ...row,
+    descripcion: meta.descripcion,
+    perfilSstRequerido: row.perfilSST,
+    riesgosClave: meta.riesgosClave,
+    documentosBase: meta.documentosBase,
+    capacitacionesBase: meta.capacitacionesBase,
+  };
 }
 
 const cargoInputSchema = z.object({
@@ -120,20 +197,24 @@ async function validateCargo(data: CargoInput) {
 export async function getCargos() {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
-  return prisma.cargo.findMany({
+  const rows = await prisma.cargo.findMany({
     where: { empresaId },
     select: cargoReadSelect,
     orderBy: { createdAt: "desc" },
   });
+
+  return rows.map((row) => hydrateCargo(row as CargoRow));
 }
 
 export async function getCargoById(id: string) {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
-  return prisma.cargo.findFirst({
+  const row = await prisma.cargo.findFirst({
     where: { id, empresaId },
     select: cargoReadSelect,
   });
+
+  return row ? hydrateCargo(row as CargoRow) : null;
 }
 
 async function calcularUsoCargo(empresaId: string, cargoId: string): Promise<CargoRelacionUso> {
@@ -217,18 +298,25 @@ export async function crearCargo(data: CargoInput) {
   const { empresaId } = await requirePermission("canManageEmpresa");
   const payload = await validateCargo(data);
 
-  return prisma.cargo.create({
+  const created = await prisma.cargo.create({
     data: {
       empresaId,
       nombre: payload.nombre,
       areaId: payload.areaId,
-      descripcion: payload.descripcion,
+      descripcion: encodeCargoCompatMeta({
+        descripcion: payload.descripcion,
+        riesgosClave: payload.riesgosClave,
+        documentosBase: payload.documentosBase,
+        capacitacionesBase: payload.capacitacionesBase,
+      }),
       perfilSST: payload.perfilSST,
       estado: payload.estado,
       esCritico: payload.esCritico,
     },
     select: cargoReadSelect,
   });
+
+  return hydrateCargo(created as CargoRow);
 }
 
 export async function actualizarCargo(id: string, data: CargoInput) {
@@ -240,7 +328,12 @@ export async function actualizarCargo(id: string, data: CargoInput) {
     data: {
       nombre: payload.nombre,
       areaId: payload.areaId,
-      descripcion: payload.descripcion,
+      descripcion: encodeCargoCompatMeta({
+        descripcion: payload.descripcion,
+        riesgosClave: payload.riesgosClave,
+        documentosBase: payload.documentosBase,
+        capacitacionesBase: payload.capacitacionesBase,
+      }),
       perfilSST: payload.perfilSST,
       estado: payload.estado,
       esCritico: payload.esCritico,
@@ -251,10 +344,12 @@ export async function actualizarCargo(id: string, data: CargoInput) {
     throw new Error("Cargo no encontrado en la empresa activa");
   }
 
-  return prisma.cargo.findFirstOrThrow({
+  const row = await prisma.cargo.findFirstOrThrow({
     where: { id, empresaId },
     select: cargoReadSelect,
   });
+
+  return hydrateCargo(row as CargoRow);
 }
 
 export async function desactivarCargo(id: string) {
@@ -270,10 +365,12 @@ export async function desactivarCargo(id: string) {
     throw new Error("Cargo no encontrado en la empresa activa");
   }
 
-  return prisma.cargo.findFirstOrThrow({
+  const row = await prisma.cargo.findFirstOrThrow({
     where: { id, empresaId },
     select: cargoReadSelect,
   });
+
+  return hydrateCargo(row as CargoRow);
 }
 
 export async function eliminarCargoDefinitivo(id: string) {
