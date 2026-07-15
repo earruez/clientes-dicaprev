@@ -103,6 +103,8 @@ type DbCargo = {
   estado: string;
   esCritico: boolean;
   createdAt: Date | string;
+  trabajadores?: number;
+  centros?: string[];
   area: DbArea | null;
 };
 
@@ -183,8 +185,8 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
     documentosBase: toStringArray(cargo.documentosBase),
     capacitacionesBase: toStringArray(cargo.capacitacionesBase),
     estado: cargo.estado === "inactivo" ? "inactivo" : "activo",
-    trabajadores: 0,
-    centros: [],
+    trabajadores: typeof cargo.trabajadores === "number" ? cargo.trabajadores : 0,
+    centros: Array.isArray(cargo.centros) ? cargo.centros : [],
     creadoEl: toDateYmd(cargo.createdAt),
   };
 }
