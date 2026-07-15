@@ -18,7 +18,7 @@ async function fetchTrabajadorById(id: string, empresaId: string) {
     include: {
       centroTrabajo: { select: { id: true, nombre: true } },
       area: { select: { id: true, nombre: true } },
-      cargo: { select: { id: true, nombre: true } },
+      cargo: { select: { id: true, nombre: true, esCritico: true } },
       posicionDotacion: { select: { id: true } },
       documentos: { select: { estado: true } },
     },
@@ -53,6 +53,31 @@ function parseDateOnly(value: string): Date | null {
   return parsed;
 }
 
+function normalizeRutComparable(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/[^0-9kK]/g, "")
+    .toUpperCase();
+}
+
+async function assertRutDisponible(input: { empresaId: string; rut: string | null; excludeTrabajadorId?: string }) {
+  const rutComparable = normalizeRutComparable(input.rut);
+  if (!rutComparable) return;
+
+  const rows = await prisma.trabajador.findMany({
+    where: {
+      empresaId: input.empresaId,
+      rut: { not: null },
+      ...(input.excludeTrabajadorId ? { id: { not: input.excludeTrabajadorId } } : {}),
+    },
+    select: { id: true, rut: true },
+  });
+
+  const duplicated = rows.some((row) => normalizeRutComparable(row.rut) === rutComparable);
+  if (duplicated) {
+    throw new Error("Ya existe un trabajador con ese RUT en la empresa.");
+  }
+}
+
 function normalizeWorker(row: NonNullable<DbTrabajador>): Worker {
   const documentosPendientes = row.documentos.filter((d) => d.estado !== "completo").length;
 
@@ -72,6 +97,7 @@ function normalizeWorker(row: NonNullable<DbTrabajador>): Worker {
     tipoContrato: mapDbContratoToUi(row.tipoContrato),
     documentosPendientes,
     capacitacionesPendientes: 0,
+    cargoEsCritico: Boolean(row.cargo?.esCritico),
     dotacionId: row.posicionDotacion?.id,
   };
 }
@@ -198,7 +224,7 @@ export async function getTrabajadores(): Promise<Worker[]> {
     include: {
       centroTrabajo: { select: { id: true, nombre: true } },
       area: { select: { id: true, nombre: true } },
-      cargo: { select: { id: true, nombre: true } },
+      cargo: { select: { id: true, nombre: true, esCritico: true } },
       posicionDotacion: { select: { id: true } },
       documentos: { select: { estado: true } },
     },
@@ -211,6 +237,7 @@ export async function getTrabajadores(): Promise<Worker[]> {
 export async function createTrabajador(worker: Worker): Promise<Worker> {
   const { empresaId, usuarioId, email } = await requirePermission("canCreateTrabajador");
   const payload = await toDbPayload(worker, empresaId);
+  await assertRutDisponible({ empresaId, rut: payload.rut });
 
   const created = await prisma.trabajador.create({
     data: {
@@ -250,6 +277,7 @@ export async function createTrabajador(worker: Worker): Promise<Worker> {
 export async function updateTrabajador(worker: Worker): Promise<Worker> {
   const { empresaId, usuarioId, email } = await requirePermission("canUpdateTrabajador");
   const payload = await toDbPayload(worker, empresaId);
+  await assertRutDisponible({ empresaId, rut: payload.rut, excludeTrabajadorId: worker.id });
 
   await prisma.trabajador.updateMany({
     where: { id: worker.id, empresaId },
@@ -289,16 +317,74 @@ export async function deleteTrabajador(id: string): Promise<Worker> {
   return normalizeWorker(row);
 }
 
+export async function generarInduccionTrabajador(id: string): Promise<{ creada: boolean }> {
+  const { empresaId, usuarioId } = await requirePermission("canCreateTrabajador");
+
+  const trabajador = await prisma.trabajador.findFirst({
+    where: {
+      id,
+      empresaId,
+      estado: {
+        notIn: ["inactivo", "Inactivo"],
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!trabajador) {
+    throw new Error("Trabajador no encontrado o inactivo");
+  }
+
+  const prevCount = await prisma.induccionTrabajador.count({
+    where: {
+      empresaId,
+      trabajadorId: id,
+      estado: {
+        in: ["pendiente", "en_progreso"],
+      },
+    },
+  });
+
+  await crearInduccionAutomaticaSiCorresponde({
+    empresaId,
+    trabajadorId: id,
+    usuarioId,
+  });
+
+  const nextCount = await prisma.induccionTrabajador.count({
+    where: {
+      empresaId,
+      trabajadorId: id,
+      estado: {
+        in: ["pendiente", "en_progreso"],
+      },
+    },
+  });
+
+  return { creada: nextCount > prevCount };
+}
+
 export type OpcionesTrabajador = {
   cargos: { id: string; nombre: string; areaNombre: string | null }[];
   areas: { id: string; nombre: string }[];
   centros: { id: string; nombre: string }[];
+  posicionesDotacion: {
+    id: string;
+    codigo: string;
+    centroTrabajoId: string;
+    centroNombre: string;
+    cargoId: string;
+    cargoNombre: string;
+    cantidad: number;
+    asignados: number;
+    vacantes: number;
+  }[];
 };
 
 export async function getOpcionesTrabajador(): Promise<OpcionesTrabajador> {
   const { empresaId } = await requirePermission("canReadTrabajadores");
 
-  const [cargos, areas, centros] = await Promise.all([
+  const [cargos, areas, centros, posiciones] = await Promise.all([
     prisma.cargo.findMany({
       where: { empresaId, estado: "activo" },
       select: { id: true, nombre: true, areaId: true },
@@ -314,6 +400,19 @@ export async function getOpcionesTrabajador(): Promise<OpcionesTrabajador> {
       select: { id: true, nombre: true },
       orderBy: { nombre: "asc" },
     }),
+    prisma.posicionDotacion.findMany({
+      where: { empresaId, estado: "activa" },
+      select: {
+        id: true,
+        cantidad: true,
+        centroTrabajoId: true,
+        cargoId: true,
+        centroTrabajo: { select: { id: true, nombre: true } },
+        cargo: { select: { id: true, nombre: true } },
+        trabajadores: { select: { estado: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   return {
@@ -324,5 +423,19 @@ export async function getOpcionesTrabajador(): Promise<OpcionesTrabajador> {
     })),
     areas:  areas.map((a) => ({ id: a.id, nombre: a.nombre })),
     centros: centros.map((c) => ({ id: c.id, nombre: c.nombre })),
+    posicionesDotacion: posiciones.map((p) => {
+      const asignados = p.trabajadores.filter((w) => w.estado === "activo").length;
+      return {
+        id: p.id,
+        codigo: `DOT-${p.id.slice(0, 4).toUpperCase()}`,
+        centroTrabajoId: p.centroTrabajoId,
+        centroNombre: p.centroTrabajo.nombre,
+        cargoId: p.cargoId,
+        cargoNombre: p.cargo.nombre,
+        cantidad: p.cantidad,
+        asignados,
+        vacantes: Math.max(0, p.cantidad - asignados),
+      };
+    }),
   };
 }

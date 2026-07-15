@@ -24,6 +24,31 @@ function normalizeText(value?: string) {
   return (value ?? "").trim();
 }
 
+function normalizeRutComparable(value?: string | null): string {
+  return (value ?? "")
+    .replace(/[^0-9kK]/g, "")
+    .toUpperCase();
+}
+
+async function assertRutDisponible(input: { empresaId: string; rut?: string | null; excludeTrabajadorId?: string }) {
+  const rutComparable = normalizeRutComparable(input.rut);
+  if (!rutComparable) return;
+
+  const rows = await prisma.trabajador.findMany({
+    where: {
+      empresaId: input.empresaId,
+      rut: { not: null },
+      ...(input.excludeTrabajadorId ? { id: { not: input.excludeTrabajadorId } } : {}),
+    },
+    select: { id: true, rut: true },
+  });
+
+  const duplicated = rows.some((row) => normalizeRutComparable(row.rut) === rutComparable);
+  if (duplicated) {
+    throw new Error("Ya existe un trabajador con ese RUT en la empresa configurada");
+  }
+}
+
 async function validateCentroTrabajoId(centroTrabajoId: string | undefined, empresaId: string) {
   const normalized = normalizeText(centroTrabajoId);
   if (!normalized) return null;
@@ -241,6 +266,7 @@ export async function getTrabajadores() {
 export async function crearTrabajador(data: TrabajadorInput) {
   const { empresaId, usuarioId, email } = await requirePermission("canCreateTrabajador");
   const payload = await validateTrabajador(data);
+  await assertRutDisponible({ empresaId, rut: payload.rut });
 
   const trabajador = await prisma.trabajador.create({
     data: {
@@ -278,9 +304,10 @@ export async function crearTrabajador(data: TrabajadorInput) {
 }
 
 export async function actualizarTrabajador(id: string, data: TrabajadorInput) {
-  await requirePermission("canUpdateTrabajador");
+  const { empresaId } = await requirePermission("canUpdateTrabajador");
   await ensureTrabajadorEmpresa(id);
   const payload = await validateTrabajador(data);
+  await assertRutDisponible({ empresaId, rut: payload.rut, excludeTrabajadorId: id });
 
   return prisma.trabajador.update({
     where: { id },

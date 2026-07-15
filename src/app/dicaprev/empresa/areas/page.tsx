@@ -43,6 +43,7 @@ import {
   evaluarEliminacionCargo,
   eliminarCargoDefinitivo,
 } from "@/app/dicaprev/empresa/cargos/actions";
+import { getDotacion } from "@/app/dicaprev/empresa/puestos/actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,11 @@ type DbArea = {
   nombre: string;
   descripcion: string | null;
   estado: string;
+  cargos?: Array<{
+    id: string;
+    nombre: string;
+    esCritico: boolean;
+  }>;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -72,6 +78,7 @@ type DbArea = {
 type DbCargo = {
   id: string;
   nombre: string;
+  tipo?: unknown;
   descripcion: string | null;
   perfilSST: string | null;
   perfilSstRequerido?: string | null;
@@ -81,15 +88,33 @@ type DbCargo = {
   estado: string;
   esCritico: boolean;
   createdAt: Date;
+  trabajadores?: number;
+  centros?: string[];
   area: {
     id: string;
     nombre: string;
   } | null;
 };
 
+type DotacionRow = {
+  cargo?: {
+    id: string;
+  } | null;
+  cantidad: number;
+  asignados: number;
+  vacantes: number;
+  estado?: string | null;
+};
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string");
+}
+
+function toCargoTipo(value: unknown): CargoTipoUI {
+  const allowed: CargoTipoUI[] = ["Operativo", "Supervisión", "Administración", "Prevención", "Técnico"];
+  if (typeof value !== "string") return "Operativo";
+  return allowed.includes(value as CargoTipoUI) ? (value as CargoTipoUI) : "Operativo";
 }
 
 function riesgosToText(value: unknown): string {
@@ -127,6 +152,7 @@ function nextCodigoArea(areas: Area[]): string {
 }
 
 function mapDbAreaToUi(area: DbArea): Area {
+  const cargosActivos = Array.isArray(area.cargos) ? area.cargos : [];
   return {
     id: area.id,
     nombre: area.nombre,
@@ -135,14 +161,14 @@ function mapDbAreaToUi(area: DbArea): Area {
     responsable: "",
     correoResponsable: "",
     telefonoResponsable: "",
-    cargosNombres: [],
-    cargosIds: [],
+    cargosNombres: cargosActivos.map((cargo) => cargo.nombre),
+    cargosIds: cargosActivos.map((cargo) => cargo.id),
     dotacionTotal: 0,
     asignadosTotal: 0,
     vacantesTotal: 0,
     trabajadores: 0,
     cumplimientoPromedio: 0,
-    tieneDs44: false,
+    tieneDs44: cargosActivos.some((cargo) => cargo.esCritico),
     estado: area.estado === "inactiva" ? "inactiva" : "activa",
     creadaEl: toDateYmd(area.createdAt),
   };
@@ -152,10 +178,10 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
   return {
     id: cargo.id,
     nombre: cargo.nombre,
-    codigo: `CAR-${cargo.id.slice(0, 4).toUpperCase()}`,
+    codigo: "CAR-" + cargo.id.slice(0, 4).toUpperCase(),
     areaId: cargo.area?.id ?? "",
     areaNombre: cargo.area?.nombre ?? "Sin área",
-    tipo: "Operativo",
+    tipo: toCargoTipo(cargo.tipo),
     descripcion: cargo.descripcion ?? "",
     perfilSST: cargo.perfilSstRequerido ?? cargo.perfilSST ?? "",
     riesgosClave: riesgosToText(cargo.riesgosClave),
@@ -163,8 +189,8 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
     documentosBase: toStringArray(cargo.documentosBase),
     capacitacionesBase: toStringArray(cargo.capacitacionesBase),
     estado: cargo.estado === "inactivo" ? "inactivo" : "activo",
-    trabajadores: 0,
-    centros: [],
+    trabajadores: typeof cargo.trabajadores === "number" ? cargo.trabajadores : 0,
+    centros: Array.isArray(cargo.centros) ? cargo.centros : [],
     creadoEl: toDateYmd(cargo.createdAt),
   };
 }
@@ -331,6 +357,7 @@ export default function AreasCargosPage() {
   const [cargoSubmitting, setCargoSubmitting]   = useState(false);
   const [areasLoading, setAreasLoading]         = useState(false);
   const [areasLoadError, setAreasLoadError]     = useState<string | null>(null);
+  const [dotacionRows, setDotacionRows]         = useState<DotacionRow[]>([]);
 
   // ── Init ──
   useEffect(() => {
@@ -345,7 +372,11 @@ export default function AreasCargosPage() {
           setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
         }
 
-        const [areaRows, cargoRows] = await Promise.allSettled([getAreas(), getCargos()]);
+        const [areaRows, cargoRows, dotacionRowsResult] = await Promise.allSettled([
+          getAreas(),
+          getCargos(),
+          getDotacion(),
+        ]);
         if (!mounted) return;
 
         if (areaRows.status === "fulfilled") {
@@ -362,10 +393,17 @@ export default function AreasCargosPage() {
         } else {
           setCargos([]);
         }
+
+        if (dotacionRowsResult.status === "fulfilled") {
+          setDotacionRows(dotacionRowsResult.value as DotacionRow[]);
+        } else {
+          setDotacionRows([]);
+        }
       } catch {
         if (!mounted) return;
         setAreas([]);
         setCargos([]);
+        setDotacionRows([]);
         setAreasLoadError("No se pudo cargar la estructura de la empresa. Recarga la página para reintentar.");
       } finally {
         if (mounted) setAreasLoading(false);
@@ -395,24 +433,60 @@ export default function AreasCargosPage() {
   }
 
   // ─── Areas KPIs ───
-  const aActivas     = useMemo(() => areas.filter((a) => a.estado === "activa").length, [areas]);
-  const aTotalCargos = useMemo(() => areas.reduce((acc, a) => acc + a.cargosNombres.length, 0), [areas]);
-  const aTotalDot    = useMemo(() => areas.reduce((acc, a) => acc + a.dotacionTotal, 0), [areas]);
-  const aTotalTrab   = useMemo(() => areas.reduce((acc, a) => acc + a.trabajadores, 0), [areas]);
-  const aAreasDs44   = useMemo(() => areas.filter((a) => a.tieneDs44).length, [areas]);
+  const areasConMetricas = useMemo(() => {
+    const cargoAreaMap = new Map<string, string>();
+    for (const cargo of cargos) {
+      if (cargo.areaId) cargoAreaMap.set(cargo.id, cargo.areaId);
+    }
+
+    return areas.map((area) => {
+      const cargosArea = cargos.filter((cargo) => cargo.areaId === area.id && cargo.estado === "activo");
+      const nombres = new Set<string>([...area.cargosNombres, ...cargosArea.map((cargo) => cargo.nombre)]);
+      const ids = new Set<string>([...area.cargosIds, ...cargosArea.map((cargo) => cargo.id)]);
+      const tieneDs44 = area.tieneDs44 || cargosArea.some((cargo) => cargo.requiereDS44);
+      const trabajadores = cargosArea.reduce((acc, cargo) => acc + cargo.trabajadores, 0);
+
+      const dotacionArea = dotacionRows.filter((row) => {
+        const areaId = row.cargo?.id ? cargoAreaMap.get(row.cargo.id) : null;
+        const estado = (row.estado ?? "").toLowerCase();
+        return areaId === area.id && estado !== "inactiva";
+      });
+
+      const dotacionTotal = dotacionArea.reduce((acc, row) => acc + Math.max(0, row.cantidad ?? 0), 0);
+      const asignadosTotal = dotacionArea.reduce((acc, row) => acc + Math.max(0, row.asignados ?? 0), 0);
+      const vacantesTotal = dotacionArea.reduce((acc, row) => acc + Math.max(0, row.vacantes ?? 0), 0);
+
+      return {
+        ...area,
+        cargosNombres: Array.from(nombres),
+        cargosIds: Array.from(ids),
+        dotacionTotal,
+        asignadosTotal,
+        vacantesTotal,
+        trabajadores,
+        tieneDs44,
+      };
+    });
+  }, [areas, cargos, dotacionRows]);
+
+  const aActivas     = useMemo(() => areasConMetricas.filter((a) => a.estado === "activa").length, [areasConMetricas]);
+  const aTotalCargos = useMemo(() => areasConMetricas.reduce((acc, a) => acc + a.cargosNombres.length, 0), [areasConMetricas]);
+  const aTotalDot    = useMemo(() => areasConMetricas.reduce((acc, a) => acc + a.dotacionTotal, 0), [areasConMetricas]);
+  const aTotalTrab   = useMemo(() => areasConMetricas.reduce((acc, a) => acc + a.trabajadores, 0), [areasConMetricas]);
+  const aAreasDs44   = useMemo(() => areasConMetricas.filter((a) => a.tieneDs44).length, [areasConMetricas]);
 
   const aFiltradas = useMemo(() => {
     const q = aSearch.trim().toLowerCase();
-    return areas.filter((a) => {
-      if (q && !`${a.nombre} ${a.codigo} ${a.responsable}`.toLowerCase().includes(q)) return false;
+    return areasConMetricas.filter((a) => {
+      if (q && ![a.nombre, a.codigo, a.responsable].join(" ").toLowerCase().includes(q)) return false;
       if (aEstado !== "todas" && a.estado !== aEstado) return false;
       if (aConTrab && a.trabajadores === 0) return false;
       if (aDs44 && !a.tieneDs44) return false;
       return true;
     });
-  }, [areas, aSearch, aEstado, aConTrab, aDs44]);
+  }, [areasConMetricas, aSearch, aEstado, aConTrab, aDs44]);
 
-  const selectedArea = useMemo(() => areas.find((a) => a.id === selectedAreaId) ?? null, [areas, selectedAreaId]);
+  const selectedArea = useMemo(() => areasConMetricas.find((a) => a.id === selectedAreaId) ?? null, [areasConMetricas, selectedAreaId]);
 
   // ─── Areas handlers ───
   function aOpenCreate() {
@@ -683,16 +757,27 @@ export default function AreasCargosPage() {
           icon={mainTab === "areas" ? <Network className="h-6 w-6" /> : <BookOpen className="h-6 w-6" />}
           iconWrapClassName={mainTab === "areas" ? "bg-teal-700" : "bg-violet-700"}
           actions={
-            <button
-              onClick={mainTab === "areas" ? aOpenCreate : cOpenCreate}
-              className={cn(
-                "inline-flex shrink-0 items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition",
-                mainTab === "areas" ? "bg-teal-600 hover:bg-teal-700" : "bg-violet-600 hover:bg-violet-700",
+            <div className="flex items-center gap-2">
+              {mainTab === "areas" && (
+                <a
+                  href="/dicaprev/empresa/puestos"
+                  className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100"
+                >
+                  <Layers className="h-4 w-4" />
+                  Gestionar dotación
+                </a>
               )}
-            >
-              <Plus className="h-4 w-4" />
-              {mainTab === "areas" ? "Nueva área" : "Nuevo cargo"}
-            </button>
+              <button
+                onClick={mainTab === "areas" ? aOpenCreate : cOpenCreate}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-2 rounded-2xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition",
+                  mainTab === "areas" ? "bg-teal-600 hover:bg-teal-700" : "bg-violet-600 hover:bg-violet-700",
+                )}
+              >
+                <Plus className="h-4 w-4" />
+                {mainTab === "areas" ? "Nueva área" : "Nuevo cargo"}
+              </button>
+            </div>
           }
         />
 
@@ -719,7 +804,7 @@ export default function AreasCargosPage() {
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
               <AreaKpiCard label="Áreas activas"    value={aActivas}     icon={<Network className="h-5 w-5 text-white" />}     accent="bg-teal-600"   sub={`de ${areas.length} totales`} />
               <AreaKpiCard label="Cargos asociados" value={aTotalCargos} icon={<BookOpen className="h-5 w-5 text-white" />}    accent="bg-violet-600" sub="roles activos" />
-              <AreaKpiCard label="Dotación total"   value={aTotalDot}    icon={<Layers className="h-5 w-5 text-white" />}      accent="bg-indigo-600" sub={`${areas.reduce((a, x) => a + x.asignadosTotal, 0)} asignados`} />
+              <AreaKpiCard label="Dotación total"   value={aTotalDot}    icon={<Layers className="h-5 w-5 text-white" />}      accent="bg-indigo-600" sub={areasConMetricas.reduce((a, x) => a + x.asignadosTotal, 0) + " asignados"} />
               <AreaKpiCard label="Trabajadores"     value={aTotalTrab}   icon={<Users className="h-5 w-5 text-white" />}       accent="bg-slate-700"  sub="vinculados a áreas" />
               <AreaKpiCard label="DS44 crítica"     value={aAreasDs44}   icon={<ShieldAlert className="h-5 w-5 text-white" />} accent="bg-rose-600"   sub="áreas con riesgo DS44" />
             </div>

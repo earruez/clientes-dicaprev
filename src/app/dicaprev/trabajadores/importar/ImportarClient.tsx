@@ -17,6 +17,23 @@ import {
 
 type Fase = "inicial" | "seleccionado" | "analizando" | "revisar" | "importando" | "exito" | "error";
 
+const IMPORT_TIMEOUT_MS = 120000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 function descargarBase64(base64: string, nombre: string) {
   const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
   const url = URL.createObjectURL(new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
@@ -95,7 +112,11 @@ export default function ImportarClient() {
     setFase("importando");
     startTransition(async () => {
       try {
-        const response = await importarArchivoTrabajadores(formDataArchivo());
+        const response = await withTimeout(
+          importarArchivoTrabajadores(formDataArchivo()),
+          IMPORT_TIMEOUT_MS,
+          "La importación está tardando demasiado. Intenta con menos filas o vuelve a validar el archivo.",
+        );
         setResultado(response);
         setFase("exito");
         router.refresh();

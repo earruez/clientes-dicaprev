@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
+import { useState, useEffect, useMemo, type ChangeEvent, type FormEvent } from "react";
 import { X, User, Briefcase, AlertCircle } from "lucide-react";
 import { type Worker, CONTRATOS, ESTADOS } from "./types";
 import { getOpcionesTrabajador, type OpcionesTrabajador } from "@/actions/trabajadores";
@@ -23,6 +23,7 @@ const EMPTY: FormData = {
   cargo: "",
   area: "",
   centroTrabajo: "",
+  dotacionId: undefined,
   email: "",
   telefono: "",
   estado: "Activo",
@@ -122,6 +123,15 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
   // Derived option lists — fall back to current worker value if not in list
   const cargoOptions = opciones?.cargos ?? [];
   const centroOptions = opciones?.centros ?? [];
+  const posicionOptions = opciones?.posicionesDotacion ?? [];
+
+  const posicionesFiltradas = useMemo(() => {
+    return posicionOptions.filter((posicion) => {
+      if (form.centroTrabajo && posicion.centroNombre !== form.centroTrabajo) return false;
+      if (form.cargo && posicion.cargoNombre !== form.cargo) return false;
+      return true;
+    });
+  }, [posicionOptions, form.centroTrabajo, form.cargo]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -137,12 +147,13 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
         cargo: firstCargo?.nombre ?? "",
         area: firstCargo?.areaNombre ?? "",
         centroTrabajo: opciones?.centros[0]?.nombre ?? "",
+        dotacionId: undefined,
       });
     }
     setErrors({});
   }, [isOpen, worker, opciones]);
 
-  const set = (key: keyof FormData, value: string | number) =>
+  const set = (key: keyof FormData, value: string | number | undefined) =>
     setForm((f) => ({ ...f, [key]: value }));
 
   const validate = (): boolean => {
@@ -292,6 +303,38 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
                       className={inputCls()}
                     />
                   </Field>
+                </div>
+              </section>
+
+              {/* ── Dotación ── */}
+              <section className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
+                <SectionTitle icon={<Briefcase className="h-4 w-4" />} label="Asignación de Dotación" />
+                <p className="mb-4 text-xs text-slate-500">
+                  Selecciona una posición para vincular al trabajador. Si no eliges una, el sistema usará la asignación automática.
+                </p>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field id="dotacionId" label="Posición de dotación" half>
+                    <select
+                      id="dotacionId"
+                      value={form.dotacionId ?? ""}
+                      onChange={(e) => set("dotacionId", e.target.value || undefined)}
+                      className={selectCls}
+                    >
+                      <option value="">Asignación automática</option>
+                      {posicionesFiltradas.map((posicion) => (
+                        <option key={posicion.id} value={posicion.id}>
+                          {posicion.codigo} · {posicion.cargoNombre} · {posicion.centroNombre} ({posicion.asignados}/{posicion.cantidad})
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <div className="rounded-xl border border-emerald-100 bg-white px-3 py-3 text-xs text-slate-500 shadow-sm sm:col-span-1">
+                    <p className="font-semibold text-slate-700">Uso práctico</p>
+                    <p className="mt-1 leading-5">
+                      Esto te permite fijar a mano la vacante correcta cuando el cargo o centro ya están definidos.
+                    </p>
+                  </div>
                 </div>
               </section>
 

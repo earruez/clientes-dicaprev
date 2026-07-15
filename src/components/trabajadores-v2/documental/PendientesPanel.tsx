@@ -893,7 +893,7 @@ export function PendientesPanel({
           }`}
         >
           <ShieldAlert className="h-3.5 w-3.5" />
-          Solo DS44 críticos
+          Solo cargos críticos SST
         </button>
       </div>
 

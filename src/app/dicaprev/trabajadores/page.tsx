@@ -23,6 +23,7 @@ export default function TrabajadoresPage() {
     trabajadores: workers,
     guardarTrabajador,
     eliminarTrabajador,
+    generarInduccion,
   } = useTrabajadores();
   const [opciones, setOpciones] = useState<OpcionesTrabajador | undefined>(undefined);
   const [filters, setFilters]       = useState<FilterConfig>(DEFAULT_FILTERS);
@@ -73,6 +74,10 @@ export default function TrabajadoresPage() {
   const handleDelete = async (id: string) => {
     await eliminarTrabajador(id);
     setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+  };
+
+  const handleGenerarInduccion = async (id: string) => {
+    return generarInduccion(id);
   };
 
   return (
@@ -137,6 +142,7 @@ export default function TrabajadoresPage() {
             onView={openViewDrawer}
             onEdit={openEditForm}
             onDelete={handleDelete}
+            onGenerateInduccion={handleGenerarInduccion}
           />
         </div>
       </div>

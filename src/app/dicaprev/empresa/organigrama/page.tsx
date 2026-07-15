@@ -54,6 +54,15 @@ interface OrgNode {
   workerData?: Worker;
 }
 
+type PosicionDotacionNode = {
+  id: string;
+  centroTrabajoId: string;
+  cargoId: string;
+  cantidad: number;
+  estado: string;
+  esCritica: boolean;
+};
+
 // ─── Visual configuration ─────────────────────────────────────────────── //
 
 interface NodeCfg {
@@ -147,6 +156,7 @@ function buildAreaTree(
   empresaNombre: string,
   areas: EmpresaArea[],
   cargos: EmpresaCargo[],
+  posiciones: PosicionDotacionNode[],
   workers: Worker[],
 ): OrgNode {
   const workersByArea = new Map<string, Worker[]>();
@@ -167,8 +177,10 @@ function buildAreaTree(
   for (const areaName of areaNames) {
     const areaWorkers = workersByArea.get(areaName) ?? [];
     const areaRef = areas.find((a) => a.nombre === areaName);
-    // Skip unmapped areas with no workers
-    if (areaWorkers.length === 0 && !areaRef) continue;
+    // Keep structural nodes even if a given branch has no workers assigned yet.
+    if (!areaRef && areaWorkers.length === 0) continue;
+
+    const areaCargoRefs = cargos.filter((c) => c.areaNombre === areaName || c.areaId === areaRef?.id);
 
     const cargoMap = new Map<string, Worker[]>();
     areaWorkers.forEach((w) => {
@@ -177,9 +189,18 @@ function buildAreaTree(
       cargoMap.set(w.cargo, list);
     });
 
+    for (const cargoRef of areaCargoRefs) {
+      if (!cargoMap.has(cargoRef.nombre)) {
+        cargoMap.set(cargoRef.nombre, []);
+      }
+    }
+
     const cargoNodes: OrgNode[] = [];
     for (const [cargoName, cargoWorkers] of cargoMap) {
-      const cargoRef = cargos.find((c) => c.nombre === cargoName);
+      const cargoRef = areaCargoRefs.find((c) => c.nombre === cargoName) ?? cargos.find((c) => c.nombre === cargoName);
+      const cargoDotacion = cargoRef
+        ? posiciones.filter((p) => p.cargoId === cargoRef.id && p.estado === "activa").reduce((acc, p) => acc + p.cantidad, 0)
+        : undefined;
       const workerNodes: OrgNode[] = cargoWorkers.map((w) => ({
         id: `w-area-${w.id}`,
         type: "trabajador" as const,
@@ -196,6 +217,7 @@ function buildAreaTree(
         label: cargoName,
         workerCount: cargoWorkers.length,
         ds44: cargoRef?.requiereDS44 ?? false,
+        dotacionRequerida: cargoDotacion,
         children: workerNodes,
         cargoData: cargoRef,
       });
@@ -233,6 +255,7 @@ function buildCentroTree(
   empresaNombre: string,
   centros: CentroAdmin[],
   cargos: EmpresaCargo[],
+  posiciones: PosicionDotacionNode[],
   workers: Worker[],
 ): OrgNode {
   const workersByCentro = new Map<string, Worker[]>();
@@ -254,6 +277,10 @@ function buildCentroTree(
     const centroRef = centros.find((c) => c.nombre === centroName);
     if (centroWorkers.length === 0 && !centroRef) continue;
 
+    const centroPosiciones = centroRef
+      ? posiciones.filter((p) => p.centroTrabajoId === centroRef.id && p.estado === "activa")
+      : [];
+
     const areaMap = new Map<string, Worker[]>();
     centroWorkers.forEach((w) => {
       const areaName = w.area || "Sin área";
@@ -262,8 +289,17 @@ function buildCentroTree(
       areaMap.set(areaName, list);
     });
 
+    for (const pos of centroPosiciones) {
+      const cargoRef = cargos.find((c) => c.id === pos.cargoId);
+      const areaName = cargoRef?.areaNombre ?? "Sin área";
+      if (!areaMap.has(areaName)) {
+        areaMap.set(areaName, []);
+      }
+    }
+
     const areaNodes: OrgNode[] = [];
     for (const [areaName, areaWorkers] of areaMap) {
+      const areaRef = null;
       const cargoMap = new Map<string, Worker[]>();
       areaWorkers.forEach((w) => {
         const list = cargoMap.get(w.cargo) ?? [];
@@ -271,9 +307,23 @@ function buildCentroTree(
         cargoMap.set(w.cargo, list);
       });
 
+      const areaCargoRefs = centroPosiciones
+        .map((p) => cargos.find((c) => c.id === p.cargoId))
+        .filter((cargo): cargo is EmpresaCargo => Boolean(cargo))
+        .filter((cargo) => cargo.areaNombre === areaName);
+
+      for (const cargoRef of areaCargoRefs) {
+        if (!cargoMap.has(cargoRef.nombre)) {
+          cargoMap.set(cargoRef.nombre, []);
+        }
+      }
+
       const cargoNodes: OrgNode[] = [];
       for (const [cargoName, cargoWorkers] of cargoMap) {
-        const cargoRef = cargos.find((c) => c.nombre === cargoName);
+        const cargoRef = areaCargoRefs.find((c) => c.nombre === cargoName) ?? cargos.find((c) => c.nombre === cargoName);
+        const cargoDotacion = cargoRef
+          ? centroPosiciones.filter((p) => p.cargoId === cargoRef.id).reduce((acc, p) => acc + p.cantidad, 0)
+          : undefined;
         const workerNodes: OrgNode[] = cargoWorkers.map((w) => ({
           id: `w-centro-${w.id}`,
           type: "trabajador" as const,
@@ -291,7 +341,7 @@ function buildCentroTree(
           label: cargoName,
           workerCount: cargoWorkers.length,
           ds44: cargoRef?.requiereDS44 ?? false,
-          dotacionRequerida: cargoDotRef?.dotacion,
+          dotacionRequerida: cargoDotacion,
           children: workerNodes,
           cargoData: cargoRef,
         });
@@ -305,6 +355,7 @@ function buildCentroTree(
         label: areaName,
         workerCount: areaWorkers.length,
         ds44: cargoNodes.some((node) => node.ds44),
+        dotacionRequerida: cargoNodes.reduce((acc, node) => acc + (node.dotacionRequerida ?? 0), 0) || undefined,
         children: cargoNodes,
       });
     }
@@ -376,7 +427,7 @@ function DotacionBadge({
   dotacionRequerida?: number;
   workerCount: number;
 }) {
-  if (!dotacionRequerida) return null;
+  if (dotacionRequerida === undefined) return null;
   const delta = workerCount - dotacionRequerida;
   if (delta < 0) {
     const vac = -delta;
@@ -861,7 +912,7 @@ function CentroDetail({ centro }: { centro: CentroAdmin }) {
           </span>
           {centro.aplicaDs44 && (
             <span className="text-xs px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 ring-1 ring-amber-200">
-              Aplica DS44
+              Cargo crítico SST
             </span>
           )}
           <span
@@ -1252,9 +1303,9 @@ function Legend() {
       })}
       <div className="flex items-center gap-1.5">
         <span className="text-xs px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 ring-1 ring-amber-200 font-semibold">
-          DS44
+          Cargo crítico SST
         </span>
-        <span className="text-xs text-slate-500">Requiere DS44</span>
+        <span className="text-xs text-slate-500">Cargo crítico SST</span>
       </div>
     </div>
   );
@@ -1271,6 +1322,7 @@ export default function OrganigramaPage() {
   const [areas, setAreas] = useState<EmpresaArea[]>([]);
   const [cargos, setCargos] = useState<EmpresaCargo[]>([]);
   const [centros, setCentros] = useState<CentroAdmin[]>([]);
+  const [posiciones, setPosiciones] = useState<PosicionDotacionNode[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
 
   useEffect(() => {
@@ -1283,6 +1335,7 @@ export default function OrganigramaPage() {
         setAreas(data.areas);
         setCargos(data.cargos);
         setCentros(data.centros);
+        setPosiciones(data.posicionesDotacion);
         setWorkers(data.trabajadores);
       })
       .catch(() => {
@@ -1291,6 +1344,7 @@ export default function OrganigramaPage() {
         setAreas([]);
         setCargos([]);
         setCentros([]);
+        setPosiciones([]);
         setWorkers([]);
       });
 
@@ -1301,9 +1355,9 @@ export default function OrganigramaPage() {
 
   const tree = useMemo(() => {
     return viewMode === "areas"
-      ? buildAreaTree(empresaNombre, areas, cargos, workers)
-      : buildCentroTree(empresaNombre, centros, cargos, workers);
-  }, [viewMode, empresaNombre, areas, cargos, centros, workers]);
+      ? buildAreaTree(empresaNombre, areas, cargos, posiciones, workers)
+      : buildCentroTree(empresaNombre, centros, cargos, posiciones, workers);
+  }, [viewMode, empresaNombre, areas, cargos, centros, posiciones, workers]);
 
   const allIds = useMemo(() => collectAllIds(tree), [tree]);
 

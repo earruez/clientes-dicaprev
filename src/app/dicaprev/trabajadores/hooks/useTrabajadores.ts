@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   createTrabajador,
   deleteTrabajador,
+  generarInduccionTrabajador,
   getTrabajadores,
   updateTrabajador,
 } from "@/actions/trabajadores";
@@ -16,6 +17,7 @@ export type UseTrabajadoresResult = {
   recargar: () => Promise<void>;
   guardarTrabajador: (worker: Worker) => Promise<void>;
   eliminarTrabajador: (id: string) => Promise<void>;
+  generarInduccion: (id: string) => Promise<boolean>;
 };
 
 export function useTrabajadores(): UseTrabajadoresResult {
@@ -60,6 +62,12 @@ export function useTrabajadores(): UseTrabajadoresResult {
     setTrabajadores((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
+  const generarInduccionHandler = useCallback(async (id: string) => {
+    setError(null);
+    const result = await generarInduccionTrabajador(id);
+    return result.creada;
+  }, []);
+
   return {
     trabajadores,
     loading,
@@ -67,6 +75,7 @@ export function useTrabajadores(): UseTrabajadoresResult {
     recargar,
     guardarTrabajador,
     eliminarTrabajador: eliminarTrabajadorHandler,
+    generarInduccion: generarInduccionHandler,
   };
 }
 

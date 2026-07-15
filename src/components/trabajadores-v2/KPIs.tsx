@@ -14,7 +14,7 @@ interface KPIsProps {
 export function KPIs({ workers, activeKpiId, onKpiClick }: KPIsProps) {
   const total = workers.length;
   const activos = workers.filter((w) => w.estado === "Activo").length;
-  const ds44Count = workers.filter((w) => w.documentosPendientes + w.capacitacionesPendientes > 2).length;
+  const ds44Count = workers.filter((w) => w.cargoEsCritico).length;
   const conPendientes = workers.filter((w) => w.documentosPendientes + w.capacitacionesPendientes > 0).length;
   const totalCap = workers.reduce((sum, w) => sum + w.capacitacionesPendientes, 0);
   const activoPct = total > 0 ? Math.round((activos / total) * 100) : 0;
@@ -59,9 +59,9 @@ export function KPIs({ workers, activeKpiId, onKpiClick }: KPIsProps) {
     },
     {
       id: "ds44",
-      label: "DS44 críticos",
+      label: "Cargos críticos SST",
       value: ds44Count,
-      sub: ds44Count > 0 ? "Requieren revisión" : "Sin alertas DS44",
+      sub: ds44Count > 0 ? "Cargo crítico SST" : "Sin cargos críticos SST",
       icon: <AlertTriangle className="h-5 w-5" />,
       accentBar: ds44Count > 0 ? "bg-red-500" : "bg-slate-200",
       iconBg: ds44Count > 0 ? "bg-red-50" : "bg-slate-100",

@@ -127,7 +127,7 @@ export function PorCentroView({ rows }: { rows: RowData[] }) {
                   <p className="text-sm font-bold text-slate-900">{centro}</p>
                   {hasDS44 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700 ring-1 ring-red-200">
-                      <ShieldAlert className="h-3 w-3" /> DS44 crítico
+                      <ShieldAlert className="h-3 w-3" /> Cargo crítico SST
                     </span>
                   )}
                 </div>

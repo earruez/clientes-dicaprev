@@ -569,7 +569,7 @@ export default function TrabajadoresPage() {
                       variant="outline"
                       className="rounded-full border-amber-200 bg-amber-50 text-[11px] text-amber-700"
                     >
-                      DS44 critico
+                      Cargo crítico SST
                     </Badge>
                   )}
                 </div>
@@ -624,7 +624,7 @@ export default function TrabajadoresPage() {
                       {t.estado === "activo" ? "Marcar baja" : "Reactivar"}
                     </Button>
                     <Button variant="outline" className="rounded-xl w-full text-xs" onClick={() => toggleDs44(t.id)}>
-                      {t.ds44Critico ? "Quitar de DS44 critico" : "Marcar DS44 critico"}
+                      {t.ds44Critico ? "Quitar cargo crítico SST" : "Marcar cargo crítico SST"}
                     </Button>
                   </>
                 ) : null}
@@ -896,7 +896,7 @@ export default function TrabajadoresPage() {
             </div>
 
             <div className="rounded-2xl bg-slate-50/80 border border-slate-100 px-4 py-4 space-y-4">
-              <p className="text-xs font-semibold tracking-wide uppercase text-slate-500">Riesgos y DS44</p>
+              <p className="text-xs font-semibold tracking-wide uppercase text-slate-500">Riesgos y criticidad SST</p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1">
@@ -926,7 +926,7 @@ export default function TrabajadoresPage() {
                       className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600"
                     />
                     <span>
-                      Este trabajador se considera clave en la gestion de riesgos criticos DS44 (por rol o exposicion).
+                      Este trabajador se considera clave para la gestion preventiva reforzada por rol o exposicion.
                     </span>
                   </label>
                 </div>

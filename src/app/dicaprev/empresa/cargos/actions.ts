@@ -1,5 +1,6 @@
 "use server";
 
+import { evaluarCapacitacionesPorEvento } from "@/lib/capacitacion/evaluar-capacitaciones";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import { z } from "zod";
 type CargoInput = {
   nombre: string;
   areaId?: string;
+  tipo?: string;
   descripcion?: string;
   perfilSST?: string;
   perfilSstRequerido?: string;
@@ -68,11 +70,22 @@ export type EvaluacionEliminacionCargo = {
 const CARGO_META_PREFIX = "__NEXTPREV_CARGO_META__";
 
 type CargoCompatMeta = {
+  tipo: string | null;
   descripcion: string | null;
   riesgosClave: string[];
   documentosBase: string[];
   capacitacionesBase: string[];
 };
+
+const CARGO_TIPOS = [
+  "Operativo",
+  "Supervisión",
+  "Administración",
+  "Prevención",
+  "Técnico",
+] as const;
+
+type CargoTipo = (typeof CARGO_TIPOS)[number];
 
 type CargoRow = {
   id: string;
@@ -108,6 +121,13 @@ function normalizeText(value?: string) {
   return (value ?? "").trim();
 }
 
+function normalizeCargoTipo(value?: string | null): CargoTipo {
+  const normalized = normalizeText(value ?? undefined);
+  return (CARGO_TIPOS as readonly string[]).includes(normalized)
+    ? (normalized as CargoTipo)
+    : "Operativo";
+}
+
 function normalizeKey(value: string) {
   return value
     .normalize("NFD")
@@ -141,6 +161,7 @@ function encodeCargoCompatMeta(meta: CargoCompatMeta): string {
 function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
   if (!value) {
     return {
+      tipo: null,
       descripcion: null,
       riesgosClave: [],
       documentosBase: [],
@@ -150,6 +171,7 @@ function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
 
   if (!value.startsWith(CARGO_META_PREFIX)) {
     return {
+      tipo: null,
       descripcion: value,
       riesgosClave: [],
       documentosBase: [],
@@ -160,6 +182,7 @@ function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
   try {
     const parsed = JSON.parse(value.slice(CARGO_META_PREFIX.length)) as Partial<CargoCompatMeta>;
     return {
+      tipo: typeof parsed.tipo === "string" ? normalizeCargoTipo(parsed.tipo) : null,
       descripcion: typeof parsed.descripcion === "string" ? parsed.descripcion : null,
       riesgosClave: Array.isArray(parsed.riesgosClave) ? normalizeStringList(parsed.riesgosClave) : [],
       documentosBase: Array.isArray(parsed.documentosBase) ? normalizeStringList(parsed.documentosBase) : [],
@@ -167,6 +190,7 @@ function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
     };
   } catch {
     return {
+      tipo: null,
       descripcion: value,
       riesgosClave: [],
       documentosBase: [],
@@ -180,6 +204,7 @@ function hydrateCargo(row: CargoRow) {
 
   return {
     ...row,
+    tipo: normalizeCargoTipo(meta.tipo),
     descripcion: meta.descripcion,
     perfilSstRequerido: row.perfilSST,
     riesgosClave: meta.riesgosClave,
@@ -191,6 +216,7 @@ function hydrateCargo(row: CargoRow) {
 const cargoInputSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre del cargo es obligatorio"),
   areaId: z.string().optional(),
+  tipo: z.enum(CARGO_TIPOS).optional(),
   descripcion: z.string().optional(),
   perfilSST: z.string().optional(),
   perfilSstRequerido: z.string().optional(),
@@ -241,6 +267,7 @@ async function validateCargo(data: CargoInput) {
   return {
     nombre: parsed.nombre,
     areaId,
+    tipo: normalizeCargoTipo(parsed.tipo),
     descripcion: descripcion || null,
     perfilSST: perfilSST || null,
     riesgosClave,
@@ -477,6 +504,42 @@ async function syncReglasCargo(input: {
       where: { id: existing.id, empresaId: input.empresaId },
       data: { activo: true, obligatorio: true },
     });
+  }
+}
+
+async function backfillCapacitacionesCargo(input: { empresaId: string; cargoId: string }) {
+  const trabajadores = await prisma.trabajador.findMany({
+    where: {
+      empresaId: input.empresaId,
+      cargoId: input.cargoId,
+      estado: {
+        notIn: ["inactivo", "Inactivo"],
+      },
+    },
+    select: {
+      id: true,
+      cargoId: true,
+      areaId: true,
+      centroTrabajoId: true,
+    },
+  });
+
+  if (trabajadores.length === 0) return;
+
+  const CHUNK_SIZE = 20;
+  for (let i = 0; i < trabajadores.length; i += CHUNK_SIZE) {
+    const chunk = trabajadores.slice(i, i + CHUNK_SIZE);
+    await Promise.allSettled(
+      chunk.map((trabajador) =>
+        evaluarCapacitacionesPorEvento({
+          trabajadorId: trabajador.id,
+          empresaId: input.empresaId,
+          cargoId: trabajador.cargoId,
+          areaId: trabajador.areaId,
+          centroTrabajoId: trabajador.centroTrabajoId,
+        }),
+      ),
+    );
   }
 }
 
@@ -732,13 +795,57 @@ export async function crearCapacitacionEspecificaCargo(input: {
 export async function getCargos() {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
-  const rows = await prisma.cargo.findMany({
-    where: { empresaId },
-    select: cargoReadSelect,
-    orderBy: { createdAt: "desc" },
-  });
+  const trabajadoresActivosPromise =
+    typeof prisma.trabajador?.findMany === "function"
+      ? prisma.trabajador.findMany({
+          where: {
+            empresaId,
+            cargoId: { not: null },
+            estado: {
+              equals: "activo",
+              mode: "insensitive",
+            },
+          },
+          select: {
+            cargoId: true,
+            centroTrabajo: {
+              select: {
+                nombre: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve([]);
 
-  return rows.map((row) => hydrateCargo(row as CargoRow));
+  const [rows, trabajadoresActivos] = await Promise.all([
+    prisma.cargo.findMany({
+      where: { empresaId },
+      select: cargoReadSelect,
+      orderBy: { createdAt: "desc" },
+    }),
+    trabajadoresActivosPromise,
+  ]);
+
+  const resumenPorCargo = new Map<string, { trabajadores: number; centros: Set<string> }>();
+  for (const trabajador of trabajadoresActivos) {
+    if (!trabajador.cargoId) continue;
+    const current = resumenPorCargo.get(trabajador.cargoId) ?? { trabajadores: 0, centros: new Set<string>() };
+    current.trabajadores += 1;
+    if (trabajador.centroTrabajo?.nombre) {
+      current.centros.add(trabajador.centroTrabajo.nombre);
+    }
+    resumenPorCargo.set(trabajador.cargoId, current);
+  }
+
+  return rows.map((row) => {
+    const base = hydrateCargo(row as CargoRow);
+    const resumen = resumenPorCargo.get(row.id);
+    return {
+      ...base,
+      trabajadores: resumen?.trabajadores ?? 0,
+      centros: resumen ? Array.from(resumen.centros) : [],
+    };
+  });
 }
 
 export async function getCargoById(id: string) {
@@ -839,6 +946,7 @@ export async function crearCargo(data: CargoInput) {
       nombre: payload.nombre,
       areaId: payload.areaId,
       descripcion: encodeCargoCompatMeta({
+        tipo: payload.tipo,
         descripcion: payload.descripcion,
         riesgosClave: payload.riesgosClave,
         documentosBase: payload.documentosBase,
@@ -871,6 +979,10 @@ export async function crearCargo(data: CargoInput) {
     capacitacionIds: capIds,
   });
 
+  if (capIds.length > 0) {
+    await backfillCapacitacionesCargo({ empresaId, cargoId: created.id });
+  }
+
   return hydrateCargo(created as CargoRow);
 }
 
@@ -884,6 +996,7 @@ export async function actualizarCargo(id: string, data: CargoInput) {
       nombre: payload.nombre,
       areaId: payload.areaId,
       descripcion: encodeCargoCompatMeta({
+        tipo: payload.tipo,
         descripcion: payload.descripcion,
         riesgosClave: payload.riesgosClave,
         documentosBase: payload.documentosBase,
@@ -923,6 +1036,10 @@ export async function actualizarCargo(id: string, data: CargoInput) {
     documentoTipoIds: docIds,
     capacitacionIds: capIds,
   });
+
+  if (capIds.length > 0) {
+    await backfillCapacitacionesCargo({ empresaId, cargoId: id });
+  }
 
   return hydrateCargo(row as CargoRow);
 }

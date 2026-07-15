@@ -451,7 +451,7 @@ export default function CentrosTrabajoExecutivePage() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     {statusBadge(selectedCentro.estado)}
                     {selectedCentro.aplicaDs44 && (
-                      <Badge className="border-violet-200 bg-violet-50 text-violet-700">Aplica DS44</Badge>
+                      <Badge className="border-violet-200 bg-violet-50 text-violet-700">Cargo crítico SST</Badge>
                     )}
                   </div>
                 </div>
@@ -472,7 +472,7 @@ export default function CentrosTrabajoExecutivePage() {
                       <InfoItem label="Código" value={selectedCentro.codigo} />
                       <InfoItem label="Tipo" value={selectedCentro.tipo} />
                       <InfoItem label="Ciudad" value={selectedCentro.ciudad || "-"} />
-                      <InfoItem label="Aplica DS44" value={selectedCentro.aplicaDs44 ? "Sí" : "No"} />
+                      <InfoItem label="Cargo crítico SST" value={selectedCentro.aplicaDs44 ? "Sí" : "No"} />
                       <InfoItem label="Trabajadores" value={String(selectedCentro.trabajadoresTotal)} />
                       <InfoItem label="Registrado" value={selectedCentro.creadoEl} />
                     </div>
@@ -694,9 +694,9 @@ export default function CentrosTrabajoExecutivePage() {
                     onChange={(e: ChangeEvent<HTMLInputElement>) => setField("aplicaDs44", e.target.checked)}
                     className="h-4 w-4 rounded border-slate-300 accent-slate-900"
                   />
-                  Aplica DS44
+                  Cargo crítico SST
                 </label>
-                <p className="text-[11px] text-slate-400">Reglamento DS44.</p>
+                <p className="text-[11px] text-slate-400">Gestión preventiva reforzada.</p>
               </div>
             </div>
 

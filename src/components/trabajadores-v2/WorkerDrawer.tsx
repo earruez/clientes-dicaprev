@@ -282,7 +282,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                         </span>
                         {ds44Critical && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200">
-                            <AlertTriangle className="h-3 w-3" /> DS44 Crítico
+                            <AlertTriangle className="h-3 w-3" /> Cargo crítico SST
                           </span>
                         )}
                       </div>
@@ -459,6 +459,16 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                           </div>
                         </div>
 
+                        <div className="rounded-xl border border-white/70 bg-white px-3 py-3 text-xs text-slate-600 shadow-sm">
+                          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-500 mb-1.5">Asignación de dotación</p>
+                          <p className="font-semibold text-slate-800">
+                            {dotacion.codigo} · {dotacion.cargoNombre}
+                          </p>
+                          <p className="text-slate-500">
+                            {dotacion.centroNombre} · {dotacion.asignados}/{dotacion.dotacionRequerida} asignados
+                          </p>
+                        </div>
+
                         {/* Coverage bar */}
                         <div>
                           <div className="flex justify-between text-[10px] text-indigo-500 mb-1">
@@ -563,12 +573,12 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                       }
                       <div>
                         <p className={`text-sm font-bold ${ds44Critical ? "text-red-900" : "text-emerald-900"}`}>
-                          {ds44Critical ? "DS44 — Estado Crítico" : "DS44 — Sin alertas críticas"}
+                          {ds44Critical ? "Cargo crítico SST — Estado crítico" : "Cargo crítico SST — Sin alertas críticas"}
                         </p>
                         <p className={`text-xs ${ds44Critical ? "text-red-700" : "text-emerald-700"}`}>
                           {ds44Critical
-                            ? "Requiere revisión inmediata de gestión de riesgos"
-                            : "Gestión de riesgos al día"}
+                            ? "Requiere revisión inmediata de gestión preventiva reforzada"
+                            : "Gestión preventiva al día"}
                         </p>
                       </div>
                     </div>

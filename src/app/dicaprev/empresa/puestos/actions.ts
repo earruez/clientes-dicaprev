@@ -12,6 +12,11 @@ type PosicionInput = {
   esCritica?: boolean;
 };
 
+type ReasignarTrabajadorDotacionInput = {
+  trabajadorId: string;
+  posicionDotacionId: string | null;
+};
+
 function normalizeText(value?: string) {
   return (value ?? "").trim();
 }
@@ -109,6 +114,15 @@ async function ensurePosicionEmpresa(id: string) {
   if (!posicion) {
     throw new Error("La posicion no pertenece a la empresa configurada");
   }
+}
+
+async function resolveAreaIdFromCargo(cargoId: string) {
+  const cargo = await prisma.cargo.findFirst({
+    where: { id: cargoId },
+    select: { areaId: true },
+  });
+
+  return cargo?.areaId ?? null;
 }
 
 const dotacionInclude = {
@@ -220,4 +234,56 @@ export async function desactivarPosicion(id: string) {
   });
 
   return mapDotacionWithMetrics(updated);
+}
+
+export async function reasignarTrabajadorDotacion(input: ReasignarTrabajadorDotacionInput) {
+  const { empresaId } = await requirePermission("canManageEmpresa");
+
+  const trabajador = await prisma.trabajador.findFirst({
+    where: { id: input.trabajadorId, empresaId },
+    select: { id: true },
+  });
+
+  if (!trabajador) {
+    throw new Error("El trabajador no pertenece a la empresa configurada");
+  }
+
+  if (input.posicionDotacionId) {
+    const posicion = await prisma.posicionDotacion.findFirst({
+      where: {
+        id: input.posicionDotacionId,
+        empresaId,
+        estado: "activa",
+      },
+      select: {
+        id: true,
+        centroTrabajoId: true,
+        cargoId: true,
+      },
+    });
+
+    if (!posicion) {
+      throw new Error("La posicion de dotacion seleccionada no es valida");
+    }
+
+    const areaId = await resolveAreaIdFromCargo(posicion.cargoId);
+
+    await prisma.trabajador.update({
+      where: { id: input.trabajadorId },
+      data: {
+        posicionDotacionId: posicion.id,
+        centroTrabajoId: posicion.centroTrabajoId,
+        cargoId: posicion.cargoId,
+        areaId,
+      },
+    });
+    return { ok: true };
+  }
+
+  await prisma.trabajador.update({
+    where: { id: input.trabajadorId },
+    data: { posicionDotacionId: null },
+  });
+
+  return { ok: true };
 }
