@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import * as XLSX from "xlsx";
 import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
+import { evaluarCapacitacionesPorEvento } from "@/lib/capacitacion/evaluar-capacitaciones";
 import { prisma } from "@/lib/prisma";
 import {
   ESTADOS_TRABAJADOR,
@@ -260,7 +261,7 @@ export async function importarArchivoTrabajadores(formData: FormData): Promise<R
 
   const creados = await prisma.trabajador.findMany({
     where: { empresaId, rut: { in: ruts } },
-    select: { id: true, rut: true },
+    select: { id: true, rut: true, cargoId: true, areaId: true, centroTrabajoId: true },
   });
 
   const advertencias: string[] = [];
@@ -274,6 +275,19 @@ export async function importarArchivoTrabajadores(formData: FormData): Promise<R
     } catch (error) {
       console.error("No se pudo evaluar documentación del trabajador importado:", error);
       advertencias.push(`No se pudo completar la evaluación documental para el RUT ${trabajador.rut ?? "sin RUT"}.`);
+    }
+
+    try {
+      await evaluarCapacitacionesPorEvento({
+        trabajadorId: trabajador.id,
+        empresaId,
+        cargoId: trabajador.cargoId,
+        areaId: trabajador.areaId,
+        centroTrabajoId: trabajador.centroTrabajoId,
+      });
+    } catch (error) {
+      console.error("No se pudo evaluar capacitaciones del trabajador importado:", error);
+      advertencias.push(`No se pudo completar la evaluación de capacitaciones para el RUT ${trabajador.rut ?? "sin RUT"}.`);
     }
   }
 

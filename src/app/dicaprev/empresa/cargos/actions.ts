@@ -1,5 +1,6 @@
 "use server";
 
+import { evaluarCapacitacionesPorEvento } from "@/lib/capacitacion/evaluar-capacitaciones";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import { z } from "zod";
@@ -506,6 +507,42 @@ async function syncReglasCargo(input: {
   }
 }
 
+async function backfillCapacitacionesCargo(input: { empresaId: string; cargoId: string }) {
+  const trabajadores = await prisma.trabajador.findMany({
+    where: {
+      empresaId: input.empresaId,
+      cargoId: input.cargoId,
+      estado: {
+        notIn: ["inactivo", "Inactivo"],
+      },
+    },
+    select: {
+      id: true,
+      cargoId: true,
+      areaId: true,
+      centroTrabajoId: true,
+    },
+  });
+
+  if (trabajadores.length === 0) return;
+
+  const CHUNK_SIZE = 20;
+  for (let i = 0; i < trabajadores.length; i += CHUNK_SIZE) {
+    const chunk = trabajadores.slice(i, i + CHUNK_SIZE);
+    await Promise.allSettled(
+      chunk.map((trabajador) =>
+        evaluarCapacitacionesPorEvento({
+          trabajadorId: trabajador.id,
+          empresaId: input.empresaId,
+          cargoId: trabajador.cargoId,
+          areaId: trabajador.areaId,
+          centroTrabajoId: trabajador.centroTrabajoId,
+        }),
+      ),
+    );
+  }
+}
+
 async function resolveLegacyRequisitos(input: {
   empresaId: string;
   documentosBase: string[];
@@ -898,6 +935,10 @@ export async function crearCargo(data: CargoInput) {
     capacitacionIds: capIds,
   });
 
+  if (capIds.length > 0) {
+    await backfillCapacitacionesCargo({ empresaId, cargoId: created.id });
+  }
+
   return hydrateCargo(created as CargoRow);
 }
 
@@ -951,6 +992,10 @@ export async function actualizarCargo(id: string, data: CargoInput) {
     documentoTipoIds: docIds,
     capacitacionIds: capIds,
   });
+
+  if (capIds.length > 0) {
+    await backfillCapacitacionesCargo({ empresaId, cargoId: id });
+  }
 
   return hydrateCargo(row as CargoRow);
 }
