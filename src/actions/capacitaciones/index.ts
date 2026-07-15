@@ -1065,6 +1065,20 @@ function normalizeEmail(value?: string | null): string | null {
   return valid ? email : null;
 }
 
+function normalizeRutForKey(value?: string | null): string {
+  return (value ?? "")
+    .replace(/[^0-9kK]/g, "")
+    .toUpperCase();
+}
+
+function getPersonAssignmentKey(row: {
+  trabajadorId: string;
+  trabajador: { rut?: string | null };
+}): string {
+  const rut = normalizeRutForKey(row.trabajador.rut);
+  return rut ? `rut:${rut}` : `id:${row.trabajadorId}`;
+}
+
 function resolvePublicBaseUrl(): string {
   return (
     process.env.APP_URL ||
@@ -2163,13 +2177,30 @@ export async function getCapacitacionAsignaciones(
     const rows = await prisma.capacitacionAsignacion.findMany({
       where,
       include: {
-        trabajador: { select: { nombres: true, apellidos: true } },
+        trabajador: { select: { nombres: true, apellidos: true, rut: true } },
         capacitacion: { select: { nombre: true, categoria: true, modalidad: true, generaCertificado: true } },
       },
       orderBy: [{ fechaAsignacion: "desc" }, { createdAt: "desc" }],
     });
 
-    const asignacionIds = rows.map((row) => row.id);
+    // Legacy data may contain duplicate worker records for the same RUT.
+    // Keep only the newest active assignment per person+course in the UI payload.
+    const activeStates = new Set<EstadoCapacitacionAsignacion>(["pendiente", "enviada", "en_progreso"]);
+    const seenActiveByPersonAndCourse = new Set<string>();
+    const rowsDeduplicadas = rows.filter((row) => {
+      const estado = assertEstadoValido(row.estado);
+      if (!activeStates.has(estado)) return true;
+
+      const dedupeKey = `${getPersonAssignmentKey(row)}::${row.capacitacionId}`;
+      if (seenActiveByPersonAndCourse.has(dedupeKey)) {
+        return false;
+      }
+
+      seenActiveByPersonAndCourse.add(dedupeKey);
+      return true;
+    });
+
+    const asignacionIds = rowsDeduplicadas.map((row) => row.id);
     const eventos = asignacionIds.length
       ? await prisma.capacitacionHistorial.findMany({
           where: {
@@ -2210,7 +2241,7 @@ export async function getCapacitacionAsignaciones(
       eventosPorAsignacion.set(evento.asignacionId, current);
     }
 
-    return rows.map((row) => {
+    return rowsDeduplicadas.map((row) => {
       const tracking = deriveTrackingFromHistorial({
         row: {
           aprobado: row.aprobado,

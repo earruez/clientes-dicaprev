@@ -53,6 +53,31 @@ function parseDateOnly(value: string): Date | null {
   return parsed;
 }
 
+function normalizeRutComparable(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/[^0-9kK]/g, "")
+    .toUpperCase();
+}
+
+async function assertRutDisponible(input: { empresaId: string; rut: string | null; excludeTrabajadorId?: string }) {
+  const rutComparable = normalizeRutComparable(input.rut);
+  if (!rutComparable) return;
+
+  const rows = await prisma.trabajador.findMany({
+    where: {
+      empresaId: input.empresaId,
+      rut: { not: null },
+      ...(input.excludeTrabajadorId ? { id: { not: input.excludeTrabajadorId } } : {}),
+    },
+    select: { id: true, rut: true },
+  });
+
+  const duplicated = rows.some((row) => normalizeRutComparable(row.rut) === rutComparable);
+  if (duplicated) {
+    throw new Error("Ya existe un trabajador con ese RUT en la empresa.");
+  }
+}
+
 function normalizeWorker(row: NonNullable<DbTrabajador>): Worker {
   const documentosPendientes = row.documentos.filter((d) => d.estado !== "completo").length;
 
@@ -212,6 +237,7 @@ export async function getTrabajadores(): Promise<Worker[]> {
 export async function createTrabajador(worker: Worker): Promise<Worker> {
   const { empresaId, usuarioId, email } = await requirePermission("canCreateTrabajador");
   const payload = await toDbPayload(worker, empresaId);
+  await assertRutDisponible({ empresaId, rut: payload.rut });
 
   const created = await prisma.trabajador.create({
     data: {
@@ -251,6 +277,7 @@ export async function createTrabajador(worker: Worker): Promise<Worker> {
 export async function updateTrabajador(worker: Worker): Promise<Worker> {
   const { empresaId, usuarioId, email } = await requirePermission("canUpdateTrabajador");
   const payload = await toDbPayload(worker, empresaId);
+  await assertRutDisponible({ empresaId, rut: payload.rut, excludeTrabajadorId: worker.id });
 
   await prisma.trabajador.updateMany({
     where: { id: worker.id, empresaId },
