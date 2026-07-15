@@ -201,29 +201,73 @@ export async function importarArchivoTrabajadores(formData: FormData): Promise<R
   const centros = new Map(analisis.catalogos.centros.map((item) => [normalizarClave(item.nombre), item]));
   const ruts = analisis.filas.map((fila) => fila.rut);
 
-  const creados = await prisma.$transaction(async (tx) => {
-    const existentes = await tx.trabajador.findMany({ where: { empresaId, rut: { in: ruts } }, select: { rut: true } });
-    if (existentes.length > 0) throw new Error("Uno o más trabajadores ya fueron importados. Vuelve a validar el archivo.");
-    const resultado = [];
-    for (const fila of analisis.filas) {
-      const cargo = cargos.get(normalizarClave(fila.cargo))!;
-      const area = areas.get(normalizarClave(fila.area))!;
-      const centro = centros.get(normalizarClave(fila.centroTrabajo))!;
-      const posicion = await tx.posicionDotacion.findFirst({ where: { empresaId, centroTrabajoId: centro.id, cargoId: cargo.id, estado: "activa" }, select: { id: true } });
-      resultado.push(await tx.trabajador.create({ data: {
-        empresaId, rut: fila.rut, nombres: fila.nombres, apellidos: fila.apellidos, email: fila.email,
-        telefono: fila.telefono || null, fechaNacimiento: new Date(`${fila.fechaNacimiento}T00:00:00.000Z`),
-        fechaIngreso: new Date(`${fila.fechaIngreso}T00:00:00.000Z`), tipoContrato: fila.tipoContrato,
-        estado: estadoDb(fila.estado), cargoId: cargo.id, areaId: area.id, centroTrabajoId: centro.id,
-        posicionDotacionId: posicion?.id ?? null,
-      }, select: { id: true, rut: true } }));
+  const existentes = await prisma.trabajador.findMany({
+    where: { empresaId, rut: { in: ruts } },
+    select: { rut: true },
+  });
+  if (existentes.length > 0) {
+    throw new Error("Uno o más trabajadores ya fueron importados. Vuelve a validar el archivo.");
+  }
+
+  const combinaciones = new Set<string>();
+  for (const fila of analisis.filas) {
+    const cargo = cargos.get(normalizarClave(fila.cargo));
+    const centro = centros.get(normalizarClave(fila.centroTrabajo));
+    if (cargo && centro) combinaciones.add(`${cargo.id}::${centro.id}`);
+  }
+
+  const posicionesActivas = await prisma.posicionDotacion.findMany({
+    where: { empresaId, estado: "activa" },
+    select: { id: true, cargoId: true, centroTrabajoId: true },
+  });
+  const posicionPorCombinacion = new Map<string, string>();
+  for (const posicion of posicionesActivas) {
+    const key = `${posicion.cargoId}::${posicion.centroTrabajoId}`;
+    if (combinaciones.has(key) && !posicionPorCombinacion.has(key)) {
+      posicionPorCombinacion.set(key, posicion.id);
     }
-    return resultado;
+  }
+
+  const data = analisis.filas.map((fila) => {
+    const cargo = cargos.get(normalizarClave(fila.cargo))!;
+    const area = areas.get(normalizarClave(fila.area))!;
+    const centro = centros.get(normalizarClave(fila.centroTrabajo))!;
+    const posicionKey = `${cargo.id}::${centro.id}`;
+
+    return {
+      empresaId,
+      rut: fila.rut,
+      nombres: fila.nombres,
+      apellidos: fila.apellidos,
+      email: fila.email,
+      telefono: fila.telefono || null,
+      fechaNacimiento: new Date(`${fila.fechaNacimiento}T00:00:00.000Z`),
+      fechaIngreso: new Date(`${fila.fechaIngreso}T00:00:00.000Z`),
+      tipoContrato: fila.tipoContrato,
+      estado: estadoDb(fila.estado),
+      cargoId: cargo.id,
+      areaId: area.id,
+      centroTrabajoId: centro.id,
+      posicionDotacionId: posicionPorCombinacion.get(posicionKey) ?? null,
+    };
+  });
+
+  try {
+    await prisma.trabajador.createMany({ data });
+  } catch {
+    throw new Error("No fue posible completar la importación. Revisa si hay trabajadores ya existentes y vuelve a validar el archivo.");
+  }
+
+  const creados = await prisma.trabajador.findMany({
+    where: { empresaId, rut: { in: ruts } },
+    select: { id: true, rut: true },
   });
 
   const advertencias: string[] = [];
   let documentosEvaluados = 0;
-  for (const trabajador of creados) {
+  const LIMITE_EVALUACION_DOCUMENTAL = 150;
+  const trabajadoresParaEvaluar = creados.slice(0, LIMITE_EVALUACION_DOCUMENTAL);
+  for (const trabajador of trabajadoresParaEvaluar) {
     try {
       await evaluarDocumentosPendientesPorEvento({ empresaId, evento: "trabajador_creado", trabajadorId: trabajador.id, usuarioId, email });
       documentosEvaluados += 1;
@@ -232,6 +276,12 @@ export async function importarArchivoTrabajadores(formData: FormData): Promise<R
       advertencias.push(`No se pudo completar la evaluación documental para el RUT ${trabajador.rut ?? "sin RUT"}.`);
     }
   }
+
+  if (creados.length > LIMITE_EVALUACION_DOCUMENTAL) {
+    const omitidos = creados.length - LIMITE_EVALUACION_DOCUMENTAL;
+    advertencias.push(`Se omitió la evaluación documental automática para ${omitidos} trabajador(es) para evitar timeout en la carga masiva.`);
+  }
+
   revalidatePath("/dicaprev/trabajadores");
   return { creados: creados.length, documentosEvaluados, advertencias };
 }
