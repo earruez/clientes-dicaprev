@@ -93,6 +93,7 @@ type DbArea = {
 type DbCargo = {
   id: string;
   nombre: string;
+  tipo?: unknown;
   descripcion: string | null;
   perfilSST: string | null;
   perfilSstRequerido?: string | null;
@@ -133,6 +134,12 @@ function toStringArray(value: unknown): string[] {
   return value.filter((item): item is string => typeof item === "string");
 }
 
+function toCargoTipo(value: unknown): Tipo {
+  const allowed: Tipo[] = ["Operativo", "Supervisión", "Administración", "Prevención", "Técnico"];
+  if (typeof value !== "string") return "Operativo";
+  return allowed.includes(value as Tipo) ? (value as Tipo) : "Operativo";
+}
+
 function normalizeKey(value: string): string {
   return value
     .normalize("NFD")
@@ -168,7 +175,7 @@ function mapDbCargoToUi(cargo: DbCargo): Cargo {
     codigo: `CAR-${cargo.id.slice(0, 4).toUpperCase()}`,
     areaId: cargo.area?.id ?? "",
     areaNombre: cargo.area?.nombre ?? "Sin área",
-    tipo: "Operativo",
+    tipo: toCargoTipo(cargo.tipo),
     descripcion: cargo.descripcion ?? "",
     perfilSST: cargo.perfilSstRequerido ?? cargo.perfilSST ?? "",
     riesgosClave: riesgosToText(cargo.riesgosClave),
@@ -355,6 +362,7 @@ export default function CargosPage() {
     const updated = await actualizarCargo(id, {
       nombre: current.nombre,
       areaId: current.areaId || undefined,
+      tipo: current.tipo,
       descripcion: current.descripcion,
       perfilSST: current.perfilSST,
         riesgosClave: riesgosToList(current.riesgosClave),
@@ -565,6 +573,7 @@ export default function CargosPage() {
       const payload = {
         nombre: merged.nombre,
         areaId: merged.areaId || undefined,
+        tipo: merged.tipo,
         descripcion: merged.descripcion,
         perfilSST: merged.perfilSST,
         perfilSstRequerido: merged.perfilSST,

@@ -7,6 +7,7 @@ import { z } from "zod";
 type CargoInput = {
   nombre: string;
   areaId?: string;
+  tipo?: string;
   descripcion?: string;
   perfilSST?: string;
   perfilSstRequerido?: string;
@@ -68,11 +69,22 @@ export type EvaluacionEliminacionCargo = {
 const CARGO_META_PREFIX = "__NEXTPREV_CARGO_META__";
 
 type CargoCompatMeta = {
+  tipo: string | null;
   descripcion: string | null;
   riesgosClave: string[];
   documentosBase: string[];
   capacitacionesBase: string[];
 };
+
+const CARGO_TIPOS = [
+  "Operativo",
+  "Supervisión",
+  "Administración",
+  "Prevención",
+  "Técnico",
+] as const;
+
+type CargoTipo = (typeof CARGO_TIPOS)[number];
 
 type CargoRow = {
   id: string;
@@ -108,6 +120,13 @@ function normalizeText(value?: string) {
   return (value ?? "").trim();
 }
 
+function normalizeCargoTipo(value?: string | null): CargoTipo {
+  const normalized = normalizeText(value ?? undefined);
+  return (CARGO_TIPOS as readonly string[]).includes(normalized)
+    ? (normalized as CargoTipo)
+    : "Operativo";
+}
+
 function normalizeKey(value: string) {
   return value
     .normalize("NFD")
@@ -141,6 +160,7 @@ function encodeCargoCompatMeta(meta: CargoCompatMeta): string {
 function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
   if (!value) {
     return {
+      tipo: null,
       descripcion: null,
       riesgosClave: [],
       documentosBase: [],
@@ -150,6 +170,7 @@ function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
 
   if (!value.startsWith(CARGO_META_PREFIX)) {
     return {
+      tipo: null,
       descripcion: value,
       riesgosClave: [],
       documentosBase: [],
@@ -160,6 +181,7 @@ function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
   try {
     const parsed = JSON.parse(value.slice(CARGO_META_PREFIX.length)) as Partial<CargoCompatMeta>;
     return {
+      tipo: typeof parsed.tipo === "string" ? normalizeCargoTipo(parsed.tipo) : null,
       descripcion: typeof parsed.descripcion === "string" ? parsed.descripcion : null,
       riesgosClave: Array.isArray(parsed.riesgosClave) ? normalizeStringList(parsed.riesgosClave) : [],
       documentosBase: Array.isArray(parsed.documentosBase) ? normalizeStringList(parsed.documentosBase) : [],
@@ -167,6 +189,7 @@ function decodeCargoCompatMeta(value: string | null): CargoCompatMeta {
     };
   } catch {
     return {
+      tipo: null,
       descripcion: value,
       riesgosClave: [],
       documentosBase: [],
@@ -180,6 +203,7 @@ function hydrateCargo(row: CargoRow) {
 
   return {
     ...row,
+    tipo: normalizeCargoTipo(meta.tipo),
     descripcion: meta.descripcion,
     perfilSstRequerido: row.perfilSST,
     riesgosClave: meta.riesgosClave,
@@ -191,6 +215,7 @@ function hydrateCargo(row: CargoRow) {
 const cargoInputSchema = z.object({
   nombre: z.string().trim().min(1, "El nombre del cargo es obligatorio"),
   areaId: z.string().optional(),
+  tipo: z.enum(CARGO_TIPOS).optional(),
   descripcion: z.string().optional(),
   perfilSST: z.string().optional(),
   perfilSstRequerido: z.string().optional(),
@@ -241,6 +266,7 @@ async function validateCargo(data: CargoInput) {
   return {
     nombre: parsed.nombre,
     areaId,
+    tipo: normalizeCargoTipo(parsed.tipo),
     descripcion: descripcion || null,
     perfilSST: perfilSST || null,
     riesgosClave,
@@ -839,6 +865,7 @@ export async function crearCargo(data: CargoInput) {
       nombre: payload.nombre,
       areaId: payload.areaId,
       descripcion: encodeCargoCompatMeta({
+        tipo: payload.tipo,
         descripcion: payload.descripcion,
         riesgosClave: payload.riesgosClave,
         documentosBase: payload.documentosBase,
@@ -884,6 +911,7 @@ export async function actualizarCargo(id: string, data: CargoInput) {
       nombre: payload.nombre,
       areaId: payload.areaId,
       descripcion: encodeCargoCompatMeta({
+        tipo: payload.tipo,
         descripcion: payload.descripcion,
         riesgosClave: payload.riesgosClave,
         documentosBase: payload.documentosBase,
