@@ -19,6 +19,7 @@ export interface Worker {
   tipoContrato: WorkerContrato;
   documentosPendientes: number;
   capacitacionesPendientes: number;
+  cargoEsCritico?: boolean;
   /** ID of the Posicion (dotación) this worker is assigned to */
   dotacionId?: string;
 }
@@ -225,7 +226,7 @@ export function applyFilters(workers: Worker[], f: FilterConfig): Worker[] {
     if (f.estado && w.estado !== f.estado) return false;
     if (f.tipoContrato && w.tipoContrato !== f.tipoContrato) return false;
     if (f.centroTrabajo && w.centroTrabajo !== f.centroTrabajo) return false;
-    if (f.soloDs44 && w.documentosPendientes + w.capacitacionesPendientes <= 2) return false;
+    if (f.soloDs44 && !w.cargoEsCritico) return false;
     if (f.conPendientes && w.documentosPendientes + w.capacitacionesPendientes === 0) return false;
     return true;
   });

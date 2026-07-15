@@ -18,7 +18,7 @@ async function fetchTrabajadorById(id: string, empresaId: string) {
     include: {
       centroTrabajo: { select: { id: true, nombre: true } },
       area: { select: { id: true, nombre: true } },
-      cargo: { select: { id: true, nombre: true } },
+      cargo: { select: { id: true, nombre: true, esCritico: true } },
       posicionDotacion: { select: { id: true } },
       documentos: { select: { estado: true } },
     },
@@ -72,6 +72,7 @@ function normalizeWorker(row: NonNullable<DbTrabajador>): Worker {
     tipoContrato: mapDbContratoToUi(row.tipoContrato),
     documentosPendientes,
     capacitacionesPendientes: 0,
+    cargoEsCritico: Boolean(row.cargo?.esCritico),
     dotacionId: row.posicionDotacion?.id,
   };
 }
@@ -198,7 +199,7 @@ export async function getTrabajadores(): Promise<Worker[]> {
     include: {
       centroTrabajo: { select: { id: true, nombre: true } },
       area: { select: { id: true, nombre: true } },
-      cargo: { select: { id: true, nombre: true } },
+      cargo: { select: { id: true, nombre: true, esCritico: true } },
       posicionDotacion: { select: { id: true } },
       documentos: { select: { estado: true } },
     },

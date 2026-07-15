@@ -205,7 +205,7 @@ export function WorkersTable({
               const isSelected = selectedIds.has(w.id);
               const docStats = docStatsMap.get(w.id) ?? { pendientes: 0, vencidos: 0, pct: 0 };
               const hasPending = docStats.pendientes > 0 || docStats.vencidos > 0 || w.capacitacionesPendientes > 0;
-              const critical = (docStats.pendientes + docStats.vencidos) + w.capacitacionesPendientes > 2;
+              const critical = Boolean(w.cargoEsCritico) && (docStats.pendientes + docStats.vencidos + w.capacitacionesPendientes > 2);
 
               return (
                 <tr
@@ -296,7 +296,11 @@ export function WorkersTable({
 
                   {/* ── DS44 ── */}
                   <td className="px-3 py-2.5">
-                    {critical ? (
+                    {!w.cargoEsCritico ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
+                        No aplica
+                      </span>
+                    ) : critical ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-red-200">
                         <AlertTriangle className="h-3 w-3" />
                         Crítico
