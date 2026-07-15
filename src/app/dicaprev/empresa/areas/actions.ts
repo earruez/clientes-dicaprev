@@ -49,6 +49,16 @@ export async function getAreas() {
 
   return prisma.area.findMany({
     where: { empresaId },
+    include: {
+      cargos: {
+        where: { estado: "activo" },
+        select: {
+          id: true,
+          nombre: true,
+          esCritico: true,
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
 }
