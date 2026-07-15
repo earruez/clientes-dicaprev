@@ -317,6 +317,53 @@ export async function deleteTrabajador(id: string): Promise<Worker> {
   return normalizeWorker(row);
 }
 
+export async function generarInduccionTrabajador(id: string): Promise<{ creada: boolean }> {
+  const { empresaId, usuarioId } = await requirePermission("canCreateTrabajador");
+
+  const trabajador = await prisma.trabajador.findFirst({
+    where: {
+      id,
+      empresaId,
+      estado: {
+        notIn: ["inactivo", "Inactivo"],
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!trabajador) {
+    throw new Error("Trabajador no encontrado o inactivo");
+  }
+
+  const prevCount = await prisma.induccionTrabajador.count({
+    where: {
+      empresaId,
+      trabajadorId: id,
+      estado: {
+        in: ["pendiente", "en_progreso"],
+      },
+    },
+  });
+
+  await crearInduccionAutomaticaSiCorresponde({
+    empresaId,
+    trabajadorId: id,
+    usuarioId,
+  });
+
+  const nextCount = await prisma.induccionTrabajador.count({
+    where: {
+      empresaId,
+      trabajadorId: id,
+      estado: {
+        in: ["pendiente", "en_progreso"],
+      },
+    },
+  });
+
+  return { creada: nextCount > prevCount };
+}
+
 export type OpcionesTrabajador = {
   cargos: { id: string; nombre: string; areaNombre: string | null }[];
   areas: { id: string; nombre: string }[];
