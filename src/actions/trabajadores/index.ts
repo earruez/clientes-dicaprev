@@ -368,12 +368,23 @@ export type OpcionesTrabajador = {
   cargos: { id: string; nombre: string; areaNombre: string | null }[];
   areas: { id: string; nombre: string }[];
   centros: { id: string; nombre: string }[];
+  posicionesDotacion: {
+    id: string;
+    codigo: string;
+    centroTrabajoId: string;
+    centroNombre: string;
+    cargoId: string;
+    cargoNombre: string;
+    cantidad: number;
+    asignados: number;
+    vacantes: number;
+  }[];
 };
 
 export async function getOpcionesTrabajador(): Promise<OpcionesTrabajador> {
   const { empresaId } = await requirePermission("canReadTrabajadores");
 
-  const [cargos, areas, centros] = await Promise.all([
+  const [cargos, areas, centros, posiciones] = await Promise.all([
     prisma.cargo.findMany({
       where: { empresaId, estado: "activo" },
       select: { id: true, nombre: true, areaId: true },
@@ -389,6 +400,19 @@ export async function getOpcionesTrabajador(): Promise<OpcionesTrabajador> {
       select: { id: true, nombre: true },
       orderBy: { nombre: "asc" },
     }),
+    prisma.posicionDotacion.findMany({
+      where: { empresaId, estado: "activa" },
+      select: {
+        id: true,
+        cantidad: true,
+        centroTrabajoId: true,
+        cargoId: true,
+        centroTrabajo: { select: { id: true, nombre: true } },
+        cargo: { select: { id: true, nombre: true } },
+        trabajadores: { select: { estado: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   return {
@@ -399,5 +423,19 @@ export async function getOpcionesTrabajador(): Promise<OpcionesTrabajador> {
     })),
     areas:  areas.map((a) => ({ id: a.id, nombre: a.nombre })),
     centros: centros.map((c) => ({ id: c.id, nombre: c.nombre })),
+    posicionesDotacion: posiciones.map((p) => {
+      const asignados = p.trabajadores.filter((w) => w.estado === "activo").length;
+      return {
+        id: p.id,
+        codigo: `DOT-${p.id.slice(0, 4).toUpperCase()}`,
+        centroTrabajoId: p.centroTrabajoId,
+        centroNombre: p.centroTrabajo.nombre,
+        cargoId: p.cargoId,
+        cargoNombre: p.cargo.nombre,
+        cantidad: p.cantidad,
+        asignados,
+        vacantes: Math.max(0, p.cantidad - asignados),
+      };
+    }),
   };
 }

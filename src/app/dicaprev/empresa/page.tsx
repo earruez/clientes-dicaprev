@@ -568,7 +568,7 @@ export default function CompanyPage() {
                               <span className="h-1.5 w-1.5 rounded-full bg-slate-400 shrink-0" />
                               <span>{c.nombre}</span>
                               {c.requiereDS44 && (
-                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">DS44</span>
+                                <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">Cargo crítico SST</span>
                               )}
                             </li>
                           ))}

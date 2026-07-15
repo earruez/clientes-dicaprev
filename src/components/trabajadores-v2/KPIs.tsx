@@ -59,9 +59,9 @@ export function KPIs({ workers, activeKpiId, onKpiClick }: KPIsProps) {
     },
     {
       id: "ds44",
-      label: "DS44 críticos",
+      label: "Cargos críticos SST",
       value: ds44Count,
-      sub: ds44Count > 0 ? "Cargo con criticidad DS44" : "Sin cargos DS44 críticos",
+      sub: ds44Count > 0 ? "Cargo crítico SST" : "Sin cargos críticos SST",
       icon: <AlertTriangle className="h-5 w-5" />,
       accentBar: ds44Count > 0 ? "bg-red-500" : "bg-slate-200",
       iconBg: ds44Count > 0 ? "bg-red-50" : "bg-slate-100",

@@ -638,7 +638,7 @@ export default function CargosPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <KpiCard icon={<BookOpen className="h-5 w-5 text-violet-600" />}      label="Cargos activos"          value={kpiActivos} bg="bg-violet-50" />
           <KpiCard icon={<Users className="h-5 w-5 text-sky-600" />}            label="Trabajadores asociados"  value={kpiTrabaj}  bg="bg-sky-50" />
-          <KpiCard icon={<Shield className="h-5 w-5 text-rose-600" />}          label="Cargos críticos DS44"    value={kpiDs44}    bg="bg-rose-50" highlight={kpiDs44 > 0} />
+          <KpiCard icon={<Shield className="h-5 w-5 text-rose-600" />}          label="Cargos críticos SST"    value={kpiDs44}    bg="bg-rose-50" highlight={kpiDs44 > 0} />
           <KpiCard icon={<FileText className="h-5 w-5 text-amber-600" />}       label="Documentos base"         value={kpiDocs}    bg="bg-amber-50" />
           <KpiCard icon={<GraduationCap className="h-5 w-5 text-emerald-600" />} label="Capacitaciones base"   value={kpiCaps}    bg="bg-emerald-50" />
         </div>
@@ -682,14 +682,14 @@ export default function CargosPage() {
               <FilterSelect label="Tipo"   value={fTipo}   onChange={(v) => setFTipo(v as "todos" | Tipo)}     options={[{ value: "todos", label: "Todos" }, ...["Operativo","Supervisión","Administración","Prevención","Técnico"].map((t) => ({ value: t, label: t }))]} />
 
               <div className="flex flex-col gap-1">
-                <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">DS44</Label>
+                <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Cargo crítico SST</Label>
                 <button
                   type="button"
                   onClick={() => setFDs44((v) => !v)}
                   className={`mt-1 h-10 px-4 rounded-xl border text-sm font-medium transition ${fDs44 ? "bg-rose-600 border-rose-600 text-white" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
                 >
                   <Shield className={`inline h-4 w-4 mr-1.5 ${fDs44 ? "text-white" : "text-rose-500"}`} />
-                  {fDs44 ? "Solo DS44" : "Todos"}
+                  {fDs44 ? "Solo cargos críticos SST" : "Todos"}
                 </button>
               </div>
 
@@ -713,7 +713,7 @@ export default function CargosPage() {
                   <th className="px-4 py-3">Área</th>
                   <th className="px-4 py-3">Tipo</th>
                   <th className="px-4 py-3 max-w-[180px]">Perfil SST</th>
-                  <th className="px-4 py-3 text-center">DS44</th>
+                  <th className="px-4 py-3 text-center">Cargo crítico SST</th>
                   <th className="px-4 py-3 text-center">Docs base</th>
                   <th className="px-4 py-3 text-center">Caps base</th>
                   <th className="px-4 py-3 text-center">Trabaj.</th>
@@ -808,7 +808,7 @@ export default function CargosPage() {
                   </span>
                   {drawerCargo.requiereDS44 && (
                     <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
-                      <Shield className="h-3 w-3" /> DS44
+                      <Shield className="h-3 w-3" /> Cargo crítico SST
                     </span>
                   )}
                 </div>
@@ -1001,8 +1001,11 @@ export default function CargosPage() {
                 </div>
                 <div className="flex items-center gap-2 self-end pb-1">
                   <input type="checkbox" id="m-ds44" name="requiereDS44" checked={form.requiereDS44} onChange={handleInput} className="h-4 w-4 rounded border-slate-300 text-violet-600" />
-                  <Label htmlFor="m-ds44" className="cursor-pointer">Requiere DS44</Label>
+                  <Label htmlFor="m-ds44" className="cursor-pointer">Cargo crítico SST</Label>
                 </div>
+                <p className="text-xs text-slate-500 leading-relaxed sm:col-span-2">
+                  Marca este cargo si requiere gestión preventiva reforzada por exposición a riesgos, uso de EPP, procedimientos, capacitaciones o supervisión SST.
+                </p>
               </div>
 
               <div>

@@ -99,7 +99,7 @@ export function WorkersFilters({
 
         {/* ── Row 2: toggles + summary ── */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* DS44 crítico toggle */}
+          {/* Cargo crítico SST toggle */}
           <button
             onClick={() => set("soloDs44", !filters.soloDs44)}
             className={`inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold transition ${
@@ -109,7 +109,7 @@ export function WorkersFilters({
             }`}
           >
             <AlertTriangle className="h-3 w-3" />
-            Solo DS44 críticos
+            Solo cargos críticos SST
           </button>
 
           {/* Con pendientes toggle */}

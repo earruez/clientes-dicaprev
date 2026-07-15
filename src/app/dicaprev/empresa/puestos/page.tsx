@@ -22,9 +22,11 @@ import {
   crearPosicion,
   actualizarPosicion,
   desactivarPosicion,
+  reasignarTrabajadorDotacion,
 } from "./actions";
 import { getCentrosTrabajo } from "@/app/dicaprev/empresa/centros/actions";
 import { getCargos } from "@/app/dicaprev/empresa/cargos/actions";
+import { getTrabajadores } from "@/app/dicaprev/empresa/trabajadores/actions";
 
 /* ─────────────────────────────────────────────
    TYPES
@@ -47,6 +49,7 @@ type Posicion = {
   requiereDS44: boolean;
   estado: Estado;
   creadoEl: string;
+  trabajadores: TrabajadorAsignado[];
 };
 
 type RefCentro = {
@@ -80,7 +83,7 @@ type DotacionRow = {
 };
 
 // Posicion is imported from dotacion-store
-type PosicionForm = Omit<Posicion, "id" | "creadoEl">;
+type PosicionForm = Omit<Posicion, "id" | "creadoEl" | "trabajadores">;
 
 interface CargoOption { id: string; nombre: string; riesgos?: string; ds44?: boolean; }
 
@@ -93,10 +96,40 @@ interface TrabajadorAsignado {
   capacitaciones: number;
 }
 
-/* ─────────────────────────────────────────────
-   MOCK DATA
-───────────────────────────────────────────── */
-const WORKERS_BY_POSICION: Record<string, TrabajadorAsignado[]> = {};
+interface TrabajadorDisponible {
+  id: string;
+  nombres: string;
+  apellidos: string;
+  rut: string | null;
+  estado: string;
+  centroTrabajo: {
+    nombre: string;
+  } | null;
+  cargo: {
+    nombre: string;
+  } | null;
+  posicionDotacion: {
+    id: string;
+  } | null;
+}
+
+function ordenarTrabajadoresDisponibles(items: TrabajadorDisponible[]) {
+  return [...items].sort((a, b) => {
+    const centroA = a.centroTrabajo?.nombre ?? "";
+    const centroB = b.centroTrabajo?.nombre ?? "";
+    const centroCmp = centroA.localeCompare(centroB, "es", { sensitivity: "base" });
+    if (centroCmp !== 0) return centroCmp;
+
+    const cargoA = a.cargo?.nombre ?? "";
+    const cargoB = b.cargo?.nombre ?? "";
+    const cargoCmp = cargoA.localeCompare(cargoB, "es", { sensitivity: "base" });
+    if (cargoCmp !== 0) return cargoCmp;
+
+    const nombreA = `${a.nombres} ${a.apellidos}`;
+    const nombreB = `${b.nombres} ${b.apellidos}`;
+    return nombreA.localeCompare(nombreB, "es", { sensitivity: "base" });
+  });
+}
 
 /* ─────────────────────────────────────────────
    HELPERS
@@ -153,11 +186,11 @@ function emptyForm(firstCentro: string, cargos: CargoOption[]): PosicionForm {
 }
 
 function mapDbPosicionToUi(row: DotacionRow): Posicion {
-  WORKERS_BY_POSICION[row.id] = row.trabajadoresAsignados.map((trabajador) => ({
+  const trabajadores = row.trabajadoresAsignados.map((trabajador) => ({
     id: trabajador.id,
     nombre: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
     rut: trabajador.rut ?? "Sin RUT",
-    estado: trabajador.estado === "activo" ? "Al día" : trabajador.estado === "inactivo" ? "Pendiente" : "Crítico",
+    estado: (trabajador.estado === "activo" ? "Al día" : trabajador.estado === "inactivo" ? "Pendiente" : "Crítico") as TrabajadorAsignado["estado"],
     completitudDoc: trabajador.estado === "activo" ? 100 : trabajador.estado === "inactivo" ? 60 : 35,
     capacitaciones: trabajador.estado === "activo" ? 8 : trabajador.estado === "inactivo" ? 4 : 2,
   }));
@@ -176,6 +209,7 @@ function mapDbPosicionToUi(row: DotacionRow): Posicion {
     requiereDS44: row.esCritica,
     estado: row.estado === "inactiva" ? "inactivo" : "activo",
     creadoEl: row.createdAt.toISOString().slice(0, 10),
+    trabajadores,
   };
 }
 
@@ -186,6 +220,7 @@ export default function DotacionPage() {
   const [posiciones, setPosiciones] = useState<Posicion[]>([]);
   const [centrosRef, setCentrosRef] = useState<RefCentro[]>([]);
   const [cargosRef, setCargosRef] = useState<CargoOption[]>([]);
+  const [trabajadoresSinDotacion, setTrabajadoresSinDotacion] = useState<TrabajadorDisponible[]>([]);
   const [loading, setLoading] = useState(false);
 
   const CENTROS = centrosRef.map((c) => c.nombre);
@@ -196,8 +231,8 @@ export default function DotacionPage() {
     let mounted = true;
     setLoading(true);
 
-    Promise.all([getDotacion(), getCentrosTrabajo(), getCargos()])
-      .then(([dotacionRows, centrosRows, cargosRows]) => {
+    Promise.all([getDotacion(), getCentrosTrabajo(), getCargos(), getTrabajadores()])
+      .then(([dotacionRows, centrosRows, cargosRows, trabajadoresRows]) => {
         if (!mounted) return;
 
         const mappedPosiciones = dotacionRows.map((row) => mapDbPosicionToUi(row));
@@ -208,10 +243,25 @@ export default function DotacionPage() {
           riesgos: row.perfilSST ?? row.descripcion ?? "",
           ds44: row.esCritico,
         }));
+        const mappedTrabajadoresSinDotacion = ordenarTrabajadoresDisponibles(
+          trabajadoresRows
+          .filter((row) => row.estado !== "inactivo" && !row.posicionDotacion?.id)
+          .map((row) => ({
+            id: row.id,
+            nombres: row.nombres,
+            apellidos: row.apellidos,
+            rut: row.rut,
+            estado: row.estado,
+            centroTrabajo: row.centroTrabajo,
+            cargo: row.cargo,
+            posicionDotacion: row.posicionDotacion,
+          })),
+        );
 
         setPosiciones(mappedPosiciones);
         setCentrosRef(mappedCentros);
         setCargosRef(mappedCargos);
+        setTrabajadoresSinDotacion(mappedTrabajadoresSinDotacion);
       })
       .finally(() => {
         if (mounted) setLoading(false);
@@ -230,6 +280,7 @@ export default function DotacionPage() {
   const [fDs44, setFDs44]       = useState(false);
 
   const [drawerPos, setDrawerPos] = useState<Posicion | null>(null);
+  const [selectedReassignment, setSelectedReassignment] = useState<Record<string, string>>({});
 
   const [modalOpen, setModalOpen]   = useState(false);
   const [editingId, setEditingId]   = useState<string | null>(null);
@@ -317,6 +368,35 @@ export default function DotacionPage() {
     if (drawerPos?.id === id) setDrawerPos(mapped);
   };
 
+  const handleReasignarTrabajador = async (trabajadorId: string, posicionDotacionId: string) => {
+    if (!posicionDotacionId || posicionDotacionId === "__none") return;
+
+    await reasignarTrabajadorDotacion({ trabajadorId, posicionDotacionId });
+    const [refreshedDotacion, refreshedTrabajadores] = await Promise.all([getDotacion(), getTrabajadores()]);
+    const mapped = refreshedDotacion.map((row) => mapDbPosicionToUi(row));
+    const mappedTrabajadoresSinDotacion = ordenarTrabajadoresDisponibles(
+      refreshedTrabajadores
+      .filter((row) => row.estado !== "inactivo" && !row.posicionDotacion?.id)
+      .map((row) => ({
+        id: row.id,
+        nombres: row.nombres,
+        apellidos: row.apellidos,
+        rut: row.rut,
+        estado: row.estado,
+        centroTrabajo: row.centroTrabajo,
+        cargo: row.cargo,
+        posicionDotacion: row.posicionDotacion,
+      })),
+    );
+
+    setPosiciones(mapped);
+    setTrabajadoresSinDotacion(mappedTrabajadoresSinDotacion);
+
+    const current = mapped.find((p) => p.id === drawerPos?.id) ?? null;
+    setDrawerPos(current);
+    setSelectedReassignment((prev) => ({ ...prev, [trabajadorId]: "" }));
+  };
+                              <SelectItem value="__none">Sin cambio</SelectItem>
   const handleInput = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
@@ -391,7 +471,8 @@ export default function DotacionPage() {
     setModalOpen(false);
   };
 
-  const drawerWorkers: TrabajadorAsignado[] = drawerPos ? (WORKERS_BY_POSICION[drawerPos.id] ?? []) : [];
+  const drawerWorkers: TrabajadorAsignado[] = drawerPos?.trabajadores ?? [];
+  const posicionesDestino = posiciones.filter((p) => p.estado === "activo" && p.id !== drawerPos?.id && vacantesPos(p) > 0);
 
   const clearFilters = () => { setSearch(""); setFCentro("todos"); setFCargo("todos"); setFEstado("todos"); setFTurno("todos"); setFDs44(false); };
   const hasFilters = search || fCentro !== "todos" || fCargo !== "todos" || fEstado !== "todos" || fTurno !== "todos" || fDs44;
@@ -451,14 +532,14 @@ export default function DotacionPage() {
 
               {/* DS44 */}
               <div className="flex flex-col gap-1">
-                <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">DS44 crítico</Label>
+                <Label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Cargo crítico SST</Label>
                 <button
                   type="button"
                   onClick={() => setFDs44((v) => !v)}
                   className={`mt-1 h-10 px-4 rounded-xl border text-sm font-medium transition ${fDs44 ? "bg-rose-600 border-rose-600 text-white" : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"}`}
                 >
                   <AlertTriangle className={`inline h-4 w-4 mr-1.5 ${fDs44 ? "text-white" : "text-rose-500"}`} />
-                  {fDs44 ? "Solo críticos" : "Todos"}
+                      {fDs44 ? "Solo cargos críticos SST" : "Todos"}
                 </button>
               </div>
 
@@ -485,7 +566,7 @@ export default function DotacionPage() {
                   <th className="px-4 py-3 text-center">Vac.</th>
                   <th className="px-4 py-3">Turno</th>
                   <th className="px-4 py-3">Modalidad</th>
-                  <th className="px-4 py-3 text-center">DS44</th>
+                  <th className="px-4 py-3 text-center">Cargo crítico SST</th>
                   <th className="px-4 py-3">Cobertura</th>
                   <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3 text-right">Acciones</th>
@@ -520,9 +601,9 @@ export default function DotacionPage() {
                     </td>
                     <td className="px-4 py-3.5 text-xs text-slate-600">{p.modalidad}</td>
                     <td className="px-4 py-3.5 text-center">
-                      {p.requiereDS44 ? (
+                          {p.requiereDS44 ? (
                         <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold border ${vacantesPos(p) > 0 ? "bg-rose-50 text-rose-600 border-rose-100" : "bg-emerald-50 text-emerald-600 border-emerald-100"}`}>
-                          {vacantesPos(p) > 0 ? "⚠ Crítico" : "✓ OK"}
+                          {vacantesPos(p) > 0 ? "⚠ Cargo crítico SST" : "✓ OK"}
                         </span>
                       ) : (
                         <span className="text-slate-300 text-xs">—</span>
@@ -580,7 +661,7 @@ export default function DotacionPage() {
                   )}
                   {drawerPos.requiereDS44 && vacantesPos(drawerPos) > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold bg-rose-50 text-rose-600 border border-rose-100">
-                      <AlertTriangle className="h-3 w-3" /> DS44 Crítico
+                      <AlertTriangle className="h-3 w-3" /> Cargo crítico SST
                     </span>
                   )}
                 </div>
@@ -624,7 +705,7 @@ export default function DotacionPage() {
                 <InfoRow icon={<Clock className="h-4 w-4 text-slate-400" />}    label="Turno"      value={drawerPos.turno} />
                 <InfoRow icon={<Building2 className="h-4 w-4 text-slate-400" />} label="Modalidad"  value={drawerPos.modalidad} />
                 <InfoRow icon={<MapPin className="h-4 w-4 text-slate-400" />}    label="Ubicación"  value={drawerPos.ubicacion || "—"} />
-                <InfoRow icon={<Shield className="h-4 w-4 text-slate-400" />}    label="DS44"       value={drawerPos.requiereDS44 ? "Incluido en matriz" : "No aplica"} />
+                <InfoRow icon={<Shield className="h-4 w-4 text-slate-400" />}    label="Cargo crítico SST" value={drawerPos.requiereDS44 ? "Incluido en matriz" : "No aplica"} />
               </div>
 
               {/* Riesgos */}
@@ -657,9 +738,79 @@ export default function DotacionPage() {
                           <p className="text-sm font-medium text-slate-800 truncate">{w.nombre}</p>
                           <p className="text-[11px] text-slate-400">{w.rut}</p>
                         </div>
-                        <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold border ${workerEstadoColor(w.estado)}`}>
-                          {w.estado}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <Select
+                            value={selectedReassignment[w.id] ?? ""}
+                            onValueChange={(value) => setSelectedReassignment((prev) => ({ ...prev, [w.id]: value }))}
+                          >
+                            <SelectTrigger className="h-8 w-[240px] rounded-lg text-[11px]">
+                              <SelectValue placeholder="Reasignar a otra posición" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="">Sin cambio</SelectItem>
+                              {posicionesDestino.map((posicion) => (
+                                <SelectItem key={posicion.id} value={posicion.id}>
+                                  {posicion.codigo} · {posicion.cargoNombre} · {posicion.centroNombre} ({vacantesPos(posicion)} vac.)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <button
+                            type="button"
+                            disabled={!selectedReassignment[w.id] || selectedReassignment[w.id] === "__none"}
+                            onClick={() => handleReasignarTrabajador(w.id, selectedReassignment[w.id])}
+                            className="rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-200"
+                          >
+                            Mover
+                          </button>
+                          <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold border ${workerEstadoColor(w.estado)}`}>
+                            {w.estado}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Trabajadores sin dotación */}
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 px-4 py-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-500 flex items-center gap-1.5">
+                    <Plus className="h-3.5 w-3.5" /> Trabajadores sin dotación
+                  </p>
+                  <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600 border border-indigo-100">
+                    {trabajadoresSinDotacion.length}
+                  </span>
+                </div>
+
+                {trabajadoresSinDotacion.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-indigo-100 bg-white/70 py-5 text-center text-sm text-slate-500">
+                    No hay trabajadores disponibles sin asignación.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {trabajadoresSinDotacion.map((worker) => (
+                      <div key={worker.id} className="rounded-xl border border-indigo-100 bg-white px-4 py-3 shadow-sm flex items-center gap-3">
+                        <div className="h-8 w-8 shrink-0 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">
+                          {worker.nombres.split(" ").map((n) => n[0]).slice(0, 2).join("")}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-slate-800">
+                            {worker.nombres} {worker.apellidos}
+                          </p>
+                          <p className="text-[11px] text-slate-400">
+                            {worker.rut ?? "Sin RUT"}
+                            {worker.cargo?.nombre ? ` · ${worker.cargo.nombre}` : ""}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleReasignarTrabajador(worker.id, drawerPos.id)}
+                          className="shrink-0 rounded-lg bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-indigo-700"
+                        >
+                          Asignar a esta posición
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -805,7 +956,7 @@ export default function DotacionPage() {
               {/* DS44 */}
               <div className="sm:col-span-2 flex items-center gap-2">
                 <input type="checkbox" id="m-ds44" name="requiereDS44" checked={form.requiereDS44} onChange={handleInput} className="h-4 w-4 rounded border-slate-300 text-indigo-600" />
-                <Label htmlFor="m-ds44" className="cursor-pointer">Incluir en matriz DS44</Label>
+                <Label htmlFor="m-ds44" className="cursor-pointer">Incluir como cargo crítico SST</Label>
               </div>
             </div>
 

@@ -5,6 +5,7 @@ import {
   Building2,
   Users,
   Briefcase,
+  Layers,
   UserMinus,
   ShieldCheck,
   GraduationCap,
@@ -48,6 +49,12 @@ export type CentroTrabajoDTO = {
   tipo: string;
   estado: string;
   cantidadTrabajadores: number;
+  dotacionTotal?: number;
+  cargosTotal?: number;
+  cumplimientoDocPct?: number;
+  capacitacionesPendientes?: number;
+  vencimientos?: number;
+  alertasDs44?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -65,6 +72,7 @@ type CentroUI = {
   estado: CentroEstado;
   trabajadoresTotal: number;
   dotacionTotal: number;
+  cargosTotal: number;
   cumplimientoDocPct: number;
   capacitacionesPendientes: number;
   vencimientos: number;
@@ -156,11 +164,12 @@ function mapCentro(row: CentroTrabajoDTO): CentroUI {
     region: row.region,
     estado: (row.estado as CentroEstado) || "activo",
     trabajadoresTotal: row.cantidadTrabajadores,
-    dotacionTotal: row.cantidadTrabajadores,
-    cumplimientoDocPct: 0,
-    capacitacionesPendientes: 0,
-    vencimientos: 0,
-    alertasDs44: 0,
+    dotacionTotal: row.dotacionTotal ?? row.cantidadTrabajadores,
+    cargosTotal: row.cargosTotal ?? 0,
+    cumplimientoDocPct: row.cumplimientoDocPct ?? 0,
+    capacitacionesPendientes: row.capacitacionesPendientes ?? 0,
+    vencimientos: row.vencimientos ?? 0,
+    alertasDs44: row.alertasDs44 ?? 0,
     creadoEl: row.createdAt.slice(0, 10),
   };
 }
@@ -184,12 +193,13 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
     const totalCentros = active.length;
     const trabajadores = active.reduce((acc, c) => acc + c.trabajadoresTotal, 0);
     const dotacion = active.reduce((acc, c) => acc + c.dotacionTotal, 0);
+    const cargos = active.reduce((acc, c) => acc + c.cargosTotal, 0);
     const vacantes = Math.max(dotacion - trabajadores, 0);
     const cumplimiento = totalCentros > 0 ? Math.round(active.reduce((acc, c) => acc + c.cumplimientoDocPct, 0) / totalCentros) : 0;
     const capsPend = active.reduce((acc, c) => acc + c.capacitacionesPendientes, 0);
     const vencimientos = active.reduce((acc, c) => acc + c.vencimientos, 0);
     const ds44 = active.reduce((acc, c) => acc + c.alertasDs44, 0);
-    return { totalCentros, trabajadores, dotacion, vacantes, cumplimiento, capsPend, vencimientos, ds44 };
+    return { totalCentros, trabajadores, dotacion, cargos, vacantes, cumplimiento, capsPend, vencimientos, ds44 };
   }, [centros]);
 
   function openCreate() {
@@ -297,6 +307,7 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
             { label: "Centros", value: kpis.totalCentros, icon: Building2, tone: "bg-cyan-50 text-cyan-700" },
             { label: "Trabajadores", value: kpis.trabajadores, icon: Users, tone: "bg-emerald-50 text-emerald-700" },
             { label: "Dotación", value: kpis.dotacion, icon: Briefcase, tone: "bg-sky-50 text-sky-700" },
+            { label: "Cargos", value: kpis.cargos, icon: Layers, tone: "bg-indigo-50 text-indigo-700" },
             { label: "Vacantes", value: kpis.vacantes, icon: UserMinus, tone: "bg-amber-50 text-amber-700" },
             { label: "% documental", value: `${kpis.cumplimiento}%`, icon: ShieldCheck, tone: "bg-violet-50 text-violet-700" },
             { label: "Cap. pendientes", value: kpis.capsPend, icon: GraduationCap, tone: "bg-indigo-50 text-indigo-700" },
@@ -432,6 +443,7 @@ export default function CentrosTrabajoPrismaClient({ initialCentros }: { initial
                     <InfoItem label="Comuna" value={selectedCentro.comuna || "-"} />
                     <InfoItem label="Región" value={selectedCentro.region || "-"} />
                     <InfoItem label="Trabajadores" value={String(selectedCentro.trabajadoresTotal)} />
+                      <InfoItem label="Cargos" value={String(selectedCentro.cargosTotal)} />
                     <InfoItem label="Registrado" value={selectedCentro.creadoEl} />
                   </div>
                 </CardContent>

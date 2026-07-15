@@ -43,9 +43,46 @@ function validateCentro(data: CentroTrabajoInput) {
 export async function getCentrosTrabajo() {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
-  return prisma.centroTrabajo.findMany({
+  const centros = await prisma.centroTrabajo.findMany({
     where: { empresaId },
+    include: {
+      trabajadores: {
+        select: {
+          id: true,
+          estado: true,
+          cargoId: true,
+        },
+      },
+      posicionesDotacion: {
+        select: {
+          id: true,
+          cantidad: true,
+          estado: true,
+          esCritica: true,
+          cargoId: true,
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
+  });
+
+  return centros.map((centro) => {
+    const trabajadoresActivos = centro.trabajadores.filter((trabajador) => trabajador.estado !== "inactivo").length;
+    const posicionesActivas = centro.posicionesDotacion.filter((posicion) => posicion.estado === "activa");
+    const dotacionTotal = posicionesActivas.reduce((acc, posicion) => acc + posicion.cantidad, 0);
+    const cargosTotal = new Set(posicionesActivas.map((posicion) => posicion.cargoId)).size;
+    const alertasDs44 = posicionesActivas.filter((posicion) => posicion.esCritica).length;
+
+    return {
+      ...centro,
+      cantidadTrabajadores: trabajadoresActivos,
+      dotacionTotal,
+      cargosTotal,
+      cumplimientoDocPct: dotacionTotal > 0 ? Math.round((trabajadoresActivos / dotacionTotal) * 100) : 0,
+      capacitacionesPendientes: 0,
+      vencimientos: 0,
+      alertasDs44,
+    };
   });
 }
 

@@ -13,6 +13,12 @@ export default async function EmpresaCentrosPage() {
     tipo: centro.tipo,
     estado: centro.estado,
     cantidadTrabajadores: centro.cantidadTrabajadores,
+    dotacionTotal: centro.dotacionTotal,
+    cargosTotal: centro.cargosTotal,
+    cumplimientoDocPct: centro.cumplimientoDocPct,
+    capacitacionesPendientes: centro.capacitacionesPendientes,
+    vencimientos: centro.vencimientos,
+    alertasDs44: centro.alertasDs44,
     createdAt: centro.createdAt.toISOString(),
     updatedAt: centro.updatedAt.toISOString(),
   }));
