@@ -51,7 +51,14 @@ export async function getAreas() {
     where: { empresaId },
     include: {
       cargos: {
-        where: { estado: "activo" },
+        where: {
+          NOT: {
+            estado: {
+              equals: "inactivo",
+              mode: "insensitive",
+            },
+          },
+        },
         select: {
           id: true,
           nombre: true,

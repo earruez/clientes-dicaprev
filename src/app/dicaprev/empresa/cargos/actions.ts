@@ -795,29 +795,35 @@ export async function crearCapacitacionEspecificaCargo(input: {
 export async function getCargos() {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
+  const trabajadoresActivosPromise =
+    typeof prisma.trabajador?.findMany === "function"
+      ? prisma.trabajador.findMany({
+          where: {
+            empresaId,
+            cargoId: { not: null },
+            estado: {
+              equals: "activo",
+              mode: "insensitive",
+            },
+          },
+          select: {
+            cargoId: true,
+            centroTrabajo: {
+              select: {
+                nombre: true,
+              },
+            },
+          },
+        })
+      : Promise.resolve([]);
+
   const [rows, trabajadoresActivos] = await Promise.all([
     prisma.cargo.findMany({
       where: { empresaId },
       select: cargoReadSelect,
       orderBy: { createdAt: "desc" },
     }),
-    prisma.trabajador.findMany({
-      where: {
-        empresaId,
-        cargoId: { not: null },
-        estado: {
-          notIn: ["inactivo", "Inactivo"],
-        },
-      },
-      select: {
-        cargoId: true,
-        centroTrabajo: {
-          select: {
-            nombre: true,
-          },
-        },
-      },
-    }),
+    trabajadoresActivosPromise,
   ]);
 
   const resumenPorCargo = new Map<string, { trabajadores: number; centros: Set<string> }>();
