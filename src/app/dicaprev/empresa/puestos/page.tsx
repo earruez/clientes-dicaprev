@@ -370,33 +370,36 @@ export default function DotacionPage() {
 
   const handleReasignarTrabajador = async (trabajadorId: string, posicionDotacionId: string) => {
     if (!posicionDotacionId || posicionDotacionId === "__none") return;
+    try {
+      await reasignarTrabajadorDotacion({ trabajadorId, posicionDotacionId });
+      const [refreshedDotacion, refreshedTrabajadores] = await Promise.all([getDotacion(), getTrabajadores()]);
+      const mapped = refreshedDotacion.map((row) => mapDbPosicionToUi(row));
+      const mappedTrabajadoresSinDotacion = ordenarTrabajadoresDisponibles(
+        refreshedTrabajadores
+          .filter((row) => row.estado !== "inactivo" && !row.posicionDotacion?.id)
+          .map((row) => ({
+            id: row.id,
+            nombres: row.nombres,
+            apellidos: row.apellidos,
+            rut: row.rut,
+            estado: row.estado,
+            centroTrabajo: row.centroTrabajo,
+            cargo: row.cargo,
+            posicionDotacion: row.posicionDotacion,
+          })),
+      );
 
-    await reasignarTrabajadorDotacion({ trabajadorId, posicionDotacionId });
-    const [refreshedDotacion, refreshedTrabajadores] = await Promise.all([getDotacion(), getTrabajadores()]);
-    const mapped = refreshedDotacion.map((row) => mapDbPosicionToUi(row));
-    const mappedTrabajadoresSinDotacion = ordenarTrabajadoresDisponibles(
-      refreshedTrabajadores
-      .filter((row) => row.estado !== "inactivo" && !row.posicionDotacion?.id)
-      .map((row) => ({
-        id: row.id,
-        nombres: row.nombres,
-        apellidos: row.apellidos,
-        rut: row.rut,
-        estado: row.estado,
-        centroTrabajo: row.centroTrabajo,
-        cargo: row.cargo,
-        posicionDotacion: row.posicionDotacion,
-      })),
-    );
+      setPosiciones(mapped);
+      setTrabajadoresSinDotacion(mappedTrabajadoresSinDotacion);
 
-    setPosiciones(mapped);
-    setTrabajadoresSinDotacion(mappedTrabajadoresSinDotacion);
-
-    const current = mapped.find((p) => p.id === drawerPos?.id) ?? null;
-    setDrawerPos(current);
-    setSelectedReassignment((prev) => ({ ...prev, [trabajadorId]: "" }));
+      const current = mapped.find((p) => p.id === drawerPos?.id) ?? null;
+      setDrawerPos(current);
+      setSelectedReassignment((prev) => ({ ...prev, [trabajadorId]: "__none" }));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "No se pudo reasignar el trabajador.");
+    }
   };
-                              <SelectItem value="__none">Sin cambio</SelectItem>
+
   const handleInput = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
@@ -493,6 +496,9 @@ export default function DotacionPage() {
             <p className="text-sm text-slate-500 max-w-xl pl-[52px]">
               Posiciones operativas por centro de trabajo. Cada posición vincula un cargo maestro con su cobertura real, turno y cumplimiento DS44.
             </p>
+            <div className="mt-3 ml-[52px] max-w-2xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Vista legacy: esta sección se mantiene por compatibilidad y ya no forma parte del flujo principal SST.
+            </div>
           </div>
           <button
             onClick={openCreate}
@@ -740,14 +746,14 @@ export default function DotacionPage() {
                         </div>
                         <div className="flex shrink-0 items-center gap-2">
                           <Select
-                            value={selectedReassignment[w.id] ?? ""}
+                            value={selectedReassignment[w.id] ?? "__none"}
                             onValueChange={(value) => setSelectedReassignment((prev) => ({ ...prev, [w.id]: value }))}
                           >
                             <SelectTrigger className="h-8 w-[240px] rounded-lg text-[11px]">
                               <SelectValue placeholder="Reasignar a otra posición" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">Sin cambio</SelectItem>
+                              <SelectItem value="__none">Sin cambio</SelectItem>
                               {posicionesDestino.map((posicion) => (
                                 <SelectItem key={posicion.id} value={posicion.id}>
                                   {posicion.codigo} · {posicion.cargoNombre} · {posicion.centroNombre} ({vacantesPos(posicion)} vac.)

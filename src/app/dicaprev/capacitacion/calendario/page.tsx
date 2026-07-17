@@ -212,7 +212,7 @@ export default function CalendarioCapacitacionPage() {
       {/* BREADCRUMB + SUB-NAV */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-1.5 text-xs text-slate-400">
-          <Link href="/dicaprev/trabajadores/dotacion" className="hover:text-slate-700 transition-colors">Trabajadores</Link>
+          <Link href="/dicaprev/trabajadores" className="hover:text-slate-700 transition-colors">Trabajadores</Link>
           <span>›</span>
           <span className="text-slate-600 font-medium">Capacitaciones</span>
         </div>

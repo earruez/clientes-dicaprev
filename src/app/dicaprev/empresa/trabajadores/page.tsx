@@ -26,7 +26,6 @@ import { Users } from "lucide-react";
 import { getCentrosTrabajo } from "@/app/dicaprev/empresa/centros/actions";
 import { getAreas } from "@/app/dicaprev/empresa/areas/actions";
 import { getCargos } from "@/app/dicaprev/empresa/cargos/actions";
-import { getDotacion } from "@/app/dicaprev/empresa/puestos/actions";
 import {
   getTrabajadores,
   crearTrabajador,
@@ -44,9 +43,10 @@ type RefEntity = {
   nombre: string;
 };
 
-type RefPosicion = {
+type RefCargo = {
   id: string;
-  label: string;
+  nombre: string;
+  areaId: string | null;
 };
 
 type Trabajador = {
@@ -59,11 +59,9 @@ type Trabajador = {
   centroTrabajoId: string;
   areaId: string;
   cargoId: string;
-  posicionDotacionId: string;
   centro: string;
   area: string;
   cargo: string;
-  posicion: string;
   puesto: string;
   tipoContrato: TipoContrato;
   jornada: Jornada;
@@ -73,7 +71,7 @@ type Trabajador = {
   riesgosClave: string;
 };
 
-type TrabajadorForm = Omit<Trabajador, "id" | "centro" | "area" | "cargo" | "posicion">;
+type TrabajadorForm = Omit<Trabajador, "id" | "centro" | "area" | "cargo">;
 
 type DbTrabajador = {
   id: string;
@@ -104,7 +102,7 @@ type DbTrabajador = {
   } | null;
 };
 
-function emptyForm(centros: RefEntity[], areas: RefEntity[], cargos: RefEntity[]): TrabajadorForm {
+function emptyForm(centros: RefEntity[], areas: RefEntity[], cargos: RefCargo[]): TrabajadorForm {
   return {
     rut: "",
     nombres: "",
@@ -114,7 +112,6 @@ function emptyForm(centros: RefEntity[], areas: RefEntity[], cargos: RefEntity[]
     centroTrabajoId: centros[0]?.id ?? "",
     areaId: areas[0]?.id ?? "",
     cargoId: cargos[0]?.id ?? "",
-    posicionDotacionId: "",
     puesto: "",
     tipoContrato: "Indefinido",
     jornada: "Completa",
@@ -152,11 +149,9 @@ function mapDbTrabajadorToUi(row: DbTrabajador): Trabajador {
     centroTrabajoId: row.centroTrabajo?.id ?? "",
     areaId: row.area?.id ?? "",
     cargoId: row.cargo?.id ?? "",
-    posicionDotacionId: row.posicionDotacion?.id ?? "",
     centro: row.centroTrabajo?.nombre ?? "Sin centro",
     area: row.area?.nombre ?? "Sin area",
     cargo: row.cargo?.nombre ?? "Sin cargo",
-    posicion: row.posicionDotacion ? `${row.posicionDotacion.centroTrabajo.nombre} · ${row.posicionDotacion.cargo.nombre}` : "Sin posición",
     puesto: row.cargo?.nombre ?? "",
     tipoContrato: mapContrato(row.tipoContrato),
     jornada: mapJornada(row.jornada),
@@ -172,7 +167,6 @@ function toActionPayload(form: TrabajadorForm) {
     centroTrabajoId: form.centroTrabajoId || undefined,
     areaId: form.areaId || undefined,
     cargoId: form.cargoId || undefined,
-    posicionDotacionId: form.posicionDotacionId || undefined,
     nombres: form.nombres,
     apellidos: form.apellidos,
     rut: form.rut,
@@ -194,8 +188,7 @@ export default function TrabajadoresPage() {
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>([]);
   const [centrosRef, setCentrosRef] = useState<RefEntity[]>([]);
   const [areasRef, setAreasRef] = useState<RefEntity[]>([]);
-  const [cargosRef, setCargosRef] = useState<RefEntity[]>([]);
-  const [posicionesRef, setPosicionesRef] = useState<RefPosicion[]>([]);
+  const [cargosRef, setCargosRef] = useState<RefCargo[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [search, setSearch] = useState<string>("");
@@ -214,26 +207,23 @@ export default function TrabajadoresPage() {
     let mounted = true;
     setLoading(true);
 
-    Promise.all([getTrabajadores(), getCentrosTrabajo(), getAreas(), getCargos(), getDotacion()])
-      .then(([trabajadoresRows, centrosRows, areasRows, cargosRows, posicionesRows]) => {
+    Promise.all([getTrabajadores(), getCentrosTrabajo(), getAreas(), getCargos()])
+      .then(([trabajadoresRows, centrosRows, areasRows, cargosRows]) => {
         if (!mounted) return;
 
         const mappedTrabajadores = trabajadoresRows.map((row) => mapDbTrabajadorToUi(row as DbTrabajador));
         const mappedCentros = centrosRows.map((row) => ({ id: row.id, nombre: row.nombre }));
         const mappedAreas = areasRows.map((row) => ({ id: row.id, nombre: row.nombre }));
-        const mappedCargos = cargosRows.map((row) => ({ id: row.id, nombre: row.nombre }));
-        const mappedPosiciones = posicionesRows
-          .filter((row) => row.estado === "activa")
-          .map((row) => ({
-            id: row.id,
-            label: `${row.centroTrabajo.nombre} · ${row.cargo.nombre}`,
-          }));
+        const mappedCargos = cargosRows.map((row) => ({
+          id: row.id,
+          nombre: row.nombre,
+          areaId: row.area?.id ?? null,
+        }));
 
         setTrabajadores(mappedTrabajadores);
         setCentrosRef(mappedCentros);
         setAreasRef(mappedAreas);
         setCargosRef(mappedCargos);
-        setPosicionesRef(mappedPosiciones);
         setForm(emptyForm(mappedCentros, mappedAreas, mappedCargos));
       })
       .finally(() => {
@@ -304,7 +294,6 @@ export default function TrabajadoresPage() {
       centroTrabajoId: t.centroTrabajoId,
       areaId: t.areaId,
       cargoId: t.cargoId,
-      posicionDotacionId: t.posicionDotacionId,
       puesto: t.puesto,
       tipoContrato: t.tipoContrato,
       jornada: t.jornada,
@@ -376,7 +365,6 @@ export default function TrabajadoresPage() {
         centroTrabajoId: current.centroTrabajoId,
         areaId: current.areaId,
         cargoId: current.cargoId,
-        posicionDotacionId: current.posicionDotacionId,
         puesto: current.puesto,
         tipoContrato: current.tipoContrato,
         jornada: current.jornada,
@@ -433,7 +421,7 @@ export default function TrabajadoresPage() {
       <StandardPageHeader
         moduleLabel="Empresa"
         title="Trabajadores"
-        description="Maestro de trabajadores de la empresa. Desde aqui podras vincularlos a centros, puestos, DS44 y planes de capacitacion."
+        description="Maestro de trabajadores de la empresa. Desde aqui podras vincularlos a centros, áreas, cargos, DS44 y planes de capacitación."
         icon={Users}
         actions={
           canCreateTrabajador ? (
@@ -451,7 +439,7 @@ export default function TrabajadoresPage() {
         <MetricCard label="Trabajadores totales" value={totalTrabajadores.toString()} />
         <MetricCard label="Activos" value={activos.toString()} />
         <MetricCard label="Vinculados a DS44" value={ds44.toString()} />
-        <MetricCard label="Centros con dotacion" value={centrosConTrabajadores.toString()} />
+        <MetricCard label="Centros con trabajadores" value={centrosConTrabajadores.toString()} />
       </div>
 
       <Card className="border border-slate-200 rounded-2xl shadow-sm">
@@ -575,9 +563,8 @@ export default function TrabajadoresPage() {
                 </div>
 
                 <p className="text-sm text-slate-500">
-                  {t.cargo} · {t.puesto || "Sin puesto asignado"}
+                  {t.cargo} · {t.puesto || "Sin rol interno"}
                 </p>
-                <p className="text-xs text-slate-500">Posición: {t.posicion}</p>
 
                 <div className="flex flex-wrap gap-2 text-xs text-slate-500">
                   <Badge variant="outline" className="rounded-full border-slate-200 bg-slate-50 text-[11px]">
@@ -658,7 +645,7 @@ export default function TrabajadoresPage() {
               {isEdit ? "Editar trabajador" : "Nuevo trabajador"}
             </DialogTitle>
             <DialogDescription className="text-sm text-slate-500">
-              Completa los datos basicos del trabajador para vincularlo con centros, puestos de trabajo y la gestion de DS44 / capacitacion.
+              Completa los datos básicos del trabajador para vincularlo con centro, área y cargo para la gestión de SST.
             </DialogDescription>
           </DialogHeader>
 
@@ -794,7 +781,15 @@ export default function TrabajadoresPage() {
                   <Label>Cargo</Label>
                   <Select
                     value={form.cargoId || "sin-cargo"}
-                    onValueChange={(v: string) => setForm((prev) => ({ ...prev, cargoId: v === "sin-cargo" ? "" : v }))}
+                    onValueChange={(v: string) => {
+                      const nextCargoId = v === "sin-cargo" ? "" : v;
+                      const areaFromCargo = cargosRef.find((c) => c.id === nextCargoId)?.areaId ?? null;
+                      setForm((prev) => ({
+                        ...prev,
+                        cargoId: nextCargoId,
+                        areaId: areaFromCargo ?? prev.areaId,
+                      }));
+                    }}
                   >
                     <SelectTrigger className="rounded-xl bg-white">
                       <SelectValue placeholder="Selecciona cargo" />
@@ -811,33 +806,13 @@ export default function TrabajadoresPage() {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <Label>Posición de dotación</Label>
-                  <Select
-                    value={form.posicionDotacionId || "sin-posicion"}
-                    onValueChange={(v: string) => setForm((prev) => ({ ...prev, posicionDotacionId: v === "sin-posicion" ? "" : v }))}
-                  >
-                    <SelectTrigger className="rounded-xl bg-white">
-                      <SelectValue placeholder="Selecciona posicion" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="sin-posicion">Sin posición</SelectItem>
-                      {posicionesRef.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="puesto">Puesto</Label>
+                  <Label htmlFor="puesto">Rol interno</Label>
                   <Input
                     id="puesto"
                     name="puesto"
                     value={form.puesto}
                     onChange={handleInputChange}
-                    placeholder="Ej: Prevencionista Obra 1"
+                    placeholder="Ej: Prevencionista obra norte"
                     className="rounded-xl bg-white"
                   />
                 </div>
