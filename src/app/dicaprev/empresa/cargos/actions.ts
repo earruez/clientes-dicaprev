@@ -1,5 +1,6 @@
 "use server";
 
+import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
 import { evaluarCapacitacionesPorEvento } from "@/lib/capacitacion/evaluar-capacitaciones";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
@@ -25,6 +26,10 @@ type CatalogoDocumentoItem = {
   id: string;
   nombre: string;
   codigo: string;
+  descripcion: string | null;
+  requiereVencimiento: boolean;
+  vigenciaDias: number | null;
+  requiereArchivo: boolean;
   origen: "base" | "especifica";
 };
 
@@ -33,6 +38,12 @@ type CatalogoCapacitacionItem = {
   nombre: string;
   codigo: string;
   categoria: string;
+  modalidad: string;
+  duracionHoras: number | null;
+  vigenciaMeses: number | null;
+  requiereEvaluacion: boolean;
+  requiereFirma: boolean;
+  generaCertificado: boolean;
   origen: "base" | "especifica";
 };
 
@@ -145,6 +156,38 @@ function normalizeCodigo(value: string) {
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .replace(/_+/g, "_");
+}
+
+async function ensureUniqueDocumentoCodigo(empresaId: string, codigoBase: string): Promise<string> {
+  const base = normalizeCodigo(codigoBase) || "DOC_PERSONALIZADO";
+  let candidato = base;
+  let intento = 1;
+
+  while (true) {
+    const existe = await prisma.documentoTipoTrabajador.findFirst({
+      where: { empresaId, codigo: candidato },
+      select: { id: true },
+    });
+    if (!existe) return candidato;
+    intento += 1;
+    candidato = `${base}_${intento}`;
+  }
+}
+
+async function ensureUniqueCapacitacionCodigo(empresaId: string, codigoBase: string): Promise<string> {
+  const base = normalizeCodigo(codigoBase) || "CAP_PERSONALIZADA";
+  let candidato = base;
+  let intento = 1;
+
+  while (true) {
+    const existe = await prisma.capacitacion.findFirst({
+      where: { empresaId, codigo: candidato },
+      select: { id: true },
+    });
+    if (!existe) return candidato;
+    intento += 1;
+    candidato = `${base}_${intento}`;
+  }
 }
 
 function normalizeStringList(values: string[]) {
@@ -296,12 +339,20 @@ function sugerirRequisitosCargo(input: {
   cargoNombre: string;
   perfilSST?: string | null;
   descripcion?: string | null;
+  areaNombre?: string | null;
+  riesgosClave?: string[];
   requiereDS44?: boolean;
   documentosCatalogo: CatalogoDocumentoItem[];
   capacitacionesCatalogo: CatalogoCapacitacionItem[];
 }): { documentosSugeridos: SugerenciaRequisito[]; capacitacionesSugeridas: SugerenciaRequisito[] } {
   const blob = normalizeKey(
-    [input.cargoNombre, input.perfilSST ?? "", input.descripcion ?? ""].join(" "),
+    [
+      input.cargoNombre,
+      input.perfilSST ?? "",
+      input.descripcion ?? "",
+      input.areaNombre ?? "",
+      ...(input.riesgosClave ?? []),
+    ].join(" "),
   );
 
   const reglas = [
@@ -334,6 +385,36 @@ function sugerirRequisitosCargo(input: {
       docs: ["ESPACIO_CONFINADO", "CONFINADO"],
       caps: ["CONFINADO"],
       confianza: 0.9,
+    },
+    {
+      keyword: "aseo",
+      docs: ["QUIMIC", "EPP", "PROCEDIMIENTO"],
+      caps: ["QUIMIC", "MANEJO MANUAL", "EPP"],
+      confianza: 0.86,
+    },
+    {
+      keyword: "administrativ",
+      docs: ["ERGONOM", "PSICOSOCIAL", "EMERGENCIA"],
+      caps: ["ERGONOM", "PSICOSOCIAL", "EMERGEN"],
+      confianza: 0.84,
+    },
+    {
+      keyword: "operativ",
+      docs: ["IRL", "EPP", "EMERGEN"],
+      caps: ["IRL", "EPP", "HERRAMIENTAS", "EMERGEN"],
+      confianza: 0.83,
+    },
+    {
+      keyword: "prevencion",
+      docs: ["DS44", "MATRIZ", "INCIDENT"],
+      caps: ["DS44", "INVESTIG", "MATRIZ"],
+      confianza: 0.92,
+    },
+    {
+      keyword: "altura",
+      docs: ["PTS", "ALTURA", "ARNES"],
+      caps: ["ALTURA", "ARNES", "PTS"],
+      confianza: 0.92,
     },
   ] as const;
 
@@ -368,14 +449,14 @@ function sugerirRequisitosCargo(input: {
     const motivo = buildSuggestionMotivo(regla.keyword);
 
     for (const doc of input.documentosCatalogo) {
-      const key = `${normalizeKey(doc.nombre)} ${normalizeKey(doc.codigo)}`;
+      const key = `${normalizeKey(doc.nombre)} ${normalizeKey(doc.codigo)} ${normalizeKey(doc.descripcion ?? "")}`;
       if (regla.docs.some((token) => key.includes(normalizeKey(token)))) {
         pushDoc(doc, motivo, regla.confianza);
       }
     }
 
     for (const cap of input.capacitacionesCatalogo) {
-      const key = `${normalizeKey(cap.nombre)} ${normalizeKey(cap.codigo)} ${normalizeKey(cap.categoria)}`;
+      const key = `${normalizeKey(cap.nombre)} ${normalizeKey(cap.codigo)} ${normalizeKey(cap.categoria)} ${normalizeKey(cap.modalidad)}`;
       if (regla.caps.some((token) => key.includes(normalizeKey(token)))) {
         pushCap(cap, motivo, regla.confianza);
       }
@@ -505,6 +586,11 @@ async function syncReglasCargo(input: {
       data: { activo: true, obligatorio: true },
     });
   }
+
+  await evaluarDocumentosPendientesPorEvento({
+    evento: "reglas_documentales_actualizadas",
+    empresaId: input.empresaId,
+  });
 }
 
 async function backfillCapacitacionesCargo(input: { empresaId: string; cargoId: string }) {
@@ -567,31 +653,89 @@ async function resolveLegacyRequisitos(input: {
   const [tiposDocumento, capacitaciones] = await Promise.all([
     prismaAny.documentoTipoTrabajador.findMany({
       where: { empresaId: input.empresaId, activo: true },
-      select: { id: true, nombre: true, codigo: true },
+      select: { id: true, nombre: true, codigo: true, descripcion: true },
     }),
     prismaAny.capacitacion.findMany({
       where: { empresaId: input.empresaId, activa: true },
-      select: { id: true, nombre: true, codigo: true },
+      select: { id: true, nombre: true, codigo: true, descripcion: true },
     }),
   ]);
 
   const docIds = new Set<string>();
   const capIds = new Set<string>();
 
+  const docsByKey = new Map<string, { id: string; nombre: string; codigo: string }>();
+  for (const item of tiposDocumento) {
+    docsByKey.set(normalizeKey(item.nombre), item);
+    docsByKey.set(normalizeKey(item.codigo), item);
+  }
+
+  const capsByKey = new Map<string, { id: string; nombre: string; codigo: string }>();
+  for (const item of capacitaciones) {
+    capsByKey.set(normalizeKey(item.nombre), item);
+    capsByKey.set(normalizeKey(item.codigo), item);
+  }
+
   for (const legacy of input.documentosBase) {
-    const key = normalizeKey(legacy);
-    const match = tiposDocumento.find(
-      (item) => normalizeKey(item.nombre) === key || normalizeKey(item.codigo) === key,
-    );
-    if (match) docIds.add(match.id);
+    const cleaned = normalizeText(legacy);
+    if (!cleaned) continue;
+    const key = normalizeKey(cleaned);
+    const existing = docsByKey.get(key);
+    if (existing) {
+      docIds.add(existing.id);
+      continue;
+    }
+
+    const codigo = await ensureUniqueDocumentoCodigo(input.empresaId, normalizeCodigo(cleaned));
+    const created = await prisma.documentoTipoTrabajador.create({
+      data: {
+        empresaId: input.empresaId,
+        nombre: cleaned,
+        codigo,
+        descripcion: "Creado automáticamente desde documentosBase legado del cargo.",
+        requiereVencimiento: false,
+        requiereArchivo: true,
+        activo: true,
+      },
+      select: { id: true, nombre: true, codigo: true },
+    });
+    docsByKey.set(normalizeKey(created.nombre), created);
+    docsByKey.set(normalizeKey(created.codigo), created);
+    docIds.add(created.id);
   }
 
   for (const legacy of input.capacitacionesBase) {
-    const key = normalizeKey(legacy);
-    const match = capacitaciones.find(
-      (item) => normalizeKey(item.nombre) === key || normalizeKey(item.codigo) === key,
-    );
-    if (match) capIds.add(match.id);
+    const cleaned = normalizeText(legacy);
+    if (!cleaned) continue;
+    const key = normalizeKey(cleaned);
+    const existing = capsByKey.get(key);
+    if (existing) {
+      capIds.add(existing.id);
+      continue;
+    }
+
+    const codigo = await ensureUniqueCapacitacionCodigo(input.empresaId, normalizeCodigo(cleaned));
+    const created = await prisma.capacitacion.create({
+      data: {
+        empresaId: input.empresaId,
+        nombre: cleaned,
+        codigo,
+        categoria: "Seguridad",
+        modalidad: "presencial",
+        duracionHoras: null,
+        vigenciaMeses: 12,
+        requiereEvaluacion: false,
+        requiereFirma: false,
+        generaCertificado: false,
+        esObligatoria: true,
+        activa: true,
+        descripcion: "Creada automáticamente desde capacitacionesBase legado del cargo. estadoRevision: pendiente_revision.",
+      },
+      select: { id: true, nombre: true, codigo: true },
+    });
+    capsByKey.set(normalizeKey(created.nombre), created);
+    capsByKey.set(normalizeKey(created.codigo), created);
+    capIds.add(created.id);
   }
 
   return {
@@ -606,12 +750,31 @@ export async function getCargoCatalogosFormData(cargoId?: string): Promise<Cargo
   const [documentos, capacitaciones] = await Promise.all([
     prisma.documentoTipoTrabajador.findMany({
       where: { empresaId, activo: true },
-      select: { id: true, nombre: true, codigo: true },
+      select: {
+        id: true,
+        nombre: true,
+        codigo: true,
+        descripcion: true,
+        requiereVencimiento: true,
+        vigenciaDias: true,
+        requiereArchivo: true,
+      },
       orderBy: [{ nombre: "asc" }],
     }),
     prisma.capacitacion.findMany({
       where: { empresaId, activa: true },
-      select: { id: true, nombre: true, codigo: true, categoria: true },
+      select: {
+        id: true,
+        nombre: true,
+        codigo: true,
+        categoria: true,
+        modalidad: true,
+        duracionHoras: true,
+        vigenciaMeses: true,
+        requiereEvaluacion: true,
+        requiereFirma: true,
+        generaCertificado: true,
+      },
       orderBy: [{ nombre: "asc" }],
     }),
   ]);
@@ -622,6 +785,8 @@ export async function getCargoCatalogosFormData(cargoId?: string): Promise<Cargo
   let perfilSST: string | null = null;
   let descripcion: string | null = null;
   let requiereDS44 = false;
+  let areaNombre: string | null = null;
+  let riesgosClave: string[] = [];
 
   if (cargoId) {
     const [docsReglas, capsReglas, cargoRow] = await Promise.all([
@@ -635,7 +800,13 @@ export async function getCargoCatalogosFormData(cargoId?: string): Promise<Cargo
       }),
       prisma.cargo.findFirst({
         where: { id: cargoId, empresaId },
-        select: { nombre: true, perfilSST: true, descripcion: true, esCritico: true },
+        select: {
+          nombre: true,
+          perfilSST: true,
+          descripcion: true,
+          esCritico: true,
+          area: { select: { nombre: true } },
+        },
       }),
     ]);
 
@@ -645,12 +816,19 @@ export async function getCargoCatalogosFormData(cargoId?: string): Promise<Cargo
     perfilSST = cargoRow?.perfilSST ?? null;
     descripcion = cargoRow?.descripcion ?? null;
     requiereDS44 = Boolean(cargoRow?.esCritico);
+    areaNombre = cargoRow?.area?.nombre ?? null;
+    const decoded = decodeCargoCompatMeta(cargoRow?.descripcion ?? null);
+    riesgosClave = decoded.riesgosClave;
   }
 
   const documentosCatalogo = documentos.map((item) => ({
     id: item.id,
     nombre: item.nombre,
     codigo: item.codigo,
+    descripcion: item.descripcion,
+    requiereVencimiento: item.requiereVencimiento,
+    vigenciaDias: item.vigenciaDias,
+    requiereArchivo: item.requiereArchivo,
     origen: inferOrigenPorCodigo(item.codigo),
   }));
 
@@ -659,6 +837,12 @@ export async function getCargoCatalogosFormData(cargoId?: string): Promise<Cargo
     nombre: item.nombre,
     codigo: item.codigo,
     categoria: item.categoria,
+    modalidad: item.modalidad,
+    duracionHoras: item.duracionHoras,
+    vigenciaMeses: item.vigenciaMeses,
+    requiereEvaluacion: item.requiereEvaluacion,
+    requiereFirma: item.requiereFirma,
+    generaCertificado: item.generaCertificado,
     origen: inferOrigenPorCodigo(item.codigo),
   }));
 
@@ -666,6 +850,8 @@ export async function getCargoCatalogosFormData(cargoId?: string): Promise<Cargo
     cargoNombre,
     perfilSST,
     descripcion,
+    areaNombre,
+    riesgosClave,
     requiereDS44,
     documentosCatalogo,
     capacitacionesCatalogo,
@@ -686,7 +872,11 @@ export async function crearDocumentoEspecificoCargo(input: {
   codigo?: string;
   descripcion?: string;
   requiereVencimiento?: boolean;
+  vigenciaDias?: number | null;
   requiereArchivo?: boolean;
+  observacion?: string;
+  cargoId?: string;
+  allowSimilarDuplicate?: boolean;
 }): Promise<CatalogoDocumentoItem> {
   const { empresaId } = await requirePermission("canManageEmpresa");
 
@@ -707,28 +897,79 @@ export async function crearDocumentoEspecificoCargo(input: {
     (item) => normalizeKey(item.nombre) === keyNombre || normalizeKey(item.codigo) === keyCodigo,
   );
 
-  if (duplicado) {
+  if (duplicado && !input.allowSimilarDuplicate) {
     throw new Error(`Ya existe un documento similar: ${duplicado.nombre} (${duplicado.codigo}). Usa el existente.`);
   }
+
+  const codigoUnico = await ensureUniqueDocumentoCodigo(empresaId, codigo);
+  const observacion = normalizeText(input.observacion);
+  const descripcion = normalizeText(input.descripcion);
+  const trazabilidad = "Origen: cargo/manual/personalizado. estadoRevision: pendiente_revision.";
+  const descripcionFinal = [descripcion, observacion, trazabilidad].filter(Boolean).join(" ");
 
   const created = await prisma.documentoTipoTrabajador.create({
     data: {
       empresaId,
       nombre,
-      codigo,
-      descripcion: normalizeText(input.descripcion) || null,
-      vigenciaDias: null,
+      codigo: codigoUnico,
+      descripcion: descripcionFinal || null,
+      vigenciaDias: input.vigenciaDias ?? null,
       requiereVencimiento: Boolean(input.requiereVencimiento),
       requiereArchivo: input.requiereArchivo ?? true,
       activo: true,
     },
-    select: { id: true, nombre: true, codigo: true },
+    select: {
+      id: true,
+      nombre: true,
+      codigo: true,
+      descripcion: true,
+      requiereVencimiento: true,
+      vigenciaDias: true,
+      requiereArchivo: true,
+    },
   });
+
+  if (input.cargoId) {
+    const existing = await prisma.reglaDocumentoTrabajador.findFirst({
+      where: {
+        empresaId,
+        cargoId: input.cargoId,
+        tipoDocumentoId: created.id,
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      await prisma.reglaDocumentoTrabajador.updateMany({
+        where: { id: existing.id, empresaId },
+        data: { obligatorio: true, activo: true },
+      });
+    } else {
+      await prisma.reglaDocumentoTrabajador.create({
+        data: {
+          empresaId,
+          cargoId: input.cargoId,
+          tipoDocumentoId: created.id,
+          obligatorio: true,
+          activo: true,
+        },
+      });
+    }
+
+    await evaluarDocumentosPendientesPorEvento({
+      evento: "reglas_documentales_actualizadas",
+      empresaId,
+    });
+  }
 
   return {
     id: created.id,
     nombre: created.nombre,
     codigo: created.codigo,
+    descripcion: created.descripcion,
+    requiereVencimiento: created.requiereVencimiento,
+    vigenciaDias: created.vigenciaDias,
+    requiereArchivo: created.requiereArchivo,
     origen: "especifica",
   };
 }
@@ -737,7 +978,16 @@ export async function crearCapacitacionEspecificaCargo(input: {
   nombre: string;
   codigo?: string;
   categoria?: string;
+  modalidad?: string;
+  duracionHoras?: number | null;
+  vigenciaMeses?: number | null;
+  requiereEvaluacion?: boolean;
+  requiereFirma?: boolean;
+  generaCertificado?: boolean;
   descripcion?: string;
+  observacion?: string;
+  cargoId?: string;
+  allowSimilarDuplicate?: boolean;
 }): Promise<CatalogoCapacitacionItem> {
   const { empresaId } = await requirePermission("canManageEmpresa");
 
@@ -760,34 +1010,86 @@ export async function crearCapacitacionEspecificaCargo(input: {
     (item) => normalizeKey(item.nombre) === keyNombre || normalizeKey(item.codigo) === keyCodigo,
   );
 
-  if (duplicado) {
+  if (duplicado && !input.allowSimilarDuplicate) {
     throw new Error(`Ya existe una capacitacion similar: ${duplicado.nombre} (${duplicado.codigo}). Usa la existente.`);
   }
+
+  const codigoUnico = await ensureUniqueCapacitacionCodigo(empresaId, codigo);
+  const descripcion = normalizeText(input.descripcion);
+  const observacion = normalizeText(input.observacion);
+  const trazabilidad = "Origen: cargo/manual/personalizado. estadoRevision: pendiente_revision.";
+  const descripcionFinal = [descripcion, observacion, trazabilidad].filter(Boolean).join(" ");
 
   const created = await prisma.capacitacion.create({
     data: {
       empresaId,
       nombre,
-      codigo,
+      codigo: codigoUnico,
       categoria,
-      descripcion: normalizeText(input.descripcion) || null,
-      modalidad: "presencial",
-      duracionHoras: null,
-      vigenciaMeses: 12,
-      requiereEvaluacion: false,
-      requiereFirma: false,
-      generaCertificado: false,
+      descripcion: descripcionFinal || null,
+      modalidad: normalizeText(input.modalidad) || "presencial",
+      duracionHoras: input.duracionHoras ?? null,
+      vigenciaMeses: input.vigenciaMeses ?? 12,
+      requiereEvaluacion: Boolean(input.requiereEvaluacion),
+      requiereFirma: Boolean(input.requiereFirma),
+      generaCertificado: Boolean(input.generaCertificado),
       esObligatoria: true,
       activa: true,
     },
-    select: { id: true, nombre: true, codigo: true, categoria: true },
+    select: {
+      id: true,
+      nombre: true,
+      codigo: true,
+      categoria: true,
+      modalidad: true,
+      duracionHoras: true,
+      vigenciaMeses: true,
+      requiereEvaluacion: true,
+      requiereFirma: true,
+      generaCertificado: true,
+    },
   });
+
+  if (input.cargoId) {
+    const existing = await prisma.reglaCapacitacionCargo.findFirst({
+      where: {
+        empresaId,
+        cargoId: input.cargoId,
+        capacitacionId: created.id,
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      await prisma.reglaCapacitacionCargo.updateMany({
+        where: { id: existing.id, empresaId },
+        data: { obligatorio: true, activo: true },
+      });
+    } else {
+      await prisma.reglaCapacitacionCargo.create({
+        data: {
+          empresaId,
+          cargoId: input.cargoId,
+          capacitacionId: created.id,
+          obligatorio: true,
+          periodicidad: "anual",
+          activo: true,
+        },
+      });
+    }
+  }
 
   return {
     id: created.id,
     nombre: created.nombre,
     codigo: created.codigo,
     categoria: created.categoria,
+    modalidad: created.modalidad,
+    duracionHoras: created.duracionHoras,
+    vigenciaMeses: created.vigenciaMeses,
+    requiereEvaluacion: created.requiereEvaluacion,
+    requiereFirma: created.requiereFirma,
+    generaCertificado: created.generaCertificado,
     origen: "especifica",
   };
 }

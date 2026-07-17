@@ -112,6 +112,10 @@ type DocumentoCatalogoItem = {
   id: string;
   nombre: string;
   codigo: string;
+  descripcion: string | null;
+  requiereVencimiento: boolean;
+  vigenciaDias: number | null;
+  requiereArchivo: boolean;
   origen: "base" | "especifica";
 };
 
@@ -120,6 +124,12 @@ type CapacitacionCatalogoItem = {
   nombre: string;
   codigo: string;
   categoria: string;
+  modalidad: string;
+  duracionHoras: number | null;
+  vigenciaMeses: number | null;
+  requiereEvaluacion: boolean;
+  requiereFirma: boolean;
+  generaCertificado: boolean;
   origen: "base" | "especifica";
 };
 
@@ -149,6 +159,16 @@ function normalizeKey(value: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeCodigo(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .replace(/_+/g, "_");
 }
 
 function riesgosToText(value: unknown): string {
@@ -297,6 +317,34 @@ export default function CargosPage() {
   const [capacitacionesSeleccionadasIds, setCapacitacionesSeleccionadasIds] = useState<string[]>([]);
   const [documentosSugeridos, setDocumentosSugeridos] = useState<SugerenciaCatalogoItem[]>([]);
   const [capacitacionesSugeridas, setCapacitacionesSugeridas] = useState<SugerenciaCatalogoItem[]>([]);
+  const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
+  const [documentosSugeridosDescartados, setDocumentosSugeridosDescartados] = useState<string[]>([]);
+  const [capacitacionesSugeridasDescartadas, setCapacitacionesSugeridasDescartadas] = useState<string[]>([]);
+
+  const [docModalOpen, setDocModalOpen] = useState(false);
+  const [docSpecificForm, setDocSpecificForm] = useState({
+    nombre: "",
+    codigo: "",
+    descripcion: "",
+    requiereVencimiento: false,
+    vigenciaDias: "",
+    requiereArchivo: true,
+    observacion: "",
+  });
+
+  const [capModalOpen, setCapModalOpen] = useState(false);
+  const [capSpecificForm, setCapSpecificForm] = useState({
+    nombre: "",
+    codigo: "",
+    categoria: "Seguridad",
+    modalidad: "presencial",
+    duracionHoras: "",
+    vigenciaMeses: "12",
+    requiereEvaluacion: false,
+    requiereFirma: false,
+    generaCertificado: false,
+    observacion: "",
+  });
 
   const isEdit = editingId !== null;
 
@@ -332,6 +380,9 @@ export default function CargosPage() {
     setCapacitacionesSeleccionadasIds([]);
     setDocumentosSugeridos([]);
     setCapacitacionesSugeridas([]);
+    setMostrarSugerencias(false);
+    setDocumentosSugeridosDescartados([]);
+    setCapacitacionesSugeridasDescartadas([]);
     setModalOpen(true);
   }, [cargos]);
 
@@ -345,6 +396,9 @@ export default function CargosPage() {
     setCapacitacionesSeleccionadasIds([]);
     setDocumentosSugeridos([]);
     setCapacitacionesSugeridas([]);
+    setMostrarSugerencias(false);
+    setDocumentosSugeridosDescartados([]);
+    setCapacitacionesSugeridasDescartadas([]);
     setModalOpen(true);
     setDrawerCargo(null);
   }, []);
@@ -425,7 +479,7 @@ export default function CargosPage() {
     if (!q) return documentosCatalogo.slice(0, 8);
     return documentosCatalogo
       .filter((item) => {
-        const key = `${normalizeKey(item.nombre)} ${normalizeKey(item.codigo)}`;
+        const key = `${normalizeKey(item.nombre)} ${normalizeKey(item.codigo)} ${normalizeKey(item.descripcion ?? "")}`;
         return key.includes(q);
       })
       .slice(0, 8);
@@ -436,7 +490,7 @@ export default function CargosPage() {
     if (!q) return capacitacionesCatalogo.slice(0, 8);
     return capacitacionesCatalogo
       .filter((item) => {
-        const key = `${normalizeKey(item.nombre)} ${normalizeKey(item.codigo)} ${normalizeKey(item.categoria)}`;
+        const key = `${normalizeKey(item.nombre)} ${normalizeKey(item.codigo)} ${normalizeKey(item.categoria)} ${normalizeKey(item.modalidad)}`;
         return key.includes(q);
       })
       .slice(0, 8);
@@ -450,6 +504,16 @@ export default function CargosPage() {
   const selectedCapacitaciones = useMemo(
     () => capacitacionesCatalogo.filter((item) => capacitacionesSeleccionadasIds.includes(item.id)),
     [capacitacionesCatalogo, capacitacionesSeleccionadasIds],
+  );
+
+  const documentosSugeridosVisibles = useMemo(
+    () => documentosSugeridos.filter((item) => !documentosSugeridosDescartados.includes(item.id)),
+    [documentosSugeridos, documentosSugeridosDescartados],
+  );
+
+  const capacitacionesSugeridasVisibles = useMemo(
+    () => capacitacionesSugeridas.filter((item) => !capacitacionesSugeridasDescartadas.includes(item.id)),
+    [capacitacionesSugeridas, capacitacionesSugeridasDescartadas],
   );
 
   const addDocumentoId = (id: string) => {
@@ -471,19 +535,55 @@ export default function CargosPage() {
   };
 
   const createDocumentoEspecifico = async () => {
-    const nombre = docInput.trim();
-    if (!nombre) return;
-
-    const duplicate = documentosCatalogo.find((item) => normalizeKey(item.nombre) === normalizeKey(nombre));
-    if (duplicate) {
-      setSubmitError(`Ya existe un documento similar (${duplicate.nombre}). Usa el existente.`);
+    const nombre = docSpecificForm.nombre.trim();
+    if (!nombre) {
+      setSubmitError("Debes ingresar el nombre del documento.");
       return;
     }
 
+    const codigoNormalizado = normalizeCodigo(docSpecificForm.codigo || nombre);
+    const duplicate = documentosCatalogo.find((item) => {
+      const sameName = normalizeKey(item.nombre) === normalizeKey(nombre);
+      const sameCode = normalizeKey(item.codigo) === normalizeKey(codigoNormalizado);
+      return sameName || sameCode;
+    });
+
+    let allowSimilarDuplicate = false;
+    if (duplicate) {
+      const useExisting = window.confirm(`Ya existe un documento parecido: ${duplicate.nombre}. ¿Quieres usar ese?`);
+      if (useExisting) {
+        addDocumentoId(duplicate.id);
+        setDocModalOpen(false);
+        setSubmitError(null);
+        return;
+      }
+      allowSimilarDuplicate = true;
+    }
+
     try {
-      const created = await crearDocumentoEspecificoCargo({ nombre });
+      const created = await crearDocumentoEspecificoCargo({
+        nombre,
+        codigo: docSpecificForm.codigo,
+        descripcion: docSpecificForm.descripcion,
+        requiereVencimiento: docSpecificForm.requiereVencimiento,
+        vigenciaDias: docSpecificForm.vigenciaDias ? Number(docSpecificForm.vigenciaDias) : null,
+        requiereArchivo: docSpecificForm.requiereArchivo,
+        observacion: docSpecificForm.observacion,
+        cargoId: editingId ?? undefined,
+        allowSimilarDuplicate,
+      });
       setDocumentosCatalogo((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
       addDocumentoId(created.id);
+      setDocModalOpen(false);
+      setDocSpecificForm({
+        nombre: "",
+        codigo: "",
+        descripcion: "",
+        requiereVencimiento: false,
+        vigenciaDias: "",
+        requiereArchivo: true,
+        observacion: "",
+      });
       setSubmitError(null);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "No se pudo crear el documento específico.");
@@ -491,19 +591,61 @@ export default function CargosPage() {
   };
 
   const createCapacitacionEspecifica = async () => {
-    const nombre = capInput.trim();
-    if (!nombre) return;
-
-    const duplicate = capacitacionesCatalogo.find((item) => normalizeKey(item.nombre) === normalizeKey(nombre));
-    if (duplicate) {
-      setSubmitError(`Ya existe una capacitación similar (${duplicate.nombre}). Usa la existente.`);
+    const nombre = capSpecificForm.nombre.trim();
+    if (!nombre) {
+      setSubmitError("Debes ingresar el nombre de la capacitación.");
       return;
     }
 
+    const codigoNormalizado = normalizeCodigo(capSpecificForm.codigo || nombre);
+    const duplicate = capacitacionesCatalogo.find((item) => {
+      const sameName = normalizeKey(item.nombre) === normalizeKey(nombre);
+      const sameCode = normalizeKey(item.codigo) === normalizeKey(codigoNormalizado);
+      return sameName || sameCode;
+    });
+
+    let allowSimilarDuplicate = false;
+    if (duplicate) {
+      const useExisting = window.confirm(`Ya existe una capacitación parecida: ${duplicate.nombre}. ¿Quieres usar esa?`);
+      if (useExisting) {
+        addCapacitacionId(duplicate.id);
+        setCapModalOpen(false);
+        setSubmitError(null);
+        return;
+      }
+      allowSimilarDuplicate = true;
+    }
+
     try {
-      const created = await crearCapacitacionEspecificaCargo({ nombre });
+      const created = await crearCapacitacionEspecificaCargo({
+        nombre,
+        codigo: capSpecificForm.codigo,
+        categoria: capSpecificForm.categoria,
+        modalidad: capSpecificForm.modalidad,
+        duracionHoras: capSpecificForm.duracionHoras ? Number(capSpecificForm.duracionHoras) : null,
+        vigenciaMeses: capSpecificForm.vigenciaMeses ? Number(capSpecificForm.vigenciaMeses) : null,
+        requiereEvaluacion: capSpecificForm.requiereEvaluacion,
+        requiereFirma: capSpecificForm.requiereFirma,
+        generaCertificado: capSpecificForm.generaCertificado,
+        observacion: capSpecificForm.observacion,
+        cargoId: editingId ?? undefined,
+        allowSimilarDuplicate,
+      });
       setCapacitacionesCatalogo((prev) => [...prev, created].sort((a, b) => a.nombre.localeCompare(b.nombre)));
       addCapacitacionId(created.id);
+      setCapModalOpen(false);
+      setCapSpecificForm({
+        nombre: "",
+        codigo: "",
+        categoria: "Seguridad",
+        modalidad: "presencial",
+        duracionHoras: "",
+        vigenciaMeses: "12",
+        requiereEvaluacion: false,
+        requiereFirma: false,
+        generaCertificado: false,
+        observacion: "",
+      });
       setSubmitError(null);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "No se pudo crear la capacitación específica.");
@@ -1032,8 +1174,19 @@ export default function CargosPage() {
               </div>
             </FormSection>
 
+            <div className="flex items-center justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => setMostrarSugerencias(true)}
+              >
+                Sugerir requisitos
+              </Button>
+            </div>
+
             {/* BLOQUE: Documentos base */}
-            <FormSection label="Documentos base obligatorios">
+            <FormSection label="Documentos requeridos">
               <div className="flex gap-2">
                 <Input
                   value={docInput}
@@ -1041,8 +1194,13 @@ export default function CargosPage() {
                   placeholder="Buscar documento en catálogo..."
                   className="rounded-xl flex-1"
                 />
-                <Button type="button" variant="outline" onClick={createDocumentoEspecifico} className="rounded-xl px-4 shrink-0">
-                  Crear específico
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDocModalOpen(true)}
+                  className="rounded-xl px-4 shrink-0"
+                >
+                  Agregar documento específico
                 </Button>
               </div>
 
@@ -1056,7 +1214,12 @@ export default function CargosPage() {
                       className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
                     >
                       <FileText className="h-3.5 w-3.5 text-amber-500" />
-                      <span className="flex-1">{doc.nombre}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate font-medium">{doc.nombre}</span>
+                        <span className="block text-[11px] text-slate-500 truncate">
+                          {doc.descripcion || "Sin descripción"} · {doc.requiereVencimiento ? "Con vencimiento" : "Sin vencimiento"} · {doc.requiereArchivo ? "Requiere archivo" : "Sin archivo"}
+                        </span>
+                      </span>
                       <span className="text-[11px] text-slate-400 font-mono">{doc.codigo}</span>
                     </button>
                   ))}
@@ -1068,10 +1231,15 @@ export default function CargosPage() {
                   {selectedDocumentos.map((d) => (
                     <li key={d.id} className="flex items-center gap-2 rounded-lg border border-amber-100 bg-amber-50 px-3 py-1.5 text-sm text-slate-700">
                       <FileText className="h-3.5 w-3.5 text-amber-400 shrink-0" />
-                      <span className="flex-1">{d.nombre}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate">{d.nombre}</span>
+                        <span className="block text-[11px] text-slate-500 truncate">
+                          {d.requiereVencimiento ? `Vigencia ${d.vigenciaDias ?? "configurable"} días` : "Sin vencimiento"} · {d.requiereArchivo ? "Requiere archivo" : "Sin archivo"}
+                        </span>
+                      </span>
                       <span className="text-[11px] text-slate-400 font-mono">{d.codigo}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${d.origen === "base" ? "border-slate-200 bg-slate-100 text-slate-600" : "border-amber-200 bg-amber-100 text-amber-700"}`}>
-                        {d.origen === "base" ? "Catálogo" : "Específico"}
+                        {d.origen === "base" ? "Catálogo" : "Personalizado"}
                       </span>
                       <button type="button" onClick={() => removeDocumentoId(d.id)} className="text-slate-400 hover:text-rose-500 transition"><X className="h-3.5 w-3.5" /></button>
                     </li>
@@ -1079,20 +1247,33 @@ export default function CargosPage() {
                 </ul>
               )}
 
-              {documentosSugeridos.length > 0 && (
+              {mostrarSugerencias && documentosSugeridosVisibles.length > 0 && (
                 <div className="mt-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Sugerencias</p>
-                  <div className="flex flex-wrap gap-2">
-                    {documentosSugeridos.map((sugerida) => (
-                      <button
+                  <div className="grid gap-2">
+                    {documentosSugeridosVisibles.map((sugerida) => (
+                      <div
                         key={sugerida.id}
-                        type="button"
-                        onClick={() => addDocumentoId(sugerida.id)}
-                        className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-800 hover:bg-amber-100"
-                        title={`${sugerida.motivo} (confianza ${Math.round(sugerida.confianza * 100)}%)`}
+                        className="rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900"
                       >
-                        + {sugerida.nombre}
-                      </button>
+                        <p className="font-semibold">{sugerida.nombre}</p>
+                        <p className="mt-1 text-amber-800">{sugerida.motivo}</p>
+                        <p className="mt-1 text-[11px] text-amber-700">Confianza: {Math.round(sugerida.confianza * 100)}%</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={() => addDocumentoId(sugerida.id)}>
+                            Agregar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 rounded-lg text-slate-600"
+                            onClick={() => setDocumentosSugeridosDescartados((prev) => (prev.includes(sugerida.id) ? prev : [...prev, sugerida.id]))}
+                          >
+                            Descartar
+                          </Button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1100,7 +1281,7 @@ export default function CargosPage() {
             </FormSection>
 
             {/* BLOQUE: Capacitaciones base */}
-            <FormSection label="Capacitaciones base obligatorias">
+            <FormSection label="Capacitaciones requeridas">
               <div className="flex gap-2">
                 <Input
                   value={capInput}
@@ -1108,8 +1289,13 @@ export default function CargosPage() {
                   placeholder="Buscar capacitación en catálogo..."
                   className="rounded-xl flex-1"
                 />
-                <Button type="button" variant="outline" onClick={createCapacitacionEspecifica} className="rounded-xl px-4 shrink-0">
-                  Crear específica
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCapModalOpen(true)}
+                  className="rounded-xl px-4 shrink-0"
+                >
+                  Agregar capacitación específica
                 </Button>
               </div>
 
@@ -1123,7 +1309,12 @@ export default function CargosPage() {
                       className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
                     >
                       <GraduationCap className="h-3.5 w-3.5 text-emerald-500" />
-                      <span className="flex-1">{cap.nombre}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate font-medium">{cap.nombre}</span>
+                        <span className="block text-[11px] text-slate-500 truncate">
+                          {cap.categoria} · {cap.modalidad} · {cap.duracionHoras ?? "-"} h · vigencia {cap.vigenciaMeses ?? "-"} meses
+                        </span>
+                      </span>
                       <span className="text-[11px] text-slate-400 font-mono">{cap.codigo}</span>
                     </button>
                   ))}
@@ -1135,10 +1326,15 @@ export default function CargosPage() {
                   {selectedCapacitaciones.map((cap) => (
                     <li key={cap.id} className="flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-sm text-slate-700">
                       <GraduationCap className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                      <span className="flex-1">{cap.nombre}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block truncate">{cap.nombre}</span>
+                        <span className="block text-[11px] text-slate-500 truncate">
+                          {cap.categoria} · {cap.modalidad} · eval. {cap.requiereEvaluacion ? "sí" : "no"} · firma {cap.requiereFirma ? "sí" : "no"}
+                        </span>
+                      </span>
                       <span className="text-[11px] text-slate-400 font-mono">{cap.codigo}</span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${cap.origen === "base" ? "border-slate-200 bg-slate-100 text-slate-600" : "border-emerald-200 bg-emerald-100 text-emerald-700"}`}>
-                        {cap.origen === "base" ? "Catálogo" : "Específica"}
+                        {cap.origen === "base" ? "Catálogo" : "Personalizada"}
                       </span>
                       <button type="button" onClick={() => removeCapacitacionId(cap.id)} className="text-slate-400 hover:text-rose-500 transition"><X className="h-3.5 w-3.5" /></button>
                     </li>
@@ -1146,20 +1342,33 @@ export default function CargosPage() {
                 </ul>
               )}
 
-              {capacitacionesSugeridas.length > 0 && (
+              {mostrarSugerencias && capacitacionesSugeridasVisibles.length > 0 && (
                 <div className="mt-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">Sugerencias</p>
-                  <div className="flex flex-wrap gap-2">
-                    {capacitacionesSugeridas.map((sugerida) => (
-                      <button
+                  <div className="grid gap-2">
+                    {capacitacionesSugeridasVisibles.map((sugerida) => (
+                      <div
                         key={sugerida.id}
-                        type="button"
-                        onClick={() => addCapacitacionId(sugerida.id)}
-                        className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-800 hover:bg-emerald-100"
-                        title={`${sugerida.motivo} (confianza ${Math.round(sugerida.confianza * 100)}%)`}
+                        className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900"
                       >
-                        + {sugerida.nombre}
-                      </button>
+                        <p className="font-semibold">{sugerida.nombre}</p>
+                        <p className="mt-1 text-emerald-800">{sugerida.motivo}</p>
+                        <p className="mt-1 text-[11px] text-emerald-700">Confianza: {Math.round(sugerida.confianza * 100)}%</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button type="button" size="sm" variant="outline" className="h-7 rounded-lg" onClick={() => addCapacitacionId(sugerida.id)}>
+                            Agregar
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 rounded-lg text-slate-600"
+                            onClick={() => setCapacitacionesSugeridasDescartadas((prev) => (prev.includes(sugerida.id) ? prev : [...prev, sugerida.id]))}
+                          >
+                            Descartar
+                          </Button>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1176,6 +1385,197 @@ export default function CargosPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={docModalOpen} onOpenChange={setDocModalOpen}>
+        <DialogContent className="max-w-xl rounded-3xl border border-slate-200 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle>Agregar documento específico</DialogTitle>
+            <DialogDescription>
+              Crea un documento personalizado, normalizado y listo para asociar al cargo actual.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Label>Nombre documento</Label>
+              <Input
+                value={docSpecificForm.nombre}
+                onChange={(e) => setDocSpecificForm((prev) => ({ ...prev, nombre: e.target.value }))}
+                className="mt-1 rounded-xl"
+                placeholder="Ej: Contrato de trabajo"
+              />
+            </div>
+            <div>
+              <Label>Código canónico (opcional)</Label>
+              <Input
+                value={docSpecificForm.codigo}
+                onChange={(e) => setDocSpecificForm((prev) => ({ ...prev, codigo: e.target.value }))}
+                className="mt-1 rounded-xl"
+                placeholder="Ej: CONTRATO_TRABAJO"
+              />
+            </div>
+            <div>
+              <Label>Vigencia días (opcional)</Label>
+              <Input
+                type="number"
+                min={0}
+                value={docSpecificForm.vigenciaDias}
+                onChange={(e) => setDocSpecificForm((prev) => ({ ...prev, vigenciaDias: e.target.value }))}
+                className="mt-1 rounded-xl"
+                placeholder="Ej: 365"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Descripción</Label>
+              <textarea
+                value={docSpecificForm.descripcion}
+                onChange={(e) => setDocSpecificForm((prev) => ({ ...prev, descripcion: e.target.value }))}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm min-h-[72px]"
+                placeholder="Descripción breve del documento"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Observación</Label>
+              <textarea
+                value={docSpecificForm.observacion}
+                onChange={(e) => setDocSpecificForm((prev) => ({ ...prev, observacion: e.target.value }))}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm min-h-[60px]"
+                placeholder="Trazabilidad adicional"
+              />
+            </div>
+            <div className="sm:col-span-2 flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={docSpecificForm.requiereVencimiento}
+                  onChange={(e) => setDocSpecificForm((prev) => ({ ...prev, requiereVencimiento: e.target.checked }))}
+                />
+                Requiere vencimiento
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={docSpecificForm.requiereArchivo}
+                  onChange={(e) => setDocSpecificForm((prev) => ({ ...prev, requiereArchivo: e.target.checked }))}
+                />
+                Requiere archivo
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" className="rounded-xl" onClick={() => setDocModalOpen(false)}>Cancelar</Button>
+            <Button type="button" className="rounded-xl bg-violet-600 hover:bg-violet-700" onClick={createDocumentoEspecifico}>Guardar documento</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={capModalOpen} onOpenChange={setCapModalOpen}>
+        <DialogContent className="max-w-xl rounded-3xl border border-slate-200 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle>Agregar capacitación específica</DialogTitle>
+            <DialogDescription>
+              Crea una capacitación personalizada, normalizada y asociable al cargo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <Label>Nombre capacitación</Label>
+              <Input
+                value={capSpecificForm.nombre}
+                onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, nombre: e.target.value }))}
+                className="mt-1 rounded-xl"
+                placeholder="Ej: Trabajo en altura"
+              />
+            </div>
+            <div>
+              <Label>Código canónico (opcional)</Label>
+              <Input
+                value={capSpecificForm.codigo}
+                onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, codigo: e.target.value }))}
+                className="mt-1 rounded-xl"
+                placeholder="Ej: TRABAJO_ALTURA"
+              />
+            </div>
+            <div>
+              <Label>Categoría</Label>
+              <Input
+                value={capSpecificForm.categoria}
+                onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, categoria: e.target.value }))}
+                className="mt-1 rounded-xl"
+              />
+            </div>
+            <div>
+              <Label>Modalidad</Label>
+              <Select value={capSpecificForm.modalidad} onValueChange={(value) => setCapSpecificForm((prev) => ({ ...prev, modalidad: value }))}>
+                <SelectTrigger className="mt-1 rounded-xl"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="online">online</SelectItem>
+                  <SelectItem value="presencial">presencial</SelectItem>
+                  <SelectItem value="mixta">mixta</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Duración horas</Label>
+              <Input
+                type="number"
+                min={0}
+                value={capSpecificForm.duracionHoras}
+                onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, duracionHoras: e.target.value }))}
+                className="mt-1 rounded-xl"
+              />
+            </div>
+            <div>
+              <Label>Vigencia meses</Label>
+              <Input
+                type="number"
+                min={0}
+                value={capSpecificForm.vigenciaMeses}
+                onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, vigenciaMeses: e.target.value }))}
+                className="mt-1 rounded-xl"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <Label>Observación</Label>
+              <textarea
+                value={capSpecificForm.observacion}
+                onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, observacion: e.target.value }))}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm min-h-[60px]"
+                placeholder="Trazabilidad adicional"
+              />
+            </div>
+            <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={capSpecificForm.requiereEvaluacion}
+                  onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, requiereEvaluacion: e.target.checked }))}
+                />
+                Requiere evaluación
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={capSpecificForm.requiereFirma}
+                  onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, requiereFirma: e.target.checked }))}
+                />
+                Requiere firma
+              </label>
+              <label className="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={capSpecificForm.generaCertificado}
+                  onChange={(e) => setCapSpecificForm((prev) => ({ ...prev, generaCertificado: e.target.checked }))}
+                />
+                Genera certificado
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" className="rounded-xl" onClick={() => setCapModalOpen(false)}>Cancelar</Button>
+            <Button type="button" className="rounded-xl bg-violet-600 hover:bg-violet-700" onClick={createCapacitacionEspecifica}>Guardar capacitación</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
