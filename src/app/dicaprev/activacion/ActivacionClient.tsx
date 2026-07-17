@@ -207,7 +207,7 @@ export default function ActivacionClient({ initialActivacion }: Props) {
             </div>
             <div>
               <p className="text-sm font-semibold text-slate-900">Datos reales conectados</p>
-              <p className="text-xs text-slate-500">Empresa, centros, estructura, dotación, vehículos, documentación, reglas y plan.</p>
+              <p className="text-xs text-slate-500">Empresa, centros, estructura, cargos, vehículos, documentación, reglas y plan.</p>
             </div>
           </div>
         </Card>

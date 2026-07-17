@@ -1034,11 +1034,11 @@ export default function CargosPage() {
               {/* Centros donde se usa */}
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" /> Centros / posiciones activas ({drawerCargo.centros.length})
+                  <MapPin className="h-3.5 w-3.5" /> Centros asociados ({drawerCargo.centros.length})
                 </p>
                 {drawerCargo.centros.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 py-5 text-center text-xs text-slate-400">
-                    Sin posiciones de dotación activas
+                    Sin centros asociados
                   </div>
                 ) : (
                   <div className="space-y-1.5">

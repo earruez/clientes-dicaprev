@@ -14,7 +14,7 @@ const INDICADORES = [
     value: "0,82%",
     ref: "≤ 1,5%",
     estado: "ok",
-    desc: "Accidentes con tiempo perdido × 100 / dotación promedio.",
+    desc: "Accidentes con tiempo perdido × 100 / personal promedio del período.",
     icon: <Activity className="h-5 w-5" />,
   },
   {
@@ -59,7 +59,7 @@ const INDICADORES = [
     value: "46 / 48",
     ref: "—",
     estado: "ok",
-    desc: "Dotación activa sin ningún accidente registrado en el período.",
+    desc: "Trabajadores activos sin ningún accidente registrado en el período.",
     icon: <Users className="h-5 w-5" />,
   },
 ];

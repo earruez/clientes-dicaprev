@@ -48,7 +48,6 @@ import {
   vacantesPos,
   isSobredotado,
   coberturaPct,
-  coberturaLabel,
   type Posicion,
 } from "@/lib/dotacion/dotacion-store";
 
@@ -120,7 +119,7 @@ function mockAsignaciones(w: Worker): Asignacion[] {
     centro: w.centroTrabajo,
     area: w.area,
     cargo: w.cargo,
-    puesto: `Puesto ${w.area.slice(0, 3).toUpperCase()}-01`,
+    puesto: `Cargo ${w.area.slice(0, 3).toUpperCase()}-01`,
     jornada: w.tipoContrato === "Part Time" ? "Media jornada" : "Jornada completa",
     estado: "Activa",
     esPrincipal: true,
@@ -137,7 +136,7 @@ function mockAsignaciones(w: Worker): Asignacion[] {
         centro: secondCentro,
         area: "Operaciones",
         cargo: "Colaborador externo",
-        puesto: "Puesto OPE-02",
+        puesto: "Cargo OPE-02",
         jornada: "Jornada parcial",
         estado: "Activa",
         esPrincipal: false,
@@ -162,7 +161,7 @@ const NIVEL_CLS = {
 
 function mockRiesgos(w: Worker): RiesgoItem[] {
   const base: RiesgoItem[] = [
-    { id: "r1", categoria: "Ergonómico", descripcion: "Posturas forzadas en puesto de trabajo", nivel: "Medio" },
+    { id: "r1", categoria: "Ergonómico", descripcion: "Posturas forzadas en tarea de trabajo", nivel: "Medio" },
     { id: "r2", categoria: "Físico",     descripcion: "Exposición a ruido sobre límite permisible", nivel: "Bajo" },
   ];
   if (w.area === "SST" || w.area === "Operaciones" || w.area === "Mantención") {
@@ -420,7 +419,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                 {activeTab === "asignaciones" && (
                   <div className="space-y-5">
 
-                    {/* ── Posición de dotación (real data from store) ── */}
+                    {/* ── Asignación operativa (real data from store) ── */}
                     {dotacion ? (
                       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
                         <div className="flex items-center justify-between">
@@ -429,7 +428,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                               <Layers className="h-3.5 w-3.5" />
                             </div>
                             <span className="text-xs font-bold text-indigo-800 uppercase tracking-wide">
-                              Posición de Dotación
+                              Asignación operativa
                             </span>
                           </div>
                           <span className="font-mono text-[10px] text-indigo-400 bg-indigo-100 rounded px-1.5 py-0.5">
@@ -460,7 +459,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                         </div>
 
                         <div className="rounded-xl border border-white/70 bg-white px-3 py-3 text-xs text-slate-600 shadow-sm">
-                          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-500 mb-1.5">Asignación de dotación</p>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-500 mb-1.5">Asignación operativa</p>
                           <p className="font-semibold text-slate-800">
                             {dotacion.codigo} · {dotacion.cargoNombre}
                           </p>
@@ -472,7 +471,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                         {/* Coverage bar */}
                         <div>
                           <div className="flex justify-between text-[10px] text-indigo-500 mb-1">
-                            <span>Cobertura de la posición</span>
+                            <span>Cobertura operativa</span>
                             <span className="font-semibold">{coberturaPct(dotacion)}%</span>
                           </div>
                           <div className="h-1.5 rounded-full bg-indigo-100 overflow-hidden">
@@ -493,11 +492,11 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                               : "bg-amber-50 text-amber-700 border-amber-100"
                           }`}>
                             {isSobredotado(dotacion) && <TrendingUp className="h-3 w-3 mr-1" />}
-                            {coberturaLabel(dotacion)}
+                            {isSobredotado(dotacion) ? "Con sobreasignación" : vacantesPos(dotacion) === 0 ? "Cobertura completa" : "Con brecha"}
                           </span>
                           {vacantesPos(dotacion) > 0 && !isSobredotado(dotacion) && (
                             <span className="text-[11px] text-slate-400">
-                              {vacantesPos(dotacion)} vacante{vacantesPos(dotacion) !== 1 ? "s" : ""}
+                              {vacantesPos(dotacion)} pendiente{vacantesPos(dotacion) !== 1 ? "s" : ""}
                             </span>
                           )}
                         </div>
@@ -505,7 +504,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                     ) : (
                       <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
                         <Layers className="mx-auto h-6 w-6 text-slate-300 mb-2" />
-                        <p className="text-sm font-medium text-slate-500">Sin posición de dotación asignada</p>
+                        <p className="text-sm font-medium text-slate-500">Sin asignación operativa</p>
                         <p className="text-xs text-slate-400 mt-0.5">Se vinculará automáticamente al editar</p>
                       </div>
                     )}
@@ -548,7 +547,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                           {[
                             { label: "Área",    value: a.area },
                             { label: "Cargo",   value: a.cargo },
-                            { label: "Puesto",  value: a.puesto },
+                            { label: "Cargo de referencia",  value: a.puesto },
                             { label: "Jornada", value: a.jornada },
                           ].map(({ label, value }) => (
                             <div key={label}>

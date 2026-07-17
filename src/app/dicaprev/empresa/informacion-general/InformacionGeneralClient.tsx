@@ -484,7 +484,7 @@ export default function InformacionGeneralClient({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>N° trabajadores (dotación activa)</Label>
+              <Label>N° trabajadores activos</Label>
               <Input type="number" value={String(form.cantidadTrabajadores ?? 0)} disabled />
               <p className="text-xs text-slate-500">
                 Este valor se calcula automáticamente desde trabajadores activos.

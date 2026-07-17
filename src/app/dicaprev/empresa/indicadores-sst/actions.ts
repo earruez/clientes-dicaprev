@@ -35,7 +35,7 @@ const DEFAULT_INDICADORES: IndicadorSST[] = [
     value: "0,82%",
     ref: "<= 1,5%",
     refMax: 1.5,
-    desc: "Accidentes con tiempo perdido x 100 / dotacion promedio.",
+    desc: "Accidentes con tiempo perdido x 100 / promedio de trabajadores.",
   },
   {
     id: "ts",

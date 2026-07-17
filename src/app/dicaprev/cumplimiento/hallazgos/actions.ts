@@ -59,7 +59,7 @@ const PLANTILLAS_HALLAZGO: PlantillaHallazgo[] = [
     label: "Comité Paritario no constituido",
     tipo: "comite_paritario",
     prioridad: "critica",
-    descripcionBase: "No se evidencia constitución formal del Comité Paritario pese a dotación aplicable.",
+    descripcionBase: "No se evidencia constitución formal del Comité Paritario pese a trabajadores activos aplicables.",
     diasCompromiso: 10,
     sugerenciaObligacionTexto: "Comité Paritario",
   },

@@ -306,14 +306,14 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
                 </div>
               </section>
 
-              {/* ── Dotación ── */}
+              {/* ── Asignación operativa ── */}
               <section className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
-                <SectionTitle icon={<Briefcase className="h-4 w-4" />} label="Asignación de Dotación" />
+                <SectionTitle icon={<Briefcase className="h-4 w-4" />} label="Asignación operativa" />
                 <p className="mb-4 text-xs text-slate-500">
                   Selecciona una posición para vincular al trabajador. Si no eliges una, el sistema usará la asignación automática.
                 </p>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <Field id="dotacionId" label="Posición de dotación" half>
+                  <Field id="dotacionId" label="Asignación operativa" half>
                     <select
                       id="dotacionId"
                       value={form.dotacionId ?? ""}
