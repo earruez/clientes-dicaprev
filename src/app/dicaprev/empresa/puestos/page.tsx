@@ -496,6 +496,9 @@ export default function DotacionPage() {
             <p className="text-sm text-slate-500 max-w-xl pl-[52px]">
               Posiciones operativas por centro de trabajo. Cada posición vincula un cargo maestro con su cobertura real, turno y cumplimiento DS44.
             </p>
+            <div className="mt-3 ml-[52px] max-w-2xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Vista legacy: esta sección se mantiene por compatibilidad y ya no forma parte del flujo principal SST.
+            </div>
           </div>
           <button
             onClick={openCreate}

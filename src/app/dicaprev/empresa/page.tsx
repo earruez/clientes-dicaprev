@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Building2, ShieldCheck, TriangleAlert, MapPin, UserCheck, Activity, Sparkles, CheckCircle2, Briefcase, ChevronRight } from "lucide-react";
+import { Users, Building2, ShieldCheck, TriangleAlert, MapPin, UserCheck, Activity, Sparkles, CheckCircle2, ChevronRight } from "lucide-react";
 import { calcularTamañoEmpresa, type TamanoEmpresa } from "@/lib/cumplimiento/cumplimiento-engine";
 import { cn } from "@/lib/utils";
 import {
@@ -361,7 +361,7 @@ export default function CompanyPage() {
                       <p className="mt-2 text-lg font-semibold text-slate-900">{companyData.rubroEmpresa}</p>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Dotación</p>
+                      <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Trabajadores activos</p>
                       <div className="mt-2 flex items-center gap-2">
                         <p className="text-lg font-semibold text-slate-900">{companyData.cantidadTrabajadores}</p>
                         <span className={cn(
@@ -606,7 +606,6 @@ export default function CompanyPage() {
                     {[
                       { label: "Áreas", href: "/dicaprev/empresa/areas", icon: <Building2 className="h-4 w-4" />, description: "Unidades organizacionales" },
                       { label: "Cargos", href: "/dicaprev/empresa/cargos", icon: <Users className="h-4 w-4" />, description: "Roles y perfiles" },
-                      { label: "Dotación", href: "/dicaprev/empresa/puestos", icon: <Briefcase className="h-4 w-4" />, description: "Posiciones por centro" },
                       { label: "Trabajadores", href: "/dicaprev/trabajadores", icon: <Users className="h-4 w-4" />, description: "Personas y asignación" },
                       { label: "Centros de trabajo", href: "/dicaprev/empresa/centrotrabajo", icon: <MapPin className="h-4 w-4" />, description: "Vista ejecutiva por centro", featured: true },
                       { label: "Organigrama", href: "/dicaprev/empresa/organigrama", icon: <UserCheck className="h-4 w-4" />, description: "Estructura jerárquica" },
