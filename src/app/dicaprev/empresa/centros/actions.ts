@@ -1,5 +1,7 @@
 "use server";
 
+import { getControlDocumentalTrabajadores } from "@/actions/trabajadores/documentos";
+import { getWorkerDocSummary, getWorkerDocs } from "@/components/trabajadores-v2/documental/types";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -40,6 +42,15 @@ function validateCentro(data: CentroTrabajoInput) {
   };
 }
 
+function clampPct(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function normalizeCentroKey(value: string | null | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
 export async function getCentrosTrabajo() {
   const { empresaId } = await requirePermission("canReadEmpresa");
 
@@ -66,21 +77,75 @@ export async function getCentrosTrabajo() {
     orderBy: { createdAt: "desc" },
   });
 
+  const documentalResumenPorCentro = new Map<
+    string,
+    {
+      totalDocs: number;
+      docsCumplidos: number;
+      capsPendientes: number;
+      docsVencidos: number;
+    }
+  >();
+
+  try {
+    const documental = await getControlDocumentalTrabajadores();
+
+    for (const worker of documental.workers) {
+      const centroKey = normalizeCentroKey(worker.centroTrabajo);
+      if (!centroKey) continue;
+
+      const docs = getWorkerDocs(
+        worker,
+        documental.reglas,
+        documental.tipos,
+        documental.documentos,
+      );
+      const summary = getWorkerDocSummary(docs);
+
+      const capsPendientes = docs.filter((doc) => {
+        if (doc.tipo.categoria !== "Capacitación") return false;
+        return doc.estado !== "completo" && doc.estado !== "no_aplica";
+      }).length;
+
+      const current = documentalResumenPorCentro.get(centroKey) ?? {
+        totalDocs: 0,
+        docsCumplidos: 0,
+        capsPendientes: 0,
+        docsVencidos: 0,
+      };
+
+      current.totalDocs += summary.total;
+      current.docsCumplidos += summary.cargados;
+      current.capsPendientes += capsPendientes;
+      current.docsVencidos += summary.vencidos;
+
+      documentalResumenPorCentro.set(centroKey, current);
+    }
+  } catch {
+    // If documental data is unavailable for this role/context, keep safe zero KPIs.
+  }
+
   return centros.map((centro) => {
     const trabajadoresActivos = centro.trabajadores.filter((trabajador) => trabajador.estado !== "inactivo").length;
     const posicionesActivas = centro.posicionesDotacion.filter((posicion) => posicion.estado === "activa");
     const dotacionTotal = posicionesActivas.reduce((acc, posicion) => acc + posicion.cantidad, 0);
     const cargosTotal = new Set(posicionesActivas.map((posicion) => posicion.cargoId)).size;
     const alertasDs44 = posicionesActivas.filter((posicion) => posicion.esCritica).length;
+    const resumenDoc = documentalResumenPorCentro.get(normalizeCentroKey(centro.nombre));
+
+    const cumplimientoDocPct =
+      resumenDoc && resumenDoc.totalDocs > 0
+        ? clampPct((resumenDoc.docsCumplidos / resumenDoc.totalDocs) * 100)
+        : 0;
 
     return {
       ...centro,
       cantidadTrabajadores: trabajadoresActivos,
       dotacionTotal,
       cargosTotal,
-      cumplimientoDocPct: dotacionTotal > 0 ? Math.round((trabajadoresActivos / dotacionTotal) * 100) : 0,
-      capacitacionesPendientes: 0,
-      vencimientos: 0,
+      cumplimientoDocPct,
+      capacitacionesPendientes: resumenDoc?.capsPendientes ?? 0,
+      vencimientos: resumenDoc?.docsVencidos ?? 0,
       alertasDs44,
     };
   });
