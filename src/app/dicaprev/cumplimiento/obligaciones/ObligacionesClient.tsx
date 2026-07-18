@@ -283,7 +283,7 @@ export default function ObligacionesClient({ data }: { data: CumplimientoEmpresa
         <StandardPageHeader
           moduleLabel="Cumplimiento DS44"
           title="Obligaciones DS44"
-          description="Estado real documental de obligaciones empresa, con reglas de aplicabilidad por dotacion."
+          description="Estado real documental de obligaciones empresa, con reglas de aplicabilidad por cantidad de trabajadores."
           icon={FileText}
         />
 

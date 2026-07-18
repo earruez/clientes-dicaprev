@@ -169,7 +169,7 @@ export const DOCUMENTOS_EMPRESA_MOCK: DocumentoEmpresa[] = [
     fechaSubida: "2026-01-01T10:00:00",
     actualizadoPor: USUARIO_LOGUEADO_MOCK.nombre,
     fechaActualizacion: "2026-04-01T10:00:00",
-    observaciones: "No aplica por dotación actual de la empresa.",
+    observaciones: "No aplica por cantidad actual de trabajadores activos de la empresa.",
     historial: baseHistorial(USUARIO_LOGUEADO_MOCK.nombre, USUARIO_LOGUEADO_MOCK.email, "Documento marcado inicialmente como no aplica"),
     firmado: false,
     firmadoPor: null,

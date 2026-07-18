@@ -29,7 +29,7 @@ export default function Filtros({ filtros, onChangeFiltros, dotacion }: FiltrosP
     <div className="space-y-4">
       {dotacion !== undefined ? (
         <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-          <span className="font-medium">Dotación usada para el cálculo:</span>
+          <span className="font-medium">Trabajadores activos usados para el cálculo:</span>
           <span className="font-bold">{dotacion} trabajador{dotacion !== 1 ? "es" : ""}</span>
           <span className="text-blue-500">(documentos que aplican se calculan según este número)</span>
         </div>

@@ -471,7 +471,6 @@ export default function AreasCargosPage() {
 
   const aActivas     = useMemo(() => areasConMetricas.filter((a) => a.estado === "activa").length, [areasConMetricas]);
   const aTotalCargos = useMemo(() => areasConMetricas.reduce((acc, a) => acc + a.cargosNombres.length, 0), [areasConMetricas]);
-  const aTotalDot    = useMemo(() => areasConMetricas.reduce((acc, a) => acc + a.dotacionTotal, 0), [areasConMetricas]);
   const aTotalTrab   = useMemo(() => areasConMetricas.reduce((acc, a) => acc + a.trabajadores, 0), [areasConMetricas]);
   const aAreasDs44   = useMemo(() => areasConMetricas.filter((a) => a.tieneDs44).length, [areasConMetricas]);
 
@@ -751,22 +750,14 @@ export default function AreasCargosPage() {
           title="Áreas y cargos"
           description={
             mainTab === "areas"
-              ? "Estructura organizacional. Cada área agrupa cargos, dotación y trabajadores."
+              ? "Estructura organizacional. Cada área agrupa cargos y trabajadores."
               : "Catálogo maestro de roles. Define perfiles SST, documentos y capacitaciones base."
           }
           icon={mainTab === "areas" ? <Network className="h-6 w-6" /> : <BookOpen className="h-6 w-6" />}
           iconWrapClassName={mainTab === "areas" ? "bg-teal-700" : "bg-violet-700"}
           actions={
             <div className="flex items-center gap-2">
-              {mainTab === "areas" && (
-                <a
-                  href="/dicaprev/empresa/puestos"
-                  className="inline-flex shrink-0 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100"
-                >
-                  <Layers className="h-4 w-4" />
-                  Gestionar dotación
-                </a>
-              )}
+
               <button
                 onClick={mainTab === "areas" ? aOpenCreate : cOpenCreate}
                 className={cn(
@@ -802,11 +793,11 @@ export default function AreasCargosPage() {
         {mainTab === "areas" && (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-              <AreaKpiCard label="Áreas activas"    value={aActivas}     icon={<Network className="h-5 w-5 text-white" />}     accent="bg-teal-600"   sub={`de ${areas.length} totales`} />
+              <AreaKpiCard label="Áreas activas"    value={aActivas}     icon={<Network className="h-5 w-5 text-white" />}     accent="bg-teal-600"   sub={`de ${areasConMetricas.length} totales`} />
               <AreaKpiCard label="Cargos asociados" value={aTotalCargos} icon={<BookOpen className="h-5 w-5 text-white" />}    accent="bg-violet-600" sub="roles activos" />
-              <AreaKpiCard label="Dotación total"   value={aTotalDot}    icon={<Layers className="h-5 w-5 text-white" />}      accent="bg-indigo-600" sub={areasConMetricas.reduce((a, x) => a + x.asignadosTotal, 0) + " asignados"} />
+              <AreaKpiCard label="Cumplimiento documental" value={`${areasConMetricas.length > 0 ? Math.round(areasConMetricas.reduce((acc, area) => acc + area.cumplimientoPromedio, 0) / areasConMetricas.length) : 0}%`} icon={<Layers className="h-5 w-5 text-white" />} accent="bg-indigo-600" sub="promedio por área" />
               <AreaKpiCard label="Trabajadores"     value={aTotalTrab}   icon={<Users className="h-5 w-5 text-white" />}       accent="bg-slate-700"  sub="vinculados a áreas" />
-              <AreaKpiCard label="DS44 crítica"     value={aAreasDs44}   icon={<ShieldAlert className="h-5 w-5 text-white" />} accent="bg-rose-600"   sub="áreas con riesgo DS44" />
+              <AreaKpiCard label="Cargo crítico SST"     value={aAreasDs44}   icon={<ShieldAlert className="h-5 w-5 text-white" />} accent="bg-rose-600"   sub="áreas con cargos críticos SST" />
             </div>
 
             {plantillaActiva && (
@@ -851,7 +842,7 @@ export default function AreasCargosPage() {
                   <button type="button" onClick={() => setADs44((v) => !v)}
                     className={cn("flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition",
                       aDs44 ? "border-rose-200 bg-rose-50 text-rose-700" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}>
-                    <ShieldAlert className="h-4 w-4" /> DS44 Crítico
+                    <ShieldAlert className="h-4 w-4" /> Cargo crítico SST
                   </button>
                 </div>
               </CardContent>
@@ -862,7 +853,7 @@ export default function AreasCargosPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50">
-                      {["Área", "Responsable", "Cargos", "Dotación", "Trabajadores", "Cumplimiento", "DS44", "Estado", "Acciones"].map((h) => (
+                      {["Área", "Responsable", "Cargos", "Trabajadores", "Cumplimiento", "Cargo crítico SST", "Estado", "Acciones"].map((h) => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 first:px-5">{h}</th>
                       ))}
                     </tr>
@@ -888,14 +879,6 @@ export default function AreasCargosPage() {
                           </span>
                         </td>
                         <td className="px-4 py-4 text-center">
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="font-semibold text-slate-800">{area.asignadosTotal}/{area.dotacionTotal}</span>
-                            {area.vacantesTotal > 0 && (
-                              <span className="text-[10px] text-rose-600 font-medium">{area.vacantesTotal} vacante{area.vacantesTotal > 1 ? "s" : ""}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-center">
                           <span className="font-semibold text-slate-800">{area.trabajadores}</span>
                         </td>
                         <td className="px-4 py-4">
@@ -905,7 +888,7 @@ export default function AreasCargosPage() {
                         </td>
                         <td className="px-4 py-4 text-center">
                           {area.tieneDs44
-                            ? <Badge className="rounded-full text-[11px] bg-rose-50 text-rose-700 border border-rose-100">DS44</Badge>
+                            ? <Badge className="rounded-full text-[11px] bg-rose-50 text-rose-700 border border-rose-100">Cargo crítico SST</Badge>
                             : <span className="text-xs text-slate-400">—</span>}
                         </td>
                         <td className="px-4 py-4 text-center">
@@ -1125,9 +1108,9 @@ export default function AreasCargosPage() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   { label: "Cargos",      value: selectedArea.cargosNombres.length,  color: "text-violet-700" },
-                  { label: "Dotación",    value: `${selectedArea.asignadosTotal}/${selectedArea.dotacionTotal}`, color: "text-indigo-700" },
+                  { label: "Cumplimiento", value: `${selectedArea.cumplimientoPromedio}%`, color: "text-indigo-700" },
                   { label: "Trabajadores", value: selectedArea.trabajadores,          color: "text-teal-700"   },
-                  { label: "Vacantes",    value: selectedArea.vacantesTotal,          color: selectedArea.vacantesTotal > 0 ? "text-rose-700" : "text-emerald-700" },
+                  { label: "Estado",      value: selectedArea.estado === "activa" ? "Activa" : "Inactiva", color: selectedArea.estado === "activa" ? "text-emerald-700" : "text-slate-700" },
                 ].map((s) => (
                   <div key={s.label} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3 text-center">
                     <p className={cn("text-xl font-bold", s.color)}>{s.value}</p>
@@ -1197,27 +1180,11 @@ export default function AreasCargosPage() {
                   : <p className="text-sm text-slate-400 italic">Sin cargos asignados aún.</p>}
               </div>
 
-              {selectedArea.dotacionTotal > 0 && (
-                <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700 mb-3">
-                    <Layers className="inline h-3.5 w-3.5 mr-1" />Dotación
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div><p className="text-lg font-bold text-indigo-700">{selectedArea.dotacionTotal}</p><p className="text-[11px] text-slate-500">Requerida</p></div>
-                    <div><p className="text-lg font-bold text-emerald-700">{selectedArea.asignadosTotal}</p><p className="text-[11px] text-slate-500">Asignados</p></div>
-                    <div>
-                      <p className={cn("text-lg font-bold", selectedArea.vacantesTotal > 0 ? "text-rose-700" : "text-emerald-700")}>{selectedArea.vacantesTotal}</p>
-                      <p className="text-[11px] text-slate-500">Vacantes</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {selectedArea.tieneDs44
+                            {selectedArea.tieneDs44
                 ? <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4">
                     <AlertTriangle className="h-5 w-5 shrink-0 text-rose-600 mt-0.5" />
                     <div>
-                      <p className="text-sm font-semibold text-rose-800 mb-1">Área con criticidad DS44</p>
+                      <p className="text-sm font-semibold text-rose-800 mb-1">Área con cargos críticos SST</p>
                       <p className="text-xs text-rose-700 leading-relaxed">Uno o más cargos de esta área exigen cumplimiento de habilitaciones DS44 vigentes.</p>
                     </div>
                   </div>
@@ -1328,10 +1295,10 @@ export default function AreasCargosPage() {
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-3 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" /> Centros / posiciones activas ({drawerCargo.centros.length})
+                  <MapPin className="h-3.5 w-3.5" /> Centros asociados ({drawerCargo.centros.length})
                 </p>
                 {drawerCargo.centros.length === 0
-                  ? <div className="rounded-xl border border-dashed border-slate-200 py-5 text-center text-xs text-slate-400">Sin posiciones de dotación activas</div>
+                  ? <div className="rounded-xl border border-dashed border-slate-200 py-5 text-center text-xs text-slate-400">Sin centros asociados activos</div>
                   : <div className="space-y-1.5">{drawerCargo.centros.map((centro) => (
                       <div key={centro} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-white px-4 py-2.5 text-sm text-slate-700 shadow-sm">
                         <Layers className="h-3.5 w-3.5 text-indigo-400 shrink-0" />{centro}

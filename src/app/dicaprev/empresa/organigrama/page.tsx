@@ -299,7 +299,6 @@ function buildCentroTree(
 
     const areaNodes: OrgNode[] = [];
     for (const [areaName, areaWorkers] of areaMap) {
-      const areaRef = null;
       const cargoMap = new Map<string, Worker[]>();
       areaWorkers.forEach((w) => {
         const list = cargoMap.get(w.cargo) ?? [];
@@ -334,7 +333,6 @@ function buildCentroTree(
           children: [],
           workerData: w,
         }));
-        const cargoDotRef = centroRef?.dotacionPorCargo.find((d) => d.cargo === cargoName);
         cargoNodes.push({
           id: `cargo-centro-${centroName}-${areaName}-${cargoName}`,
           type: "cargo" as const,
@@ -433,14 +431,14 @@ function DotacionBadge({
     const vac = -delta;
     return (
       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-700 ring-1 ring-sky-200">
-        {vac} vacante{vac !== 1 ? "s" : ""}
+        {vac} pendiente{vac !== 1 ? "s" : ""}
       </span>
     );
   }
   if (delta > 0) {
     return (
       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-700 ring-1 ring-purple-200">
-        +{delta} sobredotado
+        +{delta} adicional
       </span>
     );
   }
@@ -843,7 +841,7 @@ function AreaDetail({ area, workers }: { area: EmpresaArea; workers: Worker[] })
       <KpiGrid
         items={[
           { label: "Trabajadores", value: areaWorkers.length, icon: Users, color: "text-slate-700" },
-          { label: "Dotación", value: `${area.asignadosTotal}/${area.dotacionTotal}`, icon: Briefcase, color: "text-violet-600" },
+          { label: "Cargos", value: area.cargosNombres.length, icon: Briefcase, color: "text-violet-600" },
           { label: "Doc. pendientes", value: docPend, icon: FileText, color: docPend > 0 ? "text-amber-500" : "text-emerald-600" },
           { label: "Cap. pendientes", value: capPend, icon: GraduationCap, color: capPend > 0 ? "text-amber-500" : "text-emerald-600" },
         ]}
@@ -894,8 +892,6 @@ function AreaDetail({ area, workers }: { area: EmpresaArea; workers: Worker[] })
 }
 
 function CentroDetail({ centro }: { centro: CentroAdmin }) {
-  const vacantes = centro.dotacionTotal - centro.trabajadoresTotal;
-
   return (
     <div className="space-y-5">
       {/* Location info */}
@@ -933,8 +929,8 @@ function CentroDetail({ centro }: { centro: CentroAdmin }) {
       <KpiGrid
         items={[
           { label: "Trabajadores", value: centro.trabajadoresTotal, icon: Users, color: "text-slate-700" },
-          { label: "Dotación", value: centro.dotacionTotal, icon: Briefcase, color: "text-violet-600" },
-          { label: "Vacantes", value: vacantes, icon: AlertTriangle, color: vacantes > 0 ? "text-amber-500" : "text-emerald-600" },
+          { label: "Cargos", value: centro.dotacionPorCargo.length, icon: Briefcase, color: "text-violet-600" },
+          { label: "Alertas DS44", value: centro.alertasDs44, icon: AlertTriangle, color: centro.alertasDs44 > 0 ? "text-amber-500" : "text-emerald-600" },
           { label: "Cap. pendientes", value: centro.capacitacionesPendientes, icon: GraduationCap, color: centro.capacitacionesPendientes > 0 ? "text-amber-500" : "text-emerald-600" },
         ]}
       />
@@ -956,21 +952,14 @@ function CentroDetail({ centro }: { centro: CentroAdmin }) {
       )}
 
       {centro.dotacionPorCargo.length > 0 && (
-        <Section title="Dotación por cargo">
+        <Section title="Asignación por cargo">
           <div className="space-y-2">
             {centro.dotacionPorCargo.map((d) => (
               <div key={d.cargo} className="flex items-center justify-between text-sm">
                 <span className="text-slate-700 truncate mr-2">{d.cargo}</span>
                 <span className="flex-shrink-0 text-xs">
-                  <span
-                    className={cn(
-                      "font-bold",
-                      d.asignados < d.dotacion ? "text-amber-600" : "text-emerald-600",
-                    )}
-                  >
-                    {d.asignados}
-                  </span>
-                  <span className="text-slate-400">/{d.dotacion}</span>
+                  <span className="font-bold text-emerald-600">{d.asignados}</span>
+                  <span className="text-slate-400"> asignados</span>
                 </span>
               </div>
             ))}

@@ -75,7 +75,7 @@ export function EstructurasObligatoriasCard({
             Estructuras obligatorias DS44
           </h3>
           <p className="text-xs text-slate-500">
-            Según dotación:{" "}
+            Según trabajadores activos:{" "}
             <strong className="text-slate-700">{cantidadTrabajadores} trabajadores</strong>
             {" · "}
             <span

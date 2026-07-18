@@ -243,7 +243,7 @@ const DOCUMENTOS_REQUERIDOS_BASE: DocumentoRequeridoSeed[] = [
   {
     nombre: "Plan de capacitación",
     categoria: "sst",
-    descripcion: "Plan anual o programa de capacitaciones SST aplicable a la dotación de la empresa.",
+    descripcion: "Plan anual o programa de capacitaciones SST aplicable a los trabajadores activos de la empresa.",
     obligatorio: true,
     aplicaDesdeTrabajadores: 10,
     aplicaHastaTrabajadores: null,
@@ -311,7 +311,7 @@ const DOCUMENTOS_REQUERIDOS_BASE: DocumentoRequeridoSeed[] = [
   {
     nombre: "Constitución Departamento de Prevención, si aplica",
     categoria: "sst",
-    descripcion: "Documento formal de constitución del Departamento de Prevención de Riesgos cuando corresponde por dotación.",
+    descripcion: "Documento formal de constitución del Departamento de Prevención de Riesgos cuando corresponde por trabajadores activos.",
     obligatorio: false,
     aplicaDesdeTrabajadores: 100,
     aplicaHastaTrabajadores: null,

@@ -5,8 +5,6 @@ import Link from "next/link";
 import {
   Building2,
   Users,
-  Briefcase,
-  UserMinus,
   ShieldCheck,
   GraduationCap,
   CalendarClock,
@@ -147,8 +145,7 @@ export default function CentrosTrabajoExecutivePage() {
     const active = centros.filter((c) => c.estado !== "inactivo");
     const totalCentros = active.length;
     const trabajadores = active.reduce((acc, c) => acc + c.trabajadoresTotal, 0);
-    const dotacion = active.reduce((acc, c) => acc + c.dotacionTotal, 0);
-    const vacantes = Math.max(dotacion - trabajadores, 0);
+
     const cumplimiento =
       totalCentros > 0
         ? Math.round(active.reduce((acc, c) => acc + c.cumplimientoDocPct, 0) / totalCentros)
@@ -156,7 +153,7 @@ export default function CentrosTrabajoExecutivePage() {
     const capsPend = active.reduce((acc, c) => acc + c.capacitacionesPendientes, 0);
     const vencimientos = active.reduce((acc, c) => acc + c.vencimientos, 0);
     const ds44 = active.reduce((acc, c) => acc + c.alertasDs44, 0);
-    return { totalCentros, trabajadores, dotacion, vacantes, cumplimiento, capsPend, vencimientos, ds44 };
+    return { totalCentros, trabajadores, cumplimiento, capsPend, vencimientos, ds44 };
   }, [centros]);
 
   function openCreate() {
@@ -262,7 +259,7 @@ export default function CentrosTrabajoExecutivePage() {
           <StandardPageHeader
             moduleLabel="Módulo Empresa"
             title="Centros de trabajo"
-            description="Vista ejecutiva por centro: cobertura de dotación, cumplimiento documental, alertas DS44 y focos críticos."
+            description="Vista ejecutiva por centro: trabajadores activos, cumplimiento documental, alertas DS44 y focos críticos."
             icon={<Building2 className="h-6 w-6" />}
             iconWrapClassName="bg-cyan-700"
             actions={
@@ -284,13 +281,10 @@ export default function CentrosTrabajoExecutivePage() {
           />
         </header>
 
-        <section className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-8">
+        <section className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-7">
           {[
             { label: "Centros", value: kpis.totalCentros, icon: Building2, tone: "bg-cyan-50 text-cyan-700" },
-            { label: "Trabajadores", value: kpis.trabajadores, icon: Users, tone: "bg-emerald-50 text-emerald-700" },
-            { label: "Dotación", value: kpis.dotacion, icon: Briefcase, tone: "bg-sky-50 text-sky-700" },
-            { label: "Vacantes", value: kpis.vacantes, icon: UserMinus, tone: "bg-amber-50 text-amber-700" },
-            { label: "% documental", value: `${kpis.cumplimiento}%`, icon: ShieldCheck, tone: "bg-violet-50 text-violet-700" },
+            { label: "Trabajadores", value: kpis.trabajadores, icon: Users, tone: "bg-emerald-50 text-emerald-700" },            { label: "% documental", value: `${kpis.cumplimiento}%`, icon: ShieldCheck, tone: "bg-violet-50 text-violet-700" },
             { label: "Cap. pendientes", value: kpis.capsPend, icon: GraduationCap, tone: "bg-indigo-50 text-indigo-700" },
             { label: "Vencimientos", value: kpis.vencimientos, icon: CalendarClock, tone: "bg-orange-50 text-orange-700" },
             { label: "Alertas DS44", value: kpis.ds44, icon: TriangleAlert, tone: "bg-rose-50 text-rose-700" },
@@ -314,8 +308,8 @@ export default function CentrosTrabajoExecutivePage() {
             <div className="grid grid-cols-12 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               <span className="col-span-3">Centro</span>
               <span className="col-span-1 text-center">Trab.</span>
-              <span className="col-span-1 text-center">Dotación</span>
-              <span className="col-span-1 text-center">Vacantes</span>
+              <span className="col-span-1 text-center">Cargos</span>
+              <span className="col-span-1 text-center">Estado</span>
               <span className="col-span-2 text-center">Cumplimiento</span>
               <span className="col-span-1 text-center">Cap.</span>
               <span className="col-span-1 text-center">Venc.</span>
@@ -331,7 +325,7 @@ export default function CentrosTrabajoExecutivePage() {
 
             <div className="divide-y divide-slate-100">
               {centros.map((centro) => {
-                const vacantes = Math.max(centro.dotacionTotal - centro.trabajadoresTotal, 0);
+
                 return (
                   <div
                     key={centro.id}
@@ -353,8 +347,8 @@ export default function CentrosTrabajoExecutivePage() {
                     </div>
 
                     <p className="col-span-1 text-center font-semibold text-slate-700">{centro.trabajadoresTotal}</p>
-                    <p className="col-span-1 text-center font-semibold text-slate-700">{centro.dotacionTotal}</p>
-                    <p className="col-span-1 text-center font-semibold text-slate-700">{vacantes}</p>
+                    <p className="col-span-1 text-center font-semibold text-slate-700">{centro.dotacionPorCargo.length}</p>
+                    <p className="col-span-1 text-center font-semibold text-slate-700">{centro.estado === "activo" ? "Act." : centro.estado === "en-riesgo" ? "Riesgo" : centro.estado === "detenido" ? "Det." : "Inac."}</p>
 
                     <div className="col-span-2 px-3">
                       <div className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -488,7 +482,7 @@ export default function CentrosTrabajoExecutivePage() {
                 {selectedCentro.dotacionPorCargo.length > 0 && (
                   <Card className="rounded-2xl border border-slate-200">
                     <CardContent className="p-4">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dotación por cargo</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Asignación por cargo</p>
                       <div className="mt-3 space-y-2">
                         {selectedCentro.dotacionPorCargo.map((row) => {
                           const pct = row.dotacion > 0 ? Math.round((row.asignados / row.dotacion) * 100) : 0;
