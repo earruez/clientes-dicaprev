@@ -8,13 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { saveDs44Diagnostico } from "./actions";
 import {
-  saveDs44Diagnostico,
   type Ds44Brecha,
   type Ds44DiagnosticoPayload,
   type Ds44PrioridadBrecha,
   type Ds44RespuestaValor,
-} from "./actions";
+} from "./catalogo";
 
 type Props = {
   initialData: Ds44DiagnosticoPayload;
