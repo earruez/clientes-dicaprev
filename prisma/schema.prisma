@@ -140,6 +140,17 @@ enum EstadoEvidenciaCumplimiento {
   vencida
 }
 
+enum EstadoDs44Diagnostico {
+  en_evaluacion
+  completado
+}
+
+enum RespuestaDs44Diagnostico {
+  si
+  no
+  no_aplica
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -222,6 +233,7 @@ model Empresa {
   acreditaciones             Acreditacion[]
   // Plan de Trabajo
   planTrabajo                PlanTrabajo[]
+  ds44Diagnosticos           Ds44Diagnostico[]
 }
 
 model Usuario {
@@ -424,6 +436,42 @@ model ObligacionEmpresaEstado {
   @@unique([empresaId, obligacionClave])
   @@index([empresaId])
   @@index([actualizadoPorId])
+}
+
+model Ds44Diagnostico {
+  id          String                @id @default(cuid())
+  empresaId   String
+  estado      EstadoDs44Diagnostico @default(en_evaluacion)
+  scoreGlobal Int?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  empresa    Empresa                   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  respuestas Ds44DiagnosticoRespuesta[]
+
+  @@index([empresaId])
+  @@index([estado])
+  @@index([updatedAt])
+}
+
+model Ds44DiagnosticoRespuesta {
+  id           String                    @id @default(cuid())
+  diagnosticoId String
+  bloque       String
+  preguntaClave String
+  preguntaTexto String
+  respuesta    RespuestaDs44Diagnostico
+  puntaje      Int?
+  observacion  String?
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+
+  diagnostico Ds44Diagnostico @relation(fields: [diagnosticoId], references: [id], onDelete: Cascade)
+
+  @@unique([diagnosticoId, preguntaClave])
+  @@index([diagnosticoId])
+  @@index([bloque])
+  @@index([respuesta])
 }
 
 model HallazgoCumplimiento {

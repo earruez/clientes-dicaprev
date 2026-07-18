@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, BookCheck, CalendarClock, ClipboardList, FileCheck2, Gauge, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { AlertTriangle, BookCheck, CalendarClock, ClipboardCheck, ClipboardList, FileCheck2, Gauge, ShieldCheck, Sparkles, Target } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { getHallazgos } from "@/app/dicaprev/cumplimiento/hallazgos/actions";
 import { getObligacionesCumplimientoEmpresa } from "@/app/dicaprev/cumplimiento/obligaciones/actions";
 import { getPlanTrabajoData } from "@/app/dicaprev/cumplimiento/plan-trabajo/actions";
+import { getDs44DiagnosticoResumen } from "./diagnostico/actions";
 
 type EstadoImplementacion = "Inicial" | "En implementacion" | "En control" | "Fiscalizable";
 
@@ -65,6 +66,20 @@ function getPrioridadLabel(prioridad: string): string {
   return "Baja";
 }
 
+function getEstadoDiagnosticoClass(estado: string): string {
+  if (estado === "controlado") return "bg-emerald-100 text-emerald-800 border-emerald-200";
+  if (estado === "con_brechas") return "bg-amber-100 text-amber-800 border-amber-200";
+  if (estado === "en_evaluacion") return "bg-blue-100 text-blue-800 border-blue-200";
+  return "bg-slate-100 text-slate-700 border-slate-200";
+}
+
+function getEstadoDiagnosticoLabel(estado: string): string {
+  if (estado === "controlado") return "Controlado";
+  if (estado === "con_brechas") return "Con brechas";
+  if (estado === "en_evaluacion") return "En evaluacion";
+  return "Sin diagnostico";
+}
+
 function isHallazgoAbierto(estado: string): boolean {
   return estado !== "cerrado" && estado !== "resuelto";
 }
@@ -80,10 +95,11 @@ function sortByPrioridad(a: string, b: string): number {
 }
 
 export default async function DS44Page() {
-  const [obligacionesData, hallazgos, planTrabajo] = await Promise.all([
+  const [obligacionesData, hallazgos, planTrabajo, diagnosticoResumen] = await Promise.all([
     getObligacionesCumplimientoEmpresa(),
     getHallazgos(),
     getPlanTrabajoData(),
+    getDs44DiagnosticoResumen(),
   ]);
 
   const obligacionesAplicables = obligacionesData.obligaciones.filter((ob) => ob.aplica);
@@ -180,6 +196,49 @@ export default async function DS44Page() {
             <p className="mt-2 text-2xl font-semibold text-slate-900">
               {accionesVencidas} / {accionesProximas}
             </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section>
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+                <ClipboardCheck className="h-5 w-5 text-slate-600" />
+                Diagnostico DS44
+              </h2>
+              <p className="text-sm text-slate-500">
+                Evalua bloques criticos, detecta brechas priorizadas y define focos inmediatos de implementacion.
+              </p>
+            </div>
+            <Button asChild size="sm">
+              <Link href="/dicaprev/ds44/diagnostico">
+                {diagnosticoResumen.existeDiagnostico ? "Ver diagnostico DS44" : "Iniciar diagnostico DS44"}
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
+              <div className="mt-2">
+                <Badge variant="outline" className={getEstadoDiagnosticoClass(diagnosticoResumen.estado)}>
+                  {getEstadoDiagnosticoLabel(diagnosticoResumen.estado)}
+                </Badge>
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Ultimo score</p>
+              <p className="mt-1 text-xl font-semibold text-slate-900">{diagnosticoResumen.scoreGlobal ?? "--"}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Brechas criticas</p>
+              <p className="mt-1 text-xl font-semibold text-rose-700">{diagnosticoResumen.brechasCriticas}</p>
+            </div>
+            <div className="rounded-lg border border-slate-200 p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Brechas altas</p>
+              <p className="mt-1 text-xl font-semibold text-orange-700">{diagnosticoResumen.brechasAltas}</p>
+            </div>
           </CardContent>
         </Card>
       </section>
@@ -397,9 +456,8 @@ export default async function DS44Page() {
             </h2>
             <p className="text-sm text-slate-500">Evolucion funcional planificada para la siguiente etapa comercial.</p>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[
-              "Diagnostico DS44",
               "MIPER",
               "PRRD",
               "Autoevaluacion legal",
