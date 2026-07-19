@@ -16,6 +16,31 @@ import {
 } from "./catalogo";
 
 type EstadoDiagnostico = "en_evaluacion" | "completado";
+type Ds44DiagnosticoWithRespuestas = {
+  id: string;
+  estado: EstadoDiagnostico;
+  updatedAt: Date;
+  respuestas: Array<{
+    preguntaClave: string;
+    respuesta: Ds44RespuestaValor;
+    observacion: string | null;
+  }>;
+};
+
+function isDs44PersistenceUnavailable(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const prismaLikeError = error as Error & { code?: string };
+  if (prismaLikeError.code === "P2021" || prismaLikeError.code === "P2022") {
+    return true;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    (message.includes("ds44diagnostico") || message.includes("ds44_diagnostico")) &&
+    (message.includes("does not exist") || message.includes("no existe") || message.includes("relation"))
+  );
+}
 
 function normalizeToken(value: string): string {
   return value
@@ -186,19 +211,34 @@ async function getHallazgosAbiertosEmpresa(empresaId: string): Promise<Array<{ i
 export async function getDs44DiagnosticoData(): Promise<Ds44DiagnosticoPayload> {
   const { empresaId } = await requirePermission("canReadCumplimiento");
 
-  const diagnostico = await prisma.ds44Diagnostico.findFirst({
-    where: { empresaId },
-    include: {
-      respuestas: {
-        orderBy: { createdAt: "asc" },
-      },
-    },
-    orderBy: {
-      updatedAt: "desc",
-    },
-  });
-
   const hallazgos = await getHallazgosAbiertosEmpresa(empresaId);
+
+  let diagnostico: Ds44DiagnosticoWithRespuestas | null;
+  try {
+    diagnostico = await prisma.ds44Diagnostico.findFirst({
+      where: { empresaId },
+      include: {
+        respuestas: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+  } catch (error) {
+    if (!isDs44PersistenceUnavailable(error)) {
+      throw error;
+    }
+
+    return buildDiagnosticoPayload({
+      diagnosticoId: null,
+      estado: "en_evaluacion",
+      updatedAt: null,
+      respuestas: [],
+      hallazgos,
+    });
+  }
 
   if (!diagnostico) {
     return buildDiagnosticoPayload({
@@ -262,51 +302,62 @@ export async function saveDs44Diagnostico(input: { respuestas: Ds44GuardarRespue
     hallazgos: [],
   });
 
-  const diagnostico = await prisma.$transaction(async (tx) => {
-    const existente = await tx.ds44Diagnostico.findFirst({
-      where: { empresaId },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true },
-    });
-
-    const target = existente
-      ? await tx.ds44Diagnostico.update({
-          where: { id: existente.id },
-          data: {
-            estado,
-            scoreGlobal: payloadPreSave.scoreGlobal,
-          },
-          select: { id: true, estado: true, updatedAt: true },
-        })
-      : await tx.ds44Diagnostico.create({
-          data: {
-            empresaId,
-            estado,
-            scoreGlobal: payloadPreSave.scoreGlobal,
-          },
-          select: { id: true, estado: true, updatedAt: true },
-        });
-
-    await tx.ds44DiagnosticoRespuesta.deleteMany({
-      where: { diagnosticoId: target.id },
-    });
-
-    if (respuestasPersistidas.length > 0) {
-      await tx.ds44DiagnosticoRespuesta.createMany({
-        data: respuestasPersistidas.map((item) => ({
-          diagnosticoId: target.id,
-          bloque: item.bloque,
-          preguntaClave: item.preguntaClave,
-          preguntaTexto: item.preguntaTexto,
-          respuesta: item.respuesta,
-          puntaje: item.puntaje,
-          observacion: item.observacion,
-        })),
+  let diagnostico: { id: string; estado: EstadoDiagnostico; updatedAt: Date };
+  try {
+    diagnostico = await prisma.$transaction(async (tx) => {
+      const existente = await tx.ds44Diagnostico.findFirst({
+        where: { empresaId },
+        orderBy: { updatedAt: "desc" },
+        select: { id: true },
       });
+
+      const target = existente
+        ? await tx.ds44Diagnostico.update({
+            where: { id: existente.id },
+            data: {
+              estado,
+              scoreGlobal: payloadPreSave.scoreGlobal,
+            },
+            select: { id: true, estado: true, updatedAt: true },
+          })
+        : await tx.ds44Diagnostico.create({
+            data: {
+              empresaId,
+              estado,
+              scoreGlobal: payloadPreSave.scoreGlobal,
+            },
+            select: { id: true, estado: true, updatedAt: true },
+          });
+
+      await tx.ds44DiagnosticoRespuesta.deleteMany({
+        where: { diagnosticoId: target.id },
+      });
+
+      if (respuestasPersistidas.length > 0) {
+        await tx.ds44DiagnosticoRespuesta.createMany({
+          data: respuestasPersistidas.map((item) => ({
+            diagnosticoId: target.id,
+            bloque: item.bloque,
+            preguntaClave: item.preguntaClave,
+            preguntaTexto: item.preguntaTexto,
+            respuesta: item.respuesta,
+            puntaje: item.puntaje,
+            observacion: item.observacion,
+          })),
+        });
+      }
+
+      return target;
+    });
+  } catch (error) {
+    if (!isDs44PersistenceUnavailable(error)) {
+      throw error;
     }
 
-    return target;
-  });
+    throw new Error(
+      "El diagnostico DS44 aun no esta habilitado en este ambiente. Solicita aplicar las migraciones de base de datos.",
+    );
+  }
 
   revalidatePath("/dicaprev/ds44");
   revalidatePath("/dicaprev/ds44/diagnostico");
