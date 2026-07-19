@@ -17,6 +17,21 @@ import {
   type GuardarDs44PlanAccionResult,
 } from "./types";
 
+function isDs44PlanPersistenceUnavailable(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const prismaLikeError = error as Error & { code?: string };
+  if (prismaLikeError.code === "P2021" || prismaLikeError.code === "P2022") {
+    return true;
+  }
+
+  const message = error.message.toLowerCase();
+  return (
+    (message.includes("ds44planaccion") || message.includes("ds44_plan_accion")) &&
+    (message.includes("does not exist") || message.includes("no existe") || message.includes("column") || message.includes("relation"))
+  );
+}
+
 function prioridadPeso(prioridad: Ds44PlanPrioridad): number {
   if (prioridad === "critica") return 4;
   if (prioridad === "alta") return 3;
@@ -175,7 +190,7 @@ function toPlanAccion(args: {
     id: string;
     estado: string;
     responsableReal: string | null;
-    responsableTrabajadorId: string | null;
+    responsableTrabajadorId?: string | null;
     fechaCompromiso: Date | null;
     observacionTecnica: string | null;
     accionSugerida: string;
@@ -184,7 +199,7 @@ function toPlanAccion(args: {
     rutaSugerida: string | null;
     frenteOperativo: string | null;
     responsableSugerido: string | null;
-    responsableTrabajador: {
+    responsableTrabajador?: {
       nombres: string;
       apellidos: string;
       cargo: {
@@ -293,40 +308,92 @@ export async function getDs44PlanImplementacionData(): Promise<Ds44PlanImplement
 
   const brechasByClave = new Map(diagnostico.brechas.map((item) => [item.preguntaClave, item]));
 
-  const accionesPersistidas = await prisma.ds44PlanAccion.findMany({
-    where: {
-      empresaId,
-      preguntaClave: {
-        in: [...brechasByClave.keys()],
+  let accionesPersistidas: Array<{
+    id: string;
+    preguntaClave: string;
+    estado: string;
+    responsableReal: string | null;
+    responsableTrabajadorId?: string | null;
+    fechaCompromiso: Date | null;
+    observacionTecnica: string | null;
+    accionSugerida: string;
+    recomendacion: string;
+    evidenciaEsperada: string | null;
+    rutaSugerida: string | null;
+    frenteOperativo: string | null;
+    responsableSugerido: string | null;
+    responsableTrabajador?: {
+      nombres: string;
+      apellidos: string;
+      cargo: {
+        nombre: string;
+      } | null;
+    } | null;
+  }>;
+
+  try {
+    accionesPersistidas = await prisma.ds44PlanAccion.findMany({
+      where: {
+        empresaId,
+        preguntaClave: {
+          in: [...brechasByClave.keys()],
+        },
       },
-    },
-    select: {
-      id: true,
-      preguntaClave: true,
-      estado: true,
-      responsableReal: true,
-      responsableTrabajadorId: true,
-      fechaCompromiso: true,
-      observacionTecnica: true,
-      accionSugerida: true,
-      recomendacion: true,
-      evidenciaEsperada: true,
-      rutaSugerida: true,
-      frenteOperativo: true,
-      responsableSugerido: true,
-      responsableTrabajador: {
-        select: {
-          nombres: true,
-          apellidos: true,
-          cargo: {
-            select: {
-              nombre: true,
+      select: {
+        id: true,
+        preguntaClave: true,
+        estado: true,
+        responsableReal: true,
+        responsableTrabajadorId: true,
+        fechaCompromiso: true,
+        observacionTecnica: true,
+        accionSugerida: true,
+        recomendacion: true,
+        evidenciaEsperada: true,
+        rutaSugerida: true,
+        frenteOperativo: true,
+        responsableSugerido: true,
+        responsableTrabajador: {
+          select: {
+            nombres: true,
+            apellidos: true,
+            cargo: {
+              select: {
+                nombre: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (!isDs44PlanPersistenceUnavailable(error)) {
+      throw error;
+    }
+
+    accionesPersistidas = await prisma.ds44PlanAccion.findMany({
+      where: {
+        empresaId,
+        preguntaClave: {
+          in: [...brechasByClave.keys()],
+        },
+      },
+      select: {
+        id: true,
+        preguntaClave: true,
+        estado: true,
+        responsableReal: true,
+        fechaCompromiso: true,
+        observacionTecnica: true,
+        accionSugerida: true,
+        recomendacion: true,
+        evidenciaEsperada: true,
+        rutaSugerida: true,
+        frenteOperativo: true,
+        responsableSugerido: true,
+      },
+    });
+  }
 
   const persistidasByClave = new Map(accionesPersistidas.map((item) => [item.preguntaClave, item]));
 
@@ -430,73 +497,105 @@ export async function guardarDs44PlanAccion(
   const prioridad = brecha.prioridad as Ds44PlanPrioridad;
   const sugerencias = getSugerencias(prioridad);
 
-  const guardada = await prisma.ds44PlanAccion.upsert({
-    where: {
-      empresaId_preguntaClave: {
-        empresaId,
-        preguntaClave,
+  let guardada: {
+    id: string;
+    estado: string;
+    responsableReal: string | null;
+    responsableTrabajadorId?: string | null;
+    fechaCompromiso: Date | null;
+    observacionTecnica: string | null;
+    accionSugerida: string;
+    recomendacion: string;
+    evidenciaEsperada: string | null;
+    rutaSugerida: string | null;
+    frenteOperativo: string | null;
+    responsableSugerido: string | null;
+    responsableTrabajador?: {
+      nombres: string;
+      apellidos: string;
+      cargo: {
+        nombre: string;
+      } | null;
+    } | null;
+  };
+
+  try {
+    guardada = await prisma.ds44PlanAccion.upsert({
+      where: {
+        empresaId_preguntaClave: {
+          empresaId,
+          preguntaClave,
+        },
       },
-    },
-    create: {
-      empresaId,
-      diagnosticoId: diagnostico.diagnosticoId,
-      preguntaClave,
-      bloque: brecha.bloqueNombre,
-      prioridad,
-      accionSugerida: brecha.recomendacion,
-      recomendacion: brecha.recomendacion,
-      evidenciaEsperada: brecha.evidenciaEsperada,
-      rutaSugerida: brecha.rutaSugerida,
-      frenteOperativo: sugerencias.frenteOperativo,
-      responsableSugerido: sugerencias.responsableSugerido,
-      responsableTrabajadorId: trabajador.id,
-      responsableReal,
-      fechaCompromiso,
-      estado: input.estado,
-      observacionTecnica: input.observacionTecnica?.trim() || null,
-    },
-    update: {
-      diagnosticoId: diagnostico.diagnosticoId,
-      bloque: brecha.bloqueNombre,
-      prioridad,
-      accionSugerida: brecha.recomendacion,
-      recomendacion: brecha.recomendacion,
-      evidenciaEsperada: brecha.evidenciaEsperada,
-      rutaSugerida: brecha.rutaSugerida,
-      frenteOperativo: sugerencias.frenteOperativo,
-      responsableSugerido: sugerencias.responsableSugerido,
-      responsableTrabajadorId: trabajador.id,
-      responsableReal,
-      fechaCompromiso,
-      estado: input.estado,
-      observacionTecnica: input.observacionTecnica?.trim() || null,
-    },
-    select: {
-      id: true,
-      estado: true,
-      responsableReal: true,
-      responsableTrabajadorId: true,
-      fechaCompromiso: true,
-      observacionTecnica: true,
-      accionSugerida: true,
-      recomendacion: true,
-      evidenciaEsperada: true,
-      rutaSugerida: true,
-      frenteOperativo: true,
-      responsableSugerido: true,
-      responsableTrabajador: {
-        select: {
-          nombres: true,
-          apellidos: true,
-          cargo: {
-            select: {
-              nombre: true,
+      create: {
+        empresaId,
+        diagnosticoId: diagnostico.diagnosticoId,
+        preguntaClave,
+        bloque: brecha.bloqueNombre,
+        prioridad,
+        accionSugerida: brecha.recomendacion,
+        recomendacion: brecha.recomendacion,
+        evidenciaEsperada: brecha.evidenciaEsperada,
+        rutaSugerida: brecha.rutaSugerida,
+        frenteOperativo: sugerencias.frenteOperativo,
+        responsableSugerido: sugerencias.responsableSugerido,
+        responsableTrabajadorId: trabajador.id,
+        responsableReal,
+        fechaCompromiso,
+        estado: input.estado,
+        observacionTecnica: input.observacionTecnica?.trim() || null,
+      },
+      update: {
+        diagnosticoId: diagnostico.diagnosticoId,
+        bloque: brecha.bloqueNombre,
+        prioridad,
+        accionSugerida: brecha.recomendacion,
+        recomendacion: brecha.recomendacion,
+        evidenciaEsperada: brecha.evidenciaEsperada,
+        rutaSugerida: brecha.rutaSugerida,
+        frenteOperativo: sugerencias.frenteOperativo,
+        responsableSugerido: sugerencias.responsableSugerido,
+        responsableTrabajadorId: trabajador.id,
+        responsableReal,
+        fechaCompromiso,
+        estado: input.estado,
+        observacionTecnica: input.observacionTecnica?.trim() || null,
+      },
+      select: {
+        id: true,
+        estado: true,
+        responsableReal: true,
+        responsableTrabajadorId: true,
+        fechaCompromiso: true,
+        observacionTecnica: true,
+        accionSugerida: true,
+        recomendacion: true,
+        evidenciaEsperada: true,
+        rutaSugerida: true,
+        frenteOperativo: true,
+        responsableSugerido: true,
+        responsableTrabajador: {
+          select: {
+            nombres: true,
+            apellidos: true,
+            cargo: {
+              select: {
+                nombre: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    if (!isDs44PlanPersistenceUnavailable(error)) {
+      throw error;
+    }
+
+    throw new Error(
+      "La planificacion DS44 requiere actualizar la base de datos. Ejecuta prisma migrate deploy y vuelve a intentar.",
+    );
+  }
 
   revalidatePath("/dicaprev/ds44");
   revalidatePath("/dicaprev/ds44/plan-implementacion");
