@@ -1,4 +1,3 @@
-◇ injected env (2) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
 -- CreateTable
 CREATE TABLE "Ds44PlanAccion" (
     "id" TEXT NOT NULL,
