@@ -1,5 +1,17 @@
 import Link from "next/link";
-import { AlertTriangle, BookCheck, CalendarClock, ClipboardCheck, ClipboardList, FileCheck2, Gauge, ShieldCheck, Sparkles, Target } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  BookCheck,
+  CalendarClock,
+  ClipboardCheck,
+  ClipboardList,
+  FileCheck2,
+  Gauge,
+  ShieldCheck,
+  Sparkles,
+  Target,
+} from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -149,77 +161,117 @@ export default async function DS44Page() {
     return ob.estadoDocumental === "Pendiente de carga" || ob.estadoDocumental === "Vencido";
   }).length;
 
+  const diagnosticoCta = diagnosticoResumen.existeDiagnostico ? "Ver diagnostico" : "Iniciar diagnostico";
+
   return (
     <div className="space-y-6 px-4 pb-8 pt-5 sm:px-6">
       <StandardPageHeader
         moduleLabel="DS44"
         title="Implementacion DS44"
-        description="Diagnostico, obligaciones, brechas, evidencias y plan de implementacion para fiscalizacion y mejora continua."
+        description="Panel ejecutivo para priorizar brechas, ordenar evidencia y sostener cumplimiento DS44 en una sola vista."
         icon={ShieldCheck}
         iconWrapClassName="bg-slate-900"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild>
+              <Link href="/dicaprev/ds44/diagnostico">
+                {diagnosticoCta}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/dicaprev/cumplimiento/plan-trabajo">Ver plan de trabajo</Link>
+            </Button>
+          </div>
+        }
       />
 
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Cumplimiento DS44 global</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Cumplimiento DS44 global</p>
+              <Gauge className="h-4 w-4 text-slate-400" />
+            </div>
             <p className="mt-2 text-2xl font-semibold text-slate-900">{cumplimientoGlobal}%</p>
+            <p className="mt-1 text-xs text-slate-500">Promedio de obligaciones aplicables.</p>
           </CardContent>
         </Card>
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Obligaciones aplicables</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Obligaciones aplicables</p>
+              <BookCheck className="h-4 w-4 text-slate-400" />
+            </div>
             <p className="mt-2 text-2xl font-semibold text-slate-900">{obligacionesAplicables.length}</p>
+            <p className="mt-1 text-xs text-slate-500">Marco vigente para la empresa.</p>
           </CardContent>
         </Card>
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Obligaciones cumplidas</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Obligaciones cumplidas</p>
+              <ShieldCheck className="h-4 w-4 text-emerald-500" />
+            </div>
             <p className="mt-2 text-2xl font-semibold text-emerald-700">{obligacionesCumplidas}</p>
+            <p className="mt-1 text-xs text-slate-500">Controles ya implementados.</p>
           </CardContent>
         </Card>
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Brechas abiertas</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Brechas abiertas</p>
+              <AlertTriangle className="h-4 w-4 text-rose-500" />
+            </div>
             <p className="mt-2 text-2xl font-semibold text-rose-700">{hallazgosAbiertos.length}</p>
+            <p className="mt-1 text-xs text-slate-500">Incumplimientos en seguimiento.</p>
           </CardContent>
         </Card>
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Documentos pendientes</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Documentos pendientes</p>
+              <FileCheck2 className="h-4 w-4 text-amber-500" />
+            </div>
             <p className="mt-2 text-2xl font-semibold text-amber-700">{documentosPendientes}</p>
+            <p className="mt-1 text-xs text-slate-500">Evidencia clave por cargar o renovar.</p>
           </CardContent>
         </Card>
-        <Card className="border-slate-200">
+        <Card className="border-slate-200 shadow-sm">
           <CardContent className="p-4">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Acciones vencidas / proximas</p>
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Acciones vencidas / proximas</p>
+              <CalendarClock className="h-4 w-4 text-slate-400" />
+            </div>
             <p className="mt-2 text-2xl font-semibold text-slate-900">
               {accionesVencidas} / {accionesProximas}
             </p>
+            <p className="mt-1 text-xs text-slate-500">Riesgo inmediato de atrasos.</p>
           </CardContent>
         </Card>
       </section>
 
       <section>
-        <Card>
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-4">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
                 <ClipboardCheck className="h-5 w-5 text-slate-600" />
                 Diagnostico DS44
               </h2>
-              <p className="text-sm text-slate-500">
-                Evalua bloques criticos, detecta brechas priorizadas y define focos inmediatos de implementacion.
+              <p className="mt-1 text-sm text-slate-500">
+                Modulo principal para evaluar bloques criticos y priorizar cierre de brechas.
               </p>
             </div>
-            <Button asChild size="sm">
+            <Button asChild size="sm" className="shrink-0">
               <Link href="/dicaprev/ds44/diagnostico">
-                {diagnosticoResumen.existeDiagnostico ? "Ver diagnostico DS44" : "Iniciar diagnostico DS44"}
+                {diagnosticoCta}
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-            <div className="rounded-lg border border-slate-200 p-3">
+          <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
               <div className="mt-2">
                 <Badge variant="outline" className={getEstadoDiagnosticoClass(diagnosticoResumen.estado)}>
@@ -227,15 +279,15 @@ export default async function DS44Page() {
                 </Badge>
               </div>
             </div>
-            <div className="rounded-lg border border-slate-200 p-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">Ultimo score</p>
               <p className="mt-1 text-xl font-semibold text-slate-900">{diagnosticoResumen.scoreGlobal ?? "--"}</p>
             </div>
-            <div className="rounded-lg border border-slate-200 p-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">Brechas criticas</p>
               <p className="mt-1 text-xl font-semibold text-rose-700">{diagnosticoResumen.brechasCriticas}</p>
             </div>
-            <div className="rounded-lg border border-slate-200 p-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">Brechas altas</p>
               <p className="mt-1 text-xl font-semibold text-orange-700">{diagnosticoResumen.brechasAltas}</p>
             </div>
@@ -244,7 +296,7 @@ export default async function DS44Page() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
+        <Card className="xl:col-span-2 border-slate-200 shadow-sm">
           <CardHeader>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
               <Gauge className="h-5 w-5 text-slate-600" />
@@ -279,7 +331,7 @@ export default async function DS44Page() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-slate-200 shadow-sm">
           <CardHeader>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
               <Sparkles className="h-5 w-5 text-slate-600" />
@@ -288,27 +340,28 @@ export default async function DS44Page() {
             <p className="text-sm text-slate-500">Continua trabajando desde los frentes operativos principales.</p>
           </CardHeader>
           <CardContent className="grid gap-2">
-            <Button asChild variant="outline" className="justify-start">
-              <Link href="/dicaprev/cumplimiento/obligaciones">Obligaciones</Link>
-            </Button>
-            <Button asChild variant="outline" className="justify-start">
-              <Link href="/dicaprev/cumplimiento/hallazgos">Hallazgos</Link>
-            </Button>
-            <Button asChild variant="outline" className="justify-start">
-              <Link href="/dicaprev/cumplimiento/evidencias">Evidencias</Link>
-            </Button>
-            <Button asChild variant="outline" className="justify-start">
-              <Link href="/dicaprev/cumplimiento/plan-trabajo">Plan de trabajo</Link>
-            </Button>
-            <Button asChild variant="outline" className="justify-start">
-              <Link href="/dicaprev/documentacion">Documentacion</Link>
-            </Button>
+            {[
+              { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
+              { href: "/dicaprev/cumplimiento/hallazgos", label: "Hallazgos" },
+              { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias" },
+              { href: "/dicaprev/cumplimiento/plan-trabajo", label: "Plan de trabajo" },
+              { href: "/dicaprev/documentacion", label: "Documentacion" },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+              >
+                <span>{item.label}</span>
+                <ArrowRight className="h-4 w-4 text-slate-400" />
+              </Link>
+            ))}
           </CardContent>
         </Card>
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card>
+        <Card className="border-slate-200 shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -334,14 +387,14 @@ export default async function DS44Page() {
               </div>
             ))}
             {obligacionesAplicables.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-500">
-                No hay obligaciones aplicables para mostrar.
+              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                Aun no hay obligaciones DS44 aplicables para esta empresa. Revisa configuracion y alcance normativo.
               </p>
             ) : null}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-slate-200 shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -370,8 +423,8 @@ export default async function DS44Page() {
               </div>
             ))}
             {brechasCriticas.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-500">
-                No hay brechas criticas abiertas.
+              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                Sin brechas criticas abiertas por ahora. Mantener monitoreo evita retrocesos de cumplimiento.
               </p>
             ) : null}
           </CardContent>
@@ -379,7 +432,7 @@ export default async function DS44Page() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card>
+        <Card className="border-slate-200 shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -410,7 +463,7 @@ export default async function DS44Page() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="border-slate-200 shadow-sm">
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
@@ -448,7 +501,7 @@ export default async function DS44Page() {
       </section>
 
       <section>
-        <Card>
+        <Card className="border-slate-200 shadow-sm">
           <CardHeader>
             <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
               <Target className="h-5 w-5 text-slate-600" />
@@ -476,7 +529,7 @@ export default async function DS44Page() {
       </section>
 
       <section>
-        <Card className="border-slate-200 bg-slate-50/60">
+        <Card className="border-slate-200 bg-white shadow-sm">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
             <p className="text-sm text-slate-700">
               ¿Que exige DS44, que esta cumplido y que debe resolverse primero? Este panel concentra la respuesta y
