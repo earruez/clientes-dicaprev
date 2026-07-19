@@ -460,6 +460,7 @@ model Ds44PlanAccion {
   id                 String   @id @default(cuid())
   empresaId          String
   diagnosticoId      String?
+  responsableTrabajadorId String?
   preguntaClave      String
   bloque             String?
   prioridad          String
@@ -478,12 +479,14 @@ model Ds44PlanAccion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  empresa     Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  diagnostico Ds44Diagnostico? @relation(fields: [diagnosticoId], references: [id], onDelete: SetNull)
+  empresa               Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  diagnostico           Ds44Diagnostico? @relation(fields: [diagnosticoId], references: [id], onDelete: SetNull)
+  responsableTrabajador Trabajador?      @relation("TrabajadorDs44PlanAccionResponsable", fields: [responsableTrabajadorId], references: [id], onDelete: SetNull)
 
   @@unique([empresaId, preguntaClave])
   @@index([empresaId])
   @@index([diagnosticoId])
+  @@index([responsableTrabajadorId])
   @@index([prioridad])
   @@index([estado])
   @@index([fechaCompromiso])
@@ -652,6 +655,7 @@ model Trabajador {
   documentos               TrabajadorDocumento[]
   hallazgosCumplimiento    HallazgoCumplimiento[]
   hallazgosResponsable     HallazgoCumplimiento[]   @relation("TrabajadorHallazgoCumplimientoResponsable")
+  ds44PlanAccionesResponsable Ds44PlanAccion[]      @relation("TrabajadorDs44PlanAccionResponsable")
   evidenciasCumplimiento   EvidenciaCumplimiento[]
   capacitacionAsignaciones CapacitacionAsignacion[]
   capacitacionHistoriales  CapacitacionHistorial[]

@@ -13,6 +13,7 @@ import {
   type Ds44PlanEstado,
   type Ds44PlanImplementacionData,
   type Ds44PlanOrden,
+  type Ds44ResponsableDisponible,
 } from "./types";
 
 type Props = {
@@ -20,7 +21,7 @@ type Props = {
 };
 
 type FormState = {
-  responsableReal: string;
+  responsableTrabajadorId: string;
   fechaCompromiso: string;
   estado: Ds44PlanEstado;
   observacionTecnica: string;
@@ -81,9 +82,38 @@ function toInputDate(value: string | null): string {
   return date.toISOString().slice(0, 10);
 }
 
-function getFormInitial(accion: Ds44PlanAccion): FormState {
+function getResponsableLabel(item: Ds44ResponsableDisponible): string {
+  const cargo = item.cargoNombre || "Sin cargo asignado";
+  return `${item.nombreCompleto} - ${cargo}`;
+}
+
+function getResponsableDisplay(accion: Ds44PlanAccion): string {
+  if (accion.responsableTrabajadorNombre) {
+    if (accion.responsableTrabajadorCargo) {
+      return `${accion.responsableTrabajadorNombre} - ${accion.responsableTrabajadorCargo}`;
+    }
+    return accion.responsableTrabajadorNombre;
+  }
+
+  if (accion.responsableReal) {
+    return accion.responsableReal;
+  }
+
+  return "A definir por prevencionista";
+}
+
+function guessResponsableId(accion: Ds44PlanAccion, responsables: Ds44ResponsableDisponible[]): string {
+  if (accion.responsableTrabajadorId) return accion.responsableTrabajadorId;
+  if (!accion.responsableReal) return "";
+
+  const target = accion.responsableReal.trim().toLowerCase();
+  const found = responsables.find((item) => item.nombreCompleto.trim().toLowerCase() === target);
+  return found?.id ?? "";
+}
+
+function getFormInitial(accion: Ds44PlanAccion, responsables: Ds44ResponsableDisponible[]): FormState {
   return {
-    responsableReal: accion.responsableReal ?? "",
+    responsableTrabajadorId: guessResponsableId(accion, responsables),
     fechaCompromiso: toInputDate(accion.fechaCompromiso),
     estado: accion.estado,
     observacionTecnica: accion.observacionTecnica ?? "",
@@ -116,9 +146,18 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
     return new Map(data.acciones.map((item) => [item.preguntaClave, item]));
   }, [data.acciones]);
 
+  const responsablesRecomendados = useMemo(
+    () => data.responsablesDisponibles.filter((item) => item.recomendado),
+    [data.responsablesDisponibles],
+  );
+  const otrosResponsables = useMemo(
+    () => data.responsablesDisponibles.filter((item) => !item.recomendado),
+    [data.responsablesDisponibles],
+  );
+
   function startPlanning(accion: Ds44PlanAccion) {
     setEditingKey(accion.preguntaClave);
-    setForm(getFormInitial(accion));
+    setForm(getFormInitial(accion, data.responsablesDisponibles));
     setErrorMsg(null);
     setSuccessMsg(null);
   }
@@ -132,8 +171,8 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
   function onSave(preguntaClave: string) {
     if (!form) return;
 
-    if (!form.responsableReal.trim()) {
-      setErrorMsg("Define un responsable real para esta accion.");
+    if (!form.responsableTrabajadorId) {
+      setErrorMsg("Selecciona un responsable valido de la empresa.");
       return;
     }
 
@@ -149,7 +188,7 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
       try {
         await guardarDs44PlanAccion({
           preguntaClave,
-          responsableReal: form.responsableReal,
+          responsableTrabajadorId: form.responsableTrabajadorId,
           fechaCompromiso: form.fechaCompromiso,
           estado: form.estado,
           observacionTecnica: form.observacionTecnica,
@@ -313,6 +352,12 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
             <p className="text-sm text-slate-500">Brecha detectada, recomendacion del sistema y planificacion operativa del prevencionista.</p>
           </CardHeader>
           <CardContent className="space-y-3">
+            {data.responsablesDisponibles.length === 0 ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                No hay trabajadores activos disponibles para asignar como responsables. Primero carga trabajadores de la empresa.
+              </div>
+            ) : null}
+
             {errorMsg ? (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMsg}</div>
             ) : null}
@@ -351,8 +396,8 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
                       <p className="mt-1 text-slate-700">{localAccion.responsableSugerido || "A definir"}</p>
                     </div>
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Responsable real</p>
-                      <p className="mt-1 text-slate-700">{localAccion.responsableReal || "A definir o responsable sugerido"}</p>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Responsable actual</p>
+                      <p className="mt-1 text-slate-700">{getResponsableDisplay(localAccion)}</p>
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-wide text-slate-500">Plazo</p>
@@ -371,13 +416,44 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
                   {isEditing && form ? (
                     <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
                       <div>
-                        <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Responsable real</label>
-                        <input
+                        <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Responsable</label>
+                        <select
                           className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
-                          placeholder="Ej: Prevencionista, Administracion, Gerencia, Supervisor"
-                          value={form.responsableReal}
-                          onChange={(event) => setForm((prev) => prev ? { ...prev, responsableReal: event.target.value } : prev)}
-                        />
+                          value={form.responsableTrabajadorId}
+                          onChange={(event) =>
+                            setForm((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    responsableTrabajadorId: event.target.value,
+                                  }
+                                : prev,
+                            )
+                          }
+                        >
+                          <option value="">Selecciona un responsable de la empresa</option>
+                          {responsablesRecomendados.length > 0 ? (
+                            <optgroup label="Recomendados">
+                              {responsablesRecomendados.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {getResponsableLabel(item)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null}
+                          {otrosResponsables.length > 0 ? (
+                            <optgroup label="Otros trabajadores">
+                              {otrosResponsables.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {getResponsableLabel(item)}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ) : null}
+                        </select>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Se priorizan gerencia, jefaturas, supervisores, administracion y prevencion SST.
+                        </p>
                       </div>
 
                       <div>
@@ -437,7 +513,10 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
                         <Button variant="outline" onClick={cancelPlanning} disabled={isPending}>
                           Cancelar
                         </Button>
-                        <Button onClick={() => onSave(accion.preguntaClave)} disabled={isPending}>
+                        <Button
+                          onClick={() => onSave(accion.preguntaClave)}
+                          disabled={isPending || data.responsablesDisponibles.length === 0 || !form.responsableTrabajadorId}
+                        >
                           {isPending ? "Guardando..." : "Guardar planificacion"}
                         </Button>
                       </div>
