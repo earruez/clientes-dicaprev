@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { getObligacionesCumplimientoEmpresa } from "@/app/dicaprev/cumplimiento/obligaciones/actions";
 import { getPlanTrabajoData } from "@/app/dicaprev/cumplimiento/plan-trabajo/actions";
-import { getDs44DiagnosticoResumen } from "./diagnostico/actions";
+import { getDs44DiagnosticoData, getDs44DiagnosticoResumen } from "./diagnostico/actions";
 
 type EstadoImplementacion = "Inicial" | "En implementacion" | "En control" | "Fiscalizable";
 type EstadoPaso = "pendiente" | "en_proceso" | "con_brechas" | "ok";
@@ -81,8 +81,8 @@ function getProximoPaso(args: {
     return {
       titulo: "Resuelve brechas criticas primero",
       detalle: "Atender estos hallazgos reduce el mayor riesgo operativo y documental del modulo.",
-      href: "/dicaprev/cumplimiento/hallazgos",
-      cta: "Ir a brechas criticas",
+      href: "/dicaprev/ds44/plan-implementacion",
+      cta: "Abrir plan DS44",
     };
   }
 
@@ -113,11 +113,14 @@ function getProximoPaso(args: {
 }
 
 export default async function DS44Page() {
-  const [obligacionesData, planTrabajo, diagnosticoResumen] = await Promise.all([
+  const [obligacionesData, planTrabajo, diagnosticoResumen, diagnosticoData] = await Promise.all([
     getObligacionesCumplimientoEmpresa(),
     getPlanTrabajoData(),
     getDs44DiagnosticoResumen(),
+    getDs44DiagnosticoData(),
   ]);
+
+  const totalBrechasDiagnostico = diagnosticoData.brechas.length;
 
   const obligacionesAplicables = obligacionesData.obligaciones.filter((ob) => ob.aplica);
   const obligacionesConBrechas = obligacionesAplicables.filter((ob) => ob.estadoObligacion === "con_brechas").length;
@@ -133,8 +136,6 @@ export default async function DS44Page() {
   const estadoImplementacion = getEstadoImplementacion(cumplimientoGlobal);
 
   const now = new Date();
-  const accionesPendientes = planTrabajo.acciones.filter((accion) => accion.estado === "pendiente").length;
-  const accionesEnProceso = planTrabajo.acciones.filter((accion) => accion.estado === "en_proceso").length;
   const accionesVencidas = planTrabajo.acciones.filter((accion) => {
     const fechaCompromiso = normalizeDate(accion.fechaCompromiso);
     if (!fechaCompromiso || accion.estado === "cerrada") return false;
@@ -202,13 +203,13 @@ export default async function DS44Page() {
     {
       numero: "3",
       titulo: "Plan de implementacion",
-      descripcion: "Ordena acciones, responsables y fechas de cierre.",
-      href: "/dicaprev/cumplimiento/plan-trabajo",
-      cta: "Ver plan",
+      descripcion: "Transforma brechas DS44 en acciones por prioridad, plazo y responsable.",
+      href: "/dicaprev/ds44/plan-implementacion",
+      cta: "Abrir plan DS44",
       estado:
-        accionesVencidas > 0
-          ? "con_brechas"
-          : accionesPendientes + accionesEnProceso > 0
+        !diagnosticoResumen.existeDiagnostico
+          ? "pendiente"
+          : totalBrechasDiagnostico > 0
             ? "en_proceso"
             : "ok",
     },
@@ -410,8 +411,8 @@ export default async function DS44Page() {
           <CardContent className="grid grid-cols-2 gap-2 pt-0 sm:grid-cols-3">
             {[
               { href: "/dicaprev/ds44/diagnostico", label: "Diagnostico" },
+              { href: "/dicaprev/ds44/plan-implementacion", label: "Plan DS44" },
               { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
-              { href: "/dicaprev/cumplimiento/plan-trabajo", label: "Plan" },
               { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias" },
               { href: "/dicaprev/cumplimiento/hallazgos", label: "Hallazgos" },
               { href: "/dicaprev/documentacion", label: "Documentacion" },
