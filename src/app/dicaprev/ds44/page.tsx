@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress";
 import { getObligacionesCumplimientoEmpresa } from "@/app/dicaprev/cumplimiento/obligaciones/actions";
 import { getPlanTrabajoData } from "@/app/dicaprev/cumplimiento/plan-trabajo/actions";
 import { getDs44DiagnosticoData, getDs44DiagnosticoResumen } from "./diagnostico/actions";
+import { getDs44PlanImplementacionData } from "./plan-implementacion/actions";
 
 type EstadoImplementacion = "Inicial" | "En implementacion" | "En control" | "Fiscalizable";
 type EstadoPaso = "pendiente" | "en_proceso" | "con_brechas" | "ok";
@@ -113,11 +114,12 @@ function getProximoPaso(args: {
 }
 
 export default async function DS44Page() {
-  const [obligacionesData, planTrabajo, diagnosticoResumen, diagnosticoData] = await Promise.all([
+  const [obligacionesData, planTrabajo, diagnosticoResumen, diagnosticoData, planDs44] = await Promise.all([
     getObligacionesCumplimientoEmpresa(),
     getPlanTrabajoData(),
     getDs44DiagnosticoResumen(),
     getDs44DiagnosticoData(),
+    getDs44PlanImplementacionData(),
   ]);
 
   const totalBrechasDiagnostico = diagnosticoData.brechas.length;
@@ -203,15 +205,19 @@ export default async function DS44Page() {
     {
       numero: "3",
       titulo: "Plan de implementacion",
-      descripcion: "Transforma brechas DS44 en acciones por prioridad, plazo y responsable.",
+      descripcion: "Planifica responsables y fechas reales para cerrar brechas DS44.",
       href: "/dicaprev/ds44/plan-implementacion",
       cta: "Abrir plan DS44",
       estado:
         !diagnosticoResumen.existeDiagnostico
           ? "pendiente"
-          : totalBrechasDiagnostico > 0
-            ? "en_proceso"
-            : "ok",
+          : totalBrechasDiagnostico === 0
+            ? "ok"
+            : planDs44.resumen.cerradas >= totalBrechasDiagnostico
+              ? "ok"
+              : planDs44.resumen.planificadas === 0
+                ? "con_brechas"
+                : "en_proceso",
     },
     {
       numero: "4",

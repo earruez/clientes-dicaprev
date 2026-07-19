@@ -234,6 +234,7 @@ model Empresa {
   // Plan de Trabajo
   planTrabajo                PlanTrabajo[]
   ds44Diagnosticos           Ds44Diagnostico[]
+  ds44PlanAcciones           Ds44PlanAccion[]
 }
 
 model Usuario {
@@ -446,12 +447,46 @@ model Ds44Diagnostico {
   createdAt   DateTime              @default(now())
   updatedAt   DateTime              @updatedAt
 
-  empresa    Empresa                   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
-  respuestas Ds44DiagnosticoRespuesta[]
+  empresa      Empresa                   @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  respuestas   Ds44DiagnosticoRespuesta[]
+  planAcciones Ds44PlanAccion[]
 
   @@index([empresaId])
   @@index([estado])
   @@index([updatedAt])
+}
+
+model Ds44PlanAccion {
+  id                 String   @id @default(cuid())
+  empresaId          String
+  diagnosticoId      String?
+  preguntaClave      String
+  bloque             String?
+  prioridad          String
+  accionSugerida     String
+  recomendacion      String
+  evidenciaEsperada  String?
+  rutaSugerida       String?
+  frenteOperativo    String?
+  responsableSugerido String?
+
+  responsableReal    String?
+  fechaCompromiso    DateTime?
+  estado             String   @default("pendiente")
+  observacionTecnica String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa     Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  diagnostico Ds44Diagnostico? @relation(fields: [diagnosticoId], references: [id], onDelete: SetNull)
+
+  @@unique([empresaId, preguntaClave])
+  @@index([empresaId])
+  @@index([diagnosticoId])
+  @@index([prioridad])
+  @@index([estado])
+  @@index([fechaCompromiso])
 }
 
 model Ds44DiagnosticoRespuesta {

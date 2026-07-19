@@ -1,11 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CalendarClock, ClipboardList, ShieldAlert } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { AlertTriangle, ArrowRight, ClipboardList, ShieldAlert } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import type { Ds44PlanAccion, Ds44PlanImplementacionData } from "./actions";
+import { guardarDs44PlanAccion } from "./actions";
+import {
+  type Ds44PlanAccion,
+  type Ds44PlanEstado,
+  type Ds44PlanImplementacionData,
+  type Ds44PlanOrden,
+} from "./types";
+
+type Props = {
+  data: Ds44PlanImplementacionData;
+};
+
+type FormState = {
+  responsableReal: string;
+  fechaCompromiso: string;
+  estado: Ds44PlanEstado;
+  observacionTecnica: string;
+};
 
 const PRIORIDAD_LABEL: Record<Ds44PlanAccion["prioridad"], string> = {
   critica: "Critica",
@@ -21,21 +40,54 @@ const PRIORIDAD_BADGE: Record<Ds44PlanAccion["prioridad"], string> = {
   baja: "border-slate-200 bg-slate-50 text-slate-700",
 };
 
-const PLAZO_CONF: Array<{ key: "7" | "15" | "30" | "60"; titulo: string; subtitulo: string }> = [
-  { key: "7", titulo: "7 dias", subtitulo: "Brechas criticas" },
-  { key: "15", titulo: "15 dias", subtitulo: "Brechas altas" },
-  { key: "30", titulo: "30 dias", subtitulo: "Brechas medias" },
-  { key: "60", titulo: "60 dias", subtitulo: "Mejoras bajas" },
+const ESTADO_LABEL: Record<Ds44PlanEstado, string> = {
+  pendiente: "Pendiente",
+  planificada: "Planificada",
+  en_proceso: "En proceso",
+  cerrada: "Cerrada",
+};
+
+const ESTADO_BADGE: Record<Ds44PlanEstado, string> = {
+  pendiente: "border-slate-200 bg-slate-100 text-slate-700",
+  planificada: "border-blue-200 bg-blue-50 text-blue-700",
+  en_proceso: "border-amber-200 bg-amber-50 text-amber-700",
+  cerrada: "border-emerald-200 bg-emerald-50 text-emerald-700",
+};
+
+const ORDEN_CONF: Array<{ key: Ds44PlanOrden; titulo: string; subtitulo: string }> = [
+  { key: "inmediatas", titulo: "Inmediatas", subtitulo: "Brechas criticas" },
+  { key: "altas", titulo: "Altas", subtitulo: "Brechas altas" },
+  { key: "medias", titulo: "Medias", subtitulo: "Brechas medias" },
+  { key: "seguimiento", titulo: "Seguimiento", subtitulo: "Brechas bajas" },
 ];
 
-function formatFecha(value: string): string {
+function formatFecha(value: string | null): string {
+  if (!value) return "Sin fecha definida";
+
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Sin fecha";
+  if (Number.isNaN(date.getTime())) return "Sin fecha definida";
+
   return new Intl.DateTimeFormat("es-CL", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function toInputDate(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toISOString().slice(0, 10);
+}
+
+function getFormInitial(accion: Ds44PlanAccion): FormState {
+  return {
+    responsableReal: accion.responsableReal ?? "",
+    fechaCompromiso: toInputDate(accion.fechaCompromiso),
+    estado: accion.estado,
+    observacionTecnica: accion.observacionTecnica ?? "",
+  };
 }
 
 function renderResumenCard(label: string, value: number, tone: "base" | "warn" | "alert" = "base") {
@@ -52,7 +104,72 @@ function renderResumenCard(label: string, value: number, tone: "base" | "warn" |
   );
 }
 
-export default function PlanImplementacionDs44Client({ data }: { data: Ds44PlanImplementacionData }) {
+export default function PlanImplementacionDs44Client({ data }: Props) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const accionesByClave = useMemo(() => {
+    return new Map(data.acciones.map((item) => [item.preguntaClave, item]));
+  }, [data.acciones]);
+
+  function startPlanning(accion: Ds44PlanAccion) {
+    setEditingKey(accion.preguntaClave);
+    setForm(getFormInitial(accion));
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  }
+
+  function cancelPlanning() {
+    setEditingKey(null);
+    setForm(null);
+    setErrorMsg(null);
+  }
+
+  function onSave(preguntaClave: string) {
+    if (!form) return;
+
+    if (!form.responsableReal.trim()) {
+      setErrorMsg("Define un responsable real para esta accion.");
+      return;
+    }
+
+    if (!form.fechaCompromiso.trim()) {
+      setErrorMsg("Define una fecha compromiso real para planificar esta accion.");
+      return;
+    }
+
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    startTransition(async () => {
+      try {
+        await guardarDs44PlanAccion({
+          preguntaClave,
+          responsableReal: form.responsableReal,
+          fechaCompromiso: form.fechaCompromiso,
+          estado: form.estado,
+          observacionTecnica: form.observacionTecnica,
+        });
+
+        setSuccessMsg("Accion DS44 planificada correctamente.");
+        setEditingKey(null);
+        setForm(null);
+        router.refresh();
+      } catch (error) {
+        if (error instanceof Error) {
+          setErrorMsg(error.message);
+          return;
+        }
+
+        setErrorMsg("No fue posible guardar la planificacion DS44.");
+      }
+    });
+  }
+
   if (data.estadoGeneracion === "sin_diagnostico") {
     return (
       <Card className="border-slate-200 shadow-sm">
@@ -63,7 +180,7 @@ export default function PlanImplementacionDs44Client({ data }: { data: Ds44PlanI
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Primero completa el diagnostico DS44 para generar el plan de implementacion.</h2>
             <p className="mt-2 text-sm text-slate-600">
-              El plan se construye automaticamente desde las brechas detectadas en el ultimo diagnostico guardado.
+              El plan se construye desde brechas del diagnostico y luego lo planifica el prevencionista con fechas reales.
             </p>
           </div>
           <Button asChild>
@@ -87,7 +204,7 @@ export default function PlanImplementacionDs44Client({ data }: { data: Ds44PlanI
           <div>
             <h2 className="text-lg font-semibold text-slate-900">No hay brechas activas desde el diagnostico actual.</h2>
             <p className="mt-2 text-sm text-slate-600">
-              Se recomienda seguimiento periodico, actualizacion de evidencia y repetir diagnostico ante cambios operativos.
+              Se recomienda seguimiento periodico y revisar el diagnostico ante cambios operativos o nuevos riesgos.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -95,7 +212,7 @@ export default function PlanImplementacionDs44Client({ data }: { data: Ds44PlanI
               <Link href="/dicaprev/ds44/diagnostico">Ver diagnostico</Link>
             </Button>
             <Button asChild variant="outline">
-              <Link href="/dicaprev/cumplimiento/evidencias">Revisar evidencias</Link>
+              <Link href="/dicaprev/ds44">Volver a DS44</Link>
             </Button>
           </div>
         </CardContent>
@@ -107,61 +224,50 @@ export default function PlanImplementacionDs44Client({ data }: { data: Ds44PlanI
     <div className="space-y-6">
       <section>
         <Card className="border-slate-200 shadow-sm">
-          <CardContent className="grid gap-5 p-5 lg:grid-cols-[1.5fr_1fr] lg:items-center">
-            <div className="space-y-4">
-              <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
-                Que resolver primero
-              </Badge>
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-900">{data.proximoHito?.titulo}</h2>
-                <p className="mt-2 text-sm text-slate-600">{data.proximoHito?.detalle}</p>
-              </div>
-              <Button asChild size="lg" className="w-full sm:w-auto">
-                <Link href={data.proximoHito?.href ?? "/dicaprev/ds44/diagnostico"}>
-                  {data.proximoHito?.cta ?? "Ver siguiente paso"}
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
+          <CardContent className="space-y-4 p-5">
+            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+              Orden sugerido por criticidad
+            </Badge>
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">NextPrev prioriza las acciones. El prevencionista define responsables y fechas reales.</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                NextPrev ordena acciones por criticidad. El prevencionista debe definir el plazo real considerando factibilidad tecnica, recursos disponibles, coordinacion con la empresa y nivel de riesgo.
+              </p>
             </div>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-sm">
-              <p className="font-semibold text-slate-900">Foco inmediato</p>
-              <div className="mt-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Total acciones</span>
-                  <span className="font-semibold text-slate-900">{data.resumen.totalAcciones}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Criticas</span>
-                  <span className="font-semibold text-rose-700">{data.resumen.criticas}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Vencidas</span>
-                  <span className="font-semibold text-rose-700">{data.resumen.vencidas}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Proximas (7 dias)</span>
-                  <span className="font-semibold text-amber-700">{data.resumen.proximas}</span>
-                </div>
+            {data.resumen.vencidasReales > 0 ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                Hay acciones DS44 con fecha compromiso vencida.
               </div>
-            </div>
+            ) : null}
           </CardContent>
         </Card>
       </section>
 
       <section>
+        <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900">
+          <ShieldAlert className="h-4 w-4 text-slate-500" />
+          Resumen ejecutivo
+        </h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {renderResumenCard("Total acciones", data.resumen.totalAcciones)}
+          {renderResumenCard("Criticas", data.resumen.criticas, "alert")}
+          {renderResumenCard("Planificadas", data.resumen.planificadas, "warn")}
+          {renderResumenCard("Plazos por definir", data.resumen.plazosPorDefinir)}
+        </div>
+      </section>
+
+      <section>
         <Card className="border-slate-200 shadow-sm">
           <CardHeader>
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <CalendarClock className="h-4 w-4 text-slate-500" />
-              Timeline 7 / 15 / 30 / 60 dias
-            </h2>
-            <p className="text-sm text-slate-500">Distribucion de acciones por prioridad y plazo sugerido.</p>
+            <h2 className="text-lg font-semibold text-slate-900">Orden sugerido por criticidad</h2>
+            <p className="text-sm text-slate-500">
+              Priorizacion sugerida por NextPrev. La fecha compromiso real la define el prevencionista al planificar cada accion.
+            </p>
           </CardHeader>
           <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {PLAZO_CONF.map((col) => {
-              const acciones = data.timeline[col.key];
-              const visibles = acciones.slice(0, 3);
+            {ORDEN_CONF.map((col) => {
+              const acciones = data.columnas[col.key];
+              const visibles = acciones.slice(0, 4);
 
               return (
                 <div key={col.key} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -171,19 +277,25 @@ export default function PlanImplementacionDs44Client({ data }: { data: Ds44PlanI
 
                   <div className="mt-3 space-y-2">
                     {visibles.length === 0 ? (
-                      <p className="text-xs text-slate-500">Sin acciones en este tramo.</p>
+                      <p className="text-xs text-slate-500">Sin acciones en esta columna.</p>
                     ) : (
                       visibles.map((item) => (
-                        <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50/80 p-2">
-                          <p className="text-xs font-medium text-slate-700">{item.preguntaTexto}</p>
+                        <div key={`col-${item.preguntaClave}`} className="rounded-lg border border-slate-200 bg-slate-50/70 p-2">
+                          <p className="text-xs font-medium text-slate-700 line-clamp-2">{item.preguntaTexto}</p>
+                          <p className="mt-1 text-[11px] text-slate-500">Estado: {ESTADO_LABEL[item.estado]}</p>
+                          <p className="text-[11px] text-slate-500">{item.fechaCompromiso ? formatFecha(item.fechaCompromiso) : "Sin fecha definida"}</p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-2 h-7 w-full text-xs"
+                            onClick={() => startPlanning(item)}
+                          >
+                            Planificar
+                          </Button>
                         </div>
                       ))
                     )}
                   </div>
-
-                  {acciones.length > 3 ? (
-                    <p className="mt-2 text-xs text-slate-500">Ver detalle en la seccion de acciones.</p>
-                  ) : null}
                 </div>
               );
             })}
@@ -198,77 +310,167 @@ export default function PlanImplementacionDs44Client({ data }: { data: Ds44PlanI
               <ClipboardList className="h-4 w-4 text-slate-500" />
               Plan por acciones
             </h2>
-            <p className="text-sm text-slate-500">Acciones priorizadas para cerrar brechas, asignar responsables y preparar evidencia.</p>
+            <p className="text-sm text-slate-500">Brecha detectada, recomendacion del sistema y planificacion operativa del prevencionista.</p>
           </CardHeader>
           <CardContent className="space-y-3">
-            {data.acciones.map((accion) => (
-              <div key={accion.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className={PRIORIDAD_BADGE[accion.prioridad]}>
-                    {PRIORIDAD_LABEL[accion.prioridad]}
-                  </Badge>
-                  <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
-                    Estado: Pendiente
-                  </Badge>
-                  <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
-                    {accion.plazoSugeridoLabel}
-                  </Badge>
-                </div>
+            {errorMsg ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorMsg}</div>
+            ) : null}
+            {successMsg ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{successMsg}</div>
+            ) : null}
 
-                <h3 className="text-base font-semibold text-slate-900">{accion.preguntaTexto}</h3>
+            {data.acciones.map((accion) => {
+              const isEditing = editingKey === accion.preguntaClave;
+              const localAccion = accionesByClave.get(accion.preguntaClave) ?? accion;
 
-                <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Accion recomendada</p>
-                    <p className="mt-1 text-slate-700">{accion.recomendacion}</p>
+              return (
+                <div key={accion.preguntaClave} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className={PRIORIDAD_BADGE[localAccion.prioridad]}>
+                      {PRIORIDAD_LABEL[localAccion.prioridad]}
+                    </Badge>
+                    <Badge variant="outline" className={ESTADO_BADGE[localAccion.estado]}>
+                      {ESTADO_LABEL[localAccion.estado]}
+                    </Badge>
                   </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Evidencia esperada</p>
-                    <p className="mt-1 text-slate-700">{accion.evidenciaEsperada || "Definir evidencia"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Responsable sugerido</p>
-                    <p className="mt-1 text-slate-700">{accion.responsableSugerido}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Frente operativo</p>
-                    <p className="mt-1 text-slate-700">{accion.frenteOperativo}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Plazo sugerido</p>
-                    <p className="mt-1 text-slate-700">{accion.plazoSugeridoLabel}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-slate-500">Fecha objetivo</p>
-                    <p className="mt-1 text-slate-700">{formatFecha(accion.fechaObjetivo)}</p>
-                  </div>
-                </div>
 
-                <div className="mt-4 flex justify-end">
-                  <Button asChild size="sm" variant="outline">
-                    <Link href={accion.rutaSugerida}>
-                      Ir al frente sugerido
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
+                  <h3 className="text-base font-semibold text-slate-900">{localAccion.preguntaTexto}</h3>
+
+                  <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Accion sugerida</p>
+                      <p className="mt-1 text-slate-700">{localAccion.accionSugerida}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Evidencia esperada</p>
+                      <p className="mt-1 text-slate-700">{localAccion.evidenciaEsperada || "Sin evidencia sugerida"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Responsable sugerido</p>
+                      <p className="mt-1 text-slate-700">{localAccion.responsableSugerido || "A definir"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Responsable real</p>
+                      <p className="mt-1 text-slate-700">{localAccion.responsableReal || "A definir o responsable sugerido"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Plazo</p>
+                      <p className="mt-1 text-slate-700">{localAccion.fechaCompromiso ? formatFecha(localAccion.fechaCompromiso) : "A definir por prevencionista"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Frente operativo</p>
+                      <p className="mt-1 text-slate-700">{localAccion.frenteOperativo}</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Observacion tecnica</p>
+                      <p className="mt-1 text-slate-700">{localAccion.observacionTecnica || "Sin observacion tecnica"}</p>
+                    </div>
+                  </div>
+
+                  {isEditing && form ? (
+                    <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Responsable real</label>
+                        <input
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                          placeholder="Ej: Prevencionista, Administracion, Gerencia, Supervisor"
+                          value={form.responsableReal}
+                          onChange={(event) => setForm((prev) => prev ? { ...prev, responsableReal: event.target.value } : prev)}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Fecha compromiso</label>
+                        <input
+                          type="date"
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                          value={form.fechaCompromiso}
+                          onChange={(event) => setForm((prev) => prev ? { ...prev, fechaCompromiso: event.target.value } : prev)}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Estado</label>
+                        <select
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                          value={form.estado}
+                          onChange={(event) =>
+                            setForm((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    estado: event.target.value as Ds44PlanEstado,
+                                  }
+                                : prev,
+                            )
+                          }
+                        >
+                          <option value="pendiente">Pendiente</option>
+                          <option value="planificada">Planificada</option>
+                          <option value="en_proceso">En proceso</option>
+                          <option value="cerrada">Cerrada</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-wide text-slate-500">Observacion tecnica</label>
+                        <textarea
+                          rows={3}
+                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+                          placeholder="Indica criterio tecnico, dependencias, recursos necesarios o justificacion del plazo."
+                          value={form.observacionTecnica}
+                          onChange={(event) =>
+                            setForm((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    observacionTecnica: event.target.value,
+                                  }
+                                : prev,
+                            )
+                          }
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Button variant="outline" onClick={cancelPlanning} disabled={isPending}>
+                          Cancelar
+                        </Button>
+                        <Button onClick={() => onSave(accion.preguntaClave)} disabled={isPending}>
+                          {isPending ? "Guardando..." : "Guardar planificacion"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-4 flex flex-wrap justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => startPlanning(localAccion)}>
+                        Planificar accion
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={localAccion.rutaSugerida || "/dicaprev/ds44"}>
+                          Ir al frente sugerido
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       </section>
 
       <section>
-        <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900">
-          <ShieldAlert className="h-4 w-4 text-slate-500" />
-          Resumen ejecutivo
-        </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {renderResumenCard("Total acciones", data.resumen.totalAcciones)}
-          {renderResumenCard("Criticas", data.resumen.criticas, "alert")}
-          {renderResumenCard("Altas", data.resumen.altas, "warn")}
-          {renderResumenCard("Sin evidencia", data.resumen.sinEvidencia)}
-        </div>
+        <Card className="border-slate-200 shadow-sm">
+          <CardContent className="p-4 text-sm text-slate-600">
+            <p className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-500" />
+              NextPrev ordena acciones por criticidad. El prevencionista debe definir el plazo real considerando factibilidad tecnica, recursos disponibles, coordinacion con la empresa y nivel de riesgo.
+            </p>
+          </CardContent>
+        </Card>
       </section>
     </div>
   );
