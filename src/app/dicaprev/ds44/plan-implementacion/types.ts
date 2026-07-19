@@ -19,16 +19,31 @@ export type Ds44PlanAccion = {
   frenteOperativo: string;
   responsableSugerido: string;
   responsableReal: string | null;
+  responsableTrabajadorId: string | null;
+  responsableTrabajadorNombre: string | null;
+  responsableTrabajadorCargo: string | null;
   fechaCompromiso: string | null;
   estado: Ds44PlanEstado;
   observacionTecnica: string | null;
   planificada: boolean;
 };
 
+export type Ds44ResponsableDisponible = {
+  id: string;
+  nombreCompleto: string;
+  rut: string | null;
+  email: string | null;
+  cargoNombre: string | null;
+  areaNombre: string | null;
+  recomendado: boolean;
+  motivoRecomendacion: string | null;
+};
+
 export type Ds44PlanImplementacionData = {
   estadoGeneracion: Ds44PlanGeneracion;
   diagnosticoId: string | null;
   diagnosticoUpdatedAt: string | null;
+  responsablesDisponibles: Ds44ResponsableDisponible[];
   totalBrechas: number;
   acciones: Ds44PlanAccion[];
   columnas: Record<Ds44PlanOrden, Ds44PlanAccion[]>;
@@ -44,7 +59,7 @@ export type Ds44PlanImplementacionData = {
 
 export type GuardarDs44PlanAccionInput = {
   preguntaClave: string;
-  responsableReal: string;
+  responsableTrabajadorId: string;
   fechaCompromiso: string;
   estado: Ds44PlanEstado;
   observacionTecnica?: string;
