@@ -111,6 +111,10 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
   const [form, setForm] = useState<FormState | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const persistenciaDisponible = data.persistenciaDisponible !== false;
+  const mensajePersistencia =
+    data.mensajePersistencia ??
+    "La persistencia del plan DS44 aun no esta habilitada en este ambiente. Puedes revisar acciones sugeridas, pero no guardarlas.";
 
   const accionesByClave = useMemo(() => {
     return new Map(data.acciones.map((item) => [item.preguntaClave, item]));
@@ -130,6 +134,11 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
   }
 
   function onSave(preguntaClave: string) {
+    if (!persistenciaDisponible) {
+      setErrorMsg(mensajePersistencia);
+      return;
+    }
+
     if (!form) return;
 
     if (!form.responsableReal.trim()) {
@@ -239,6 +248,11 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
                 Hay acciones DS44 con fecha compromiso vencida.
               </div>
             ) : null}
+            {!persistenciaDisponible ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {mensajePersistencia}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       </section>
@@ -288,6 +302,7 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
                             size="sm"
                             variant="outline"
                             className="mt-2 h-7 w-full text-xs"
+                                disabled={!persistenciaDisponible}
                             onClick={() => startPlanning(item)}
                           >
                             Planificar
@@ -444,7 +459,12 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
                     </div>
                   ) : (
                     <div className="mt-4 flex flex-wrap justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => startPlanning(localAccion)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => startPlanning(localAccion)}
+                        disabled={!persistenciaDisponible}
+                      >
                         Planificar accion
                       </Button>
                       <Button asChild size="sm" variant="outline">

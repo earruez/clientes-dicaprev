@@ -29,6 +29,8 @@ export type Ds44PlanImplementacionData = {
   estadoGeneracion: Ds44PlanGeneracion;
   diagnosticoId: string | null;
   diagnosticoUpdatedAt: string | null;
+  persistenciaDisponible?: boolean;
+  mensajePersistencia?: string | null;
   totalBrechas: number;
   acciones: Ds44PlanAccion[];
   columnas: Record<Ds44PlanOrden, Ds44PlanAccion[]>;
