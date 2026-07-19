@@ -74,6 +74,13 @@ function isOrigenAutoValidable(value: string | null | undefined): boolean {
   return ["firma", "firmado", "documento_firmado", "epp_firmado", "entrega_epp"].some((key) => token.includes(key));
 }
 
+function isDs44EvidencePersistenceUnavailable(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const prismaError = error as Error & { code?: string };
+  if (prismaError.code === "P2021" || prismaError.code === "P2022") return true;
+  return error.message.toLowerCase().includes("ds44planaccionid");
+}
+
 function resolveEstadoEvidencia(input: {
   estado: string | null | undefined;
   origen: string | null | undefined;
@@ -104,6 +111,7 @@ function buildRelacionadoCon(input: {
   documentoTrabajadorNombre: string | null;
   documentoEmpresaNombre: string | null;
   entregaEppId: string | null;
+  ds44AccionSugerida: string | null;
 }): string {
   if (input.hallazgoDescripcion) return `Hallazgo: ${input.hallazgoDescripcion}`;
   if (input.obligacionClave) return `Obligación: ${input.obligacionClave}`;
@@ -111,6 +119,7 @@ function buildRelacionadoCon(input: {
   if (input.documentoTrabajadorNombre) return `Doc. trabajador: ${input.documentoTrabajadorNombre}`;
   if (input.documentoEmpresaNombre) return `Doc. empresa: ${input.documentoEmpresaNombre}`;
   if (input.entregaEppId) return `Entrega EPP: ${input.entregaEppId}`;
+  if (input.ds44AccionSugerida) return `DS44: ${input.ds44AccionSugerida}`;
   return "Sin vínculo";
 }
 
@@ -130,8 +139,33 @@ export async function getEvidenciasDashboard(): Promise<EvidenciasDashboard> {
         documentoTrabajador: { select: { nombre: true, firmado: true } },
         documentoEmpresa: { select: { nombre: true, firmado: true } },
         entregaEpp: { select: { estado: true } },
+        ds44PlanAccion: { select: { preguntaClave: true, accionSugerida: true, prioridad: true } },
       },
       orderBy: { createdAt: "desc" },
+    }).catch((error: unknown) => {
+      if (!isDs44EvidencePersistenceUnavailable(error)) throw error;
+      return prisma.evidenciaCumplimiento.findMany({
+        where: { empresaId },
+        select: {
+          id: true,
+          origen: true,
+          titulo: true,
+          descripcion: true,
+          estado: true,
+          obligacionClave: true,
+          entregaEppId: true,
+          createdAt: true,
+          validadoAt: true,
+          archivoUrl: true,
+          archivoNombre: true,
+          hallazgo: { select: { descripcion: true, estado: true } },
+          checklistEjecucion: { include: { template: { select: { nombre: true } } } },
+          documentoTrabajador: { select: { nombre: true, firmado: true } },
+          documentoEmpresa: { select: { nombre: true, firmado: true } },
+          entregaEpp: { select: { estado: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }).then((fallbackRows) => fallbackRows.map((row) => ({ ...row, ds44PlanAccion: null })));
     }),
     prisma.hallazgoCumplimiento.findMany({
       where: { empresaId },
@@ -168,6 +202,7 @@ export async function getEvidenciasDashboard(): Promise<EvidenciasDashboard> {
         documentoTrabajadorNombre: row.documentoTrabajador?.nombre ?? null,
         documentoEmpresaNombre: row.documentoEmpresa?.nombre ?? null,
         entregaEppId: row.entregaEppId,
+        ds44AccionSugerida: row.ds44PlanAccion?.accionSugerida ?? null,
       }),
       estado: estadoResuelto,
       fecha: row.createdAt.toISOString(),

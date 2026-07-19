@@ -14,9 +14,10 @@ import { getObligacionesCumplimientoEmpresa } from "@/app/dicaprev/cumplimiento/
 import { getPlanTrabajoData } from "@/app/dicaprev/cumplimiento/plan-trabajo/actions";
 import { getDs44DiagnosticoData, getDs44DiagnosticoResumen } from "./diagnostico/actions";
 import { getDs44PlanImplementacionData } from "./plan-implementacion/actions";
+import { getDs44EvidenciasData } from "./evidencias/actions";
 
 type EstadoImplementacion = "Inicial" | "En implementacion" | "En control" | "Fiscalizable";
-type EstadoPaso = "pendiente" | "en_proceso" | "con_brechas" | "ok";
+type EstadoPaso = "pendiente" | "en_proceso" | "con_avances" | "con_brechas" | "ok";
 
 function normalizeDate(value: string): Date | null {
   const date = new Date(value);
@@ -41,6 +42,7 @@ function getEstadoBadgeClass(estado: EstadoImplementacion): string {
 function getEstadoPasoClass(estado: EstadoPaso): string {
   if (estado === "ok") return "bg-emerald-100 text-emerald-700 border-emerald-200";
   if (estado === "con_brechas") return "bg-rose-100 text-rose-700 border-rose-200";
+  if (estado === "con_avances") return "bg-teal-100 text-teal-700 border-teal-200";
   if (estado === "en_proceso") return "bg-blue-100 text-blue-700 border-blue-200";
   return "bg-slate-100 text-slate-700 border-slate-200";
 }
@@ -48,6 +50,7 @@ function getEstadoPasoClass(estado: EstadoPaso): string {
 function getEstadoPasoLabel(estado: EstadoPaso): string {
   if (estado === "ok") return "OK";
   if (estado === "con_brechas") return "Con brechas";
+  if (estado === "con_avances") return "Con avances";
   if (estado === "en_proceso") return "En proceso";
   return "Pendiente";
 }
@@ -114,12 +117,13 @@ function getProximoPaso(args: {
 }
 
 export default async function DS44Page() {
-  const [obligacionesData, planTrabajo, diagnosticoResumen, diagnosticoData, planDs44] = await Promise.all([
+  const [obligacionesData, planTrabajo, diagnosticoResumen, diagnosticoData, planDs44, evidenciasDs44] = await Promise.all([
     getObligacionesCumplimientoEmpresa(),
     getPlanTrabajoData(),
     getDs44DiagnosticoResumen(),
     getDs44DiagnosticoData(),
     getDs44PlanImplementacionData(),
+    getDs44EvidenciasData(),
   ]);
 
   const totalBrechasDiagnostico = diagnosticoData.brechas.length;
@@ -145,7 +149,6 @@ export default async function DS44Page() {
   }).length;
 
   const documentosEvaluables = obligacionesAplicables.filter((ob) => ob.requiereDocumento);
-  const documentosPorVencer = documentosEvaluables.filter((ob) => ob.estadoDocumental === "Por vencer").length;
   const documentosPendientes = documentosEvaluables.filter((ob) => {
     return ob.estadoDocumental === "Pendiente de carga" || ob.estadoDocumental === "Vencido";
   }).length;
@@ -223,16 +226,15 @@ export default async function DS44Page() {
       numero: "4",
       titulo: "Evidencias fiscalizables",
       descripcion: "Centraliza documentos y respaldos para fiscalizacion.",
-      href: "/dicaprev/cumplimiento/evidencias",
-      cta: "Ver evidencias",
-      estado:
-        documentosEvaluables.length === 0
-          ? "pendiente"
-          : documentosPendientes > 0
-            ? "con_brechas"
-            : documentosPorVencer > 0
-              ? "en_proceso"
-              : "ok",
+      href: "/dicaprev/ds44/evidencias",
+      cta: "Gestionar evidencias",
+      estado: evidenciasDs44.resumen.planificadas === 0
+        ? "pendiente"
+        : evidenciasDs44.resumen.conEvidenciaValida === evidenciasDs44.resumen.planificadas
+          ? "ok"
+          : evidenciasDs44.resumen.conEvidenciaValida > 0
+            ? "con_avances"
+            : "en_proceso",
     },
   ];
 
