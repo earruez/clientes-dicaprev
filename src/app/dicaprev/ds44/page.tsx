@@ -7,9 +7,8 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileCheck2,
-  Gauge,
   ShieldCheck,
-  Sparkles,
+  Siren,
   Target,
 } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
@@ -48,20 +47,6 @@ function getEstadoBadgeClass(estado: EstadoImplementacion): string {
   if (estado === "En control") return "bg-blue-100 text-blue-800 border-blue-200";
   if (estado === "En implementacion") return "bg-amber-100 text-amber-800 border-amber-200";
   return "bg-slate-100 text-slate-700 border-slate-200";
-}
-
-function getObligacionBadgeClass(estado: string): string {
-  if (estado === "cumplida") return "bg-emerald-100 text-emerald-800 border-emerald-200";
-  if (estado === "con_brechas") return "bg-amber-100 text-amber-800 border-amber-200";
-  if (estado === "no_cumplida") return "bg-rose-100 text-rose-800 border-rose-200";
-  return "bg-slate-100 text-slate-700 border-slate-200";
-}
-
-function getObligacionEstadoLabel(estado: string): string {
-  if (estado === "cumplida") return "Cumplida";
-  if (estado === "con_brechas") return "Con brechas";
-  if (estado === "no_cumplida") return "No cumplida";
-  return "No aplica";
 }
 
 function getPrioridadBadgeClass(prioridad: string): string {
@@ -104,6 +89,56 @@ function sortByPrioridad(a: string, b: string): number {
     baja: 1,
   };
   return (weight[b] ?? 0) - (weight[a] ?? 0);
+}
+
+function getProximoPaso(args: {
+  existeDiagnostico: boolean;
+  brechasCriticas: number;
+  accionesVencidas: number;
+  estadoDiagnostico: string;
+}): { titulo: string; detalle: string; href: string; cta: string } {
+  if (!args.existeDiagnostico) {
+    return {
+      titulo: "Completar diagnostico inicial",
+      detalle: "Levanta brechas prioritarias y define el plan base de implementacion.",
+      href: "/dicaprev/ds44/diagnostico",
+      cta: "Iniciar diagnostico",
+    };
+  }
+
+  if (args.brechasCriticas > 0) {
+    return {
+      titulo: "Resolver brechas criticas",
+      detalle: "Prioriza hallazgos de alta exposicion para reducir riesgo inmediato.",
+      href: "/dicaprev/cumplimiento/hallazgos",
+      cta: "Ir a hallazgos",
+    };
+  }
+
+  if (args.accionesVencidas > 0) {
+    return {
+      titulo: "Revisar acciones vencidas",
+      detalle: "Reprograma responsables y fechas para recuperar control operativo.",
+      href: "/dicaprev/cumplimiento/plan-trabajo",
+      cta: "Ver plan vencido",
+    };
+  }
+
+  if (args.estadoDiagnostico === "controlado") {
+    return {
+      titulo: "Mantener seguimiento",
+      detalle: "Sostener control documental y trazabilidad para fiscalizacion.",
+      href: "/dicaprev/cumplimiento/evidencias",
+      cta: "Revisar evidencias",
+    };
+  }
+
+  return {
+    titulo: "Continuar implementacion",
+    detalle: "Consolida el cumplimiento pendiente y monitorea riesgos emergentes.",
+    href: "/dicaprev/cumplimiento/obligaciones",
+    cta: "Ver obligaciones",
+  };
 }
 
 export default async function DS44Page() {
@@ -162,13 +197,24 @@ export default async function DS44Page() {
   }).length;
 
   const diagnosticoCta = diagnosticoResumen.existeDiagnostico ? "Ver diagnostico" : "Iniciar diagnostico";
+  const proximoPaso = getProximoPaso({
+    existeDiagnostico: diagnosticoResumen.existeDiagnostico,
+    brechasCriticas: diagnosticoResumen.brechasCriticas,
+    accionesVencidas,
+    estadoDiagnostico: diagnosticoResumen.estado,
+  });
+
+  const riesgoMensaje =
+    diagnosticoResumen.brechasCriticas + accionesVencidas + documentosPendientes > 0
+      ? "Existen frentes criticos que requieren accion en el corto plazo."
+      : "Sin alertas criticas activas; mantener seguimiento semanal para sostener el control.";
 
   return (
     <div className="space-y-6 px-4 pb-8 pt-5 sm:px-6">
       <StandardPageHeader
         moduleLabel="DS44"
         title="Implementacion DS44"
-        description="Panel ejecutivo para priorizar brechas, ordenar evidencia y sostener cumplimiento DS44 en una sola vista."
+        description="Panel ejecutivo para saber que aplica, que falta y que resolver primero."
         icon={ShieldCheck}
         iconWrapClassName="bg-slate-900"
         actions={
@@ -186,330 +232,307 @@ export default async function DS44Page() {
         }
       />
 
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Cumplimiento DS44 global</p>
-              <Gauge className="h-4 w-4 text-slate-400" />
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <Card className="xl:col-span-5 border-slate-200 shadow-sm">
+          <CardHeader className="pb-3">
+            <h2 className="text-lg font-semibold text-slate-900">Estado actual DS44</h2>
+            <p className="text-sm text-slate-500">Resumen del nivel de implementacion y control vigente.</p>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Badge variant="outline" className={getEstadoBadgeClass(estadoImplementacion)}>
+                Estado: {estadoImplementacion}
+              </Badge>
+              <span className="text-sm font-medium text-slate-700">Cumplimiento global: {cumplimientoGlobal}%</span>
             </div>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{cumplimientoGlobal}%</p>
-            <p className="mt-1 text-xs text-slate-500">Promedio de obligaciones aplicables.</p>
+            <Progress value={cumplimientoGlobal} className="h-2" />
+            <p className="text-sm text-slate-600">
+              {obligacionesCumplidas} de {obligacionesAplicables.length} obligaciones aplicables se encuentran cumplidas.
+            </p>
           </CardContent>
         </Card>
+
+        <Card className="xl:col-span-4 border-slate-200 shadow-sm">
+          <CardHeader className="pb-3">
+            <h2 className="text-lg font-semibold text-slate-900">Proximo paso recomendado</h2>
+            <p className="text-sm text-slate-500">Enfoque sugerido segun el estado actual.</p>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-0">
+            <div>
+              <p className="text-base font-semibold text-slate-900">{proximoPaso.titulo}</p>
+              <p className="mt-1 text-sm text-slate-600">{proximoPaso.detalle}</p>
+            </div>
+            <Button asChild className="w-full sm:w-auto">
+              <Link href={proximoPaso.href}>
+                {proximoPaso.cta}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="xl:col-span-3 border-slate-200 shadow-sm">
+          <CardHeader className="pb-3">
+            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+              <Siren className="h-5 w-5 text-rose-500" />
+              Riesgo inmediato
+            </h2>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            <div className="space-y-2 text-sm text-slate-700">
+              <div className="flex items-center justify-between">
+                <span>Brechas criticas</span>
+                <span className="font-semibold text-rose-700">{diagnosticoResumen.brechasCriticas}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Acciones vencidas</span>
+                <span className="font-semibold text-rose-700">{accionesVencidas}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>Documentos pendientes</span>
+                <span className="font-semibold text-amber-700">{documentosPendientes}</span>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500">{riesgoMensaje}</p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Obligaciones aplicables</p>
+          <CardContent className="p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Obligaciones aplicables</p>
               <BookCheck className="h-4 w-4 text-slate-400" />
             </div>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">{obligacionesAplicables.length}</p>
-            <p className="mt-1 text-xs text-slate-500">Marco vigente para la empresa.</p>
+            <p className="text-xl font-semibold text-slate-900">{obligacionesAplicables.length}</p>
+            <p className="text-[11px] text-slate-500">Marco vigente</p>
           </CardContent>
         </Card>
         <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Obligaciones cumplidas</p>
+          <CardContent className="p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Obligaciones cumplidas</p>
               <ShieldCheck className="h-4 w-4 text-emerald-500" />
             </div>
-            <p className="mt-2 text-2xl font-semibold text-emerald-700">{obligacionesCumplidas}</p>
-            <p className="mt-1 text-xs text-slate-500">Controles ya implementados.</p>
+            <p className="text-xl font-semibold text-emerald-700">{obligacionesCumplidas}</p>
+            <p className="text-[11px] text-slate-500">Controles implementados</p>
           </CardContent>
         </Card>
         <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Brechas abiertas</p>
+          <CardContent className="p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Brechas abiertas</p>
               <AlertTriangle className="h-4 w-4 text-rose-500" />
             </div>
-            <p className="mt-2 text-2xl font-semibold text-rose-700">{hallazgosAbiertos.length}</p>
-            <p className="mt-1 text-xs text-slate-500">Incumplimientos en seguimiento.</p>
+            <p className="text-xl font-semibold text-rose-700">{hallazgosAbiertos.length}</p>
+            <p className="text-[11px] text-slate-500">Hallazgos activos</p>
           </CardContent>
         </Card>
         <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Documentos pendientes</p>
+          <CardContent className="p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Documentos pendientes</p>
               <FileCheck2 className="h-4 w-4 text-amber-500" />
             </div>
-            <p className="mt-2 text-2xl font-semibold text-amber-700">{documentosPendientes}</p>
-            <p className="mt-1 text-xs text-slate-500">Evidencia clave por cargar o renovar.</p>
+            <p className="text-xl font-semibold text-amber-700">{documentosPendientes}</p>
+            <p className="text-[11px] text-slate-500">Carga o renovacion</p>
           </CardContent>
         </Card>
         <Card className="border-slate-200 shadow-sm">
-          <CardContent className="p-4">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Acciones vencidas / proximas</p>
+          <CardContent className="p-3">
+            <div className="mb-1 flex items-center justify-between">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Acciones vencidas / proximas</p>
               <CalendarClock className="h-4 w-4 text-slate-400" />
             </div>
-            <p className="mt-2 text-2xl font-semibold text-slate-900">
+            <p className="text-xl font-semibold text-slate-900">
               {accionesVencidas} / {accionesProximas}
             </p>
-            <p className="mt-1 text-xs text-slate-500">Riesgo inmediato de atrasos.</p>
+            <p className="text-[11px] text-slate-500">Control de plazos</p>
           </CardContent>
         </Card>
       </section>
 
       <section>
         <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0 gap-4">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <ClipboardCheck className="h-5 w-5 text-slate-600" />
-                Diagnostico DS44
-              </h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Modulo principal para evaluar bloques criticos y priorizar cierre de brechas.
-              </p>
-            </div>
-            <Button asChild size="sm" className="shrink-0">
-              <Link href="/dicaprev/ds44/diagnostico">
-                {diagnosticoCta}
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
+          <CardHeader>
+            <h2 className="text-lg font-semibold text-slate-900">Frentes de trabajo DS44</h2>
+            <p className="text-sm text-slate-500">Gestiona cada frente operativo desde una vista resumida y accionable.</p>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Estado</p>
-              <div className="mt-2">
+          <CardContent className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                  <ClipboardCheck className="h-4 w-4 text-slate-500" />
+                  Diagnostico
+                </h3>
                 <Badge variant="outline" className={getEstadoDiagnosticoClass(diagnosticoResumen.estado)}>
                   {getEstadoDiagnosticoLabel(diagnosticoResumen.estado)}
                 </Badge>
               </div>
+              <p className="text-sm text-slate-600">Estado y brechas detectadas en el cuestionario inicial.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Ultimo score</p>
+                  <p className="font-semibold text-slate-900">{diagnosticoResumen.scoreGlobal ?? "--"}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Brechas criticas/altas</p>
+                  <p className="font-semibold text-slate-900">
+                    {diagnosticoResumen.brechasCriticas}/{diagnosticoResumen.brechasAltas}
+                  </p>
+                </div>
+              </div>
+              <Button asChild size="sm" className="mt-4 w-full sm:w-auto">
+                <Link href="/dicaprev/ds44/diagnostico">Continuar diagnostico</Link>
+              </Button>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Ultimo score</p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{diagnosticoResumen.scoreGlobal ?? "--"}</p>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <BookCheck className="h-4 w-4 text-slate-500" />
+                <h3 className="text-base font-semibold text-slate-900">Obligaciones</h3>
+              </div>
+              <p className="text-sm text-slate-600">Seguimiento del marco aplicable y nivel de cumplimiento.</p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Aplicables</p>
+                  <p className="font-semibold text-slate-900">{obligacionesAplicables.length}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Cumplidas</p>
+                  <p className="font-semibold text-emerald-700">{obligacionesCumplidas}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Pendientes</p>
+                  <p className="font-semibold text-amber-700">{obligacionesConBrechas + obligacionesNoCumplidas}</p>
+                </div>
+              </div>
+              <Button asChild size="sm" variant="outline" className="mt-4 w-full sm:w-auto">
+                <Link href="/dicaprev/cumplimiento/obligaciones">Ver obligaciones</Link>
+              </Button>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Brechas criticas</p>
-              <p className="mt-1 text-xl font-semibold text-rose-700">{diagnosticoResumen.brechasCriticas}</p>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-slate-500" />
+                <h3 className="text-base font-semibold text-slate-900">Plan de implementacion</h3>
+              </div>
+              <p className="text-sm text-slate-600">Acciones de cierre para mantener cumplimiento continuo.</p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Pendientes</p>
+                  <p className="font-semibold text-slate-900">{accionesPendientes}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">En proceso</p>
+                  <p className="font-semibold text-blue-700">{accionesEnProceso}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Vencidas</p>
+                  <p className="font-semibold text-rose-700">{accionesVencidas}</p>
+                </div>
+              </div>
+              <Button asChild size="sm" variant="outline" className="mt-4 w-full sm:w-auto">
+                <Link href="/dicaprev/cumplimiento/plan-trabajo">Ver plan</Link>
+              </Button>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Brechas altas</p>
-              <p className="mt-1 text-xl font-semibold text-orange-700">{diagnosticoResumen.brechasAltas}</p>
+
+            <div className="rounded-xl border border-slate-200 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <FileCheck2 className="h-4 w-4 text-slate-500" />
+                <h3 className="text-base font-semibold text-slate-900">Evidencias</h3>
+              </div>
+              <p className="text-sm text-slate-600">Cobertura documental para auditorias e inspecciones.</p>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Vigentes</p>
+                  <p className="font-semibold text-emerald-700">{documentosVigentes}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Por vencer</p>
+                  <p className="font-semibold text-amber-700">{documentosPorVencer}</p>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-2">
+                  <p className="text-xs text-slate-500">Pendientes</p>
+                  <p className="font-semibold text-rose-700">{documentosPendientes}</p>
+                </div>
+              </div>
+              <Button asChild size="sm" variant="outline" className="mt-4 w-full sm:w-auto">
+                <Link href="/dicaprev/cumplimiento/evidencias">Ver evidencias</Link>
+              </Button>
             </div>
           </CardContent>
         </Card>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-2 border-slate-200 shadow-sm">
-          <CardHeader>
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <Gauge className="h-5 w-5 text-slate-600" />
-              Estado de implementacion
-            </h2>
-            <p className="text-sm text-slate-500">
-              Visibilidad ejecutiva del avance DS44 y posicion actual para fiscalizacion.
-            </p>
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3">
+            <h2 className="text-base font-semibold text-slate-900">Brechas criticas activas</h2>
+            <p className="text-sm text-slate-500">Top 5 hallazgos para seguimiento inmediato.</p>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm text-slate-600">
-                <span>Avance global</span>
-                <span className="font-medium text-slate-900">{cumplimientoGlobal}%</span>
-              </div>
-              <Progress value={cumplimientoGlobal} className="h-2" />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className={getEstadoBadgeClass(estadoImplementacion)}>
-                Estado: {estadoImplementacion}
-              </Badge>
-              <Badge variant="outline" className="bg-slate-100 text-slate-700 border-slate-200">
-                Brechas estructurales: {obligacionesConBrechas + obligacionesNoCumplidas}
-              </Badge>
-            </div>
-
-            <p className="text-sm leading-relaxed text-slate-600">
-              Este modulo consolida el estado de cumplimiento DS44 para priorizar decisiones, ordenar evidencia
-              fiscalizable y acelerar el cierre de brechas criticas con trazabilidad operativa en NextPrev.
-            </p>
+          <CardContent className="space-y-2 pt-0">
+            {brechasCriticas.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                Sin brechas criticas activas en este momento.
+              </p>
+            ) : (
+              brechasCriticas.map((hallazgo) => (
+                <div key={hallazgo.id} className="rounded-lg border border-slate-200 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-slate-900">{hallazgo.descripcion}</p>
+                    <Badge variant="outline" className={getPrioridadBadgeClass(hallazgo.prioridad)}>
+                      {getPrioridadLabel(hallazgo.prioridad)}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Responsable: {hallazgo.responsableNombre ?? "Por asignar"} · Compromiso: {formatDate(hallazgo.fechaCompromiso)}
+                  </p>
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
 
         <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <Sparkles className="h-5 w-5 text-slate-600" />
-              Accesos rapidos
-            </h2>
-            <p className="text-sm text-slate-500">Continua trabajando desde los frentes operativos principales.</p>
+          <CardHeader className="pb-3">
+            <h2 className="text-base font-semibold text-slate-900">Accesos rapidos</h2>
+            <p className="text-sm text-slate-500">Atajos a frentes secundarios de gestion.</p>
           </CardHeader>
-          <CardContent className="grid gap-2">
+          <CardContent className="grid grid-cols-2 gap-2 pt-0 sm:grid-cols-3">
             {[
-              { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
               { href: "/dicaprev/cumplimiento/hallazgos", label: "Hallazgos" },
+              { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
+              { href: "/dicaprev/cumplimiento/plan-trabajo", label: "Plan" },
               { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias" },
-              { href: "/dicaprev/cumplimiento/plan-trabajo", label: "Plan de trabajo" },
               { href: "/dicaprev/documentacion", label: "Documentacion" },
+              { href: "/dicaprev/capacitacion", label: "Capacitaciones" },
             ].map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
               >
-                <span>{item.label}</span>
-                <ArrowRight className="h-4 w-4 text-slate-400" />
+                {item.label}
               </Link>
             ))}
           </CardContent>
         </Card>
       </section>
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <BookCheck className="h-5 w-5 text-slate-600" />
-                Obligaciones aplicables
-              </h2>
-              <p className="text-sm text-slate-500">Estado resumido de obligaciones DS44 aplicables a la empresa.</p>
-            </div>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/dicaprev/cumplimiento/obligaciones">Ver obligaciones</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {obligacionesAplicables.slice(0, 6).map((obligacion) => (
-              <div key={obligacion.id} className="rounded-lg border border-slate-200 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-900">{obligacion.nombre}</p>
-                  <Badge variant="outline" className={getObligacionBadgeClass(obligacion.estadoObligacion)}>
-                    {getObligacionEstadoLabel(obligacion.estadoObligacion)}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">Responsable sugerido: {obligacion.responsable}</p>
-              </div>
-            ))}
-            {obligacionesAplicables.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
-                Aun no hay obligaciones DS44 aplicables para esta empresa. Revisa configuracion y alcance normativo.
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <AlertTriangle className="h-5 w-5 text-slate-600" />
-                Brechas criticas
-              </h2>
-              <p className="text-sm text-slate-500">Top 5 incumplimientos que requieren foco inmediato.</p>
-            </div>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/dicaprev/cumplimiento/hallazgos">Ver hallazgos</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {brechasCriticas.map((hallazgo) => (
-              <div key={hallazgo.id} className="rounded-lg border border-slate-200 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-900">{hallazgo.descripcion}</p>
-                  <Badge variant="outline" className={getPrioridadBadgeClass(hallazgo.prioridad)}>
-                    Prioridad {getPrioridadLabel(hallazgo.prioridad)}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-xs text-slate-500">
-                  Responsable: {hallazgo.responsableNombre ?? "Por asignar"}
-                </p>
-                <p className="text-xs text-slate-500">Fecha compromiso: {formatDate(hallazgo.fechaCompromiso)}</p>
-              </div>
-            ))}
-            {brechasCriticas.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
-                Sin brechas criticas abiertas por ahora. Mantener monitoreo evita retrocesos de cumplimiento.
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <ClipboardList className="h-5 w-5 text-slate-600" />
-                Plan de implementacion
-              </h2>
-              <p className="text-sm text-slate-500">
-                Acciones derivadas del estado actual para cerrar brechas y sostener cumplimiento.
-              </p>
-            </div>
-            <Button asChild size="sm" variant="outline">
-              <Link href="/dicaprev/cumplimiento/plan-trabajo">Ver plan de trabajo</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-slate-200 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Pendientes</p>
-              <p className="mt-1 text-xl font-semibold text-slate-900">{accionesPendientes}</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">En proceso</p>
-              <p className="mt-1 text-xl font-semibold text-blue-700">{accionesEnProceso}</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Vencidas</p>
-              <p className="mt-1 text-xl font-semibold text-rose-700">{accionesVencidas}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-slate-200 shadow-sm">
-          <CardHeader className="flex flex-row items-start justify-between space-y-0">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-                <FileCheck2 className="h-5 w-5 text-slate-600" />
-                Evidencias para fiscalizacion
-              </h2>
-              <p className="text-sm text-slate-500">
-                Estado documental para respaldar cumplimiento frente a auditorias e inspecciones.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button asChild size="sm" variant="outline">
-                <Link href="/dicaprev/cumplimiento/evidencias">Ver evidencias</Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href="/dicaprev/documentacion">Documentacion</Link>
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="rounded-lg border border-slate-200 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Documentos vigentes</p>
-              <p className="mt-1 text-xl font-semibold text-emerald-700">{documentosVigentes}</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Por vencer</p>
-              <p className="mt-1 text-xl font-semibold text-amber-700">{documentosPorVencer}</p>
-            </div>
-            <div className="rounded-lg border border-slate-200 p-3">
-              <p className="text-xs uppercase tracking-wide text-slate-500">Pendientes</p>
-              <p className="mt-1 text-xl font-semibold text-rose-700">{documentosPendientes}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-
       <section>
         <Card className="border-slate-200 shadow-sm">
-          <CardHeader>
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-              <Target className="h-5 w-5 text-slate-600" />
-              Proximas fases del modulo
-            </h2>
-            <p className="text-sm text-slate-500">Evolucion funcional planificada para la siguiente etapa comercial.</p>
+          <CardHeader className="pb-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                <Target className="h-4 w-4 text-slate-500" />
+                Modulos proximos
+              </h2>
+              <p className="text-sm text-slate-500">Proxima evolucion funcional de DS44.</p>
+            </div>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <CardContent className="grid grid-cols-2 gap-2 pt-0 sm:grid-cols-4">
             {[
               "MIPER",
               "PRRD",
@@ -518,29 +541,12 @@ export default async function DS44Page() {
             ].map((fase) => (
               <div
                 key={fase}
-                className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 opacity-80"
+                className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3"
               >
                 <p className="text-sm font-medium text-slate-700">{fase}</p>
                 <p className="mt-1 text-xs text-slate-500">Proximamente</p>
               </div>
             ))}
-          </CardContent>
-        </Card>
-      </section>
-
-      <section>
-        <Card className="border-slate-200 bg-white shadow-sm">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <p className="text-sm text-slate-700">
-              ¿Que exige DS44, que esta cumplido y que debe resolverse primero? Este panel concentra la respuesta y
-              conecta cada frente operativo para gestionar cumplimiento real y evidencia verificable.
-            </p>
-            <Button asChild>
-              <Link href="/dicaprev/cumplimiento/obligaciones">
-                Continuar implementacion
-                <CalendarClock className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
           </CardContent>
         </Card>
       </section>
