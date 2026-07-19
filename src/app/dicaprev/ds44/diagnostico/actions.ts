@@ -67,6 +67,8 @@ function buildDiagnosticoPayload(args: {
   diagnosticoId: string | null;
   estado: EstadoDiagnostico;
   updatedAt: Date | null;
+  persistenciaDisponible?: boolean;
+  mensajePersistencia?: string | null;
   respuestas: Array<{ preguntaClave: string; respuesta: Ds44RespuestaValor; observacion: string | null }>;
   hallazgos: Array<{ id: string; descripcion: string }>;
 }): Ds44DiagnosticoPayload {
@@ -177,6 +179,8 @@ function buildDiagnosticoPayload(args: {
     estado: args.estado,
     scoreGlobal,
     updatedAt: args.updatedAt ? args.updatedAt.toISOString() : null,
+    persistenciaDisponible: args.persistenciaDisponible ?? true,
+    mensajePersistencia: args.mensajePersistencia ?? null,
     bloques,
     brechas,
     kpis: {
@@ -235,6 +239,9 @@ export async function getDs44DiagnosticoData(): Promise<Ds44DiagnosticoPayload> 
       diagnosticoId: null,
       estado: "en_evaluacion",
       updatedAt: null,
+      persistenciaDisponible: false,
+      mensajePersistencia:
+        "La persistencia DS44 aun no esta habilitada en este ambiente. Se debe aplicar la migracion de base de datos para guardar diagnosticos.",
       respuestas: [],
       hallazgos,
     });
@@ -354,9 +361,22 @@ export async function saveDs44Diagnostico(input: { respuestas: Ds44GuardarRespue
       throw error;
     }
 
-    throw new Error(
-      "El diagnostico DS44 aun no esta habilitado en este ambiente. Solicita aplicar las migraciones de base de datos.",
-    );
+    const hallazgos = await getHallazgosAbiertosEmpresa(empresaId);
+
+    return buildDiagnosticoPayload({
+      diagnosticoId: null,
+      estado,
+      updatedAt: null,
+      persistenciaDisponible: false,
+      mensajePersistencia:
+        "No fue posible guardar el diagnostico porque la migracion DS44 aun no esta aplicada en este ambiente.",
+      respuestas: respuestasPersistidas.map((item) => ({
+        preguntaClave: item.preguntaClave,
+        respuesta: item.respuesta,
+        observacion: item.observacion,
+      })),
+      hallazgos,
+    });
   }
 
   revalidatePath("/dicaprev/ds44");

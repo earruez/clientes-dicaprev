@@ -48,6 +48,8 @@ export type Ds44DiagnosticoPayload = {
   estado: "en_evaluacion" | "completado";
   scoreGlobal: number | null;
   updatedAt: string | null;
+  persistenciaDisponible?: boolean;
+  mensajePersistencia?: string | null;
   bloques: Ds44BloqueResultado[];
   brechas: Ds44Brecha[];
   kpis: {
