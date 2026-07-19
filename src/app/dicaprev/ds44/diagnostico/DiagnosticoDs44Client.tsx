@@ -89,6 +89,9 @@ export default function DiagnosticoDs44Client({ initialData }: Props) {
   const [isPending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [warningMsg, setWarningMsg] = useState<string | null>(
+    initialData.persistenciaDisponible === false ? initialData.mensajePersistencia ?? MIGRACION_PENDIENTE_MSG : null,
+  );
 
   const [respuestas, setRespuestas] = useState<Record<string, RespuestaState>>(() => {
     const entries = initialData.bloques.flatMap((bloque) =>
@@ -140,6 +143,7 @@ export default function DiagnosticoDs44Client({ initialData }: Props) {
   function guardarDiagnostico() {
     setErrorMsg(null);
     setSuccessMsg(null);
+    setWarningMsg(null);
 
     startTransition(async () => {
       try {
@@ -152,6 +156,15 @@ export default function DiagnosticoDs44Client({ initialData }: Props) {
         });
 
         setData(payload);
+
+        if (payload.persistenciaDisponible === false) {
+          setWarningMsg(
+            payload.mensajePersistencia ??
+              "Diagnostico calculado, pero no guardado. La persistencia DS44 aun no esta habilitada en este ambiente. Se debe aplicar la migracion productiva.",
+          );
+          return;
+        }
+
         setSuccessMsg("Diagnostico guardado correctamente.");
       } catch (error) {
         if (error instanceof Error) {
@@ -320,6 +333,9 @@ export default function DiagnosticoDs44Client({ initialData }: Props) {
 
           {errorMsg ? (
             <div className="rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{errorMsg}</div>
+          ) : null}
+          {warningMsg ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{warningMsg}</div>
           ) : null}
           {successMsg ? (
             <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{successMsg}</div>
