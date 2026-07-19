@@ -283,6 +283,17 @@ export default function PlanImplementacionDs44Client({ data }: Props) {
       </section>
 
       <section>
+        <div className="flex justify-end">
+          <Button asChild>
+            <Link href="/dicaprev/ds44/evidencias">
+              Gestionar evidencias
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
+      </section>
+
+      <section>
         <h2 className="mb-3 flex items-center gap-2 text-base font-semibold text-slate-900">
           <ShieldAlert className="h-4 w-4 text-slate-500" />
           Resumen ejecutivo

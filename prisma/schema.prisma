@@ -482,6 +482,7 @@ model Ds44PlanAccion {
   empresa               Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   diagnostico           Ds44Diagnostico? @relation(fields: [diagnosticoId], references: [id], onDelete: SetNull)
   responsableTrabajador Trabajador?      @relation("TrabajadorDs44PlanAccionResponsable", fields: [responsableTrabajadorId], references: [id], onDelete: SetNull)
+  evidenciasCumplimiento EvidenciaCumplimiento[]
 
   @@unique([empresaId, preguntaClave])
   @@index([empresaId])
@@ -699,6 +700,7 @@ model EvidenciaCumplimiento {
   checklistEjecucionId String?
   entregaEppId   String?
   accionPlanId    String?
+  ds44PlanAccionId String?
   centroTrabajoId String?
   trabajadorId    String?
   creadoPorId     String?
@@ -720,9 +722,11 @@ model EvidenciaCumplimiento {
   creadoPor     Usuario?                @relation("UsuarioEvidenciaCumplimientoCreada", fields: [creadoPorId], references: [id], onDelete: SetNull)
   validadoPor   Usuario?                @relation("UsuarioEvidenciaCumplimientoValidada", fields: [validadoPorId], references: [id], onDelete: SetNull)
   historial     EvidenciaCumplimientoHistorial[]
+  ds44PlanAccion Ds44PlanAccion?         @relation(fields: [ds44PlanAccionId], references: [id], onDelete: SetNull)
 
   @@index([empresaId])
   @@index([hallazgoId])
+  @@index([ds44PlanAccionId])
   @@index([obligacionClave])
   @@index([documentoTrabajadorId])
   @@index([documentoEmpresaId])
