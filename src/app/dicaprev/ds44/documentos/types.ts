@@ -35,6 +35,19 @@ export type Ds44DocumentoGeneradoRow = {
   evidenciaId?: string;
 };
 
+export type Ds44DocumentoPdfSnapshot = {
+  documentoId: string;
+  empresaNombre: string;
+  plantillaCodigo: Ds44PlantillaCodigo;
+  plantillaNombre: string;
+  contenidoTexto: string;
+  contenidoHtml?: string;
+  campos: Record<string, string>;
+  generadoEn: string;
+  usuarioNombre?: string;
+  evidenciaId?: string;
+};
+
 export type Ds44AccionPlanDocumento = {
   id: string;
   accionSugerida: string;

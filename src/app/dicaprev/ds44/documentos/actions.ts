@@ -8,6 +8,7 @@ import { requirePermission } from "@/server/auth/permissions";
 import { DS44_PLANTILLAS, getPlantillaDs44 } from "./catalogo";
 import type {
   Ds44DocumentoGeneradoRow,
+  Ds44DocumentoPdfSnapshot,
   Ds44DocumentosData,
   Ds44PlantillaCodigo,
   GenerarDs44DocumentoInput,
@@ -22,6 +23,11 @@ function isPersistenceUnavailable(error: unknown): boolean {
   if (prismaError.code === "P2021" || prismaError.code === "P2022") return true;
   const message = error.message.toLowerCase();
   return message.includes("documentogeneradoregistro") && (message.includes("does not exist") || message.includes("column") || message.includes("relation"));
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, typeof item === "string" ? item : String(item ?? "")]));
 }
 
 function metadataObject(value: Prisma.JsonValue | null): Record<string, unknown> {
@@ -159,4 +165,36 @@ export async function generarDs44Documento(input: GenerarDs44DocumentoInput): Pr
     if (isPersistenceUnavailable(error)) throw new Error("Los documentos DS44 requieren actualizar la base de datos. Ejecuta prisma migrate deploy.");
     throw error;
   }
+}
+
+export async function getDs44DocumentoPdfSnapshot(documentoId: string): Promise<Ds44DocumentoPdfSnapshot> {
+  const { empresaId } = await requirePermission("canReadCumplimiento");
+  const id = documentoId.trim();
+  if (!id) throw new Error("Documento DS44 no encontrado para la empresa activa.");
+
+  const documento = await prisma.documentoGeneradoRegistro.findFirst({
+    where: { id, empresaId, modulo: "ds44" },
+    select: { id: true, nombre: true, metadata: true, createdAt: true, usuario: { select: { nombre: true } } },
+  });
+  if (!documento) throw new Error("Documento DS44 no encontrado para la empresa activa.");
+
+  const metadata = metadataObject(documento.metadata);
+  if (metadata.fuente !== "ds44" || !isPlantillaCodigo(metadata.plantillaCodigo)) {
+    throw new Error("Documento DS44 no encontrado para la empresa activa.");
+  }
+  const contenidoTexto = typeof metadata.contenidoTexto === "string" ? metadata.contenidoTexto.trim() : "";
+  if (!contenidoTexto) throw new Error("El documento DS44 no contiene texto disponible para exportar.");
+
+  return {
+    documentoId: documento.id,
+    empresaNombre: typeof metadata.empresaNombre === "string" ? metadata.empresaNombre : "",
+    plantillaCodigo: metadata.plantillaCodigo,
+    plantillaNombre: typeof metadata.plantillaNombre === "string" ? metadata.plantillaNombre : documento.nombre,
+    contenidoTexto,
+    contenidoHtml: typeof metadata.contenidoHtml === "string" ? metadata.contenidoHtml : undefined,
+    campos: stringRecord(metadata.campos),
+    generadoEn: typeof metadata.generadoEn === "string" ? metadata.generadoEn : documento.createdAt.toISOString(),
+    usuarioNombre: documento.usuario?.nombre ?? undefined,
+    evidenciaId: typeof metadata.evidenciaId === "string" ? metadata.evidenciaId : undefined,
+  };
 }
