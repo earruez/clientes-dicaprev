@@ -151,6 +151,28 @@ enum RespuestaDs44Diagnostico {
   no_aplica
 }
 
+enum EstadoDs44Miper {
+  borrador
+  vigente
+  en_revision
+  archivado
+}
+
+enum TipoControlDs44Miper {
+  eliminacion
+  sustitucion
+  ingenieria
+  administrativo
+  epp
+}
+
+enum EstadoControlDs44Miper {
+  pendiente
+  implementado
+  en_revision
+  descartado
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -235,6 +257,9 @@ model Empresa {
   planTrabajo                PlanTrabajo[]
   ds44Diagnosticos           Ds44Diagnostico[]
   ds44PlanAcciones           Ds44PlanAccion[]
+  ds44Mipers                 Ds44Miper[]
+  ds44MiperItems             Ds44MiperItem[]
+  ds44MiperControles         Ds44MiperControl[]
 }
 
 model Usuario {
@@ -277,6 +302,13 @@ model Usuario {
   // Acreditaciones
   acreditacionesResponsable      Acreditacion[]
   acreditacionesHistorial        HistorialAcreditacion[]
+  ds44MipersCreadas              Ds44Miper[]        @relation("UsuarioDs44MiperCreado")
+  ds44MipersActualizadas         Ds44Miper[]        @relation("UsuarioDs44MiperActualizado")
+  ds44MipersAprobadas            Ds44Miper[]        @relation("UsuarioDs44MiperAprobado")
+  ds44MiperItemsCreados          Ds44MiperItem[]    @relation("UsuarioDs44MiperItemCreado")
+  ds44MiperItemsActualizados     Ds44MiperItem[]    @relation("UsuarioDs44MiperItemActualizado")
+  ds44MiperControlesCreados      Ds44MiperControl[] @relation("UsuarioDs44MiperControlCreado")
+  ds44MiperControlesActualizados Ds44MiperControl[] @relation("UsuarioDs44MiperControlActualizado")
 }
 
 model UsuarioEmpresa {
@@ -513,6 +545,109 @@ model Ds44DiagnosticoRespuesta {
   @@index([respuesta])
 }
 
+model Ds44Miper {
+  id                   String            @id @default(cuid())
+  empresaId            String
+  codigo               String
+  nombre               String
+  version              Int               @default(1)
+  estado               EstadoDs44Miper   @default(borrador)
+  vigenteDesde         DateTime?
+  fechaProximaRevision DateTime?
+  observaciones        String?
+  creadoPorId          String
+  actualizadoPorId     String
+  aprobadoPorId        String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  empresa       Empresa          @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  creadoPor     Usuario          @relation("UsuarioDs44MiperCreado", fields: [creadoPorId], references: [id])
+  actualizadoPor Usuario         @relation("UsuarioDs44MiperActualizado", fields: [actualizadoPorId], references: [id])
+  aprobadoPor   Usuario?         @relation("UsuarioDs44MiperAprobado", fields: [aprobadoPorId], references: [id], onDelete: SetNull)
+  items         Ds44MiperItem[]
+
+  @@unique([empresaId, codigo, version])
+  @@index([empresaId])
+  @@index([estado])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+  @@index([aprobadoPorId])
+}
+
+model Ds44MiperItem {
+  id                         String   @id @default(cuid())
+  empresaId                  String
+  miperId                    String
+  centroTrabajoId            String?
+  areaId                     String?
+  cargoId                    String?
+  actividad                  String
+  peligro                    String
+  riesgo                     String
+  consecuencia               String
+  probabilidad               Int
+  severidad                  Int
+  nivelRiesgo                Int
+  clasificacionRiesgo        String
+  responsableTrabajadorId    String?
+  observaciones              String?
+  orden                      Int      @default(0)
+  creadoPorId                String
+  actualizadoPorId           String
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  empresa                  Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  miper                    Ds44Miper      @relation(fields: [miperId], references: [id], onDelete: Cascade)
+  centroTrabajo           CentroTrabajo? @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+  area                    Area?           @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  cargo                   Cargo?          @relation(fields: [cargoId], references: [id], onDelete: SetNull)
+  responsableTrabajador  Trabajador?     @relation("TrabajadorDs44MiperItemResponsable", fields: [responsableTrabajadorId], references: [id], onDelete: SetNull)
+  creadoPor               Usuario        @relation("UsuarioDs44MiperItemCreado", fields: [creadoPorId], references: [id])
+  actualizadoPor          Usuario        @relation("UsuarioDs44MiperItemActualizado", fields: [actualizadoPorId], references: [id])
+  controles               Ds44MiperControl[]
+
+  @@index([empresaId])
+  @@index([miperId])
+  @@index([centroTrabajoId])
+  @@index([areaId])
+  @@index([cargoId])
+  @@index([responsableTrabajadorId])
+  @@index([clasificacionRiesgo])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+}
+
+model Ds44MiperControl {
+  id                         String                    @id @default(cuid())
+  empresaId                  String
+  miperItemId                String
+  tipoControl                TipoControlDs44Miper
+  descripcion                String
+  responsableTrabajadorId    String?
+  fechaCompromiso            DateTime?
+  estado                     EstadoControlDs44Miper    @default(pendiente)
+  orden                      Int                       @default(0)
+  creadoPorId                String
+  actualizadoPorId           String
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+
+  empresa                 Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  miperItem               Ds44MiperItem @relation(fields: [miperItemId], references: [id], onDelete: Cascade)
+  responsableTrabajador Trabajador?    @relation("TrabajadorDs44MiperControlResponsable", fields: [responsableTrabajadorId], references: [id], onDelete: SetNull)
+  creadoPor              Usuario       @relation("UsuarioDs44MiperControlCreado", fields: [creadoPorId], references: [id])
+  actualizadoPor         Usuario       @relation("UsuarioDs44MiperControlActualizado", fields: [actualizadoPorId], references: [id])
+
+  @@index([empresaId])
+  @@index([miperItemId])
+  @@index([estado])
+  @@index([responsableTrabajadorId])
+  @@index([creadoPorId])
+  @@index([actualizadoPorId])
+}
+
 model HallazgoCumplimiento {
   id              String   @id @default(uuid())
   empresaId       String
@@ -575,6 +710,7 @@ model CentroTrabajo {
   planCapacitacionItems     PlanCapacitacionItem[]
   reglasCapacitacionCargo   ReglaCapacitacionCargo[]
   plantillaItemsCapacitacion PlantillaPlanCapacitacionItem[]
+  ds44MiperItems             Ds44MiperItem[]
 
   @@index([empresaId])
 }
@@ -595,6 +731,7 @@ model Area {
   planCapacitacionItems     PlanCapacitacionItem[]
   reglasCapacitacionCargo   ReglaCapacitacionCargo[]
   plantillaItemsCapacitacion PlantillaPlanCapacitacionItem[]
+  ds44MiperItems             Ds44MiperItem[]
 
   @@index([empresaId])
 }
@@ -623,6 +760,7 @@ model Cargo {
   planCapacitacionItems     PlanCapacitacionItem[]
   reglasCapacitacionCargo   ReglaCapacitacionCargo[]
   plantillaItemsCapacitacion PlantillaPlanCapacitacionItem[]
+  ds44MiperItems             Ds44MiperItem[]
 
   @@index([empresaId])
   @@index([areaId])
@@ -671,6 +809,8 @@ model Trabajador {
   contratistaVinculos      ContratistaTrabajador[]
   // Acreditaciones
   acreditacionesTrabajador AcreditacionTrabajador[]
+  ds44MiperItemsResponsable Ds44MiperItem[]    @relation("TrabajadorDs44MiperItemResponsable")
+  ds44MiperControlesResponsable Ds44MiperControl[] @relation("TrabajadorDs44MiperControlResponsable")
 
   @@index([empresaId])
   @@index([centroTrabajoId])
