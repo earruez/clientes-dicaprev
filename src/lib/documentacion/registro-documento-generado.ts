@@ -5,7 +5,8 @@ export type DocumentoGeneradoModulo =
   | "capacitacion"
   | "plandetrabajo"
   | "trabajadores"
-  | "acreditaciones";
+  | "acreditaciones"
+  | "ds44";
 
 export type DocumentoGeneradoInput = {
   empresaId: string;
