@@ -30,8 +30,9 @@ export const DS44_PLANTILLAS: PlantillaInterna[] = [
   {
     codigo: "POLITICA_SST", nombre: "Política de Seguridad y Salud en el Trabajo", categoria: "Gobernanza SST",
     descripcion: "Declaración formal de los compromisos preventivos de la empresa.", objetivo: "Establecer los principios y compromisos que orientan el sistema de gestión SST.",
+    clasificacion: "base_inicial",
     campos: [
-      { key: "representanteLegal", label: "Representante legal", type: "text", required: true },
+      { key: "representanteLegal", label: "Representante legal", type: "responsable", required: true, filtroSugerido: ["representante_legal", "gerencia"] },
       { key: "compromisoEmpresa", label: "Compromiso de la empresa", type: "textarea", required: true, placeholder: "Compromisos de protección, participación y mejora continua." },
       { key: "fechaEmision", label: "Fecha de emisión", type: "date", required: true },
     ],
@@ -41,9 +42,9 @@ export const DS44_PLANTILLAS: PlantillaInterna[] = [
   {
     codigo: "DESIGNACION_RESPONSABLE_SST", nombre: "Acta de Designación de Responsable SST", categoria: "Organización preventiva",
     descripcion: "Formaliza la designación y las funciones de la persona responsable de SST.", objetivo: "Dejar constancia de responsabilidades, funciones y fecha de designación.",
+    clasificacion: "base_inicial",
     campos: [
-      { key: "responsableNombre", label: "Responsable", type: "text", required: true },
-      { key: "responsableCargo", label: "Cargo", type: "text", required: true },
+      { key: "responsableNombre", label: "Responsable SST", type: "responsable", required: true, filtroSugerido: ["prevencionista", "jefatura", "supervisor", "otro_responsable"] },
       { key: "funcionesAsignadas", label: "Funciones asignadas", type: "textarea", required: true },
       { key: "fechaDesignacion", label: "Fecha de designación", type: "date", required: true },
     ],
@@ -53,10 +54,11 @@ export const DS44_PLANTILLAS: PlantillaInterna[] = [
   {
     codigo: "PROGRAMA_TRABAJO_PREVENTIVO", nombre: "Programa de Trabajo Preventivo DS44", categoria: "Planificación preventiva",
     descripcion: "Consolida objetivos, responsables y actividades preventivas del período.", objetivo: "Ordenar la ejecución y el seguimiento del trabajo preventivo DS44.",
+    clasificacion: "base_inicial",
     campos: [
       { key: "periodo", label: "Período", type: "text", required: true },
       { key: "objetivoGeneral", label: "Objetivo general", type: "textarea", required: true },
-      { key: "responsablePrograma", label: "Responsable del programa", type: "text", required: true },
+      { key: "responsablePrograma", label: "Responsable del programa", type: "responsable", required: true, filtroSugerido: ["prevencionista", "jefatura", "supervisor", "otro_responsable"] },
       { key: "actividadesPrincipales", label: "Actividades principales", type: "textarea", required: true },
     ],
     accionesDs44Relacionadas: ["programa", "plan"],
@@ -65,9 +67,10 @@ export const DS44_PLANTILLAS: PlantillaInterna[] = [
   {
     codigo: "REGISTRO_CAPACITACION_INFORMACION", nombre: "Registro de Información y Capacitación SST", categoria: "Información y capacitación",
     descripcion: "Registra una actividad de información o capacitación y sus participantes.", objetivo: "Acreditar la entrega de información preventiva y capacitación SST.",
+    clasificacion: "base_inicial",
     campos: [
       { key: "tema", label: "Tema", type: "text", required: true },
-      { key: "relator", label: "Relator", type: "text", required: true },
+      { key: "relator", label: "Relator o responsable de capacitación", type: "responsable", required: true, filtroSugerido: ["prevencionista", "jefatura", "supervisor", "otro_responsable"] },
       { key: "fechaActividad", label: "Fecha de la actividad", type: "date", required: true },
       { key: "participantesTexto", label: "Participantes", type: "textarea", required: true },
     ],
@@ -77,12 +80,13 @@ export const DS44_PLANTILLAS: PlantillaInterna[] = [
   {
     codigo: "ACTA_REVISION_GERENCIAL", nombre: "Acta de Revisión Gerencial SST", categoria: "Seguimiento y mejora",
     descripcion: "Documenta la revisión de desempeño, acuerdos y responsables de seguimiento.", objetivo: "Dejar trazabilidad de la revisión ejecutiva y de los acuerdos de mejora SST.",
+    clasificacion: "base_inicial",
     campos: [
       { key: "fechaRevision", label: "Fecha de revisión", type: "date", required: true },
-      { key: "asistentes", label: "Asistentes", type: "textarea", required: true },
+      { key: "asistentes", label: "Responsable principal de la revisión", type: "responsable", required: true, filtroSugerido: ["representante_legal", "gerencia"] },
       { key: "temasTratados", label: "Temas tratados", type: "textarea", required: true },
       { key: "acuerdos", label: "Acuerdos", type: "textarea", required: true },
-      { key: "responsableSeguimiento", label: "Responsable de seguimiento", type: "text", required: true },
+      { key: "responsableSeguimiento", label: "Responsable de seguimiento", type: "responsable", required: true, filtroSugerido: ["gerencia", "jefatura", "prevencionista", "supervisor", "otro_responsable"] },
     ],
     accionesDs44Relacionadas: ["revision", "seguimiento"],
     ...crearRender("Acta de Revisión Gerencial SST", [["fechaRevision", "Fecha de revisión"], ["asistentes", "Asistentes"], ["temasTratados", "Temas tratados"], ["acuerdos", "Acuerdos"], ["responsableSeguimiento", "Responsable de seguimiento"]]),
