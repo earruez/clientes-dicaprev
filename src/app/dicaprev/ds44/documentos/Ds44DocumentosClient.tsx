@@ -2,11 +2,13 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Download } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { generarDs44Documento } from "./actions";
+import { generarDs44Documento, getDs44DocumentoPdfSnapshot } from "./actions";
 import { getPlantillaDs44 } from "./catalogo";
+import { exportDs44DocumentoPdf } from "./export-ds44-documento-pdf";
 import type { Ds44DocumentosData, Ds44PlantillaCodigo } from "./types";
 
 function formatFecha(value: string): string {
@@ -20,6 +22,8 @@ export default function Ds44DocumentosClient({ data }: { data: Ds44DocumentosDat
   const [campos, setCampos] = useState<Record<string, string>>({});
   const [accionId, setAccionId] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const plantillaData = data.plantillas.find((plantilla) => plantilla.codigo === selected);
   const plantillaRender = selected ? getPlantillaDs44(selected) : undefined;
@@ -48,6 +52,28 @@ export default function Ds44DocumentosClient({ data }: { data: Ds44DocumentosDat
     });
   }
 
+  async function exportPdf(documentoId: string) {
+    setExportingId(documentoId);
+    setExportError(null);
+    try {
+      const snapshot = await getDs44DocumentoPdfSnapshot(documentoId);
+      const blob = await exportDs44DocumentoPdf(snapshot);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const fecha = snapshot.generadoEn.slice(0, 10) || new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `ds44-${snapshot.plantillaCodigo.toLowerCase()}-${fecha}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : "No fue posible exportar el documento DS44 a PDF.");
+    } finally {
+      setExportingId(null);
+    }
+  }
+
   if (data.databaseUpdateRequired) return <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm font-medium text-amber-900">Los documentos DS44 requieren actualizar la base de datos. Ejecuta prisma migrate deploy.</div>;
 
   const summary = [
@@ -57,8 +83,9 @@ export default function Ds44DocumentosClient({ data }: { data: Ds44DocumentosDat
 
   return <div className="space-y-6">
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{summary.map(([label, value]) => <Card key={label} className="border-slate-200 shadow-sm"><CardContent className="p-4"><p className="text-xs uppercase tracking-wide text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p></CardContent></Card>)}</div>
-    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">En esta fase el documento queda registrado con trazabilidad. La exportación PDF se abordará en una fase posterior.</div>
+    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">Los documentos quedan registrados con trazabilidad. Ahora puedes exportarlos a PDF fiscalizable.</div>
     {message && <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800">{message}</div>}
+    {exportError && <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">{exportError}</div>}
 
     <section className="space-y-3"><h2 className="text-lg font-semibold text-slate-900">Plantillas DS44</h2><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{data.plantillas.map((plantilla) => {
       const generated = generatedCodes.has(plantilla.codigo);
@@ -70,6 +97,6 @@ export default function Ds44DocumentosClient({ data }: { data: Ds44DocumentosDat
       <Button disabled={isPending} onClick={submit}>Registrar documento</Button></CardContent></Card>
       <Card className="border-slate-200 shadow-sm"><CardHeader><h2 className="text-lg font-semibold text-slate-900">Vista previa</h2></CardHeader><CardContent><div className="prose prose-sm max-w-none rounded-lg border border-slate-200 bg-white p-5" dangerouslySetInnerHTML={{ __html: previewHtml }} /></CardContent></Card></section>}
 
-    <section className="space-y-3"><h2 className="text-lg font-semibold text-slate-900">Documentos generados</h2><Card className="overflow-hidden border-slate-200 shadow-sm"><CardContent className="overflow-x-auto p-0">{data.documentosGenerados.length === 0 ? <p className="p-6 text-sm text-slate-500">Aún no hay documentos DS44 generados.</p> : <table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="p-3">Documento</th><th className="p-3">Tipo</th><th className="p-3">Fecha</th><th className="p-3">Estado</th><th className="p-3">Evidencia asociada</th></tr></thead><tbody>{data.documentosGenerados.map((documento) => <tr key={documento.id} className="border-t border-slate-100"><td className="p-3 font-medium text-slate-900">{documento.nombre}</td><td className="p-3 text-slate-600">{documento.tipoDocumento}</td><td className="p-3 text-slate-600">{formatFecha(documento.createdAt)}</td><td className="p-3"><Badge variant="outline">{documento.estado}</Badge></td><td className="p-3 text-slate-600">{documento.evidenciaId ? "Sí" : "No"}</td></tr>)}</tbody></table>}</CardContent></Card></section>
+    <section className="space-y-3"><h2 className="text-lg font-semibold text-slate-900">Documentos generados</h2><Card className="overflow-hidden border-slate-200 shadow-sm"><CardContent className="overflow-x-auto p-0">{data.documentosGenerados.length === 0 ? <p className="p-6 text-sm text-slate-500">Aún no hay documentos DS44 generados.</p> : <table className="w-full text-left text-sm"><thead className="bg-slate-50 text-slate-600"><tr><th className="p-3">Documento</th><th className="p-3">Tipo</th><th className="p-3">Fecha</th><th className="p-3">Estado</th><th className="p-3">Evidencia asociada</th><th className="p-3">Acción</th></tr></thead><tbody>{data.documentosGenerados.map((documento) => <tr key={documento.id} className="border-t border-slate-100"><td className="p-3 font-medium text-slate-900">{documento.nombre}</td><td className="p-3 text-slate-600">{documento.tipoDocumento}</td><td className="p-3 text-slate-600">{formatFecha(documento.createdAt)}</td><td className="p-3"><Badge variant="outline">{documento.estado}</Badge></td><td className="p-3 text-slate-600">{documento.evidenciaId ? "Sí" : "No"}</td><td className="p-3"><Button size="sm" variant="outline" disabled={exportingId === documento.id} onClick={() => exportPdf(documento.id)}><Download className="mr-2 h-4 w-4" />{exportingId === documento.id ? "Exportando..." : "Exportar PDF"}</Button></td></tr>)}</tbody></table>}</CardContent></Card></section>
   </div>;
 }

@@ -97,6 +97,21 @@ const MODULES: ModuleItem[] = [
     ],
   },
   {
+    id: "ds44",
+    label: "DS44",
+    icon: FileCheck2,
+    defaultHref: "/dicaprev/ds44",
+    permission: "canReadCumplimiento",
+    moduleKey: "cumplimiento",
+    items: [
+      { href: "/dicaprev/ds44", label: "Resumen" },
+      { href: "/dicaprev/ds44/diagnostico", label: "Diagnóstico" },
+      { href: "/dicaprev/ds44/plan-implementacion", label: "Plan de implementación" },
+      { href: "/dicaprev/ds44/documentos", label: "Documentos DS44" },
+      { href: "/dicaprev/ds44/evidencias", label: "Evidencias fiscalizables" },
+    ],
+  },
+  {
     id: "epp",
     label: "EPP",
     icon: ShieldCheck,
@@ -169,7 +184,6 @@ const MODULES: ModuleItem[] = [
     items: [
       { href: "/dicaprev/reportes/cumplimiento-centro", label: "Cumplimiento por centro" },
       { href: "/dicaprev/reportes/cumplimiento-area", label: "Cumplimiento por área" },
-      { href: "/dicaprev/ds44", label: "DS44" },
     ],
   },
   {

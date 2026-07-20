@@ -421,8 +421,9 @@ export default async function DS44Page() {
               { href: "/dicaprev/ds44/diagnostico", label: "Diagnostico" },
               { href: "/dicaprev/ds44/plan-implementacion", label: "Plan DS44" },
               { href: "/dicaprev/ds44/documentos", label: "Documentos DS44" },
+              { href: "/dicaprev/ds44/evidencias", label: "Evidencias DS44" },
               { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
-              { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias" },
+              { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias generales" },
               { href: "/dicaprev/cumplimiento/hallazgos", label: "Hallazgos" },
               { href: "/dicaprev/documentacion", label: "Documentacion" },
             ].map((item) => (
