@@ -5,13 +5,27 @@ export type Ds44PlantillaCodigo =
   | "REGISTRO_CAPACITACION_INFORMACION"
   | "ACTA_REVISION_GERENCIAL";
 
+export type Ds44ClasificacionDocumento =
+  | "base_inicial"
+  | "exigible_segun_condicion"
+  | "recomendado";
+
+export type Ds44TipoResponsable =
+  | "representante_legal"
+  | "gerencia"
+  | "jefatura"
+  | "prevencionista"
+  | "supervisor"
+  | "otro_responsable";
+
 export type Ds44CampoPlantilla = {
   key: string;
   label: string;
-  type: "text" | "textarea" | "date";
+  type: "text" | "textarea" | "date" | "responsable";
   required: boolean;
   placeholder?: string;
   defaultValue?: string;
+  filtroSugerido?: Ds44TipoResponsable[];
 };
 
 export type Ds44PlantillaDocumento = {
@@ -20,8 +34,28 @@ export type Ds44PlantillaDocumento = {
   descripcion: string;
   objetivo: string;
   categoria: string;
+  clasificacion: Ds44ClasificacionDocumento;
   campos: Ds44CampoPlantilla[];
   accionesDs44Relacionadas?: string[];
+};
+
+export type Ds44ResponsableDisponible = {
+  trabajadorId: string;
+  nombre: string;
+  cargoNombre: string;
+  areaNombre?: string;
+  centroNombre?: string;
+  perfilSST?: string;
+  recomendado: boolean;
+  tipoResponsable: Ds44TipoResponsable;
+};
+
+export type Ds44ResponsableMetadata = {
+  trabajadorId: string;
+  nombre: string;
+  cargoNombre: string;
+  areaNombre?: string;
+  tipoResponsable: Ds44TipoResponsable;
 };
 
 export type Ds44DocumentoGeneradoRow = {
@@ -59,6 +93,7 @@ export type Ds44AccionPlanDocumento = {
 export type Ds44DocumentosData = {
   empresaNombre: string;
   plantillas: Ds44PlantillaDocumento[];
+  responsablesDisponibles: Ds44ResponsableDisponible[];
   documentosGenerados: Ds44DocumentoGeneradoRow[];
   accionesPlan: Ds44AccionPlanDocumento[];
   resumen: {
@@ -73,6 +108,7 @@ export type Ds44DocumentosData = {
 export type GenerarDs44DocumentoInput = {
   plantillaCodigo: Ds44PlantillaCodigo;
   campos: Record<string, string>;
+  responsables?: Record<string, string>;
   ds44PlanAccionId?: string;
 };
 

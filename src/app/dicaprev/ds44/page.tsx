@@ -15,6 +15,7 @@ import { getPlanTrabajoData } from "@/app/dicaprev/cumplimiento/plan-trabajo/act
 import { getDs44DiagnosticoData, getDs44DiagnosticoResumen } from "./diagnostico/actions";
 import { getDs44PlanImplementacionData } from "./plan-implementacion/actions";
 import { getDs44EvidenciasData } from "./evidencias/actions";
+import Ds44SectionNav from "./Ds44SectionNav";
 
 type EstadoImplementacion = "Inicial" | "En implementacion" | "En control" | "Fiscalizable";
 type EstadoPaso = "pendiente" | "en_proceso" | "con_avances" | "con_brechas" | "ok";
@@ -253,7 +254,8 @@ export default async function DS44Page() {
   }
 
   return (
-    <div className="space-y-6 px-4 pb-8 pt-5 sm:px-6">
+    <main className="min-h-screen bg-slate-50/80">
+      <div className="mx-auto max-w-7xl space-y-8 px-4 py-10 sm:px-6 lg:px-8">
       <StandardPageHeader
         moduleLabel="DS44"
         title="Implementacion DS44"
@@ -262,21 +264,23 @@ export default async function DS44Page() {
         iconWrapClassName="bg-slate-900"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button asChild>
+            <Button asChild className="rounded-2xl font-semibold">
               <Link href="/dicaprev/ds44/diagnostico">
                 {accionPrincipalHeader}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-            <Button asChild variant="outline">
+            <Button asChild variant="outline" className="rounded-2xl font-semibold">
               <Link href="/dicaprev/cumplimiento/plan-trabajo">Ver plan de trabajo</Link>
             </Button>
           </div>
         }
       />
 
+      <Ds44SectionNav />
+
       <section>
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardContent className="grid gap-5 p-5 lg:grid-cols-[1.4fr_0.8fr] lg:items-center">
             <div className="space-y-4">
               <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
@@ -286,7 +290,7 @@ export default async function DS44Page() {
                 <h2 className="text-2xl font-semibold text-slate-900">{proximoPaso.titulo}</h2>
                 <p className="mt-2 max-w-2xl text-sm text-slate-600">{proximoPaso.detalle}</p>
               </div>
-              <Button asChild size="lg" className="w-full sm:w-auto">
+              <Button asChild size="lg" className="w-full rounded-2xl font-semibold sm:w-auto">
                 <Link href={proximoPaso.href}>
                   {proximoPaso.cta}
                   <ArrowRight className="ml-2 h-4 w-4" />
@@ -294,7 +298,7 @@ export default async function DS44Page() {
               </Button>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <p className="text-sm font-semibold text-slate-900">Estado actual</p>
               <div className="mt-3 space-y-2 text-sm">
                 <div className="flex items-center justify-between">
@@ -319,14 +323,14 @@ export default async function DS44Page() {
       </section>
 
       <section>
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardHeader>
             <h2 className="text-lg font-semibold text-slate-900">Flujo de implementacion DS44</h2>
             <p className="text-sm text-slate-500">Completa los pasos en orden para avanzar de diagnostico a evidencia fiscalizable.</p>
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-4">
             {pasos.map((paso) => (
-              <div key={paso.numero} className="rounded-xl border border-slate-200 bg-white p-4">
+              <div key={paso.numero} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
                     {paso.numero}
@@ -337,7 +341,7 @@ export default async function DS44Page() {
                 </div>
                 <h3 className="text-base font-semibold text-slate-900">{paso.titulo}</h3>
                 <p className="mt-1 text-sm text-slate-600">{paso.descripcion}</p>
-                <Button asChild size="sm" variant="outline" className="mt-4 w-full">
+                <Button asChild size="sm" variant="outline" className="mt-4 w-full rounded-2xl font-semibold">
                   <Link href={paso.href}>{paso.cta}</Link>
                 </Button>
               </div>
@@ -347,25 +351,25 @@ export default async function DS44Page() {
       </section>
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardContent className="p-3">
             <p className="text-[11px] uppercase tracking-wide text-slate-500">Cumplimiento global</p>
             <p className="mt-1 text-xl font-semibold text-slate-900">{cumplimientoGlobal}%</p>
           </CardContent>
         </Card>
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardContent className="p-3">
             <p className="text-[11px] uppercase tracking-wide text-slate-500">Brechas criticas</p>
             <p className="mt-1 text-xl font-semibold text-rose-700">{diagnosticoResumen.brechasCriticas}</p>
           </CardContent>
         </Card>
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardContent className="p-3">
             <p className="text-[11px] uppercase tracking-wide text-slate-500">Documentos pendientes</p>
             <p className="mt-1 text-xl font-semibold text-amber-700">{documentosPendientes}</p>
           </CardContent>
         </Card>
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardContent className="p-3">
             <p className="text-[11px] uppercase tracking-wide text-slate-500">Acciones vencidas</p>
             <p className="mt-1 text-xl font-semibold text-rose-700">{accionesVencidas}</p>
@@ -374,7 +378,7 @@ export default async function DS44Page() {
       </section>
 
       <section>
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardHeader>
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
               <AlertTriangle className="h-4 w-4 text-amber-500" />
@@ -395,7 +399,7 @@ export default async function DS44Page() {
       </section>
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardHeader className="pb-3">
             <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
               <Target className="h-4 w-4 text-slate-500" />
@@ -412,7 +416,7 @@ export default async function DS44Page() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border-slate-200 bg-white shadow-sm">
           <CardHeader className="pb-3">
             <h2 className="text-base font-semibold text-slate-900">Accesos rapidos</h2>
           </CardHeader>
@@ -430,7 +434,7 @@ export default async function DS44Page() {
               <Link
                 key={item.href}
                 href={item.href}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 hover:shadow-sm"
               >
                 {item.label}
               </Link>
@@ -438,6 +442,7 @@ export default async function DS44Page() {
           </CardContent>
         </Card>
       </section>
-    </div>
+      </div>
+    </main>
   );
 }
