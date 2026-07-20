@@ -88,12 +88,10 @@ const MODULES: ModuleItem[] = [
     moduleKey: "cumplimiento",
     items: [
       { href: "/dicaprev/cumplimiento", label: "Resumen" },
-      { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
       { href: "/dicaprev/cumplimiento/hallazgos", label: "Hallazgos" },
-      { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias" },
+      { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias generales" },
       { href: "/dicaprev/checklists", label: "Checklists / Inspecciones" },
       { href: "/dicaprev/accidentes", label: "Accidentes" },
-      { href: "/dicaprev/cumplimiento/plan-trabajo", label: "Plan de trabajo" },
     ],
   },
   {
@@ -106,6 +104,7 @@ const MODULES: ModuleItem[] = [
     items: [
       { href: "/dicaprev/ds44", label: "Resumen" },
       { href: "/dicaprev/ds44/diagnostico", label: "Diagnóstico" },
+      { href: "/dicaprev/ds44/obligaciones", label: "Obligaciones" },
       { href: "/dicaprev/ds44/plan-implementacion", label: "Plan de implementación" },
       { href: "/dicaprev/ds44/documentos", label: "Documentos DS44" },
       { href: "/dicaprev/ds44/evidencias", label: "Evidencias fiscalizables" },
@@ -304,8 +303,12 @@ function useSidebarData() {
     }
   }
 
+  const legacyModuleId = pathname.startsWith("/dicaprev/cumplimiento/obligaciones") || pathname.startsWith("/dicaprev/cumplimiento/plan-trabajo")
+    ? "cumplimiento"
+    : null;
   const activeModule =
     visibleModules.find((module) => module.items.some((item) => isItemActive(pathname, item.href))) ??
+    visibleModules.find((module) => module.id === legacyModuleId) ??
     visibleModules[0];
 
   return {

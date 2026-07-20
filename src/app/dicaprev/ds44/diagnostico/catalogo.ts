@@ -96,7 +96,7 @@ export const DS44_PREGUNTAS: Ds44PreguntaDef[] = [
     prioridad: "critica",
     recomendacion: "Constituir formalmente la estructura preventiva segun dotacion y actividad.",
     evidenciaEsperada: "Actas de constitucion, resoluciones y reuniones de seguimiento.",
-    rutaSugerida: "/dicaprev/cumplimiento/obligaciones",
+    rutaSugerida: "/dicaprev/ds44/obligaciones",
     keywordsHallazgo: ["comite", "delegado", "encargado", "estructura"],
   },
   {
@@ -107,7 +107,7 @@ export const DS44_PREGUNTAS: Ds44PreguntaDef[] = [
     prioridad: "critica",
     recomendacion: "Actualizar la matriz MIPER por proceso y asegurar control operacional de riesgos criticos.",
     evidenciaEsperada: "Matriz MIPER vigente con responsables y fechas de revision.",
-    rutaSugerida: "/dicaprev/cumplimiento/obligaciones",
+    rutaSugerida: "/dicaprev/ds44/obligaciones",
     keywordsHallazgo: ["miper", "iper", "riesgo", "peligro"],
   },
   {
@@ -151,7 +151,7 @@ export const DS44_PREGUNTAS: Ds44PreguntaDef[] = [
     prioridad: "critica",
     recomendacion: "Construir programa anual con hitos medibles y seguimiento mensual.",
     evidenciaEsperada: "Programa anual, planillas de avance y respaldos de cumplimiento.",
-    rutaSugerida: "/dicaprev/cumplimiento/plan-trabajo",
+    rutaSugerida: "/dicaprev/ds44/plan-implementacion",
     keywordsHallazgo: ["programa", "plan", "preventivo", "anual"],
   },
   {
@@ -206,7 +206,7 @@ export const DS44_PREGUNTAS: Ds44PreguntaDef[] = [
     prioridad: "alta",
     recomendacion: "Implementar control de vencimientos y validacion de cierre de acciones.",
     evidenciaEsperada: "Plan de acciones, evidencia de implementacion y validacion de cierre.",
-    rutaSugerida: "/dicaprev/cumplimiento/plan-trabajo",
+    rutaSugerida: "/dicaprev/ds44/plan-implementacion",
     keywordsHallazgo: ["accion correctiva", "cierre", "vencida"],
   },
   {
@@ -250,7 +250,7 @@ export const DS44_PREGUNTAS: Ds44PreguntaDef[] = [
     prioridad: "alta",
     recomendacion: "Levantar brechas de protocolos MINSAL y calendarizar su cumplimiento.",
     evidenciaEsperada: "Protocolos aplicables, planes de implementacion y respaldos de seguimiento.",
-    rutaSugerida: "/dicaprev/cumplimiento/obligaciones",
+    rutaSugerida: "/dicaprev/ds44/obligaciones",
     keywordsHallazgo: ["minsal", "protocolo", "fiscalizacion"],
   },
 ];

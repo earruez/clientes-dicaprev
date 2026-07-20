@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +38,7 @@ import {
 import { calcularTamañoEmpresa, type TamanoEmpresa } from "@/lib/cumplimiento/cumplimiento-engine";
 import { cn } from "@/lib/utils";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import Ds44SectionNav from "@/app/dicaprev/ds44/Ds44SectionNav";
 import {
   Dialog,
   DialogContent,
@@ -202,7 +204,13 @@ function ObligacionDrawer({
   );
 }
 
-export default function ObligacionesClient({ data }: { data: CumplimientoEmpresaPayload }) {
+export default function ObligacionesClient({
+  data,
+  contexto = "cumplimiento",
+}: {
+  data: CumplimientoEmpresaPayload;
+  contexto?: "cumplimiento" | "ds44";
+}) {
   const [obligaciones, setObligaciones] = useState<ObligacionCumplimientoReal[]>(data.obligaciones);
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<"todos" | EstadoObligacion>("todos");
@@ -279,13 +287,31 @@ export default function ObligacionesClient({ data }: { data: CumplimientoEmpresa
 
   return (
     <div className="min-h-screen bg-slate-50/80 py-10">
-      <div className="mx-auto max-w-6xl space-y-8 px-4 lg:px-0">
+      <div className="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
         <StandardPageHeader
-          moduleLabel="Cumplimiento DS44"
-          title="Obligaciones DS44"
-          description="Estado real documental de obligaciones empresa, con reglas de aplicabilidad por cantidad de trabajadores."
+          moduleLabel={contexto === "ds44" ? "DS44" : "Cumplimiento"}
+          title={contexto === "ds44" ? "Obligaciones aplicables DS44" : "Obligaciones DS44"}
+          description={contexto === "ds44"
+            ? "Estado real de obligaciones aplicables a la empresa, calculadas desde el motor de cumplimiento y usadas para alimentar el avance DS44."
+            : "Estado real documental de obligaciones empresa, con reglas de aplicabilidad por cantidad de trabajadores."}
           icon={FileText}
         />
+
+        {contexto === "ds44" ? (
+          <>
+            <Ds44SectionNav />
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900 shadow-sm">
+              Estas obligaciones se calculan desde el motor de cumplimiento y alimentan el avance del módulo DS44.
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm">
+            <p>Esta vista ahora forma parte del flujo DS44. Puedes acceder desde DS44 &gt; Obligaciones.</p>
+            <Button asChild variant="outline" className="rounded-2xl border-blue-200 bg-white font-semibold text-blue-800">
+              <Link href="/dicaprev/ds44/obligaciones">Ir a Obligaciones DS44</Link>
+            </Button>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
           <Users className="h-4 w-4 shrink-0 text-slate-400" />

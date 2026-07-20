@@ -95,7 +95,7 @@ function getProximoPaso(args: {
     return {
       titulo: "Regulariza acciones vencidas",
       detalle: "Actualiza responsables y fechas para recuperar avance del plan de implementacion.",
-      href: "/dicaprev/cumplimiento/plan-trabajo",
+      href: "/dicaprev/ds44/plan-implementacion",
       cta: "Ver acciones vencidas",
     };
   }
@@ -112,7 +112,7 @@ function getProximoPaso(args: {
   return {
     titulo: "Continua implementacion",
     detalle: "Consolida pendientes para llevar el modulo a estado de control.",
-    href: "/dicaprev/cumplimiento/obligaciones",
+    href: "/dicaprev/ds44/obligaciones",
     cta: "Ver obligaciones",
   };
 }
@@ -197,7 +197,7 @@ export default async function DS44Page() {
       numero: "2",
       titulo: "Obligaciones aplicables",
       descripcion: "Revisa que exige DS44 segun el estado actual de la empresa.",
-      href: "/dicaprev/cumplimiento/obligaciones",
+      href: "/dicaprev/ds44/obligaciones",
       cta: "Ver obligaciones",
       estado:
         obligacionesAplicables.length === 0
@@ -271,7 +271,7 @@ export default async function DS44Page() {
               </Link>
             </Button>
             <Button asChild variant="outline" className="rounded-2xl font-semibold">
-              <Link href="/dicaprev/cumplimiento/plan-trabajo">Ver plan de trabajo</Link>
+              <Link href="/dicaprev/ds44/plan-implementacion">Ver plan de implementación</Link>
             </Button>
           </div>
         }
@@ -423,10 +423,10 @@ export default async function DS44Page() {
           <CardContent className="grid grid-cols-2 gap-2 pt-0 sm:grid-cols-3">
             {[
               { href: "/dicaprev/ds44/diagnostico", label: "Diagnostico" },
+              { href: "/dicaprev/ds44/obligaciones", label: "Obligaciones DS44" },
               { href: "/dicaprev/ds44/plan-implementacion", label: "Plan DS44" },
               { href: "/dicaprev/ds44/documentos", label: "Documentos DS44" },
               { href: "/dicaprev/ds44/evidencias", label: "Evidencias DS44" },
-              { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones" },
               { href: "/dicaprev/cumplimiento/evidencias", label: "Evidencias generales" },
               { href: "/dicaprev/cumplimiento/hallazgos", label: "Hallazgos" },
               { href: "/dicaprev/documentacion", label: "Documentacion" },
