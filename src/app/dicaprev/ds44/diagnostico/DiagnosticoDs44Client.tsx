@@ -409,9 +409,9 @@ export default function DiagnosticoDs44Client({ initialData }: Props) {
         <CardContent className="grid grid-cols-1 gap-3 pb-5 sm:grid-cols-2 lg:grid-cols-5">
           {[
             { href: "/dicaprev/documentacion", label: "Documentacion", icon: FileText },
-            { href: "/dicaprev/cumplimiento/obligaciones", label: "Obligaciones", icon: Target },
+            { href: "/dicaprev/ds44/obligaciones", label: "Obligaciones", icon: Target },
             { href: "/dicaprev/cumplimiento/hallazgos", label: "Hallazgos", icon: AlertTriangle },
-            { href: "/dicaprev/cumplimiento/plan-trabajo", label: "Plan de trabajo", icon: Clock3 },
+            { href: "/dicaprev/ds44/plan-implementacion", label: "Plan de implementación", icon: Clock3 },
             { href: "/dicaprev/capacitacion", label: "Capacitaciones", icon: CheckCircle2 },
           ].map((item) => (
             <Link

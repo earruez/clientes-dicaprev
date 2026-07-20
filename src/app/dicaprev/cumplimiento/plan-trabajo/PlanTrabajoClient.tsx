@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -250,9 +251,11 @@ function AccionDrawer({
 export default function PlanTrabajoClient({
   initialAcciones,
   centros,
+  showDs44Notice = false,
 }: {
   initialAcciones: AccionCumplimiento[];
   centros: Array<{ id: string; nombre: string }>;
+  showDs44Notice?: boolean;
 }) {
   const [acciones, setAcciones] = useState<AccionCumplimiento[]>(initialAcciones);
   const [selected, setSelected] = useState<AccionCumplimiento | null>(null);
@@ -307,11 +310,20 @@ export default function PlanTrabajoClient({
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-7xl space-y-8 px-4 lg:px-0">
         <StandardPageHeader
-          moduleLabel="Cumplimiento DS44"
+          moduleLabel="Cumplimiento"
           title="Plan de trabajo DS44"
           description="Acciones derivadas automáticamente del motor de cumplimiento y hallazgos activos."
           icon={ClipboardList}
         />
+
+        {showDs44Notice ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm">
+            <p>Este plan ahora forma parte del flujo DS44. Puedes acceder desde DS44 &gt; Plan de implementación.</p>
+            <Button asChild variant="outline" className="rounded-2xl border-blue-200 bg-white font-semibold text-blue-800">
+              <Link href="/dicaprev/ds44/plan-implementacion">Ir a Plan DS44</Link>
+            </Button>
+          </div>
+        ) : null}
 
         {/* ── motor badge ── */}
         <div className="flex items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">

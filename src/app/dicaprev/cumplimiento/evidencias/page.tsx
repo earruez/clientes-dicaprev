@@ -86,9 +86,9 @@ export default async function EvidenciasPage() {
     <div className="min-h-screen bg-slate-50/80 py-10">
       <div className="mx-auto max-w-7xl space-y-8 px-4 lg:px-0">
         <StandardPageHeader
-          moduleLabel="Cumplimiento DS44"
-          title="Evidencias"
-          description="Trazabilidad y auditoria real de evidencias de cumplimiento."
+          moduleLabel="Cumplimiento"
+          title="Evidencias generales"
+          description="Repositorio maestro de evidencias de cumplimiento de DS44 y otros módulos."
           icon={Paperclip}
         />
 
