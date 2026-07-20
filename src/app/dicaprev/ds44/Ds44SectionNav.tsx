@@ -8,6 +8,7 @@ const ITEMS = [
   { href: "/dicaprev/ds44", label: "Resumen" },
   { href: "/dicaprev/ds44/diagnostico", label: "Diagnóstico" },
   { href: "/dicaprev/ds44/obligaciones", label: "Obligaciones" },
+  { href: "/dicaprev/ds44/miper", label: "MIPER" },
   { href: "/dicaprev/ds44/plan-implementacion", label: "Plan de implementación" },
   { href: "/dicaprev/ds44/documentos", label: "Documentos DS44" },
   { href: "/dicaprev/ds44/evidencias", label: "Evidencias fiscalizables" },
