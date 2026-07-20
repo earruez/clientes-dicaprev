@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { evaluarRiesgoMiper } from "@/lib/ds44/miper-evaluacion";
+import { evaluarVepIsp } from "@/lib/ds44/miper-vep-isp";
+import { puedeTransicionarMiper, validarAprobacionMiper } from "@/lib/ds44/miper-reglas";
 import { requirePermission } from "@/server/auth/permissions";
 import type {
   CrearMiperInput,
@@ -122,7 +123,9 @@ export async function getDs44MiperListadoData(): Promise<MiperListadoData> {
       vigenteDesde: fechaIso(miper.vigenteDesde),
       fechaProximaRevision: fechaIso(miper.fechaProximaRevision),
       cantidadItems: miper.items.length,
-      riesgosCriticos: miper.items.filter((item) => item.clasificacionRiesgo === "critico").length,
+      riesgosCriticos: miper.items.filter((item) => item.clasificacionRiesgo === "critico" || item.clasificacionRiesgo === "intolerable").length,
+      modoCreacion: miper.modoCreacion,
+      asistentePaso: miper.asistentePaso,
     }));
 
     return {
@@ -225,6 +228,7 @@ export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDet
       creadoPor: miper.creadoPor.nombre,
       actualizadoPor: miper.actualizadoPor.nombre,
       aprobadoPor: miper.aprobadoPor?.nombre ?? null,
+      responsableElaboracionId: miper.responsableElaboracionId,
       createdAt: miper.createdAt.toISOString(),
       updatedAt: miper.updatedAt.toISOString(),
     },
@@ -255,6 +259,15 @@ export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDet
       severidad: item.severidad,
       nivelRiesgo: item.nivelRiesgo,
       clasificacionRiesgo: item.clasificacionRiesgo as MiperDetalleData["items"][number]["clasificacionRiesgo"],
+      categoriaRiesgo: item.categoriaRiesgo,
+      metodologiaEvaluacion: item.metodologiaEvaluacion,
+      codigoIsp: item.codigoIsp,
+      requiereEvaluacionEspecifica: item.requiereEvaluacionEspecifica,
+      magnitudExposicion: item.magnitudExposicion,
+      nivelRiesgoEspecifico: item.nivelRiesgoEspecifico,
+      protocoloAplicable: item.protocoloAplicable,
+      estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica,
+      observacionTecnica: item.observacionTecnica,
       responsableTrabajadorId: item.responsableTrabajadorId,
       responsableNombre: item.responsableTrabajador
         ? `${item.responsableTrabajador.nombres} ${item.responsableTrabajador.apellidos}`.replace(/\s+/g, " ").trim()
@@ -282,16 +295,19 @@ export async function actualizarCabeceraDs44Miper(input: {
   nombre: string;
   fechaProximaRevision?: string;
   observaciones?: string;
+  responsableElaboracionId: string;
 }): Promise<void> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   await validarEmpresaActiva(empresaId);
   await obtenerMiperEditable(input.miperId, empresaId);
+  await validarResponsable(empresaId, input.responsableElaboracionId);
   await prisma.ds44Miper.update({
     where: { id: input.miperId },
     data: {
       nombre: textoRequerido(input.nombre, "El nombre", 160),
       fechaProximaRevision: fechaOpcional(input.fechaProximaRevision, "La fecha de próxima revisión"),
       observaciones: textoOpcional(input.observaciones),
+      responsableElaboracionId: input.responsableElaboracionId,
       actualizadoPorId: usuarioId,
     },
   });
@@ -304,7 +320,8 @@ export async function guardarDs44MiperItem(input: GuardarMiperItemInput): Promis
   await validarEmpresaActiva(empresaId);
   await obtenerMiperEditable(input.miperId, empresaId);
   await validarAlcanceOrganizacional({ ...input, empresaId });
-  const evaluacion = evaluarRiesgoMiper(Number(input.probabilidad), Number(input.severidad));
+  const usaVep = input.categoriaRiesgo === "seguridad" || input.categoriaRiesgo === "emergencia";
+  const evaluacion = usaVep ? evaluarVepIsp(Number(input.probabilidad), Number(input.severidad)) : null;
   const data = {
     centroTrabajoId: input.centroTrabajoId,
     areaId: input.areaId,
@@ -313,7 +330,18 @@ export async function guardarDs44MiperItem(input: GuardarMiperItemInput): Promis
     peligro: textoRequerido(input.peligro, "El peligro", 500),
     riesgo: textoRequerido(input.riesgo, "El riesgo", 500),
     consecuencia: textoRequerido(input.consecuencia, "La consecuencia", 500),
-    ...evaluacion,
+    categoriaRiesgo: input.categoriaRiesgo,
+    metodologiaEvaluacion: usaVep ? "vep_isp" as const : "evaluacion_especifica" as const,
+    probabilidad: evaluacion?.probabilidad ?? null,
+    severidad: evaluacion?.severidad ?? null,
+    nivelRiesgo: evaluacion?.nivelRiesgo ?? null,
+    clasificacionRiesgo: evaluacion?.clasificacionRiesgo ?? null,
+    requiereEvaluacionEspecifica: !usaVep,
+    magnitudExposicion: usaVep ? null : textoOpcional(input.magnitudExposicion, 200),
+    nivelRiesgoEspecifico: usaVep ? null : textoOpcional(input.nivelRiesgoEspecifico, 200),
+    protocoloAplicable: usaVep ? null : textoOpcional(input.protocoloAplicable, 500),
+    estadoEvaluacionEspecifica: usaVep ? null : (input.estadoEvaluacionEspecifica ?? "pendiente"),
+    observacionTecnica: usaVep ? null : textoOpcional(input.observacionTecnica, 2000),
     responsableTrabajadorId: input.responsableTrabajadorId,
     observaciones: textoOpcional(input.observaciones),
     actualizadoPorId: usuarioId,
@@ -378,30 +406,100 @@ export async function cambiarEstadoDs44Miper(input: { miperId: string; estado: M
   if (!(MIPER_ESTADOS as readonly string[]).includes(input.estado)) throw new Error("El estado de la matriz no es válido.");
   const miper = await prisma.ds44Miper.findFirst({
     where: { id: input.miperId, empresaId: context.empresaId },
-    select: { id: true, estado: true, items: { select: { id: true }, take: 1 } },
+    select: {
+      id: true, estado: true, responsableElaboracionId: true,
+      asistenteCargos: { select: { tareas: { select: { exposiciones: { where: { revisionTecnicaPendiente: true }, select: { id: true }, take: 1 } } } } },
+      items: { select: { actividad: true, peligro: true, riesgo: true, consecuencia: true, responsableTrabajadorId: true, clasificacionRiesgo: true, metodologiaEvaluacion: true, estadoEvaluacionEspecifica: true, observacionTecnica: true, controles: { select: { id: true } } } },
+    },
   });
   if (!miper) throw new Error("La matriz MIPER no pertenece a la empresa activa.");
 
-  const transiciones: Record<MiperEstado, MiperEstado[]> = {
-    borrador: ["en_revision", "vigente", "archivado"],
-    en_revision: ["borrador", "vigente", "archivado"],
-    vigente: ["archivado"],
-    archivado: [],
-  };
-  if (!transiciones[miper.estado].includes(input.estado)) throw new Error("La transición de estado solicitada no está permitida.");
+  if (!puedeTransicionarMiper(miper.estado, input.estado)) throw new Error("La transición de estado solicitada no está permitida.");
   if (input.estado === "vigente") {
-    if (!ROLES_APROBADORES.has(context.rol)) throw new Error("Solo administración o prevención puede declarar vigente una matriz.");
-    if (miper.items.length === 0) throw new Error("La matriz debe tener al menos un ítem antes de declararse vigente.");
+    validarAprobacionMiper({
+      estado: miper.estado, cantidadItems: miper.items.length, rol: context.rol,
+      responsableRegistrado: Boolean(miper.responsableElaboracionId),
+      respuestasNoSePendientes: miper.asistenteCargos.filter((cargo) => cargo.tareas.some((tarea) => tarea.exposiciones.length > 0)).length,
+      itemsIncompletos: miper.items.filter((item) => !item.actividad.trim() || !item.peligro.trim() || !item.riesgo.trim() || !item.consecuencia.trim() || !item.responsableTrabajadorId).length,
+      riesgosPrioritariosSinControl: miper.items.filter((item) => ["importante", "intolerable"].includes(item.clasificacionRiesgo ?? "") && item.controles.length === 0).length,
+      evaluacionesEspecificasSinRespaldo: miper.items.filter((item) => item.metodologiaEvaluacion === "evaluacion_especifica" && item.estadoEvaluacionEspecifica !== "evaluado" && !item.observacionTecnica?.trim()).length,
+    });
   }
 
-  await prisma.ds44Miper.update({
-    where: { id: miper.id },
-    data: {
-      estado: input.estado,
-      actualizadoPorId: context.usuarioId,
-      ...(input.estado === "vigente" ? { vigenteDesde: new Date(), aprobadoPorId: context.usuarioId } : {}),
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.ds44Miper.update({
+      where: { id: miper.id },
+      data: {
+        estado: input.estado,
+        actualizadoPorId: context.usuarioId,
+        ...(input.estado === "vigente" ? { vigenteDesde: new Date(), aprobadoPorId: context.usuarioId } : {}),
+      },
+    });
+    if (input.estado === "vigente") {
+      const version = await tx.ds44Miper.findUnique({ where: { id: miper.id }, select: { versionAnteriorId: true } });
+      if (version?.versionAnteriorId) {
+        await tx.ds44Miper.update({ where: { id: version.versionAnteriorId }, data: { estado: "archivado", actualizadoPorId: context.usuarioId } });
+      }
+    }
   });
   revalidatePath(`/dicaprev/ds44/miper/${miper.id}`);
   revalidatePath("/dicaprev/ds44/miper");
+}
+
+export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id: string }> {
+  const context = await requirePermission("canManageCumplimiento");
+  await validarEmpresaActiva(context.empresaId);
+  const origen = await prisma.ds44Miper.findFirst({
+    where: { id: miperId, empresaId: context.empresaId, estado: "vigente" },
+    include: { items: { include: { controles: true } }, versionSiguiente: { select: { id: true } } },
+  });
+  if (!origen) throw new Error("Solo una matriz vigente puede originar una nueva revisión.");
+  if (origen.versionSiguiente) return { id: origen.versionSiguiente.id };
+
+  const revision = await prisma.$transaction(async (tx) => {
+    const creada = await tx.ds44Miper.create({
+      data: {
+        empresaId: context.empresaId,
+        codigo: origen.codigo,
+        nombre: origen.nombre,
+        version: origen.version + 1,
+        estado: "borrador",
+        fechaProximaRevision: origen.fechaProximaRevision,
+        observaciones: origen.observaciones,
+        versionAnteriorId: origen.id,
+        responsableElaboracionId: origen.responsableElaboracionId,
+        modoCreacion: origen.modoCreacion,
+        creadoPorId: context.usuarioId,
+        actualizadoPorId: context.usuarioId,
+      },
+    });
+    for (const item of origen.items) {
+      const copia = await tx.ds44MiperItem.create({
+        data: {
+          empresaId: context.empresaId, miperId: creada.id,
+          centroTrabajoId: item.centroTrabajoId, areaId: item.areaId, cargoId: item.cargoId,
+          actividad: item.actividad, peligro: item.peligro, riesgo: item.riesgo, consecuencia: item.consecuencia,
+          probabilidad: item.probabilidad, severidad: item.severidad, nivelRiesgo: item.nivelRiesgo,
+          clasificacionRiesgo: item.clasificacionRiesgo, categoriaRiesgo: item.categoriaRiesgo,
+          metodologiaEvaluacion: item.metodologiaEvaluacion, catalogoRiesgoId: item.catalogoRiesgoId,
+          codigoIsp: item.codigoIsp, requiereEvaluacionEspecifica: item.requiereEvaluacionEspecifica,
+          magnitudExposicion: item.magnitudExposicion, protocoloAplicable: item.protocoloAplicable,
+          nivelRiesgoEspecifico: item.nivelRiesgoEspecifico,
+          estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica, observacionTecnica: item.observacionTecnica,
+          motivoSugerencia: item.motivoSugerencia, confirmadoPorUsuario: item.confirmadoPorUsuario,
+          responsableTrabajadorId: item.responsableTrabajadorId, observaciones: item.observaciones,
+          orden: item.orden, creadoPorId: context.usuarioId, actualizadoPorId: context.usuarioId,
+        },
+      });
+      if (item.controles.length) await tx.ds44MiperControl.createMany({ data: item.controles.map((control) => ({
+        empresaId: context.empresaId, miperItemId: copia.id, tipoControl: control.tipoControl,
+        descripcion: control.descripcion, responsableTrabajadorId: control.responsableTrabajadorId,
+        fechaCompromiso: control.fechaCompromiso, estado: control.estado, orden: control.orden,
+        creadoPorId: context.usuarioId, actualizadoPorId: context.usuarioId,
+      })) });
+    }
+    return creada;
+  });
+  revalidatePath("/dicaprev/ds44/miper");
+  return { id: revision.id };
 }
