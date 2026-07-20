@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { CATALOGO_RIESGOS_ISP } from "@/lib/ds44/miper-catalogo-isp";
 import { sugerirTareasMiperConIa } from "@/lib/ds44/miper-asistente-ia";
+import { obtenerProveedorTareasMiperOpenAI } from "@/lib/ds44/miper-asistente-openai.server";
 import { evaluarVepIsp } from "@/lib/ds44/miper-vep-isp";
 import { calcularPasoReanudacion } from "@/lib/ds44/miper-reglas";
 import { requirePermission } from "@/server/auth/permissions";
@@ -141,7 +142,10 @@ export async function obtenerSugerenciasTareasIa(input: { miperId: string; asist
   await validarMiperAsistente(input.miperId, empresaId);
   const alcance = await prisma.ds44MiperAsistenteCargo.findFirst({ where: { id: input.asistenteCargoId, miperId: input.miperId, empresaId }, include: { cargo: { select: { id: true, nombre: true, descripcion: true, perfilSST: true, riesgosClave: true } } } });
   if (!alcance) throw new Error("El cargo no pertenece al asistente activo.");
-  return sugerirTareasMiperConIa({ cargoId: alcance.cargo.id, nombre: alcance.cargo.nombre, descripcion: [alcance.cargo.descripcion, alcance.descripcionTrabajo].filter(Boolean).join("\n\n") || null, perfilSst: alcance.cargo.perfilSST, riesgosClave: alcance.cargo.riesgosClave });
+  return sugerirTareasMiperConIa(
+    { cargoId: alcance.cargo.id, nombre: alcance.cargo.nombre, descripcion: [alcance.cargo.descripcion, alcance.descripcionTrabajo].filter(Boolean).join("\n\n") || null, perfilSst: alcance.cargo.perfilSST, riesgosClave: alcance.cargo.riesgosClave },
+    obtenerProveedorTareasMiperOpenAI(),
+  );
 }
 
 export async function guardarTareasAsistente(input: { miperId: string; cargos: { asistenteCargoId: string; tareas: { nombre: string; origen?: "manual" | "ia" }[] }[] }) {
