@@ -173,6 +173,37 @@ enum EstadoControlDs44Miper {
   descartado
 }
 
+enum CategoriaRiesgoDs44Miper {
+  seguridad
+  emergencia
+  higienico
+  psicosocial
+  musculoesqueletico
+}
+
+enum MetodologiaEvaluacionDs44Miper {
+  legacy_5x5
+  vep_isp
+  evaluacion_especifica
+}
+
+enum EstadoEvaluacionEspecificaDs44Miper {
+  pendiente
+  en_evaluacion
+  evaluado
+}
+
+enum RespuestaExposicionDs44Miper {
+  aplica
+  no_aplica
+  no_se
+}
+
+enum OrigenTareaDs44Miper {
+  manual
+  ia
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -260,6 +291,9 @@ model Empresa {
   ds44Mipers                 Ds44Miper[]
   ds44MiperItems             Ds44MiperItem[]
   ds44MiperControles         Ds44MiperControl[]
+  ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
+  ds44MiperTareas            Ds44MiperTarea[]
+  ds44MiperExposiciones      Ds44MiperExposicionRespuesta[]
 }
 
 model Usuario {
@@ -558,6 +592,10 @@ model Ds44Miper {
   creadoPorId          String
   actualizadoPorId     String
   aprobadoPorId        String?
+  versionAnteriorId    String?           @unique
+  responsableElaboracionId String?
+  modoCreacion         String            @default("experto")
+  asistentePaso        Int               @default(0)
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
@@ -565,7 +603,12 @@ model Ds44Miper {
   creadoPor     Usuario          @relation("UsuarioDs44MiperCreado", fields: [creadoPorId], references: [id])
   actualizadoPor Usuario         @relation("UsuarioDs44MiperActualizado", fields: [actualizadoPorId], references: [id])
   aprobadoPor   Usuario?         @relation("UsuarioDs44MiperAprobado", fields: [aprobadoPorId], references: [id], onDelete: SetNull)
+  versionAnterior Ds44Miper?      @relation("Ds44MiperVersiones", fields: [versionAnteriorId], references: [id], onDelete: SetNull)
+  versionSiguiente Ds44Miper?     @relation("Ds44MiperVersiones")
+  responsableElaboracion Trabajador? @relation("TrabajadorDs44MiperElaboracion", fields: [responsableElaboracionId], references: [id], onDelete: SetNull)
   items         Ds44MiperItem[]
+  asistenteCargos Ds44MiperAsistenteCargo[]
+  tareas          Ds44MiperTarea[]
 
   @@unique([empresaId, codigo, version])
   @@index([empresaId])
@@ -573,6 +616,7 @@ model Ds44Miper {
   @@index([creadoPorId])
   @@index([actualizadoPorId])
   @@index([aprobadoPorId])
+  @@index([responsableElaboracionId])
 }
 
 model Ds44MiperItem {
@@ -586,10 +630,23 @@ model Ds44MiperItem {
   peligro                    String
   riesgo                     String
   consecuencia               String
-  probabilidad               Int
-  severidad                  Int
-  nivelRiesgo                Int
-  clasificacionRiesgo        String
+  probabilidad               Int?
+  severidad                  Int?
+  nivelRiesgo                Int?
+  clasificacionRiesgo        String?
+  categoriaRiesgo            CategoriaRiesgoDs44Miper?
+  metodologiaEvaluacion      MetodologiaEvaluacionDs44Miper @default(legacy_5x5)
+  catalogoRiesgoId           String?
+  tareaId                    String?
+  codigoIsp                  String?
+  requiereEvaluacionEspecifica Boolean @default(false)
+  magnitudExposicion         String?
+  nivelRiesgoEspecifico     String?
+  protocoloAplicable        String?
+  estadoEvaluacionEspecifica EstadoEvaluacionEspecificaDs44Miper?
+  observacionTecnica        String?
+  motivoSugerencia          String?
+  confirmadoPorUsuario      Boolean @default(true)
   responsableTrabajadorId    String?
   observaciones              String?
   orden                      Int      @default(0)
@@ -607,6 +664,8 @@ model Ds44MiperItem {
   creadoPor               Usuario        @relation("UsuarioDs44MiperItemCreado", fields: [creadoPorId], references: [id])
   actualizadoPor          Usuario        @relation("UsuarioDs44MiperItemActualizado", fields: [actualizadoPorId], references: [id])
   controles               Ds44MiperControl[]
+  catalogoRiesgo          Ds44MiperRiesgoCatalogo? @relation(fields: [catalogoRiesgoId], references: [id], onDelete: SetNull)
+  tarea                   Ds44MiperTarea? @relation(fields: [tareaId], references: [id], onDelete: SetNull)
 
   @@index([empresaId])
   @@index([miperId])
@@ -615,8 +674,100 @@ model Ds44MiperItem {
   @@index([cargoId])
   @@index([responsableTrabajadorId])
   @@index([clasificacionRiesgo])
+  @@index([catalogoRiesgoId])
+  @@index([tareaId])
+  @@index([categoriaRiesgo])
   @@index([creadoPorId])
   @@index([actualizadoPorId])
+}
+
+model Ds44MiperRiesgoCatalogo {
+  id                    String                         @id @default(cuid())
+  familia               String
+  categoria             CategoriaRiesgoDs44Miper
+  codigoIsp             String                         @unique
+  riesgoEspecifico      String
+  definicion            String
+  metodologiaEvaluacion MetodologiaEvaluacionDs44Miper
+  protocoloAplicable    String?
+  activo                Boolean                        @default(true)
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
+
+  items Ds44MiperItem[]
+
+  @@index([categoria])
+  @@index([activo])
+}
+
+model Ds44MiperAsistenteCargo {
+  id                 String   @id @default(cuid())
+  empresaId          String
+  miperId            String
+  cargoId            String
+  centroTrabajoId    String
+  areaId             String
+  descripcionTrabajo String?
+  orden              Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  empresa       Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  miper         Ds44Miper     @relation(fields: [miperId], references: [id], onDelete: Cascade)
+  cargo         Cargo         @relation(fields: [cargoId], references: [id], onDelete: Cascade)
+  centroTrabajo CentroTrabajo @relation(fields: [centroTrabajoId], references: [id], onDelete: Cascade)
+  area          Area          @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  tareas        Ds44MiperTarea[]
+
+  @@unique([miperId, cargoId])
+  @@index([empresaId])
+  @@index([cargoId])
+  @@index([centroTrabajoId])
+  @@index([areaId])
+}
+
+model Ds44MiperTarea {
+  id               String               @id @default(cuid())
+  empresaId        String
+  miperId          String
+  asistenteCargoId String
+  nombre           String
+  origen           OrigenTareaDs44Miper @default(manual)
+  confirmada       Boolean              @default(false)
+  orden            Int                  @default(0)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  empresa        Empresa                  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  miper          Ds44Miper                @relation(fields: [miperId], references: [id], onDelete: Cascade)
+  asistenteCargo Ds44MiperAsistenteCargo @relation(fields: [asistenteCargoId], references: [id], onDelete: Cascade)
+  exposiciones   Ds44MiperExposicionRespuesta[]
+  items          Ds44MiperItem[]
+
+  @@index([empresaId])
+  @@index([miperId])
+  @@index([asistenteCargoId])
+}
+
+model Ds44MiperExposicionRespuesta {
+  id                      String                        @id @default(cuid())
+  empresaId               String
+  tareaId                 String
+  grupo                    String
+  clave                    String
+  pregunta                 String
+  respuesta                RespuestaExposicionDs44Miper
+  revisionTecnicaPendiente Boolean                       @default(false)
+  observacion              String?
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+
+  empresa Empresa       @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  tarea   Ds44MiperTarea @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+
+  @@unique([tareaId, clave])
+  @@index([empresaId])
+  @@index([respuesta])
 }
 
 model Ds44MiperControl {
@@ -711,6 +862,7 @@ model CentroTrabajo {
   reglasCapacitacionCargo   ReglaCapacitacionCargo[]
   plantillaItemsCapacitacion PlantillaPlanCapacitacionItem[]
   ds44MiperItems             Ds44MiperItem[]
+  ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
 
   @@index([empresaId])
 }
@@ -732,6 +884,7 @@ model Area {
   reglasCapacitacionCargo   ReglaCapacitacionCargo[]
   plantillaItemsCapacitacion PlantillaPlanCapacitacionItem[]
   ds44MiperItems             Ds44MiperItem[]
+  ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
 
   @@index([empresaId])
 }
@@ -761,6 +914,7 @@ model Cargo {
   reglasCapacitacionCargo   ReglaCapacitacionCargo[]
   plantillaItemsCapacitacion PlantillaPlanCapacitacionItem[]
   ds44MiperItems             Ds44MiperItem[]
+  ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
 
   @@index([empresaId])
   @@index([areaId])
@@ -811,6 +965,7 @@ model Trabajador {
   acreditacionesTrabajador AcreditacionTrabajador[]
   ds44MiperItemsResponsable Ds44MiperItem[]    @relation("TrabajadorDs44MiperItemResponsable")
   ds44MiperControlesResponsable Ds44MiperControl[] @relation("TrabajadorDs44MiperControlResponsable")
+  ds44MipersElaboracion         Ds44Miper[]        @relation("TrabajadorDs44MiperElaboracion")
 
   @@index([empresaId])
   @@index([centroTrabajoId])

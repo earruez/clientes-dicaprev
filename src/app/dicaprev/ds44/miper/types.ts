@@ -5,7 +5,9 @@ export const MIPER_CONTROL_ESTADOS = ["pendiente", "implementado", "en_revision"
 export type MiperEstado = (typeof MIPER_ESTADOS)[number];
 export type MiperControlTipo = (typeof MIPER_CONTROL_TIPOS)[number];
 export type MiperControlEstado = (typeof MIPER_CONTROL_ESTADOS)[number];
-export type MiperClasificacion = "bajo" | "medio" | "alto" | "critico";
+export type MiperClasificacion = "bajo" | "medio" | "alto" | "critico" | "tolerable" | "moderado" | "importante" | "intolerable";
+export type MiperCategoria = "seguridad" | "emergencia" | "higienico" | "psicosocial" | "musculoesqueletico";
+export type MiperMetodologia = "legacy_5x5" | "vep_isp" | "evaluacion_especifica";
 
 export type MiperCatalogoItem = { id: string; nombre: string; areaId?: string | null };
 export type MiperResponsable = { id: string; nombre: string; cargo: string | null; area: string | null };
@@ -20,6 +22,8 @@ export type MiperListadoItem = {
   fechaProximaRevision: string | null;
   cantidadItems: number;
   riesgosCriticos: number;
+  modoCreacion: string;
+  asistentePaso: number;
 };
 
 export type MiperListadoData = {
@@ -51,10 +55,19 @@ export type MiperItem = {
   peligro: string;
   riesgo: string;
   consecuencia: string;
-  probabilidad: number;
-  severidad: number;
-  nivelRiesgo: number;
-  clasificacionRiesgo: MiperClasificacion;
+  probabilidad: number | null;
+  severidad: number | null;
+  nivelRiesgo: number | null;
+  clasificacionRiesgo: MiperClasificacion | null;
+  categoriaRiesgo: MiperCategoria | null;
+  metodologiaEvaluacion: MiperMetodologia;
+  codigoIsp: string | null;
+  requiereEvaluacionEspecifica: boolean;
+  magnitudExposicion: string | null;
+  nivelRiesgoEspecifico: string | null;
+  protocoloAplicable: string | null;
+  estadoEvaluacionEspecifica: "pendiente" | "en_evaluacion" | "evaluado" | null;
+  observacionTecnica: string | null;
   responsableTrabajadorId: string | null;
   responsableNombre: string | null;
   observaciones: string | null;
@@ -75,6 +88,7 @@ export type MiperDetalleData = {
     creadoPor: string;
     actualizadoPor: string;
     aprobadoPor: string | null;
+    responsableElaboracionId: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -92,6 +106,7 @@ export type CrearMiperInput = {
   nombre: string;
   fechaProximaRevision?: string;
   observaciones?: string;
+  responsableElaboracionId?: string;
 };
 
 export type GuardarMiperItemInput = {
@@ -104,8 +119,14 @@ export type GuardarMiperItemInput = {
   peligro: string;
   riesgo: string;
   consecuencia: string;
-  probabilidad: number;
-  severidad: number;
+  categoriaRiesgo: MiperCategoria;
+  probabilidad?: number;
+  severidad?: number;
+  magnitudExposicion?: string;
+  nivelRiesgoEspecifico?: string;
+  protocoloAplicable?: string;
+  estadoEvaluacionEspecifica?: "pendiente" | "en_evaluacion" | "evaluado";
+  observacionTecnica?: string;
   responsableTrabajadorId: string;
   observaciones?: string;
 };
