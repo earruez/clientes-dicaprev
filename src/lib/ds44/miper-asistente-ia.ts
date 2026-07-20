@@ -19,6 +19,21 @@ export type ContextoCargoMiperIa = {
 export type RespuestaTareasMiperIa = z.infer<typeof respuestaSchema>;
 export type ProveedorTareasMiperIa = (contexto: ContextoCargoMiperIa) => Promise<unknown>;
 
+export type CodigoErrorProveedorTareasMiperIa =
+  | "timeout"
+  | "autenticacion"
+  | "cuota"
+  | "http"
+  | "respuesta_vacia"
+  | "json_invalido";
+
+export class ErrorProveedorTareasMiperIa extends Error {
+  constructor(public readonly codigo: CodigoErrorProveedorTareasMiperIa) {
+    super(codigo);
+    this.name = "ErrorProveedorTareasMiperIa";
+  }
+}
+
 const riesgoSugeridoSchema = z.object({
   tareaRef: z.string().trim().min(1).max(100),
   codigoIsp: z.string().trim().min(1).max(10),
@@ -51,6 +66,20 @@ export async function sugerirTareasMiperConIa(
     };
   }
 
-  const resultado = respuestaSchema.parse(await proveedor(contexto));
-  return { disponible: true, resultado, mensaje: "Sugerencias generadas; requieren confirmación humana." };
+  try {
+    const resultado = respuestaSchema.parse(await proveedor(contexto));
+    const nombreCargo = contexto.nombre.trim().toLocaleLowerCase("es-CL");
+    if (resultado.tareas.some((tarea) => tarea.nombre.toLocaleLowerCase("es-CL") === nombreCargo)) {
+      throw new Error("La respuesta repite el nombre del cargo como tarea.");
+    }
+    return { disponible: true, resultado, mensaje: "Sugerencias generadas con IA; requieren confirmación humana." };
+  } catch (error) {
+    let mensaje = "La asistencia IA devolvió una respuesta no válida. Puedes continuar agregando tareas manualmente.";
+    if (error instanceof ErrorProveedorTareasMiperIa) {
+      if (error.codigo === "timeout") mensaje = "La asistencia IA tardó demasiado en responder. Puedes continuar agregando tareas manualmente.";
+      else if (error.codigo === "autenticacion" || error.codigo === "cuota") mensaje = "La asistencia IA no está disponible temporalmente. Puedes continuar agregando tareas manualmente.";
+      else if (error.codigo === "http") mensaje = "No fue posible consultar la asistencia IA. Puedes continuar agregando tareas manualmente.";
+    }
+    return { disponible: false, resultado: { tareas: [] }, mensaje };
+  }
 }
