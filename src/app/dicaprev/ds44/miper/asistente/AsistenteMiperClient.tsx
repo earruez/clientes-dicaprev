@@ -5,13 +5,13 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { finalizarMiperAsistente, guardarDescripcionesAsistente, guardarExposicionesAsistente, guardarTareasAsistente, iniciarMiperAsistente, obtenerSugerenciasTareasIa } from "./actions";
+import { finalizarMiperAsistente, guardarControlesAsistente, guardarDescripcionesAsistente, guardarEvaluacionesAsistente, guardarExposicionesAsistente, guardarRiesgosAsistente, guardarTareasAsistente, iniciarMiperAsistente, obtenerSugerenciasTareasIa } from "./actions";
 
 type Data = Awaited<ReturnType<typeof import("./actions").getMiperAsistenteData>>;
 type CargoAsistente = { id: string; cargoId: string; nombre: string; descripcionTrabajo: string; tareasTexto: string };
 type Tarea = { id: string; asistenteCargoId: string; nombre: string };
 type Respuesta = "aplica" | "no_aplica" | "no_se";
-type Riesgo = { tareaId: string; codigoIsp: string; confirmado: boolean; consecuencia: string; probabilidad: number; severidad: number; magnitudExposicion: string; nivelRiesgoEspecifico: string; estadoEvaluacionEspecifica: "pendiente" | "en_evaluacion" | "evaluado"; observacionTecnica: string; motivoSugerencia: string; control: string; controlTipo: "eliminacion" | "sustitucion" | "ingenieria" | "administrativo" | "epp"; controlResponsableId: string; controlFecha: string; controlEstado: "pendiente" | "implementado" | "en_revision" | "descartado" };
+type Riesgo = { id?: string; tareaId: string; codigoIsp: string; confirmado: boolean; consecuencia: string; probabilidad: number; severidad: number; magnitudExposicion: string; nivelRiesgoEspecifico: string; estadoEvaluacionEspecifica: "pendiente" | "en_evaluacion" | "evaluado"; observacionTecnica: string; motivoSugerencia: string; control: string; controlTipo: "eliminacion" | "sustitucion" | "ingenieria" | "administrativo" | "epp"; controlResponsableId: string; controlFecha: string; controlEstado: "pendiente" | "implementado" | "en_revision" | "descartado" };
 
 const PASOS = ["Alcance", "Trabajo", "Tareas", "Exposición", "Riesgos", "Evaluación", "Controles", "Resumen"];
 const PREGUNTAS = [
@@ -51,8 +51,11 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
   const [cabecera, setCabecera] = useState(inicial?.cabecera ?? { codigo: "", nombre: "", centroTrabajoId: "", areaId: "", cargoIds: [] as string[], responsableElaboracionId: "", fechaProximaRevision: "", observaciones: "" });
   const [cargos, setCargos] = useState<CargoAsistente[]>(inicial?.cargos ?? []);
   const [tareas, setTareas] = useState<Tarea[]>(inicial?.tareas ?? []);
+  const [tareasSeleccionadas, setTareasSeleccionadas] = useState<string[]>((inicial?.tareas ?? []).map((item) => item.id));
+  const [preguntaMasiva, setPreguntaMasiva] = useState(PREGUNTAS[0].clave);
+  const [respuestaMasiva, setRespuestaMasiva] = useState<Respuesta>("no_se");
   const [respuestas, setRespuestas] = useState<Record<string, Respuesta>>(respuestasIniciales);
-  const [riesgos, setRiesgos] = useState<Riesgo[]>(() => construirRiesgos(inicial?.tareas ?? [], respuestasIniciales, inicial?.cabecera.responsableElaboracionId ?? ""));
+  const [riesgos, setRiesgos] = useState<Riesgo[]>(() => inicial?.riesgos.length ? inicial.riesgos as Riesgo[] : construirRiesgos(inicial?.tareas ?? [], respuestasIniciales, inicial?.cabecera.responsableElaboracionId ?? ""));
   const cargosDisponibles = useMemo(() => data.cargos.filter((cargo) => !cabecera.areaId || !cargo.areaId || cargo.areaId === cabecera.areaId), [cabecera.areaId, data.cargos]);
   const catalogo = useMemo(() => new Map(data.catalogo.map((item) => [item.codigoIsp, item])), [data.catalogo]);
   const resumen = useMemo(() => {
@@ -89,22 +92,39 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
     if (paso === 2) return run(async () => { await guardarDescripcionesAsistente({ miperId, cargos: cargos.map(({ id, descripcionTrabajo }) => ({ id, descripcionTrabajo })) }); setPaso(3); });
     if (paso === 3) return run(async () => {
       const saved = await guardarTareasAsistente({ miperId, cargos: cargos.map((cargo) => ({ asistenteCargoId: cargo.id, tareas: cargo.tareasTexto.split("\n").map((nombre) => nombre.trim()).filter(Boolean).map((nombre) => ({ nombre, origen: "manual" as const })) })) });
-      setTareas(saved); setPaso(4);
+      setTareas(saved); setTareasSeleccionadas(saved.map((item) => item.id)); setPaso(4);
     });
     if (paso === 4) return run(async () => {
       const payload = tareas.flatMap((tarea) => PREGUNTAS.map((pregunta) => ({ tareaId: tarea.id, grupo: pregunta.grupo, clave: pregunta.clave, pregunta: pregunta.pregunta, respuesta: respuestas[`${tarea.id}:${pregunta.clave}`] ?? "no_se" })));
       await guardarExposicionesAsistente({ miperId, respuestas: payload }); crearSugerencias(); setPaso(5);
     });
-    if (paso < 8) { setPaso((value) => value + 1); return; }
-    return run(async () => {
-      const items = riesgos.filter((item) => item.confirmado).map((item) => ({ ...item, responsableTrabajadorId: cabecera.responsableElaboracionId, controles: item.control.trim() ? [{ tipoControl: item.controlTipo, descripcion: item.control, responsableTrabajadorId: item.controlResponsableId, fechaCompromiso: item.controlFecha, estado: item.controlEstado }] : [] }));
-      const result = await finalizarMiperAsistente({ miperId, items }); router.push(`/dicaprev/ds44/miper/${result.id}`); router.refresh();
+    if (paso === 5) return run(async () => {
+      const guardados = await guardarRiesgosAsistente({ miperId, items: riesgos.map((item) => ({ tareaId: item.tareaId, codigoIsp: item.codigoIsp, confirmado: item.confirmado, consecuencia: item.consecuencia, responsableTrabajadorId: cabecera.responsableElaboracionId, motivoSugerencia: item.motivoSugerencia })) });
+      const ids = new Map(guardados.map((item) => [`${item.tareaId}:${item.codigoIsp}`, item.id]));
+      setRiesgos((values) => values.map((item) => ({ ...item, id: ids.get(`${item.tareaId}:${item.codigoIsp}`) }))); setPaso(6);
     });
+    if (paso === 6) return run(async () => {
+      if (riesgos.some((item) => !item.id)) throw new Error("Guarda primero las sugerencias de riesgo.");
+      await guardarEvaluacionesAsistente({ miperId, items: riesgos.map((item) => ({ id: item.id!, consecuencia: item.consecuencia, probabilidad: item.probabilidad, severidad: item.severidad, magnitudExposicion: item.magnitudExposicion, nivelRiesgoEspecifico: item.nivelRiesgoEspecifico, estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica, observacionTecnica: item.observacionTecnica })) }); setPaso(7);
+    });
+    if (paso === 7) return run(async () => {
+      if (riesgos.some((item) => !item.id)) throw new Error("Guarda primero las evaluaciones.");
+      await guardarControlesAsistente({ miperId, items: riesgos.map((item) => ({ id: item.id!, controles: item.control.trim() ? [{ tipoControl: item.controlTipo, descripcion: item.control, responsableTrabajadorId: item.controlResponsableId, fechaCompromiso: item.controlFecha, estado: item.controlEstado }] : [] })) }); setPaso(8);
+    });
+    return run(async () => {
+      const result = await finalizarMiperAsistente({ miperId }); router.push(`/dicaprev/ds44/miper/${result.id}`); router.refresh();
+    });
+  }
+
+  function aplicarRespuestaMasiva(aTodas: boolean) {
+    const destino = aTodas ? tareas.map((item) => item.id) : tareasSeleccionadas;
+    if (!destino.length) { setError("Selecciona al menos una tarea para aplicar la respuesta."); return; }
+    setRespuestas((values) => ({ ...values, ...Object.fromEntries(destino.map((tareaId) => [`${tareaId}:${preguntaMasiva}`, respuestaMasiva])) }));
   }
 
   return <div className="space-y-5">
     <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm"><div className="flex min-w-max gap-1">{PASOS.map((label, index) => <div key={label} className={`rounded-xl px-4 py-2 text-sm font-semibold ${paso === index + 1 ? "bg-slate-900 text-white" : paso > index + 1 ? "bg-emerald-50 text-emerald-700" : "text-slate-400"}`}>{index + 1}. {label}</div>)}</div></div>
-    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><strong>Apoyo a la decisión:</strong> el asistente propone y ordena información. La persona usuaria confirma riesgos, evaluación y controles antes de crear el borrador.</div>
+    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900"><strong>Motor de asistencia:</strong> la generación de tareas está preparada para IA, pero el proveedor todavía no está configurado. Los riesgos se sugieren actualmente mediante reglas determinísticas que conectan cada pregunta con el catálogo ISP; no son generados por IA. La persona usuaria siempre confirma el resultado.</div>
     {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>}
     {avisoIa && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{avisoIa}</div>}
 
@@ -122,7 +142,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
 
     {paso === 3 && <Card className="rounded-2xl"><CardHeader><h2 className="text-lg font-bold">3. Tareas propuestas y confirmadas</h2><p className="text-sm text-slate-500">Una tarea por línea. Puedes continuar manualmente si la asistencia IA no está configurada.</p></CardHeader><CardContent className="space-y-5">{cargos.map((cargo) => <div key={cargo.id} className="space-y-2"><div className="flex items-center justify-between"><strong className="text-sm">{cargo.nombre}</strong><Button size="sm" variant="outline" disabled={pending} onClick={() => run(async () => { const result = await obtenerSugerenciasTareasIa({ miperId, asistenteCargoId: cargo.id }); setAvisoIa(result.mensaje); if (result.resultado.tareas.length) setCargos((values) => values.map((item) => item.id === cargo.id ? { ...item, tareasTexto: result.resultado.tareas.map((tarea) => tarea.nombre).join("\n") } : item)); })}>Sugerir con IA</Button></div><textarea className={`${inputClass} min-h-32 w-full`} value={cargo.tareasTexto} onChange={(e) => setCargos((values) => values.map((item) => item.id === cargo.id ? { ...item, tareasTexto: e.target.value } : item))} placeholder="Inspeccionar área de trabajo&#10;Operar equipo&#10;Realizar limpieza" /></div>)}</CardContent></Card>}
 
-    {paso === 4 && <Card className="rounded-2xl"><CardHeader><h2 className="text-lg font-bold">4. Exposiciones por tarea</h2><p className="text-sm text-slate-500">“No sé” conserva la duda y marca revisión técnica pendiente.</p></CardHeader><CardContent className="space-y-6">{tareas.map((tarea) => <div key={tarea.id} className="space-y-3 rounded-xl border border-slate-200 p-4"><h3 className="font-bold">{tarea.nombre}</h3>{PREGUNTAS.map((pregunta) => <label key={pregunta.clave} className="grid gap-2 text-sm md:grid-cols-[1fr_160px] md:items-center"><span><Badge variant="outline" className="mr-2">{pregunta.grupo}</Badge>{pregunta.pregunta}</span><select className={inputClass} value={respuestas[`${tarea.id}:${pregunta.clave}`] ?? "no_se"} onChange={(e) => setRespuestas((v) => ({ ...v, [`${tarea.id}:${pregunta.clave}`]: e.target.value as Respuesta }))}><option value="aplica">Sí</option><option value="no_aplica">No</option><option value="no_se">No sé</option></select></label>)}</div>)}</CardContent></Card>}
+    {paso === 4 && <Card className="rounded-2xl"><CardHeader><h2 className="text-lg font-bold">4. Exposiciones por tarea</h2><p className="text-sm text-slate-500">“No sé” conserva la duda y marca revisión técnica pendiente. Ninguna respuesta se infiere como “No aplica”.</p></CardHeader><CardContent className="space-y-6"><div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:grid-cols-[1fr_180px_auto_auto]"><label className="grid gap-1 text-sm font-medium">Pregunta<select className={inputClass} value={preguntaMasiva} onChange={(e) => setPreguntaMasiva(e.target.value as typeof preguntaMasiva)}>{PREGUNTAS.map((item) => <option key={item.clave} value={item.clave}>{item.grupo} · {item.pregunta}</option>)}</select></label><label className="grid gap-1 text-sm font-medium">Respuesta<select className={inputClass} value={respuestaMasiva} onChange={(e) => setRespuestaMasiva(e.target.value as Respuesta)}><option value="aplica">Sí</option><option value="no_aplica">No</option><option value="no_se">No sé</option></select></label><Button variant="outline" className="self-end rounded-xl" onClick={() => aplicarRespuestaMasiva(false)}>Aplicar a seleccionadas</Button><Button className="self-end rounded-xl" onClick={() => aplicarRespuestaMasiva(true)}>Aplicar a todas las tareas</Button></div>{tareas.map((tarea) => <div key={tarea.id} className="space-y-3 rounded-xl border border-slate-200 p-4"><label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={tareasSeleccionadas.includes(tarea.id)} onChange={(e) => setTareasSeleccionadas((values) => e.target.checked ? [...values, tarea.id] : values.filter((id) => id !== tarea.id))} />{tarea.nombre}</label>{PREGUNTAS.map((pregunta) => <label key={pregunta.clave} className="grid gap-2 text-sm md:grid-cols-[1fr_160px] md:items-center"><span><Badge variant="outline" className="mr-2">{pregunta.grupo}</Badge>{pregunta.pregunta}</span><select className={inputClass} value={respuestas[`${tarea.id}:${pregunta.clave}`] ?? "no_se"} onChange={(e) => setRespuestas((v) => ({ ...v, [`${tarea.id}:${pregunta.clave}`]: e.target.value as Respuesta }))}><option value="aplica">Sí</option><option value="no_aplica">No</option><option value="no_se">No sé</option></select></label>)}</div>)}</CardContent></Card>}
 
     {paso === 5 && <Card className="rounded-2xl"><CardHeader><h2 className="text-lg font-bold">5. Riesgos sugeridos</h2><p className="text-sm text-slate-500">Cada sugerencia proviene de una respuesta y del catálogo ISP. Desmarca lo que no corresponda.</p></CardHeader><CardContent className="space-y-3">{riesgos.map((item, index) => { const riesgo = catalogo.get(item.codigoIsp)!; const tarea = tareas.find((value) => value.id === item.tareaId); return <label key={`${item.tareaId}-${item.codigoIsp}`} className="flex gap-3 rounded-xl border border-slate-200 p-4"><input type="checkbox" checked={item.confirmado} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, confirmado: e.target.checked } : value))} /><span><strong>{riesgo.codigoIsp} · {riesgo.riesgoEspecifico}</strong><span className="mt-1 block text-sm text-slate-500">{tarea?.nombre} · {riesgo.familia} · {riesgo.metodologiaEvaluacion === "vep_isp" ? "VEP ISP" : "Evaluación específica"}</span></span></label>; })}</CardContent></Card>}
 

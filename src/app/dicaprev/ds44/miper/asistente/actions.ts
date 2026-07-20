@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { CATALOGO_RIESGOS_ISP } from "@/lib/ds44/miper-catalogo-isp";
 import { sugerirTareasMiperConIa } from "@/lib/ds44/miper-asistente-ia";
 import { evaluarVepIsp } from "@/lib/ds44/miper-vep-isp";
+import { calcularPasoReanudacion } from "@/lib/ds44/miper-reglas";
 import { requirePermission } from "@/server/auth/permissions";
 
 const RESPUESTAS = new Set(["aplica", "no_aplica", "no_se"]);
@@ -50,7 +51,13 @@ export async function getMiperAsistenteData(miperId?: string) {
     prisma.area.findMany({ where: { empresaId, estado: "activa" }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
     prisma.cargo.findMany({ where: { empresaId, estado: "activo" }, select: { id: true, nombre: true, areaId: true, descripcion: true, perfilSST: true, riesgosClave: true }, orderBy: { nombre: "asc" } }),
     prisma.trabajador.findMany({ where: { empresaId, estado: "activo" }, select: { id: true, nombres: true, apellidos: true, cargo: { select: { nombre: true } } }, orderBy: [{ apellidos: "asc" }, { nombres: "asc" }] }),
-    miperId ? prisma.ds44Miper.findFirst({ where: { id: miperId, empresaId, estado: "borrador", modoCreacion: "asistente" }, include: { asistenteCargos: { include: { cargo: { select: { nombre: true } }, tareas: { orderBy: { orden: "asc" }, include: { exposiciones: true } } }, orderBy: { orden: "asc" } } } }) : null,
+    miperId ? prisma.ds44Miper.findFirst({
+      where: { id: miperId, empresaId, estado: "borrador", modoCreacion: "asistente" },
+      include: {
+        asistenteCargos: { include: { cargo: { select: { nombre: true } }, tareas: { orderBy: { orden: "asc" }, include: { exposiciones: true } } }, orderBy: { orden: "asc" } },
+        items: { where: { tareaId: { not: null } }, orderBy: { orden: "asc" }, include: { controles: { orderBy: { orden: "asc" } } } },
+      },
+    }) : null,
   ]);
   return {
     centros,
@@ -60,7 +67,7 @@ export async function getMiperAsistenteData(miperId?: string) {
     catalogo: CATALOGO_RIESGOS_ISP,
     borrador: borrador ? {
       id: borrador.id,
-      paso: Math.min(Math.max(borrador.asistentePaso + 1, 2), 5),
+      paso: calcularPasoReanudacion(borrador.asistentePaso),
       cabecera: {
         codigo: borrador.codigo, nombre: borrador.nombre,
         centroTrabajoId: borrador.asistenteCargos[0]?.centroTrabajoId ?? "",
@@ -73,6 +80,17 @@ export async function getMiperAsistenteData(miperId?: string) {
       cargos: borrador.asistenteCargos.map((item) => ({ id: item.id, cargoId: item.cargoId, nombre: item.cargo.nombre, descripcionTrabajo: item.descripcionTrabajo ?? "", tareasTexto: item.tareas.map((tarea) => tarea.nombre).join("\n") })),
       tareas: borrador.asistenteCargos.flatMap((item) => item.tareas.map((tarea) => ({ id: tarea.id, asistenteCargoId: item.id, nombre: tarea.nombre }))),
       respuestas: borrador.asistenteCargos.flatMap((item) => item.tareas.flatMap((tarea) => tarea.exposiciones.map((respuesta) => ({ clave: `${tarea.id}:${respuesta.clave}`, respuesta: respuesta.respuesta })))),
+      riesgos: borrador.items.map((item) => ({
+        id: item.id, tareaId: item.tareaId!, codigoIsp: item.codigoIsp!, confirmado: item.confirmadoPorUsuario,
+        consecuencia: item.consecuencia, probabilidad: item.probabilidad ?? 1, severidad: item.severidad ?? 1,
+        magnitudExposicion: item.magnitudExposicion ?? "", nivelRiesgoEspecifico: item.nivelRiesgoEspecifico ?? "",
+        estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica ?? "pendiente", observacionTecnica: item.observacionTecnica ?? "",
+        motivoSugerencia: item.motivoSugerencia ?? "Sugerencia determinística desde exposición confirmada.",
+        control: item.controles[0]?.descripcion ?? "", controlTipo: item.controles[0]?.tipoControl ?? "administrativo",
+        controlResponsableId: item.controles[0]?.responsableTrabajadorId ?? borrador.responsableElaboracionId ?? "",
+        controlFecha: item.controles[0]?.fechaCompromiso?.toISOString().slice(0, 10) ?? "",
+        controlEstado: item.controles[0]?.estado ?? "pendiente",
+      })),
     } : null,
   };
 }
@@ -160,51 +178,111 @@ export async function guardarExposicionesAsistente(input: { miperId: string; res
   ]);
 }
 
-export async function finalizarMiperAsistente(input: {
+export async function guardarRiesgosAsistente(input: {
   miperId: string;
-  items: { tareaId: string; codigoIsp: string; consecuencia: string; responsableTrabajadorId: string; probabilidad?: number; severidad?: number; magnitudExposicion?: string; nivelRiesgoEspecifico?: string; estadoEvaluacionEspecifica?: "pendiente" | "en_evaluacion" | "evaluado"; observacionTecnica?: string; motivoSugerencia: string; controles: { tipoControl: string; descripcion: string; responsableTrabajadorId: string; fechaCompromiso?: string; estado: string }[] }[];
-}): Promise<{ id: string }> {
+  items: { tareaId: string; codigoIsp: string; confirmado: boolean; consecuencia: string; responsableTrabajadorId: string; motivoSugerencia: string }[];
+}) {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   await validarMiperAsistente(input.miperId, empresaId);
-  if (input.items.length < 1 || input.items.length > 200) throw new Error("Confirma entre 1 y 200 riesgos antes de finalizar.");
+  if (input.items.length < 1 || input.items.length > 200) throw new Error("El paso debe contener entre 1 y 200 sugerencias de riesgo.");
   await asegurarCatalogoIsp();
   const [tareas, responsables, catalogo] = await Promise.all([
     prisma.ds44MiperTarea.findMany({ where: { miperId: input.miperId, empresaId }, include: { asistenteCargo: true } }),
-    prisma.trabajador.findMany({ where: { id: { in: input.items.flatMap((item) => [item.responsableTrabajadorId, ...item.controles.map((control) => control.responsableTrabajadorId)]) }, empresaId, estado: "activo" }, select: { id: true } }),
+    prisma.trabajador.findMany({ where: { id: { in: input.items.map((item) => item.responsableTrabajadorId) }, empresaId, estado: "activo" }, select: { id: true } }),
     prisma.ds44MiperRiesgoCatalogo.findMany({ where: { codigoIsp: { in: input.items.map((item) => item.codigoIsp) }, activo: true } }),
   ]);
   const tareasMap = new Map(tareas.map((item) => [item.id, item]));
   const responsablesSet = new Set(responsables.map((item) => item.id));
   const catalogoMap = new Map(catalogo.map((item) => [item.codigoIsp, item]));
-  if (input.items.some((item) => !tareasMap.has(item.tareaId) || !responsablesSet.has(item.responsableTrabajadorId) || !catalogoMap.has(item.codigoIsp) || item.controles.some((control) => !responsablesSet.has(control.responsableTrabajadorId)))) throw new Error("Un riesgo, tarea o responsable no pertenece al alcance validado.");
+  if (input.items.some((item) => !tareasMap.has(item.tareaId) || !responsablesSet.has(item.responsableTrabajadorId) || !catalogoMap.has(item.codigoIsp))) throw new Error("Un riesgo, tarea o responsable no pertenece al alcance validado.");
 
-  await prisma.$transaction(async (tx) => {
+  const guardados = await prisma.$transaction(async (tx) => {
     await tx.ds44MiperItem.deleteMany({ where: { miperId: input.miperId, empresaId, tareaId: { not: null } } });
     for (let index = 0; index < input.items.length; index += 1) {
       const item = input.items[index];
       const tarea = tareasMap.get(item.tareaId)!;
       const riesgo = catalogoMap.get(item.codigoIsp)!;
-      const usaVep = riesgo.metodologiaEvaluacion === "vep_isp";
-      const evaluacion = usaVep ? evaluarVepIsp(Number(item.probabilidad), Number(item.severidad)) : null;
-      const creado = await tx.ds44MiperItem.create({ data: {
+      await tx.ds44MiperItem.create({ data: {
         empresaId, miperId: input.miperId, tareaId: tarea.id, catalogoRiesgoId: riesgo.id,
         centroTrabajoId: tarea.asistenteCargo.centroTrabajoId, areaId: tarea.asistenteCargo.areaId, cargoId: tarea.asistenteCargo.cargoId,
         actividad: tarea.nombre, peligro: riesgo.familia, riesgo: riesgo.riesgoEspecifico, consecuencia: texto(item.consecuencia, "La consecuencia", 500),
         categoriaRiesgo: riesgo.categoria, metodologiaEvaluacion: riesgo.metodologiaEvaluacion, codigoIsp: riesgo.codigoIsp,
-        probabilidad: evaluacion?.probabilidad ?? null, severidad: evaluacion?.severidad ?? null, nivelRiesgo: evaluacion?.nivelRiesgo ?? null, clasificacionRiesgo: evaluacion?.clasificacionRiesgo ?? null,
-        requiereEvaluacionEspecifica: !usaVep, magnitudExposicion: usaVep ? null : opcional(item.magnitudExposicion, 200),
-        nivelRiesgoEspecifico: usaVep ? null : opcional(item.nivelRiesgoEspecifico, 200),
-        protocoloAplicable: riesgo.protocoloAplicable, estadoEvaluacionEspecifica: usaVep ? null : (item.estadoEvaluacionEspecifica ?? "pendiente"),
-        observacionTecnica: usaVep ? null : opcional(item.observacionTecnica), motivoSugerencia: texto(item.motivoSugerencia, "El motivo de sugerencia", 500), confirmadoPorUsuario: true,
+        requiereEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica",
+        protocoloAplicable: riesgo.protocoloAplicable,
+        estadoEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica" ? "pendiente" : null,
+        motivoSugerencia: texto(item.motivoSugerencia, "El motivo de sugerencia", 500), confirmadoPorUsuario: item.confirmado,
         responsableTrabajadorId: item.responsableTrabajadorId, orden: index + 1, creadoPorId: usuarioId, actualizadoPorId: usuarioId,
       } });
-      if (item.controles.length) {
-        if (item.controles.some((control) => !TIPOS_CONTROL.has(control.tipoControl) || !ESTADOS_CONTROL.has(control.estado))) throw new Error("Uno de los tipos o estados de control no es válido.");
-        await tx.ds44MiperControl.createMany({ data: item.controles.map((control, controlIndex) => ({ empresaId, miperItemId: creado.id, tipoControl: control.tipoControl as "eliminacion" | "sustitucion" | "ingenieria" | "administrativo" | "epp", descripcion: texto(control.descripcion, "La medida de control", 1000), responsableTrabajadorId: control.responsableTrabajadorId, fechaCompromiso: control.fechaCompromiso ? fecha(control.fechaCompromiso) : null, estado: control.estado as "pendiente" | "implementado" | "en_revision" | "descartado", orden: controlIndex + 1, creadoPorId: usuarioId, actualizadoPorId: usuarioId })) });
-      }
     }
-    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 8, actualizadoPorId: usuarioId } });
+    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 5, actualizadoPorId: usuarioId } });
+    return tx.ds44MiperItem.findMany({ where: { miperId: input.miperId, empresaId, tareaId: { not: null } }, select: { id: true, tareaId: true, codigoIsp: true }, orderBy: { orden: "asc" } });
   });
+  return guardados;
+}
+
+export async function guardarEvaluacionesAsistente(input: {
+  miperId: string;
+  items: { id: string; consecuencia: string; probabilidad?: number; severidad?: number; magnitudExposicion?: string; nivelRiesgoEspecifico?: string; estadoEvaluacionEspecifica?: "pendiente" | "en_evaluacion" | "evaluado"; observacionTecnica?: string }[];
+}): Promise<void> {
+  const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
+  await validarMiperAsistente(input.miperId, empresaId);
+  const existentes = await prisma.ds44MiperItem.findMany({ where: { id: { in: input.items.map((item) => item.id) }, miperId: input.miperId, empresaId, tareaId: { not: null } }, select: { id: true, metodologiaEvaluacion: true } });
+  if (existentes.length !== new Set(input.items.map((item) => item.id)).size) throw new Error("Una evaluación no pertenece al borrador activo.");
+  const metodologias = new Map(existentes.map((item) => [item.id, item.metodologiaEvaluacion]));
+  await prisma.$transaction([
+    ...input.items.map((item) => {
+      const usaVep = metodologias.get(item.id) === "vep_isp";
+      const evaluacion = usaVep ? evaluarVepIsp(Number(item.probabilidad), Number(item.severidad)) : null;
+      return prisma.ds44MiperItem.update({ where: { id: item.id }, data: {
+        consecuencia: texto(item.consecuencia, "La consecuencia", 500),
+        probabilidad: evaluacion?.probabilidad ?? null, severidad: evaluacion?.severidad ?? null,
+        nivelRiesgo: evaluacion?.nivelRiesgo ?? null, clasificacionRiesgo: evaluacion?.clasificacionRiesgo ?? null,
+        magnitudExposicion: usaVep ? null : opcional(item.magnitudExposicion, 200),
+        nivelRiesgoEspecifico: usaVep ? null : opcional(item.nivelRiesgoEspecifico, 200),
+        estadoEvaluacionEspecifica: usaVep ? null : (item.estadoEvaluacionEspecifica ?? "pendiente"),
+        observacionTecnica: usaVep ? null : opcional(item.observacionTecnica), actualizadoPorId: usuarioId,
+      } });
+    }),
+    prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 6, actualizadoPorId: usuarioId } }),
+  ]);
+}
+
+export async function guardarControlesAsistente(input: {
+  miperId: string;
+  items: { id: string; controles: { tipoControl: string; descripcion: string; responsableTrabajadorId: string; fechaCompromiso?: string; estado: string }[] }[];
+}): Promise<void> {
+  const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
+  await validarMiperAsistente(input.miperId, empresaId);
+  const items = await prisma.ds44MiperItem.findMany({ where: { id: { in: input.items.map((item) => item.id) }, miperId: input.miperId, empresaId, tareaId: { not: null } }, select: { id: true } });
+  if (items.length !== new Set(input.items.map((item) => item.id)).size) throw new Error("Un control no pertenece al borrador activo.");
+  const idsResponsables = input.items.flatMap((item) => item.controles.map((control) => control.responsableTrabajadorId).filter(Boolean));
+  const responsables = await prisma.trabajador.findMany({ where: { id: { in: idsResponsables }, empresaId, estado: "activo" }, select: { id: true } });
+  if (responsables.length !== new Set(idsResponsables).size) throw new Error("Un responsable de control no pertenece a la empresa activa.");
+  await prisma.$transaction(async (tx) => {
+    await tx.ds44MiperControl.deleteMany({ where: { empresaId, miperItemId: { in: items.map((item) => item.id) } } });
+    for (const item of input.items) {
+      const controles = item.controles.filter((control) => control.descripcion.trim());
+      if (controles.some((control) => !TIPOS_CONTROL.has(control.tipoControl) || !ESTADOS_CONTROL.has(control.estado))) throw new Error("Uno de los tipos o estados de control no es válido.");
+      if (controles.length) await tx.ds44MiperControl.createMany({ data: controles.map((control, index) => ({
+        empresaId, miperItemId: item.id,
+        tipoControl: control.tipoControl as "eliminacion" | "sustitucion" | "ingenieria" | "administrativo" | "epp",
+        descripcion: texto(control.descripcion, "La medida de control", 1000),
+        responsableTrabajadorId: control.responsableTrabajadorId || null,
+        fechaCompromiso: control.fechaCompromiso ? fecha(control.fechaCompromiso) : null,
+        estado: control.estado as "pendiente" | "implementado" | "en_revision" | "descartado",
+        orden: index + 1, creadoPorId: usuarioId, actualizadoPorId: usuarioId,
+      })) });
+    }
+    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 7, actualizadoPorId: usuarioId } });
+  });
+}
+
+export async function finalizarMiperAsistente(input: { miperId: string }): Promise<{ id: string }> {
+  const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
+  await validarMiperAsistente(input.miperId, empresaId);
+  const confirmados = await prisma.ds44MiperItem.count({ where: { miperId: input.miperId, empresaId, tareaId: { not: null }, confirmadoPorUsuario: true } });
+  if (confirmados < 1) throw new Error("Confirma al menos un riesgo antes de finalizar el borrador.");
+  await prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 8, actualizadoPorId: usuarioId } });
   revalidatePath("/dicaprev/ds44/miper");
   revalidatePath(`/dicaprev/ds44/miper/${input.miperId}`);
   return { id: input.miperId };

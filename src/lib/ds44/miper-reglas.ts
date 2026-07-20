@@ -11,6 +11,36 @@ export function puedeTransicionarMiper(desde: EstadoMiper, hacia: EstadoMiper): 
   return TRANSICIONES[desde].includes(hacia);
 }
 
+export function calcularPasoReanudacion(ultimoPasoCompletado: number): number {
+  if (!Number.isInteger(ultimoPasoCompletado)) return 1;
+  return Math.min(Math.max(ultimoPasoCompletado + 1, 1), 8);
+}
+
+export function controlPrioritarioValido(control: {
+  estado: string;
+  descripcion: string;
+  responsableTrabajadorId: string | null;
+  fechaCompromiso: Date | string | null;
+}): boolean {
+  return control.estado !== "descartado"
+    && control.descripcion.trim().length > 0
+    && Boolean(control.responsableTrabajadorId)
+    && Boolean(control.fechaCompromiso);
+}
+
+export function evaluacionEspecificaTieneRespaldo(item: {
+  estadoEvaluacionEspecifica: string | null;
+  magnitudExposicion: string | null;
+  nivelRiesgoEspecifico: string | null;
+  observacionTecnica: string | null;
+}): boolean {
+  const observacion = Boolean(item.observacionTecnica?.trim());
+  if (item.estadoEvaluacionEspecifica === "evaluado") {
+    return Boolean(item.magnitudExposicion?.trim()) && Boolean(item.nivelRiesgoEspecifico?.trim()) && observacion;
+  }
+  return observacion;
+}
+
 export function validarAprobacionMiper(input: {
   estado: EstadoMiper;
   cantidadItems: number;

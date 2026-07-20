@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { puedeTransicionarMiper, validarAprobacionMiper } from "@/lib/ds44/miper-reglas";
+import { calcularPasoReanudacion, controlPrioritarioValido, evaluacionEspecificaTieneRespaldo, puedeTransicionarMiper, validarAprobacionMiper } from "@/lib/ds44/miper-reglas";
 
 describe("ciclo de aprobación MIPER", () => {
   it("permite únicamente borrador → revisión → vigente → archivado", () => {
@@ -8,6 +8,26 @@ describe("ciclo de aprobación MIPER", () => {
     expect(puedeTransicionarMiper("vigente", "archivado")).toBe(true);
     expect(puedeTransicionarMiper("borrador", "vigente")).toBe(false);
     expect(puedeTransicionarMiper("en_revision", "borrador")).toBe(false);
+  });
+
+  it.each([["riesgos", 4, 5], ["evaluación", 5, 6], ["controles", 6, 7], ["resumen", 7, 8]] as const)("reanuda en %s después del paso %s", (_etapa, completado, pendiente) => {
+    expect(calcularPasoReanudacion(completado)).toBe(pendiente);
+  });
+
+  it("no acepta controles descartados o incompletos para riesgos prioritarios", () => {
+    const base = { estado: "pendiente", descripcion: "Instalar protección", responsableTrabajadorId: "trab-1", fechaCompromiso: "2026-08-01" };
+    expect(controlPrioritarioValido(base)).toBe(true);
+    expect(controlPrioritarioValido({ ...base, estado: "descartado" })).toBe(false);
+    expect(controlPrioritarioValido({ ...base, responsableTrabajadorId: null })).toBe(false);
+    expect(controlPrioritarioValido({ ...base, fechaCompromiso: null })).toBe(false);
+    expect(controlPrioritarioValido({ ...base, descripcion: " " })).toBe(false);
+  });
+
+  it("exige respaldo completo según el estado de una evaluación específica", () => {
+    expect(evaluacionEspecificaTieneRespaldo({ estadoEvaluacionEspecifica: "evaluado", magnitudExposicion: "82 dB", nivelRiesgoEspecifico: "Alto", observacionTecnica: "Medición PREXOR" })).toBe(true);
+    expect(evaluacionEspecificaTieneRespaldo({ estadoEvaluacionEspecifica: "evaluado", magnitudExposicion: null, nivelRiesgoEspecifico: "Alto", observacionTecnica: "Medición PREXOR" })).toBe(false);
+    expect(evaluacionEspecificaTieneRespaldo({ estadoEvaluacionEspecifica: "pendiente", magnitudExposicion: null, nivelRiesgoEspecifico: null, observacionTecnica: "Medición programada" })).toBe(true);
+    expect(evaluacionEspecificaTieneRespaldo({ estadoEvaluacionEspecifica: "en_evaluacion", magnitudExposicion: null, nivelRiesgoEspecifico: null, observacionTecnica: " " })).toBe(false);
   });
 
   it("exige rol autorizado, revisión e ítems para aprobar", () => {

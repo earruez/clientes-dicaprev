@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { evaluarVepIsp } from "@/lib/ds44/miper-vep-isp";
-import { puedeTransicionarMiper, validarAprobacionMiper } from "@/lib/ds44/miper-reglas";
+import { controlPrioritarioValido, evaluacionEspecificaTieneRespaldo, puedeTransicionarMiper, validarAprobacionMiper } from "@/lib/ds44/miper-reglas";
 import { requirePermission } from "@/server/auth/permissions";
 import type {
   CrearMiperInput,
@@ -110,7 +110,7 @@ export async function getDs44MiperListadoData(): Promise<MiperListadoData> {
       where: { empresaId },
       orderBy: [{ updatedAt: "desc" }, { codigo: "asc" }],
       include: {
-        items: { select: { clasificacionRiesgo: true } },
+        items: { where: { confirmadoPorUsuario: true }, select: { clasificacionRiesgo: true } },
       },
     });
 
@@ -189,6 +189,7 @@ export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDet
         actualizadoPor: { select: { nombre: true } },
         aprobadoPor: { select: { nombre: true } },
         items: {
+          where: { confirmadoPorUsuario: true },
           orderBy: [{ orden: "asc" }, { createdAt: "asc" }],
           include: {
             centroTrabajo: { select: { nombre: true } },
@@ -409,7 +410,15 @@ export async function cambiarEstadoDs44Miper(input: { miperId: string; estado: M
     select: {
       id: true, estado: true, responsableElaboracionId: true,
       asistenteCargos: { select: { tareas: { select: { exposiciones: { where: { revisionTecnicaPendiente: true }, select: { id: true }, take: 1 } } } } },
-      items: { select: { actividad: true, peligro: true, riesgo: true, consecuencia: true, responsableTrabajadorId: true, clasificacionRiesgo: true, metodologiaEvaluacion: true, estadoEvaluacionEspecifica: true, observacionTecnica: true, controles: { select: { id: true } } } },
+      items: {
+        where: { confirmadoPorUsuario: true },
+        select: {
+          actividad: true, peligro: true, riesgo: true, consecuencia: true, responsableTrabajadorId: true,
+          clasificacionRiesgo: true, metodologiaEvaluacion: true, estadoEvaluacionEspecifica: true,
+          magnitudExposicion: true, nivelRiesgoEspecifico: true, observacionTecnica: true,
+          controles: { select: { estado: true, descripcion: true, responsableTrabajadorId: true, fechaCompromiso: true } },
+        },
+      },
     },
   });
   if (!miper) throw new Error("La matriz MIPER no pertenece a la empresa activa.");
@@ -421,8 +430,8 @@ export async function cambiarEstadoDs44Miper(input: { miperId: string; estado: M
       responsableRegistrado: Boolean(miper.responsableElaboracionId),
       respuestasNoSePendientes: miper.asistenteCargos.filter((cargo) => cargo.tareas.some((tarea) => tarea.exposiciones.length > 0)).length,
       itemsIncompletos: miper.items.filter((item) => !item.actividad.trim() || !item.peligro.trim() || !item.riesgo.trim() || !item.consecuencia.trim() || !item.responsableTrabajadorId).length,
-      riesgosPrioritariosSinControl: miper.items.filter((item) => ["importante", "intolerable"].includes(item.clasificacionRiesgo ?? "") && item.controles.length === 0).length,
-      evaluacionesEspecificasSinRespaldo: miper.items.filter((item) => item.metodologiaEvaluacion === "evaluacion_especifica" && item.estadoEvaluacionEspecifica !== "evaluado" && !item.observacionTecnica?.trim()).length,
+      riesgosPrioritariosSinControl: miper.items.filter((item) => ["importante", "intolerable"].includes(item.clasificacionRiesgo ?? "") && !item.controles.some(controlPrioritarioValido)).length,
+      evaluacionesEspecificasSinRespaldo: miper.items.filter((item) => item.metodologiaEvaluacion === "evaluacion_especifica" && !evaluacionEspecificaTieneRespaldo(item)).length,
     });
   }
 
@@ -451,7 +460,11 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
   await validarEmpresaActiva(context.empresaId);
   const origen = await prisma.ds44Miper.findFirst({
     where: { id: miperId, empresaId: context.empresaId, estado: "vigente" },
-    include: { items: { include: { controles: true } }, versionSiguiente: { select: { id: true } } },
+    include: {
+      items: { include: { controles: true } },
+      asistenteCargos: { orderBy: { orden: "asc" }, include: { tareas: { orderBy: { orden: "asc" }, include: { exposiciones: true } } } },
+      versionSiguiente: { select: { id: true } },
+    },
   });
   if (!origen) throw new Error("Solo una matriz vigente puede originar una nueva revisión.");
   if (origen.versionSiguiente) return { id: origen.versionSiguiente.id };
@@ -469,14 +482,38 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
         versionAnteriorId: origen.id,
         responsableElaboracionId: origen.responsableElaboracionId,
         modoCreacion: origen.modoCreacion,
+        asistentePaso: origen.asistentePaso,
         creadoPorId: context.usuarioId,
         actualizadoPorId: context.usuarioId,
       },
     });
+    const tareasNuevas = new Map<string, string>();
+    for (const alcance of origen.asistenteCargos) {
+      const alcanceNuevo = await tx.ds44MiperAsistenteCargo.create({ data: {
+        empresaId: context.empresaId, miperId: creada.id, cargoId: alcance.cargoId,
+        centroTrabajoId: alcance.centroTrabajoId, areaId: alcance.areaId,
+        descripcionTrabajo: alcance.descripcionTrabajo, orden: alcance.orden,
+      } });
+      for (const tarea of alcance.tareas) {
+        const tareaNueva = await tx.ds44MiperTarea.create({ data: {
+          empresaId: context.empresaId, miperId: creada.id, asistenteCargoId: alcanceNuevo.id,
+          nombre: tarea.nombre, origen: tarea.origen, confirmada: tarea.confirmada, orden: tarea.orden,
+        } });
+        tareasNuevas.set(tarea.id, tareaNueva.id);
+        if (tarea.exposiciones.length) await tx.ds44MiperExposicionRespuesta.createMany({ data: tarea.exposiciones.map((respuesta) => ({
+          empresaId: context.empresaId, tareaId: tareaNueva.id, grupo: respuesta.grupo, clave: respuesta.clave,
+          pregunta: respuesta.pregunta, respuesta: respuesta.respuesta,
+          revisionTecnicaPendiente: respuesta.revisionTecnicaPendiente, observacion: respuesta.observacion,
+        })) });
+      }
+    }
     for (const item of origen.items) {
+      const tareaId = item.tareaId ? tareasNuevas.get(item.tareaId) : undefined;
+      if (item.tareaId && !tareaId) throw new Error("No fue posible reconectar una tarea del asistente en la nueva revisión.");
       const copia = await tx.ds44MiperItem.create({
         data: {
           empresaId: context.empresaId, miperId: creada.id,
+          tareaId,
           centroTrabajoId: item.centroTrabajoId, areaId: item.areaId, cargoId: item.cargoId,
           actividad: item.actividad, peligro: item.peligro, riesgo: item.riesgo, consecuencia: item.consecuencia,
           probabilidad: item.probabilidad, severidad: item.severidad, nivelRiesgo: item.nivelRiesgo,
