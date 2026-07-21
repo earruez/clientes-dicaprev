@@ -12,6 +12,7 @@ import { requirePermission } from "@/server/auth/permissions";
 const RESPUESTAS = new Set(["aplica", "no_aplica", "no_se"]);
 const TIPOS_CONTROL = new Set(["eliminacion", "sustitucion", "ingenieria", "administrativo", "epp"]);
 const ESTADOS_CONTROL = new Set(["pendiente", "implementado", "en_revision", "descartado"]);
+const TAMANO_LOTE_ACTUALIZACION = 20;
 
 function texto(value: string, nombre: string, max = 500): string {
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -30,6 +31,12 @@ function fecha(value: string): Date {
   const parsed = new Date(`${value}T00:00:00`);
   if (!value || Number.isNaN(parsed.getTime())) throw new Error("La fecha de próxima revisión no es válida.");
   return parsed;
+}
+
+async function ejecutarEnLotes<T>(items: T[], ejecutar: (item: T) => Promise<unknown>): Promise<void> {
+  for (let index = 0; index < items.length; index += TAMANO_LOTE_ACTUALIZACION) {
+    await Promise.all(items.slice(index, index + TAMANO_LOTE_ACTUALIZACION).map(ejecutar));
+  }
 }
 
 async function validarMiperAsistente(miperId: string, empresaId: string) {
@@ -209,24 +216,25 @@ export async function guardarRiesgosAsistente(input: {
   const catalogoMap = new Map(catalogo.map((item) => [item.codigoIsp, item]));
   if (input.items.some((item) => !tareasMap.has(item.tareaId) || !responsablesSet.has(item.responsableTrabajadorId) || !catalogoMap.has(item.codigoIsp))) throw new Error("Un riesgo, tarea o responsable no pertenece al alcance validado.");
 
+  const items = input.items.map((item, index) => {
+    const tarea = tareasMap.get(item.tareaId)!;
+    const riesgo = catalogoMap.get(item.codigoIsp)!;
+    return {
+      empresaId, miperId: input.miperId, tareaId: tarea.id, catalogoRiesgoId: riesgo.id,
+      centroTrabajoId: tarea.asistenteCargo.centroTrabajoId, areaId: tarea.asistenteCargo.areaId, cargoId: tarea.asistenteCargo.cargoId,
+      actividad: tarea.nombre, peligro: riesgo.familia, riesgo: riesgo.riesgoEspecifico, consecuencia: texto(item.consecuencia, "La consecuencia", 500),
+      categoriaRiesgo: riesgo.categoria, metodologiaEvaluacion: riesgo.metodologiaEvaluacion, codigoIsp: riesgo.codigoIsp,
+      requiereEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica",
+      protocoloAplicable: riesgo.protocoloAplicable,
+      estadoEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica" ? "pendiente" as const : null,
+      motivoSugerencia: texto(item.motivoSugerencia, "El motivo de sugerencia", 500), confirmadoPorUsuario: item.confirmado,
+      responsableTrabajadorId: item.responsableTrabajadorId, orden: index + 1, creadoPorId: usuarioId, actualizadoPorId: usuarioId,
+    };
+  });
+
   const guardados = await prisma.$transaction(async (tx) => {
     await tx.ds44MiperItem.deleteMany({ where: { miperId: input.miperId, empresaId, tareaId: { not: null } } });
-    for (let index = 0; index < input.items.length; index += 1) {
-      const item = input.items[index];
-      const tarea = tareasMap.get(item.tareaId)!;
-      const riesgo = catalogoMap.get(item.codigoIsp)!;
-      await tx.ds44MiperItem.create({ data: {
-        empresaId, miperId: input.miperId, tareaId: tarea.id, catalogoRiesgoId: riesgo.id,
-        centroTrabajoId: tarea.asistenteCargo.centroTrabajoId, areaId: tarea.asistenteCargo.areaId, cargoId: tarea.asistenteCargo.cargoId,
-        actividad: tarea.nombre, peligro: riesgo.familia, riesgo: riesgo.riesgoEspecifico, consecuencia: texto(item.consecuencia, "La consecuencia", 500),
-        categoriaRiesgo: riesgo.categoria, metodologiaEvaluacion: riesgo.metodologiaEvaluacion, codigoIsp: riesgo.codigoIsp,
-        requiereEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica",
-        protocoloAplicable: riesgo.protocoloAplicable,
-        estadoEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica" ? "pendiente" : null,
-        motivoSugerencia: texto(item.motivoSugerencia, "El motivo de sugerencia", 500), confirmadoPorUsuario: item.confirmado,
-        responsableTrabajadorId: item.responsableTrabajadorId, orden: index + 1, creadoPorId: usuarioId, actualizadoPorId: usuarioId,
-      } });
-    }
+    await tx.ds44MiperItem.createMany({ data: items });
     await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 5, actualizadoPorId: usuarioId } });
     return tx.ds44MiperItem.findMany({ where: { miperId: input.miperId, empresaId, tareaId: { not: null } }, select: { id: true, tareaId: true, codigoIsp: true }, orderBy: { orden: "asc" } });
   });
@@ -242,11 +250,10 @@ export async function guardarEvaluacionesAsistente(input: {
   const existentes = await prisma.ds44MiperItem.findMany({ where: { id: { in: input.items.map((item) => item.id) }, miperId: input.miperId, empresaId, tareaId: { not: null } }, select: { id: true, metodologiaEvaluacion: true } });
   if (existentes.length !== new Set(input.items.map((item) => item.id)).size) throw new Error("Una evaluación no pertenece al borrador activo.");
   const metodologias = new Map(existentes.map((item) => [item.id, item.metodologiaEvaluacion]));
-  await prisma.$transaction([
-    ...input.items.map((item) => {
-      const usaVep = metodologias.get(item.id) === "vep_isp";
-      const evaluacion = usaVep ? evaluarVepIsp(Number(item.probabilidad), Number(item.severidad)) : null;
-      return prisma.ds44MiperItem.update({ where: { id: item.id }, data: {
+  const evaluaciones = input.items.map((item) => {
+    const usaVep = metodologias.get(item.id) === "vep_isp";
+    const evaluacion = usaVep ? evaluarVepIsp(Number(item.probabilidad), Number(item.severidad)) : null;
+    return { id: item.id, data: {
         consecuencia: texto(item.consecuencia, "La consecuencia", 500),
         probabilidad: evaluacion?.probabilidad ?? null, severidad: evaluacion?.severidad ?? null,
         nivelRiesgo: evaluacion?.nivelRiesgo ?? null, clasificacionRiesgo: evaluacion?.clasificacionRiesgo ?? null,
@@ -254,10 +261,12 @@ export async function guardarEvaluacionesAsistente(input: {
         nivelRiesgoEspecifico: usaVep ? null : opcional(item.nivelRiesgoEspecifico, 200),
         estadoEvaluacionEspecifica: usaVep ? null : (item.estadoEvaluacionEspecifica ?? "pendiente"),
         observacionTecnica: usaVep ? null : opcional(item.observacionTecnica), actualizadoPorId: usuarioId,
-      } });
-    }),
-    prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 6, actualizadoPorId: usuarioId } }),
-  ]);
+    } };
+  });
+  // Estas actualizaciones son idempotentes y se ejecutan en lotes fuera de una transacción larga.
+  // El paso solo avanza cuando todas finalizaron, de modo que un reintento completa cualquier lote pendiente.
+  await ejecutarEnLotes(evaluaciones, (item) => prisma.ds44MiperItem.update({ where: { id: item.id }, data: item.data }));
+  await prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 6, actualizadoPorId: usuarioId } });
 }
 
 export async function guardarControlesAsistente(input: {
@@ -271,21 +280,22 @@ export async function guardarControlesAsistente(input: {
   const idsResponsables = input.items.flatMap((item) => item.controles.map((control) => control.responsableTrabajadorId).filter(Boolean));
   const responsables = await prisma.trabajador.findMany({ where: { id: { in: idsResponsables }, empresaId, estado: "activo" }, select: { id: true } });
   if (responsables.length !== new Set(idsResponsables).size) throw new Error("Un responsable de control no pertenece a la empresa activa.");
+  const controles = input.items.flatMap((item) => {
+    const controlesItem = item.controles.filter((control) => control.descripcion.trim());
+    if (controlesItem.some((control) => !TIPOS_CONTROL.has(control.tipoControl) || !ESTADOS_CONTROL.has(control.estado))) throw new Error("Uno de los tipos o estados de control no es válido.");
+    return controlesItem.map((control, index) => ({
+      empresaId, miperItemId: item.id,
+      tipoControl: control.tipoControl as "eliminacion" | "sustitucion" | "ingenieria" | "administrativo" | "epp",
+      descripcion: texto(control.descripcion, "La medida de control", 1000),
+      responsableTrabajadorId: control.responsableTrabajadorId || null,
+      fechaCompromiso: control.fechaCompromiso ? fecha(control.fechaCompromiso) : null,
+      estado: control.estado as "pendiente" | "implementado" | "en_revision" | "descartado",
+      orden: index + 1, creadoPorId: usuarioId, actualizadoPorId: usuarioId,
+    }));
+  });
   await prisma.$transaction(async (tx) => {
     await tx.ds44MiperControl.deleteMany({ where: { empresaId, miperItemId: { in: items.map((item) => item.id) } } });
-    for (const item of input.items) {
-      const controles = item.controles.filter((control) => control.descripcion.trim());
-      if (controles.some((control) => !TIPOS_CONTROL.has(control.tipoControl) || !ESTADOS_CONTROL.has(control.estado))) throw new Error("Uno de los tipos o estados de control no es válido.");
-      if (controles.length) await tx.ds44MiperControl.createMany({ data: controles.map((control, index) => ({
-        empresaId, miperItemId: item.id,
-        tipoControl: control.tipoControl as "eliminacion" | "sustitucion" | "ingenieria" | "administrativo" | "epp",
-        descripcion: texto(control.descripcion, "La medida de control", 1000),
-        responsableTrabajadorId: control.responsableTrabajadorId || null,
-        fechaCompromiso: control.fechaCompromiso ? fecha(control.fechaCompromiso) : null,
-        estado: control.estado as "pendiente" | "implementado" | "en_revision" | "descartado",
-        orden: index + 1, creadoPorId: usuarioId, actualizadoPorId: usuarioId,
-      })) });
-    }
+    if (controles.length > 0) await tx.ds44MiperControl.createMany({ data: controles });
     await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 7, actualizadoPorId: usuarioId } });
   });
 }
