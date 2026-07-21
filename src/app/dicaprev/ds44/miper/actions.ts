@@ -201,6 +201,29 @@ export async function crearDs44Miper(input: CrearMiperInput): Promise<{ id: stri
   }
 }
 
+export async function eliminarDs44MiperBorrador(miperId: string): Promise<void> {
+  const { empresaId } = await requirePermission("canManageCumplimiento");
+  await validarEmpresaActiva(empresaId);
+
+  const miper = await prisma.ds44Miper.findFirst({
+    where: { id: miperId, empresaId },
+    select: { id: true, estado: true },
+  });
+  if (!miper) throw new Error("La matriz MIPER no existe o no pertenece a la empresa activa.");
+  if (miper.estado !== "borrador") {
+    throw new Error("Solo se pueden eliminar matrices MIPER en borrador.");
+  }
+
+  const eliminada = await prisma.ds44Miper.deleteMany({
+    where: { id: miper.id, empresaId, estado: "borrador" },
+  });
+  if (eliminada.count !== 1) {
+    throw new Error("La matriz cambió de estado y ya no puede eliminarse.");
+  }
+
+  revalidatePath("/dicaprev/ds44/miper");
+}
+
 export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDetalleData> {
   const { empresaId, rol } = await requirePermission("canReadCumplimiento");
   await validarEmpresaActiva(empresaId);
