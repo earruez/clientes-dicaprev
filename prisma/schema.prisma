@@ -602,6 +602,7 @@ model Ds44Miper {
   procesoNombre        String?
   procesoTipo          TipoProcesoDs44Miper?
   procesoResponsable   String?
+  procesoResponsableId String?
   modoCreacion         String            @default("experto")
   asistentePaso        Int               @default(0)
   createdAt            DateTime          @default(now())
@@ -614,6 +615,7 @@ model Ds44Miper {
   versionAnterior Ds44Miper?      @relation("Ds44MiperVersiones", fields: [versionAnteriorId], references: [id], onDelete: SetNull)
   versionSiguiente Ds44Miper?     @relation("Ds44MiperVersiones")
   responsableElaboracion Trabajador? @relation("TrabajadorDs44MiperElaboracion", fields: [responsableElaboracionId], references: [id], onDelete: SetNull)
+  procesoResponsableTrabajador Trabajador? @relation("TrabajadorDs44MiperProcesoResponsable", fields: [procesoResponsableId], references: [id], onDelete: SetNull)
   items         Ds44MiperItem[]
   asistenteCargos Ds44MiperAsistenteCargo[]
   tareas          Ds44MiperTarea[]
@@ -625,6 +627,7 @@ model Ds44Miper {
   @@index([actualizadoPorId])
   @@index([aprobadoPorId])
   @@index([responsableElaboracionId])
+  @@index([procesoResponsableId])
 }
 
 model Ds44MiperItem {
@@ -984,6 +987,7 @@ model Trabajador {
   ds44MiperItemsResponsable Ds44MiperItem[]    @relation("TrabajadorDs44MiperItemResponsable")
   ds44MiperControlesResponsable Ds44MiperControl[] @relation("TrabajadorDs44MiperControlResponsable")
   ds44MipersElaboracion         Ds44Miper[]        @relation("TrabajadorDs44MiperElaboracion")
+  ds44MipersProcesoResponsable  Ds44Miper[]        @relation("TrabajadorDs44MiperProcesoResponsable")
 
   @@index([empresaId])
   @@index([centroTrabajoId])

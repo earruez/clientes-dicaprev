@@ -203,7 +203,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
       nombre: "",
       procesoNombre: "",
       procesoTipo: "",
-      procesoResponsable: "",
+      procesoResponsableId: "",
       centroTrabajoId: "",
       areaId: "",
       cargoIds: [] as string[],
@@ -492,7 +492,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
             <label className="grid gap-1 text-sm font-medium">Nombre<input className={inputClass} value={cabecera.nombre} onChange={(e) => setCabecera((v) => ({ ...v, nombre: e.target.value }))} /></label>
             <label className="grid gap-1 text-sm font-medium">Proceso<input className={inputClass} value={cabecera.procesoNombre ?? ""} onChange={(e) => setCabecera((v) => ({ ...v, procesoNombre: e.target.value }))} /></label>
             <label className="grid gap-1 text-sm font-medium">Tipo proceso<select className={inputClass} value={cabecera.procesoTipo ?? ""} onChange={(e) => setCabecera((v) => ({ ...v, procesoTipo: e.target.value }))}><option value="">Selecciona</option><option value="operacional">Operacional</option><option value="apoyo">Apoyo</option></select></label>
-            <label className="grid gap-1 text-sm font-medium md:col-span-2">Responsable del proceso<input className={inputClass} value={cabecera.procesoResponsable ?? ""} onChange={(e) => setCabecera((v) => ({ ...v, procesoResponsable: e.target.value }))} /></label>
+            <label className="grid gap-1 text-sm font-medium md:col-span-2">Responsable del proceso<select className={inputClass} value={cabecera.procesoResponsableId} onChange={(e) => setCabecera((v) => ({ ...v, procesoResponsableId: e.target.value }))}><option value="">Selecciona trabajador</option>{data.responsables.map((item) => <option key={item.id} value={item.id}>{item.nombre}{item.cargo ? ` · ${item.cargo}` : ""}</option>)}</select></label>
             <label className="grid gap-1 text-sm font-medium">Centro<select className={inputClass} value={cabecera.centroTrabajoId} onChange={(e) => setCabecera((v) => ({ ...v, centroTrabajoId: e.target.value }))}><option value="">Selecciona</option>{data.centros.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
             <label className="grid gap-1 text-sm font-medium">Área<select className={inputClass} value={cabecera.areaId} onChange={(e) => setCabecera((v) => ({ ...v, areaId: e.target.value, cargoIds: [] }))}><option value="">Selecciona</option>{data.areas.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
             <fieldset className="grid gap-2 rounded-xl border border-slate-200 p-4 md:col-span-2"><legend className="px-2 text-sm font-semibold">Cargos incluidos</legend>{cargosDisponibles.map((cargo) => <label key={cargo.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cabecera.cargoIds.includes(cargo.id)} onChange={(e) => setCabecera((v) => ({ ...v, cargoIds: e.target.checked ? [...v.cargoIds, cargo.id] : v.cargoIds.filter((id) => id !== cargo.id) }))} />{cargo.nombre}</label>)}</fieldset>

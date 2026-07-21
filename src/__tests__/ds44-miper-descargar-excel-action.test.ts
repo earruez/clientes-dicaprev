@@ -31,7 +31,8 @@ describe("descargarExcelDs44Miper", () => {
       fechaProximaRevision: null,
       procesoNombre: null,
       procesoTipo: null,
-      procesoResponsable: null,
+      procesoResponsable: "Texto histórico",
+      procesoResponsableTrabajador: { nombres: "Camila", apellidos: "Soto" },
       responsableElaboracion: null,
       empresa: {
         nombre: "Empresa Demo",
@@ -59,5 +60,6 @@ describe("descargarExcelDs44Miper", () => {
         },
       },
     });
+    expect(generarExcelMiperIspMock.mock.calls[0][0].miper.procesoResponsable).toBe("Camila Soto");
   });
 });

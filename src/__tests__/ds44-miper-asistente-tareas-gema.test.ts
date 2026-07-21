@@ -19,11 +19,11 @@ const txMock = vi.hoisted(() => ({
 }));
 
 const prismaMock = vi.hoisted(() => ({
-  centroTrabajo: { findMany: vi.fn() },
-  area: { findMany: vi.fn() },
+  centroTrabajo: { findMany: vi.fn(), findFirst: vi.fn() },
+  area: { findMany: vi.fn(), findFirst: vi.fn() },
   cargo: { findMany: vi.fn() },
-  trabajador: { findMany: vi.fn() },
-  ds44Miper: { findFirst: vi.fn() },
+  trabajador: { findMany: vi.fn(), findFirst: vi.fn() },
+  ds44Miper: { findFirst: vi.fn(), create: vi.fn() },
   ds44MiperAsistenteCargo: { findMany: vi.fn() },
   ds44MiperTarea: { findMany: vi.fn() },
   ds44MiperRiesgoCatalogo: { createMany: vi.fn(), findMany: vi.fn() },
@@ -34,7 +34,7 @@ vi.mock("@/lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("@/server/auth/permissions", () => ({ requirePermission: requirePermissionMock }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
-import { getMiperAsistenteData, guardarRiesgosAsistente, guardarTareasAsistente } from "@/app/dicaprev/ds44/miper/asistente/actions";
+import { getMiperAsistenteData, guardarRiesgosAsistente, guardarTareasAsistente, iniciarMiperAsistente } from "@/app/dicaprev/ds44/miper/asistente/actions";
 
 describe("asistente miper tareas y GEMA", () => {
   beforeEach(() => {
@@ -110,7 +110,7 @@ describe("asistente miper tareas y GEMA", () => {
       nombre: "Matriz",
       procesoNombre: "Proceso",
       procesoTipo: "operacional",
-      procesoResponsable: "Jefatura",
+      procesoResponsableId: "trab-2",
       responsableElaboracionId: "trab-1",
       fechaProximaRevision: new Date("2027-01-01T00:00:00.000Z"),
       observaciones: "Obs",
@@ -163,6 +163,7 @@ describe("asistente miper tareas y GEMA", () => {
     const data = await getMiperAsistenteData("miper-1");
 
     expect(data.borrador?.cargos[0].tareasTexto).toContain("Inspeccion");
+    expect(data.borrador?.cabecera.procesoResponsableId).toBe("trab-2");
     expect(data.borrador?.tareas[0]).toMatchObject({
       id: "t-1",
       esRutinaria: false,
@@ -178,6 +179,69 @@ describe("asistente miper tareas y GEMA", () => {
       peligroAmbiente: "Piso mojado",
       peligroDescripcion: "Cruce",
     });
+  });
+
+  it("guarda responsable de proceso y elaboración como trabajadores activos", async () => {
+    requirePermissionMock.mockResolvedValue({ empresaId: "empresa-1", usuarioId: "user-1" });
+    prismaMock.centroTrabajo.findFirst.mockResolvedValue({ id: "centro-1" });
+    prismaMock.area.findFirst.mockResolvedValue({ id: "area-1" });
+    prismaMock.cargo.findMany.mockResolvedValue([{ id: "cargo-1", nombre: "Operador", descripcion: null, areaId: "area-1" }]);
+    prismaMock.trabajador.findFirst
+      .mockResolvedValueOnce({ id: "trab-elabora" })
+      .mockResolvedValueOnce({ id: "trab-proceso" });
+    prismaMock.ds44Miper.create.mockResolvedValue({
+      id: "miper-1",
+      asistenteCargos: [{ id: "alcance-1", cargoId: "cargo-1", descripcionTrabajo: null, cargo: { nombre: "Operador" } }],
+    });
+
+    await iniciarMiperAsistente({
+      codigo: "MIPER-1",
+      nombre: "Matriz",
+      centroTrabajoId: "centro-1",
+      areaId: "area-1",
+      cargoIds: ["cargo-1"],
+      procesoNombre: "Proceso",
+      procesoTipo: "operacional",
+      procesoResponsableId: "trab-proceso",
+      responsableElaboracionId: "trab-elabora",
+      fechaProximaRevision: "2027-01-01",
+    });
+
+    expect(prismaMock.trabajador.findFirst).toHaveBeenNthCalledWith(1, {
+      where: { id: "trab-elabora", empresaId: "empresa-1", estado: "activo" },
+      select: { id: true },
+    });
+    expect(prismaMock.trabajador.findFirst).toHaveBeenNthCalledWith(2, {
+      where: { id: "trab-proceso", empresaId: "empresa-1", estado: "activo" },
+      select: { id: true },
+    });
+    expect(prismaMock.ds44Miper.create.mock.calls[0][0].data).toMatchObject({
+      procesoResponsableId: "trab-proceso",
+      responsableElaboracionId: "trab-elabora",
+    });
+    expect(prismaMock.ds44Miper.create.mock.calls[0][0].data.procesoResponsable).toBeUndefined();
+  });
+
+  it("rechaza responsable de proceso inactivo o ajeno a la empresa", async () => {
+    requirePermissionMock.mockResolvedValue({ empresaId: "empresa-1", usuarioId: "user-1" });
+    prismaMock.centroTrabajo.findFirst.mockResolvedValue({ id: "centro-1" });
+    prismaMock.area.findFirst.mockResolvedValue({ id: "area-1" });
+    prismaMock.cargo.findMany.mockResolvedValue([{ id: "cargo-1", nombre: "Operador", descripcion: null, areaId: "area-1" }]);
+    prismaMock.trabajador.findFirst
+      .mockResolvedValueOnce({ id: "trab-elabora" })
+      .mockResolvedValueOnce(null);
+
+    await expect(iniciarMiperAsistente({
+      codigo: "MIPER-1",
+      nombre: "Matriz",
+      centroTrabajoId: "centro-1",
+      areaId: "area-1",
+      cargoIds: ["cargo-1"],
+      procesoResponsableId: "trab-ajeno",
+      responsableElaboracionId: "trab-elabora",
+      fechaProximaRevision: "2027-01-01",
+    })).rejects.toThrow("El alcance contiene registros inactivos o ajenos a la empresa.");
+    expect(prismaMock.ds44Miper.create).not.toHaveBeenCalled();
   });
 
   it("persiste GEMA en riesgos y construye peligro consolidado", async () => {

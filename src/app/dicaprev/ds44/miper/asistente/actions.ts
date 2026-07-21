@@ -82,7 +82,7 @@ export async function getMiperAsistenteData(miperId?: string) {
         codigo: borrador.codigo, nombre: borrador.nombre,
         procesoNombre: borrador.procesoNombre ?? "",
         procesoTipo: borrador.procesoTipo ?? "",
-        procesoResponsable: borrador.procesoResponsable ?? "",
+        procesoResponsableId: borrador.procesoResponsableId ?? "",
         centroTrabajoId: borrador.asistenteCargos[0]?.centroTrabajoId ?? "",
         areaId: borrador.asistenteCargos[0]?.areaId ?? "",
         cargoIds: borrador.asistenteCargos.map((item) => item.cargoId),
@@ -127,17 +127,18 @@ export async function iniciarMiperAsistente(input: {
   responsableElaboracionId: string; fechaProximaRevision: string; observaciones?: string;
   procesoNombre?: string;
   procesoTipo?: "operacional" | "apoyo";
-  procesoResponsable?: string;
+  procesoResponsableId: string;
 }): Promise<{ id: string; cargos: { id: string; cargoId: string; nombre: string; descripcionTrabajo: string }[] }> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   if (input.cargoIds.length < 1 || input.cargoIds.length > 30) throw new Error("Selecciona entre 1 y 30 cargos.");
-  const [centro, area, cargos, responsable] = await Promise.all([
+  const [centro, area, cargos, responsableElaboracion, responsableProceso] = await Promise.all([
     prisma.centroTrabajo.findFirst({ where: { id: input.centroTrabajoId, empresaId, estado: "activo" }, select: { id: true } }),
     prisma.area.findFirst({ where: { id: input.areaId, empresaId, estado: "activa" }, select: { id: true } }),
     prisma.cargo.findMany({ where: { id: { in: input.cargoIds }, empresaId, estado: "activo" }, select: { id: true, nombre: true, descripcion: true, areaId: true } }),
     prisma.trabajador.findFirst({ where: { id: input.responsableElaboracionId, empresaId, estado: "activo" }, select: { id: true } }),
+    prisma.trabajador.findFirst({ where: { id: input.procesoResponsableId, empresaId, estado: "activo" }, select: { id: true } }),
   ]);
-  if (!centro || !area || !responsable || cargos.length !== new Set(input.cargoIds).size) throw new Error("El alcance contiene registros inactivos o ajenos a la empresa.");
+  if (!centro || !area || !responsableElaboracion || !responsableProceso || cargos.length !== new Set(input.cargoIds).size) throw new Error("El alcance contiene registros inactivos o ajenos a la empresa.");
   if (cargos.some((cargo) => cargo.areaId && cargo.areaId !== area.id)) throw new Error("Todos los cargos deben pertenecer al área seleccionada.");
   await asegurarCatalogoIsp();
 
@@ -146,9 +147,9 @@ export async function iniciarMiperAsistente(input: {
       empresaId, codigo: texto(input.codigo, "El código", 40).toUpperCase(), nombre: texto(input.nombre, "El nombre", 160),
       procesoNombre: opcional(input.procesoNombre, 160),
       procesoTipo: input.procesoTipo ?? null,
-      procesoResponsable: opcional(input.procesoResponsable, 160),
+      procesoResponsableId: responsableProceso.id,
       fechaProximaRevision: fecha(input.fechaProximaRevision), observaciones: opcional(input.observaciones),
-      responsableElaboracionId: responsable.id, modoCreacion: "asistente", asistentePaso: 1,
+      responsableElaboracionId: responsableElaboracion.id, modoCreacion: "asistente", asistentePaso: 1,
       creadoPorId: usuarioId, actualizadoPorId: usuarioId,
       asistenteCargos: { create: cargos.map((cargo, index) => ({ empresaId, cargoId: cargo.id, centroTrabajoId: centro.id, areaId: area.id, descripcionTrabajo: cargo.descripcion, orden: index + 1 })) },
     },
