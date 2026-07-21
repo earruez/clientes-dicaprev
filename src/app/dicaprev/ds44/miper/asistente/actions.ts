@@ -172,14 +172,23 @@ export async function guardarExposicionesAsistente(input: { miperId: string; res
   const tareas = await prisma.ds44MiperTarea.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true } });
   const permitidas = new Set(tareas.map((item) => item.id));
   if (input.respuestas.some((item) => !permitidas.has(item.tareaId) || !RESPUESTAS.has(item.respuesta))) throw new Error("Las respuestas de exposición no son válidas para este borrador.");
-  await prisma.$transaction([
-    ...input.respuestas.map((item) => prisma.ds44MiperExposicionRespuesta.upsert({
-      where: { tareaId_clave: { tareaId: item.tareaId, clave: texto(item.clave, "La clave", 80) } },
-      create: { empresaId, tareaId: item.tareaId, grupo: texto(item.grupo, "El grupo", 80), clave: item.clave, pregunta: texto(item.pregunta, "La pregunta", 500), respuesta: item.respuesta, revisionTecnicaPendiente: item.respuesta === "no_se" },
-      update: { respuesta: item.respuesta, revisionTecnicaPendiente: item.respuesta === "no_se" },
-    })),
-    prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 4, actualizadoPorId: usuarioId } }),
-  ]);
+  const respuestas = input.respuestas.map((item) => ({
+    empresaId,
+    tareaId: item.tareaId,
+    grupo: texto(item.grupo, "El grupo", 80),
+    clave: texto(item.clave, "La clave", 80),
+    pregunta: texto(item.pregunta, "La pregunta", 500),
+    respuesta: item.respuesta,
+    revisionTecnicaPendiente: item.respuesta === "no_se",
+  }));
+  const claves = new Set(respuestas.map((item) => `${item.tareaId}:${item.clave}`));
+  if (claves.size !== respuestas.length) throw new Error("Las respuestas de exposición contienen preguntas duplicadas.");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.ds44MiperExposicionRespuesta.deleteMany({ where: { tareaId: { in: tareas.map((item) => item.id) }, empresaId } });
+    if (respuestas.length > 0) await tx.ds44MiperExposicionRespuesta.createMany({ data: respuestas });
+    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 4, actualizadoPorId: usuarioId } });
+  });
 }
 
 export async function guardarRiesgosAsistente(input: {
