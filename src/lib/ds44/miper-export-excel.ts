@@ -560,6 +560,10 @@ function congelar(xml: string, filas: number): string {
 
 function configurarPagina(xml: string, footer: string, paperSize = 8): string {
   const limpio = xml
+    // SheetJS agrega ignoredErrors al final de la hoja. Al añadir configuración de
+    // impresión después de ese nodo se viola el orden OOXML y Excel intenta reparar
+    // el libro. No es necesario para este documento, por lo que se elimina.
+    .replace(/<ignoredErrors>[\s\S]*?<\/ignoredErrors>/g, "")
     .replace(/<printOptions[^>]*\/>/g, "")
     .replace(/<pageMargins[^>]*\/>/g, "")
     .replace(/<pageSetup[^>]*\/>/g, "")

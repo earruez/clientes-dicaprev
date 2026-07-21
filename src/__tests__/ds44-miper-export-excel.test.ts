@@ -13,7 +13,7 @@ describe("exportacion excel MIPER ISP", () => {
         versionAnterior: "MIPER-001-V2",
         procesoNombre: "Operacion mina",
         procesoTipo: "operacional",
-        procesoResponsable: "Jefatura operativa",
+        procesoResponsable: "Camila Soto",
         responsableElaboracion: "Ana Perez",
         responsableRevision: null,
         responsableAprobacion: null,
@@ -105,6 +105,8 @@ describe("exportacion excel MIPER ISP", () => {
     expect(sheet).toContain("conditionalFormatting");
     expect(sheet).toContain("orientation=\"landscape\"");
     expect(sheet).toContain("state=\"frozen\"");
+    expect(sheet).not.toContain("ignoredErrors");
+    expect(sheet.indexOf("conditionalFormatting")).toBeLessThan(sheet.indexOf("printOptions"));
     expect(workbookXml).toContain("_xlnm.Print_Titles");
   });
 

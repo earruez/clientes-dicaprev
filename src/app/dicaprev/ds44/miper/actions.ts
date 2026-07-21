@@ -174,6 +174,7 @@ export async function crearDs44Miper(input: CrearMiperInput): Promise<{ id: stri
   await validarEmpresaActiva(empresaId);
   const codigo = textoRequerido(input.codigo, "El código", 40).toUpperCase();
   const nombre = textoRequerido(input.nombre, "El nombre", 160);
+  if (input.procesoResponsableId) await validarResponsable(empresaId, input.procesoResponsableId);
 
   try {
     const miper = await prisma.ds44Miper.create({
@@ -183,7 +184,7 @@ export async function crearDs44Miper(input: CrearMiperInput): Promise<{ id: stri
         nombre,
         procesoNombre: textoOpcional(input.procesoNombre, 160),
         procesoTipo: input.procesoTipo ?? null,
-        procesoResponsable: textoOpcional(input.procesoResponsable, 160),
+        procesoResponsableId: input.procesoResponsableId || null,
         fechaProximaRevision: fechaOpcional(input.fechaProximaRevision, "La fecha de próxima revisión"),
         observaciones: textoOpcional(input.observaciones),
         creadoPorId: usuarioId,
@@ -235,6 +236,7 @@ export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDet
         creadoPor: { select: { nombre: true } },
         actualizadoPor: { select: { nombre: true } },
         aprobadoPor: { select: { nombre: true } },
+        procesoResponsableTrabajador: { select: { nombres: true, apellidos: true } },
         items: {
           where: { confirmadoPorUsuario: true },
           orderBy: [{ orden: "asc" }, { createdAt: "asc" }],
@@ -275,7 +277,10 @@ export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDet
       observaciones: miper.observaciones,
       procesoNombre: miper.procesoNombre,
       procesoTipo: miper.procesoTipo,
-      procesoResponsable: miper.procesoResponsable,
+      procesoResponsable: miper.procesoResponsableTrabajador
+        ? `${miper.procesoResponsableTrabajador.nombres} ${miper.procesoResponsableTrabajador.apellidos}`.replace(/\s+/g, " ").trim()
+        : miper.procesoResponsable,
+      procesoResponsableId: miper.procesoResponsableId,
       creadoPor: miper.creadoPor.nombre,
       actualizadoPor: miper.actualizadoPor.nombre,
       aprobadoPor: miper.aprobadoPor?.nombre ?? null,
@@ -352,11 +357,15 @@ export async function actualizarCabeceraDs44Miper(input: {
   fechaProximaRevision?: string;
   observaciones?: string;
   responsableElaboracionId: string;
+  procesoResponsableId: string;
 }): Promise<void> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   await validarEmpresaActiva(empresaId);
   await obtenerMiperEditable(input.miperId, empresaId);
-  await validarResponsable(empresaId, input.responsableElaboracionId);
+  await Promise.all([
+    validarResponsable(empresaId, input.responsableElaboracionId),
+    validarResponsable(empresaId, input.procesoResponsableId),
+  ]);
   await prisma.ds44Miper.update({
     where: { id: input.miperId },
     data: {
@@ -364,6 +373,7 @@ export async function actualizarCabeceraDs44Miper(input: {
       fechaProximaRevision: fechaOpcional(input.fechaProximaRevision, "La fecha de próxima revisión"),
       observaciones: textoOpcional(input.observaciones),
       responsableElaboracionId: input.responsableElaboracionId,
+      procesoResponsableId: input.procesoResponsableId,
       actualizadoPorId: usuarioId,
     },
   });
@@ -550,6 +560,7 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
         procesoNombre: origen.procesoNombre,
         procesoTipo: origen.procesoTipo,
         procesoResponsable: origen.procesoResponsable,
+        procesoResponsableId: origen.procesoResponsableId,
         version: origen.version + 1,
         estado: "borrador",
         fechaProximaRevision: origen.fechaProximaRevision,
@@ -628,6 +639,7 @@ export async function descargarExcelDs44Miper(miperId: string): Promise<Descarga
     include: {
       empresa: { select: { nombre: true, rut: true, direccion: true, ciudad: true, correo: true } },
       responsableElaboracion: { select: { nombres: true, apellidos: true } },
+      procesoResponsableTrabajador: { select: { nombres: true, apellidos: true } },
       aprobadoPor: { select: { nombre: true } },
       versionAnterior: { select: { codigo: true, version: true } },
       tareas: {
@@ -664,7 +676,9 @@ export async function descargarExcelDs44Miper(miperId: string): Promise<Descarga
       versionAnterior: miper.versionAnterior ? `${miper.versionAnterior.codigo}-V${miper.versionAnterior.version}` : null,
       procesoNombre: miper.procesoNombre,
       procesoTipo: miper.procesoTipo,
-      procesoResponsable: miper.procesoResponsable,
+      procesoResponsable: miper.procesoResponsableTrabajador
+        ? `${miper.procesoResponsableTrabajador.nombres} ${miper.procesoResponsableTrabajador.apellidos}`.replace(/\s+/g, " ").trim()
+        : miper.procesoResponsable,
       responsableElaboracion: miper.responsableElaboracion
         ? `${miper.responsableElaboracion.nombres} ${miper.responsableElaboracion.apellidos}`.replace(/\s+/g, " ").trim()
         : null,

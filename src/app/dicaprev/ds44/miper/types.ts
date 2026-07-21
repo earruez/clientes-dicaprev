@@ -94,6 +94,7 @@ export type MiperDetalleData = {
     procesoNombre: string | null;
     procesoTipo: MiperTipoProceso | null;
     procesoResponsable: string | null;
+    procesoResponsableId: string | null;
     creadoPor: string;
     actualizadoPor: string;
     aprobadoPor: string | null;
@@ -115,7 +116,7 @@ export type CrearMiperInput = {
   nombre: string;
   procesoNombre?: string;
   procesoTipo?: MiperTipoProceso;
-  procesoResponsable?: string;
+  procesoResponsableId?: string;
   fechaProximaRevision?: string;
   observaciones?: string;
   responsableElaboracionId?: string;
