@@ -41,6 +41,12 @@ export function evaluacionEspecificaTieneRespaldo(item: {
   return observacion;
 }
 
+export function validarVepCompletoParaTransicion(pendientes: number, destino: "en_revision" | "vigente"): void {
+  if (pendientes < 1) return;
+  const accion = destino === "en_revision" ? "enviar la matriz a revisión" : "aprobar la matriz";
+  throw new Error(`Completa probabilidad y consecuencia de todos los riesgos VEP confirmados antes de ${accion}.`);
+}
+
 export function validarAprobacionMiper(input: {
   estado: EstadoMiper;
   cantidadItems: number;
@@ -49,6 +55,7 @@ export function validarAprobacionMiper(input: {
   respuestasNoSePendientes?: number;
   riesgosPrioritariosSinControl?: number;
   evaluacionesEspecificasSinRespaldo?: number;
+  evaluacionesVepPendientes?: number;
   itemsIncompletos?: number;
 }): void {
   if (input.estado !== "en_revision") throw new Error("Solo una matriz en revisión puede declararse vigente.");
@@ -61,4 +68,5 @@ export function validarAprobacionMiper(input: {
   if ((input.itemsIncompletos ?? 0) > 0) throw new Error("Completa todos los ítems y sus responsables antes de aprobar la matriz.");
   if ((input.riesgosPrioritariosSinControl ?? 0) > 0) throw new Error("Todo riesgo importante o intolerable debe tener al menos una medida de control.");
   if ((input.evaluacionesEspecificasSinRespaldo ?? 0) > 0) throw new Error("Documenta una observación técnica para cada evaluación específica pendiente.");
+  if ((input.evaluacionesVepPendientes ?? 0) > 0) throw new Error("Completa probabilidad y consecuencia de todos los riesgos VEP confirmados antes de aprobar la matriz.");
 }

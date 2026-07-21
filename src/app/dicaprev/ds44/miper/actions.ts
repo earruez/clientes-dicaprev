@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generarExcelMiperIsp } from "@/lib/ds44/miper-export-excel";
 import { evaluarVepIsp } from "@/lib/ds44/miper-vep-isp";
-import { controlPrioritarioValido, evaluacionEspecificaTieneRespaldo, puedeTransicionarMiper, validarAprobacionMiper } from "@/lib/ds44/miper-reglas";
+import { controlPrioritarioValido, evaluacionEspecificaTieneRespaldo, puedeTransicionarMiper, validarAprobacionMiper, validarVepCompletoParaTransicion } from "@/lib/ds44/miper-reglas";
 import { requirePermission } from "@/server/auth/permissions";
 import type {
   CrearMiperInput,
@@ -459,6 +459,7 @@ export async function cambiarEstadoDs44Miper(input: { miperId: string; estado: M
         select: {
           actividad: true, peligro: true, riesgo: true, consecuencia: true, responsableTrabajadorId: true,
           clasificacionRiesgo: true, metodologiaEvaluacion: true, estadoEvaluacionEspecifica: true,
+          probabilidad: true, severidad: true,
           magnitudExposicion: true, nivelRiesgoEspecifico: true, observacionTecnica: true,
           controles: { select: { estado: true, descripcion: true, responsableTrabajadorId: true, fechaCompromiso: true } },
         },
@@ -468,7 +469,10 @@ export async function cambiarEstadoDs44Miper(input: { miperId: string; estado: M
   if (!miper) throw new Error("La matriz MIPER no pertenece a la empresa activa.");
 
   if (!puedeTransicionarMiper(miper.estado, input.estado)) throw new Error("La transición de estado solicitada no está permitida.");
+  const evaluacionesVepPendientes = miper.items.filter((item) => item.metodologiaEvaluacion === "vep_isp" && (item.probabilidad === null || item.severidad === null)).length;
+  if (input.estado === "en_revision") validarVepCompletoParaTransicion(evaluacionesVepPendientes, "en_revision");
   if (input.estado === "vigente") {
+    validarVepCompletoParaTransicion(evaluacionesVepPendientes, "vigente");
     validarAprobacionMiper({
       estado: miper.estado, cantidadItems: miper.items.length, rol: context.rol,
       responsableRegistrado: Boolean(miper.responsableElaboracionId),
@@ -476,6 +480,7 @@ export async function cambiarEstadoDs44Miper(input: { miperId: string; estado: M
       itemsIncompletos: miper.items.filter((item) => !item.actividad.trim() || !item.peligro.trim() || !item.riesgo.trim() || !item.consecuencia.trim() || !item.responsableTrabajadorId).length,
       riesgosPrioritariosSinControl: miper.items.filter((item) => ["importante", "intolerable"].includes(item.clasificacionRiesgo ?? "") && !item.controles.some(controlPrioritarioValido)).length,
       evaluacionesEspecificasSinRespaldo: miper.items.filter((item) => item.metodologiaEvaluacion === "evaluacion_especifica" && !evaluacionEspecificaTieneRespaldo(item)).length,
+      evaluacionesVepPendientes,
     });
   }
 
@@ -598,7 +603,10 @@ export async function descargarExcelDs44Miper(miperId: string): Promise<Descarga
   const miper = await prisma.ds44Miper.findFirst({
     where: { id: miperId, empresaId },
     include: {
+      empresa: { select: { nombre: true, rut: true, direccion: true, ciudad: true, correo: true } },
       responsableElaboracion: { select: { nombres: true, apellidos: true } },
+      aprobadoPor: { select: { nombre: true } },
+      versionAnterior: { select: { codigo: true, version: true } },
       tareas: {
         orderBy: [{ orden: "asc" }],
         include: {
@@ -629,12 +637,30 @@ export async function descargarExcelDs44Miper(miperId: string): Promise<Descarga
       codigo: miper.codigo,
       version: miper.version,
       nombre: miper.nombre,
+      estado: miper.estado,
+      versionAnterior: miper.versionAnterior ? `${miper.versionAnterior.codigo}-V${miper.versionAnterior.version}` : null,
       procesoNombre: miper.procesoNombre,
       procesoTipo: miper.procesoTipo,
       procesoResponsable: miper.procesoResponsable,
       responsableElaboracion: miper.responsableElaboracion
         ? `${miper.responsableElaboracion.nombres} ${miper.responsableElaboracion.apellidos}`.replace(/\s+/g, " ").trim()
         : null,
+      responsableRevision: null,
+      responsableAprobacion: miper.aprobadoPor?.nombre ?? null,
+      fechaElaboracion: miper.createdAt.toISOString(),
+      fechaRevision: null,
+      fechaAprobacion: miper.vigenteDesde?.toISOString() ?? null,
+      fechaProximaRevision: miper.fechaProximaRevision?.toISOString() ?? null,
+      fechaDescarga: new Date().toISOString(),
+      empresaNombre: miper.empresa.nombre,
+      empresaRut: miper.empresa.rut,
+      empresaDireccion: miper.empresa.direccion,
+      empresaComuna: miper.empresa.ciudad,
+      empresaCorreo: miper.empresa.correo,
+      centroNombre: miper.items[0]?.centroTrabajo?.nombre ?? null,
+      centroTipo: null,
+      centroDireccion: null,
+      areaNombre: miper.items[0]?.area?.nombre ?? null,
     },
     tareas: miper.tareas.map((tarea) => ({
       id: tarea.id,

@@ -166,6 +166,41 @@ describe("persistencia de pasos posteriores del asistente MIPER", () => {
     });
   });
 
+  it("conserva un riesgo VEP nuevo como pendiente cuando P y C son null", async () => {
+    prismaMock.ds44MiperItem.findMany.mockResolvedValue([{ id: "item-pendiente", metodologiaEvaluacion: "vep_isp" }]);
+    prismaMock.ds44MiperItem.update.mockResolvedValue({});
+
+    await guardarEvaluacionesAsistente({
+      miperId: "miper-1",
+      items: [{ id: "item-pendiente", consecuencia: "Por determinar", probabilidad: null, severidad: null }],
+    });
+
+    expect(prismaMock.ds44MiperItem.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "item-pendiente" },
+      data: expect.objectContaining({ probabilidad: null, severidad: null, nivelRiesgo: null, clasificacionRiesgo: null }),
+    }));
+  });
+
+  it.each([[1, 1], [2, 4], [4, 2]])("acepta los valores ISP P=%s y C=%s", async (probabilidad, severidad) => {
+    prismaMock.ds44MiperItem.findMany.mockResolvedValue([{ id: "item-valido", metodologiaEvaluacion: "vep_isp" }]);
+    prismaMock.ds44MiperItem.update.mockResolvedValue({});
+
+    await expect(guardarEvaluacionesAsistente({
+      miperId: "miper-1",
+      items: [{ id: "item-valido", consecuencia: "Lesión", probabilidad, severidad }],
+    })).resolves.toBeUndefined();
+  });
+
+  it("rechaza valores VEP distintos de 1, 2 o 4", async () => {
+    prismaMock.ds44MiperItem.findMany.mockResolvedValue([{ id: "item-invalido", metodologiaEvaluacion: "vep_isp" }]);
+
+    await expect(guardarEvaluacionesAsistente({
+      miperId: "miper-1",
+      items: [{ id: "item-invalido", consecuencia: "Lesión", probabilidad: 3, severidad: 2 }],
+    })).rejects.toThrow("1, 2 o 4");
+    expect(prismaMock.ds44MiperItem.update).not.toHaveBeenCalled();
+  });
+
   it("crea los controles de todos los riesgos mediante una única inserción masiva", async () => {
     const items = Array.from({ length: 12 }, (_, index) => ({
       id: `item-${index + 1}`,
