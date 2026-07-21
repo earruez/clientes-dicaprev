@@ -48,7 +48,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
   const [miperId, setMiperId] = useState(inicial?.id ?? "");
   const [error, setError] = useState<string | null>(null);
   const [avisoIa, setAvisoIa] = useState<string | null>(null);
-  const [cabecera, setCabecera] = useState(inicial?.cabecera ?? { codigo: "", nombre: "", centroTrabajoId: "", areaId: "", cargoIds: [] as string[], responsableElaboracionId: "", fechaProximaRevision: "", observaciones: "" });
+  const [cabecera, setCabecera] = useState(inicial?.cabecera ?? { codigo: "", nombre: "", procesoNombre: "", procesoTipo: "", procesoResponsable: "", centroTrabajoId: "", areaId: "", cargoIds: [] as string[], responsableElaboracionId: "", fechaProximaRevision: "", observaciones: "" });
   const [cargos, setCargos] = useState<CargoAsistente[]>(inicial?.cargos ?? []);
   const [tareas, setTareas] = useState<Tarea[]>(inicial?.tareas ?? []);
   const [tareasSeleccionadas, setTareasSeleccionadas] = useState<string[]>((inicial?.tareas ?? []).map((item) => item.id));
@@ -86,7 +86,10 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
 
   function continuar() {
     if (paso === 1) return run(async () => {
-      const result = await iniciarMiperAsistente(cabecera);
+      const result = await iniciarMiperAsistente({
+        ...cabecera,
+        procesoTipo: cabecera.procesoTipo === "operacional" || cabecera.procesoTipo === "apoyo" ? cabecera.procesoTipo : undefined,
+      });
       setMiperId(result.id); setCargos(result.cargos.map((item) => ({ ...item, tareasTexto: "" }))); setPaso(2);
     });
     if (paso === 2) return run(async () => { await guardarDescripcionesAsistente({ miperId, cargos: cargos.map(({ id, descripcionTrabajo }) => ({ id, descripcionTrabajo })) }); setPaso(3); });
@@ -131,6 +134,9 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
     {paso === 1 && <Card className="rounded-2xl"><CardHeader><h2 className="text-lg font-bold">1. Alcance de la matriz</h2></CardHeader><CardContent className="grid gap-4 md:grid-cols-2">
       <label className="grid gap-1 text-sm font-medium">Código<input className={inputClass} value={cabecera.codigo} onChange={(e) => setCabecera((v) => ({ ...v, codigo: e.target.value }))} placeholder="MIPER-002" /></label>
       <label className="grid gap-1 text-sm font-medium">Nombre<input className={inputClass} value={cabecera.nombre} onChange={(e) => setCabecera((v) => ({ ...v, nombre: e.target.value }))} /></label>
+      <label className="grid gap-1 text-sm font-medium">Proceso<input className={inputClass} value={cabecera.procesoNombre ?? ""} onChange={(e) => setCabecera((v) => ({ ...v, procesoNombre: e.target.value }))} placeholder="Proceso de mantención" /></label>
+      <label className="grid gap-1 text-sm font-medium">Tipo de proceso<select className={inputClass} value={cabecera.procesoTipo ?? ""} onChange={(e) => setCabecera((v) => ({ ...v, procesoTipo: e.target.value }))}><option value="">Selecciona</option><option value="operacional">Operacional</option><option value="apoyo">Apoyo</option></select></label>
+      <label className="grid gap-1 text-sm font-medium md:col-span-2">Responsable del proceso<input className={inputClass} value={cabecera.procesoResponsable ?? ""} onChange={(e) => setCabecera((v) => ({ ...v, procesoResponsable: e.target.value }))} placeholder="Nombre o cargo responsable" /></label>
       <label className="grid gap-1 text-sm font-medium">Centro<select className={inputClass} value={cabecera.centroTrabajoId} onChange={(e) => setCabecera((v) => ({ ...v, centroTrabajoId: e.target.value }))}><option value="">Selecciona</option>{data.centros.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
       <label className="grid gap-1 text-sm font-medium">Área<select className={inputClass} value={cabecera.areaId} onChange={(e) => setCabecera((v) => ({ ...v, areaId: e.target.value, cargoIds: [] }))}><option value="">Selecciona</option>{data.areas.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
       <fieldset className="grid gap-2 rounded-xl border border-slate-200 p-4 md:col-span-2"><legend className="px-2 text-sm font-semibold">Cargos incluidos</legend>{cargosDisponibles.map((cargo) => <label key={cargo.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cabecera.cargoIds.includes(cargo.id)} onChange={(e) => setCabecera((v) => ({ ...v, cargoIds: e.target.checked ? [...v.cargoIds, cargo.id] : v.cargoIds.filter((id) => id !== cargo.id) }))} />{cargo.nombre}</label>)}</fieldset>

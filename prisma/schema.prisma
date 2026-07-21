@@ -204,6 +204,11 @@ enum OrigenTareaDs44Miper {
   ia
 }
 
+enum TipoProcesoDs44Miper {
+  operacional
+  apoyo
+}
+
 // ─────────────────────────────────────────────
 // MODELOS BASE MULTIEMPRESA
 // ─────────────────────────────────────────────
@@ -594,6 +599,9 @@ model Ds44Miper {
   aprobadoPorId        String?
   versionAnteriorId    String?           @unique
   responsableElaboracionId String?
+  procesoNombre        String?
+  procesoTipo          TipoProcesoDs44Miper?
+  procesoResponsable   String?
   modoCreacion         String            @default("experto")
   asistentePaso        Int               @default(0)
   createdAt            DateTime          @default(now())
@@ -649,6 +657,11 @@ model Ds44MiperItem {
   confirmadoPorUsuario      Boolean @default(true)
   responsableTrabajadorId    String?
   observaciones              String?
+  peligroGente               String?
+  peligroEquipos             String?
+  peligroMateriales          String?
+  peligroAmbiente            String?
+  peligroDescripcion         String?
   orden                      Int      @default(0)
   creadoPorId                String
   actualizadoPorId           String
@@ -732,6 +745,11 @@ model Ds44MiperTarea {
   miperId          String
   asistenteCargoId String
   nombre           String
+  esRutinaria      Boolean?
+  lugarEspecifico  String?
+  personasExpuestasTotal Int?
+  distribucionSexogenerica Json?
+  observaciones    String?
   origen           OrigenTareaDs44Miper @default(manual)
   confirmada       Boolean              @default(false)
   orden            Int                  @default(0)

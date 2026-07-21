@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { CATALOGO_RIESGOS_ISP } from "@/lib/ds44/miper-catalogo-isp";
 import { sugerirTareasMiperConIa } from "@/lib/ds44/miper-asistente-ia";
@@ -78,6 +79,9 @@ export async function getMiperAsistenteData(miperId?: string) {
       paso: calcularPasoReanudacion(borrador.asistentePaso),
       cabecera: {
         codigo: borrador.codigo, nombre: borrador.nombre,
+        procesoNombre: borrador.procesoNombre ?? "",
+        procesoTipo: borrador.procesoTipo ?? "",
+        procesoResponsable: borrador.procesoResponsable ?? "",
         centroTrabajoId: borrador.asistenteCargos[0]?.centroTrabajoId ?? "",
         areaId: borrador.asistenteCargos[0]?.areaId ?? "",
         cargoIds: borrador.asistenteCargos.map((item) => item.cargoId),
@@ -86,7 +90,16 @@ export async function getMiperAsistenteData(miperId?: string) {
         observaciones: borrador.observaciones ?? "",
       },
       cargos: borrador.asistenteCargos.map((item) => ({ id: item.id, cargoId: item.cargoId, nombre: item.cargo.nombre, descripcionTrabajo: item.descripcionTrabajo ?? "", tareasTexto: item.tareas.map((tarea) => tarea.nombre).join("\n") })),
-      tareas: borrador.asistenteCargos.flatMap((item) => item.tareas.map((tarea) => ({ id: tarea.id, asistenteCargoId: item.id, nombre: tarea.nombre }))),
+      tareas: borrador.asistenteCargos.flatMap((item) => item.tareas.map((tarea) => ({
+        id: tarea.id,
+        asistenteCargoId: item.id,
+        nombre: tarea.nombre,
+        esRutinaria: tarea.esRutinaria,
+        lugarEspecifico: tarea.lugarEspecifico ?? "",
+        personasExpuestasTotal: tarea.personasExpuestasTotal,
+        distribucionSexogenerica: (tarea.distribucionSexogenerica ?? null) as Record<string, unknown> | null,
+        observaciones: tarea.observaciones ?? "",
+      }))),
       respuestas: borrador.asistenteCargos.flatMap((item) => item.tareas.flatMap((tarea) => tarea.exposiciones.map((respuesta) => ({ clave: `${tarea.id}:${respuesta.clave}`, respuesta: respuesta.respuesta })))),
       riesgos: borrador.items.map((item) => ({
         id: item.id, tareaId: item.tareaId!, codigoIsp: item.codigoIsp!, confirmado: item.confirmadoPorUsuario,
@@ -106,6 +119,9 @@ export async function getMiperAsistenteData(miperId?: string) {
 export async function iniciarMiperAsistente(input: {
   codigo: string; nombre: string; centroTrabajoId: string; areaId: string; cargoIds: string[];
   responsableElaboracionId: string; fechaProximaRevision: string; observaciones?: string;
+  procesoNombre?: string;
+  procesoTipo?: "operacional" | "apoyo";
+  procesoResponsable?: string;
 }): Promise<{ id: string; cargos: { id: string; cargoId: string; nombre: string; descripcionTrabajo: string }[] }> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   if (input.cargoIds.length < 1 || input.cargoIds.length > 30) throw new Error("Selecciona entre 1 y 30 cargos.");
@@ -122,6 +138,9 @@ export async function iniciarMiperAsistente(input: {
   const miper = await prisma.ds44Miper.create({
     data: {
       empresaId, codigo: texto(input.codigo, "El código", 40).toUpperCase(), nombre: texto(input.nombre, "El nombre", 160),
+      procesoNombre: opcional(input.procesoNombre, 160),
+      procesoTipo: input.procesoTipo ?? null,
+      procesoResponsable: opcional(input.procesoResponsable, 160),
       fechaProximaRevision: fecha(input.fechaProximaRevision), observaciones: opcional(input.observaciones),
       responsableElaboracionId: responsable.id, modoCreacion: "asistente", asistentePaso: 1,
       creadoPorId: usuarioId, actualizadoPorId: usuarioId,
@@ -155,7 +174,15 @@ export async function obtenerSugerenciasTareasIa(input: { miperId: string; asist
   );
 }
 
-export async function guardarTareasAsistente(input: { miperId: string; cargos: { asistenteCargoId: string; tareas: { nombre: string; origen?: "manual" | "ia" }[] }[] }) {
+export async function guardarTareasAsistente(input: { miperId: string; cargos: { asistenteCargoId: string; tareas: {
+  nombre: string;
+  origen?: "manual" | "ia";
+  esRutinaria?: boolean | null;
+  lugarEspecifico?: string;
+  personasExpuestasTotal?: number | null;
+  distribucionSexogenerica?: Record<string, unknown> | null;
+  observaciones?: string;
+}[] }[] }) {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   await validarMiperAsistente(input.miperId, empresaId);
   const cargos = await prisma.ds44MiperAsistenteCargo.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true } });
@@ -165,7 +192,24 @@ export async function guardarTareasAsistente(input: { miperId: string; cargos: {
     await tx.ds44MiperTarea.deleteMany({ where: { miperId: input.miperId, empresaId } });
     for (const cargo of input.cargos) {
       if (cargo.tareas.length < 1 || cargo.tareas.length > 30) throw new Error("Cada cargo debe tener entre 1 y 30 tareas confirmadas.");
-      await tx.ds44MiperTarea.createMany({ data: cargo.tareas.map((tarea, index) => ({ empresaId, miperId: input.miperId, asistenteCargoId: cargo.asistenteCargoId, nombre: texto(tarea.nombre, "La tarea", 300), origen: tarea.origen ?? "manual", confirmada: true, orden: index + 1 })) });
+      await tx.ds44MiperTarea.createMany({ data: cargo.tareas.map((tarea, index) => ({
+        empresaId,
+        miperId: input.miperId,
+        asistenteCargoId: cargo.asistenteCargoId,
+        nombre: texto(tarea.nombre, "La tarea", 300),
+        esRutinaria: typeof tarea.esRutinaria === "boolean" ? tarea.esRutinaria : null,
+        lugarEspecifico: opcional(tarea.lugarEspecifico, 300),
+        personasExpuestasTotal: typeof tarea.personasExpuestasTotal === "number" && Number.isFinite(tarea.personasExpuestasTotal)
+          ? Math.max(0, Math.floor(tarea.personasExpuestasTotal))
+          : null,
+        distribucionSexogenerica: tarea.distribucionSexogenerica
+          ? (tarea.distribucionSexogenerica as Prisma.InputJsonValue)
+          : undefined,
+        observaciones: opcional(tarea.observaciones, 1000),
+        origen: tarea.origen ?? "manual",
+        confirmada: true,
+        orden: index + 1,
+      })) });
     }
     await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 3, actualizadoPorId: usuarioId } });
     return tx.ds44MiperTarea.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true, asistenteCargoId: true, nombre: true }, orderBy: [{ asistenteCargoId: "asc" }, { orden: "asc" }] });
