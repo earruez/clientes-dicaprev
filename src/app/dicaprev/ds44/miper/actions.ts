@@ -3,12 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { generarExcelMiperIsp } from "@/lib/ds44/miper-export-excel";
 import { evaluarVepIsp } from "@/lib/ds44/miper-vep-isp";
 import { controlPrioritarioValido, evaluacionEspecificaTieneRespaldo, puedeTransicionarMiper, validarAprobacionMiper } from "@/lib/ds44/miper-reglas";
 import { requirePermission } from "@/server/auth/permissions";
 import type {
   CrearMiperInput,
   GuardarMiperControlInput,
+  DescargarMiperExcelResult,
   GuardarMiperItemInput,
   MiperControlEstado,
   MiperDetalleData,
@@ -44,6 +46,25 @@ function fechaOpcional(value: string | undefined, nombre: string): Date | null {
 
 function fechaIso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
+}
+
+function construirPeligroConsolidado(input: {
+  peligro: string;
+  peligroGente?: string;
+  peligroEquipos?: string;
+  peligroMateriales?: string;
+  peligroAmbiente?: string;
+  peligroDescripcion?: string;
+}): string {
+  const partes = [
+    input.peligroGente?.trim() ? `Gente: ${input.peligroGente.trim()}` : null,
+    input.peligroEquipos?.trim() ? `Equipos: ${input.peligroEquipos.trim()}` : null,
+    input.peligroMateriales?.trim() ? `Materiales: ${input.peligroMateriales.trim()}` : null,
+    input.peligroAmbiente?.trim() ? `Ambiente: ${input.peligroAmbiente.trim()}` : null,
+  ].filter(Boolean) as string[];
+  const descripcion = input.peligroDescripcion?.trim() ?? "";
+  if (partes.length === 0 && !descripcion) return input.peligro;
+  return `${partes.join(" | ")}${descripcion ? `${partes.length > 0 ? " | " : ""}Detalle: ${descripcion}` : ""}`;
 }
 
 function isPersistenceUnavailable(error: unknown): boolean {
@@ -160,6 +181,9 @@ export async function crearDs44Miper(input: CrearMiperInput): Promise<{ id: stri
         empresaId,
         codigo,
         nombre,
+        procesoNombre: textoOpcional(input.procesoNombre, 160),
+        procesoTipo: input.procesoTipo ?? null,
+        procesoResponsable: textoOpcional(input.procesoResponsable, 160),
         fechaProximaRevision: fechaOpcional(input.fechaProximaRevision, "La fecha de próxima revisión"),
         observaciones: textoOpcional(input.observaciones),
         creadoPorId: usuarioId,
@@ -226,6 +250,9 @@ export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDet
       vigenteDesde: fechaIso(miper.vigenteDesde),
       fechaProximaRevision: fechaIso(miper.fechaProximaRevision),
       observaciones: miper.observaciones,
+      procesoNombre: miper.procesoNombre,
+      procesoTipo: miper.procesoTipo,
+      procesoResponsable: miper.procesoResponsable,
       creadoPor: miper.creadoPor.nombre,
       actualizadoPor: miper.actualizadoPor.nombre,
       aprobadoPor: miper.aprobadoPor?.nombre ?? null,
@@ -274,6 +301,11 @@ export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDet
         ? `${item.responsableTrabajador.nombres} ${item.responsableTrabajador.apellidos}`.replace(/\s+/g, " ").trim()
         : null,
       observaciones: item.observaciones,
+      peligroGente: item.peligroGente,
+      peligroEquipos: item.peligroEquipos,
+      peligroMateriales: item.peligroMateriales,
+      peligroAmbiente: item.peligroAmbiente,
+      peligroDescripcion: item.peligroDescripcion,
       orden: item.orden,
       controles: item.controles.map((control) => ({
         id: control.id,
@@ -328,7 +360,14 @@ export async function guardarDs44MiperItem(input: GuardarMiperItemInput): Promis
     areaId: input.areaId,
     cargoId: input.cargoId,
     actividad: textoRequerido(input.actividad, "La actividad", 300),
-    peligro: textoRequerido(input.peligro, "El peligro", 500),
+    peligro: construirPeligroConsolidado({
+      peligro: textoRequerido(input.peligro, "El peligro", 500),
+      peligroGente: input.peligroGente,
+      peligroEquipos: input.peligroEquipos,
+      peligroMateriales: input.peligroMateriales,
+      peligroAmbiente: input.peligroAmbiente,
+      peligroDescripcion: input.peligroDescripcion,
+    }),
     riesgo: textoRequerido(input.riesgo, "El riesgo", 500),
     consecuencia: textoRequerido(input.consecuencia, "La consecuencia", 500),
     categoriaRiesgo: input.categoriaRiesgo,
@@ -345,6 +384,11 @@ export async function guardarDs44MiperItem(input: GuardarMiperItemInput): Promis
     observacionTecnica: usaVep ? null : textoOpcional(input.observacionTecnica, 2000),
     responsableTrabajadorId: input.responsableTrabajadorId,
     observaciones: textoOpcional(input.observaciones),
+    peligroGente: textoOpcional(input.peligroGente, 500),
+    peligroEquipos: textoOpcional(input.peligroEquipos, 500),
+    peligroMateriales: textoOpcional(input.peligroMateriales, 500),
+    peligroAmbiente: textoOpcional(input.peligroAmbiente, 500),
+    peligroDescripcion: textoOpcional(input.peligroDescripcion, 1000),
     actualizadoPorId: usuarioId,
   };
 
@@ -475,6 +519,9 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
         empresaId: context.empresaId,
         codigo: origen.codigo,
         nombre: origen.nombre,
+        procesoNombre: origen.procesoNombre,
+        procesoTipo: origen.procesoTipo,
+        procesoResponsable: origen.procesoResponsable,
         version: origen.version + 1,
         estado: "borrador",
         fechaProximaRevision: origen.fechaProximaRevision,
@@ -525,6 +572,9 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
           estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica, observacionTecnica: item.observacionTecnica,
           motivoSugerencia: item.motivoSugerencia, confirmadoPorUsuario: item.confirmadoPorUsuario,
           responsableTrabajadorId: item.responsableTrabajadorId, observaciones: item.observaciones,
+          peligroGente: item.peligroGente, peligroEquipos: item.peligroEquipos,
+          peligroMateriales: item.peligroMateriales, peligroAmbiente: item.peligroAmbiente,
+          peligroDescripcion: item.peligroDescripcion,
           orden: item.orden, creadoPorId: context.usuarioId, actualizadoPorId: context.usuarioId,
         },
       });
@@ -539,4 +589,105 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
   });
   revalidatePath("/dicaprev/ds44/miper");
   return { id: revision.id };
+}
+
+export async function descargarExcelDs44Miper(miperId: string): Promise<DescargarMiperExcelResult> {
+  const { empresaId } = await requirePermission("canReadCumplimiento");
+  await validarEmpresaActiva(empresaId);
+
+  const miper = await prisma.ds44Miper.findFirst({
+    where: { id: miperId, empresaId },
+    include: {
+      responsableElaboracion: { select: { nombres: true, apellidos: true } },
+      tareas: {
+        orderBy: [{ orden: "asc" }],
+        include: {
+          asistenteCargo: { include: { cargo: { select: { nombre: true } } } },
+        },
+      },
+      items: {
+        where: { confirmadoPorUsuario: true },
+        orderBy: [{ orden: "asc" }, { createdAt: "asc" }],
+        include: {
+          centroTrabajo: { select: { nombre: true } },
+          area: { select: { nombre: true } },
+          cargo: { select: { nombre: true } },
+          responsableTrabajador: { select: { nombres: true, apellidos: true } },
+          controles: {
+            orderBy: [{ orden: "asc" }, { createdAt: "asc" }],
+            include: { responsableTrabajador: { select: { nombres: true, apellidos: true } } },
+          },
+        },
+      },
+    },
+  });
+
+  if (!miper) throw new Error("La matriz MIPER no existe o no pertenece a la empresa activa.");
+
+  return generarExcelMiperIsp({
+    miper: {
+      codigo: miper.codigo,
+      version: miper.version,
+      nombre: miper.nombre,
+      procesoNombre: miper.procesoNombre,
+      procesoTipo: miper.procesoTipo,
+      procesoResponsable: miper.procesoResponsable,
+      responsableElaboracion: miper.responsableElaboracion
+        ? `${miper.responsableElaboracion.nombres} ${miper.responsableElaboracion.apellidos}`.replace(/\s+/g, " ").trim()
+        : null,
+    },
+    tareas: miper.tareas.map((tarea) => ({
+      id: tarea.id,
+      cargoNombre: tarea.asistenteCargo.cargo.nombre,
+      nombre: tarea.nombre,
+      esRutinaria: tarea.esRutinaria,
+      lugarEspecifico: tarea.lugarEspecifico,
+      personasExpuestasTotal: tarea.personasExpuestasTotal,
+      distribucionSexogenerica: (tarea.distribucionSexogenerica ?? null) as Record<string, unknown> | null,
+      observaciones: tarea.observaciones,
+      origen: tarea.origen,
+    })),
+    items: miper.items.map((item) => ({
+      id: item.id,
+      tareaId: item.tareaId,
+      actividad: item.actividad,
+      centroTrabajoNombre: item.centroTrabajo?.nombre ?? null,
+      areaNombre: item.area?.nombre ?? null,
+      cargoNombre: item.cargo?.nombre ?? null,
+      peligro: item.peligro,
+      riesgo: item.riesgo,
+      consecuencia: item.consecuencia,
+      categoriaRiesgo: item.categoriaRiesgo,
+      codigoIsp: item.codigoIsp,
+      metodologiaEvaluacion: item.metodologiaEvaluacion,
+      probabilidad: item.probabilidad,
+      severidad: item.severidad,
+      nivelRiesgo: item.nivelRiesgo,
+      clasificacionRiesgo: item.clasificacionRiesgo,
+      magnitudExposicion: item.magnitudExposicion,
+      nivelRiesgoEspecifico: item.nivelRiesgoEspecifico,
+      protocoloAplicable: item.protocoloAplicable,
+      estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica,
+      observacionTecnica: item.observacionTecnica,
+      responsableNombre: item.responsableTrabajador
+        ? `${item.responsableTrabajador.nombres} ${item.responsableTrabajador.apellidos}`.replace(/\s+/g, " ").trim()
+        : null,
+      observaciones: item.observaciones,
+      motivoSugerencia: item.motivoSugerencia,
+      peligroGente: item.peligroGente,
+      peligroEquipos: item.peligroEquipos,
+      peligroMateriales: item.peligroMateriales,
+      peligroAmbiente: item.peligroAmbiente,
+      peligroDescripcion: item.peligroDescripcion,
+      controles: item.controles.map((control) => ({
+        tipoControl: control.tipoControl,
+        descripcion: control.descripcion,
+        responsableNombre: control.responsableTrabajador
+          ? `${control.responsableTrabajador.nombres} ${control.responsableTrabajador.apellidos}`.replace(/\s+/g, " ").trim()
+          : null,
+        fechaCompromiso: fechaIso(control.fechaCompromiso),
+        estado: control.estado,
+      })),
+    })),
+  });
 }

@@ -8,6 +8,7 @@ export type MiperControlEstado = (typeof MIPER_CONTROL_ESTADOS)[number];
 export type MiperClasificacion = "bajo" | "medio" | "alto" | "critico" | "tolerable" | "moderado" | "importante" | "intolerable";
 export type MiperCategoria = "seguridad" | "emergencia" | "higienico" | "psicosocial" | "musculoesqueletico";
 export type MiperMetodologia = "legacy_5x5" | "vep_isp" | "evaluacion_especifica";
+export type MiperTipoProceso = "operacional" | "apoyo";
 
 export type MiperCatalogoItem = { id: string; nombre: string; areaId?: string | null };
 export type MiperResponsable = { id: string; nombre: string; cargo: string | null; area: string | null };
@@ -71,6 +72,11 @@ export type MiperItem = {
   responsableTrabajadorId: string | null;
   responsableNombre: string | null;
   observaciones: string | null;
+  peligroGente: string | null;
+  peligroEquipos: string | null;
+  peligroMateriales: string | null;
+  peligroAmbiente: string | null;
+  peligroDescripcion: string | null;
   orden: number;
   controles: MiperControl[];
 };
@@ -85,6 +91,9 @@ export type MiperDetalleData = {
     vigenteDesde: string | null;
     fechaProximaRevision: string | null;
     observaciones: string | null;
+    procesoNombre: string | null;
+    procesoTipo: MiperTipoProceso | null;
+    procesoResponsable: string | null;
     creadoPor: string;
     actualizadoPor: string;
     aprobadoPor: string | null;
@@ -104,6 +113,9 @@ export type MiperDetalleData = {
 export type CrearMiperInput = {
   codigo: string;
   nombre: string;
+  procesoNombre?: string;
+  procesoTipo?: MiperTipoProceso;
+  procesoResponsable?: string;
   fechaProximaRevision?: string;
   observaciones?: string;
   responsableElaboracionId?: string;
@@ -129,6 +141,16 @@ export type GuardarMiperItemInput = {
   observacionTecnica?: string;
   responsableTrabajadorId: string;
   observaciones?: string;
+  peligroGente?: string;
+  peligroEquipos?: string;
+  peligroMateriales?: string;
+  peligroAmbiente?: string;
+  peligroDescripcion?: string;
+};
+
+export type DescargarMiperExcelResult = {
+  nombre: string;
+  base64: string;
 };
 
 export type GuardarMiperControlInput = {
