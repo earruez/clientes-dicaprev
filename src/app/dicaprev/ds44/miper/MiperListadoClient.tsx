@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { crearDs44Miper } from "./actions";
+import { crearDs44Miper, eliminarDs44MiperBorrador } from "./actions";
 import type { MiperEstado, MiperListadoData } from "./types";
 
 const ESTADOS: Record<MiperEstado, { label: string; className: string }> = {
@@ -31,6 +31,7 @@ export default function MiperListadoClient({ data }: { data: MiperListadoData })
   const [fechaRevision, setFechaRevision] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const matrices = useMemo(() => {
     const token = filtro.trim().toLowerCase();
     if (!token) return data.matrices;
@@ -39,6 +40,7 @@ export default function MiperListadoClient({ data }: { data: MiperListadoData })
 
   function crear() {
     setMessage(null);
+    setSuccessMessage(null);
     startTransition(async () => {
       try {
         const result = await crearDs44Miper({ codigo, nombre, fechaProximaRevision: fechaRevision, observaciones });
@@ -46,6 +48,25 @@ export default function MiperListadoClient({ data }: { data: MiperListadoData })
         router.push(`/dicaprev/ds44/miper/${result.id}`);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : "No fue posible crear la matriz MIPER.");
+      }
+    });
+  }
+
+  function eliminarBorrador(item: MiperListadoData["matrices"][number]) {
+    const confirmado = window.confirm(
+      `¿Eliminar el borrador ${item.codigo} · ${item.nombre}?\n\nSe eliminarán también sus tareas, exposiciones, riesgos y controles. Esta acción no se puede deshacer.`,
+    );
+    if (!confirmado) return;
+
+    setMessage(null);
+    setSuccessMessage(null);
+    startTransition(async () => {
+      try {
+        await eliminarDs44MiperBorrador(item.id);
+        setSuccessMessage(`El borrador ${item.codigo} fue eliminado.`);
+        router.refresh();
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "No fue posible eliminar la matriz MIPER.");
       }
     });
   }
@@ -67,6 +88,7 @@ export default function MiperListadoClient({ data }: { data: MiperListadoData })
     </div>
 
     {message && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{message}</div>}
+    {successMessage && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{successMessage}</div>}
 
     <Card className="rounded-2xl border-slate-200 bg-white shadow-sm"><CardContent className="space-y-5 p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -83,7 +105,7 @@ export default function MiperListadoClient({ data }: { data: MiperListadoData })
       </div>}
 
       {matrices.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">No hay matrices MIPER que coincidan con la búsqueda.</div> :
-        <div className="overflow-x-auto rounded-2xl border border-slate-200"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="p-4">Código</th><th className="p-4">Nombre</th><th className="p-4">Versión</th><th className="p-4">Estado</th><th className="p-4">Vigencia</th><th className="p-4">Próxima revisión</th><th className="p-4">Ítems</th><th className="p-4">Críticos</th><th className="p-4" /></tr></thead><tbody>{matrices.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="p-4 font-semibold text-slate-900">{item.codigo}</td><td className="p-4 text-slate-700">{item.nombre}</td><td className="p-4">v{item.version}</td><td className="p-4"><Badge variant="outline" className={ESTADOS[item.estado].className}>{ESTADOS[item.estado].label}</Badge></td><td className="p-4 text-slate-600">{fecha(item.vigenteDesde)}</td><td className="p-4 text-slate-600">{fecha(item.fechaProximaRevision)}</td><td className="p-4">{item.cantidadItems}</td><td className="p-4 font-semibold text-rose-700">{item.riesgosCriticos}</td><td className="p-4"><Button asChild variant="outline" size="sm" className="rounded-xl"><Link href={item.modoCreacion === "asistente" && item.estado === "borrador" && item.asistentePaso < 8 ? `/dicaprev/ds44/miper/asistente?miperId=${item.id}` : `/dicaprev/ds44/miper/${item.id}`}>{item.modoCreacion === "asistente" && item.estado === "borrador" && item.asistentePaso < 8 ? "Continuar asistente" : "Ver / editar"}</Link></Button></td></tr>)}</tbody></table></div>}
+        <div className="overflow-x-auto rounded-2xl border border-slate-200"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="p-4">Código</th><th className="p-4">Nombre</th><th className="p-4">Versión</th><th className="p-4">Estado</th><th className="p-4">Vigencia</th><th className="p-4">Próxima revisión</th><th className="p-4">Ítems</th><th className="p-4">Críticos</th><th className="p-4" /></tr></thead><tbody>{matrices.map((item) => <tr key={item.id} className="border-t border-slate-100"><td className="p-4 font-semibold text-slate-900">{item.codigo}</td><td className="p-4 text-slate-700">{item.nombre}</td><td className="p-4">v{item.version}</td><td className="p-4"><Badge variant="outline" className={ESTADOS[item.estado].className}>{ESTADOS[item.estado].label}</Badge></td><td className="p-4 text-slate-600">{fecha(item.vigenteDesde)}</td><td className="p-4 text-slate-600">{fecha(item.fechaProximaRevision)}</td><td className="p-4">{item.cantidadItems}</td><td className="p-4 font-semibold text-rose-700">{item.riesgosCriticos}</td><td className="p-4"><div className="flex flex-wrap justify-end gap-2"><Button asChild variant="outline" size="sm" className="rounded-xl"><Link href={item.modoCreacion === "asistente" && item.estado === "borrador" && item.asistentePaso < 8 ? `/dicaprev/ds44/miper/asistente?miperId=${item.id}` : `/dicaprev/ds44/miper/${item.id}`}>{item.modoCreacion === "asistente" && item.estado === "borrador" && item.asistentePaso < 8 ? "Continuar asistente" : "Ver / editar"}</Link></Button>{item.estado === "borrador" && <Button type="button" variant="outline" size="sm" className="rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800" disabled={isPending} onClick={() => eliminarBorrador(item)}>Eliminar</Button>}</div></td></tr>)}</tbody></table></div>}
     </CardContent></Card>
   </div>;
 }
