@@ -14,6 +14,7 @@ const RESPUESTAS = new Set(["aplica", "no_aplica", "no_se"]);
 const TIPOS_CONTROL = new Set(["eliminacion", "sustitucion", "ingenieria", "administrativo", "epp"]);
 const ESTADOS_CONTROL = new Set(["pendiente", "implementado", "en_revision", "descartado"]);
 const TAMANO_LOTE_ACTUALIZACION = 20;
+const VALORES_VEP = new Set([1, 2, 4]);
 
 function texto(value: string, nombre: string, max = 500): string {
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -103,7 +104,7 @@ export async function getMiperAsistenteData(miperId?: string) {
       respuestas: borrador.asistenteCargos.flatMap((item) => item.tareas.flatMap((tarea) => tarea.exposiciones.map((respuesta) => ({ clave: `${tarea.id}:${respuesta.clave}`, respuesta: respuesta.respuesta })))),
       riesgos: borrador.items.map((item) => ({
         id: item.id, tareaId: item.tareaId!, codigoIsp: item.codigoIsp!, confirmado: item.confirmadoPorUsuario,
-        consecuencia: item.consecuencia, probabilidad: item.probabilidad ?? 1, severidad: item.severidad ?? 1,
+        consecuencia: item.consecuencia, probabilidad: item.probabilidad ?? null, severidad: item.severidad ?? null,
         magnitudExposicion: item.magnitudExposicion ?? "", nivelRiesgoEspecifico: item.nivelRiesgoEspecifico ?? "",
         estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica ?? "pendiente", observacionTecnica: item.observacionTecnica ?? "",
         motivoSugerencia: item.motivoSugerencia ?? "Sugerencia determinística desde exposición confirmada.",
@@ -111,6 +112,11 @@ export async function getMiperAsistenteData(miperId?: string) {
         controlResponsableId: item.controles[0]?.responsableTrabajadorId ?? borrador.responsableElaboracionId ?? "",
         controlFecha: item.controles[0]?.fechaCompromiso?.toISOString().slice(0, 10) ?? "",
         controlEstado: item.controles[0]?.estado ?? "pendiente",
+        peligroGente: item.peligroGente ?? "",
+        peligroEquipos: item.peligroEquipos ?? "",
+        peligroMateriales: item.peligroMateriales ?? "",
+        peligroAmbiente: item.peligroAmbiente ?? "",
+        peligroDescripcion: item.peligroDescripcion ?? "",
       })),
     } : null,
   };
@@ -212,7 +218,20 @@ export async function guardarTareasAsistente(input: { miperId: string; cargos: {
       })) });
     }
     await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 3, actualizadoPorId: usuarioId } });
-    return tx.ds44MiperTarea.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true, asistenteCargoId: true, nombre: true }, orderBy: [{ asistenteCargoId: "asc" }, { orden: "asc" }] });
+    return tx.ds44MiperTarea.findMany({
+      where: { miperId: input.miperId, empresaId },
+      select: {
+        id: true,
+        asistenteCargoId: true,
+        nombre: true,
+        esRutinaria: true,
+        lugarEspecifico: true,
+        personasExpuestasTotal: true,
+        distribucionSexogenerica: true,
+        observaciones: true,
+      },
+      orderBy: [{ asistenteCargoId: "asc" }, { orden: "asc" }],
+    });
   });
   return result;
 }
@@ -244,7 +263,19 @@ export async function guardarExposicionesAsistente(input: { miperId: string; res
 
 export async function guardarRiesgosAsistente(input: {
   miperId: string;
-  items: { tareaId: string; codigoIsp: string; confirmado: boolean; consecuencia: string; responsableTrabajadorId: string; motivoSugerencia: string }[];
+  items: {
+    tareaId: string;
+    codigoIsp: string;
+    confirmado: boolean;
+    consecuencia: string;
+    responsableTrabajadorId: string;
+    motivoSugerencia: string;
+    peligroGente?: string;
+    peligroEquipos?: string;
+    peligroMateriales?: string;
+    peligroAmbiente?: string;
+    peligroDescripcion?: string;
+  }[];
 }) {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   await validarMiperAsistente(input.miperId, empresaId);
@@ -263,15 +294,31 @@ export async function guardarRiesgosAsistente(input: {
   const items = input.items.map((item, index) => {
     const tarea = tareasMap.get(item.tareaId)!;
     const riesgo = catalogoMap.get(item.codigoIsp)!;
+    const gema = [
+      item.peligroGente?.trim() ? `Gente: ${item.peligroGente.trim()}` : null,
+      item.peligroEquipos?.trim() ? `Equipos: ${item.peligroEquipos.trim()}` : null,
+      item.peligroMateriales?.trim() ? `Materiales: ${item.peligroMateriales.trim()}` : null,
+      item.peligroAmbiente?.trim() ? `Ambiente: ${item.peligroAmbiente.trim()}` : null,
+    ].filter(Boolean).join(" | ");
+    const detalle = item.peligroDescripcion?.trim() ? `${gema ? " | " : ""}Detalle: ${item.peligroDescripcion.trim()}` : "";
+
     return {
       empresaId, miperId: input.miperId, tareaId: tarea.id, catalogoRiesgoId: riesgo.id,
       centroTrabajoId: tarea.asistenteCargo.centroTrabajoId, areaId: tarea.asistenteCargo.areaId, cargoId: tarea.asistenteCargo.cargoId,
-      actividad: tarea.nombre, peligro: riesgo.familia, riesgo: riesgo.riesgoEspecifico, consecuencia: texto(item.consecuencia, "La consecuencia", 500),
+      actividad: tarea.nombre,
+      peligro: gema || item.peligroDescripcion?.trim() ? `${gema}${detalle}`.trim() : riesgo.familia,
+      riesgo: riesgo.riesgoEspecifico,
+      consecuencia: texto(item.consecuencia, "La consecuencia", 500),
       categoriaRiesgo: riesgo.categoria, metodologiaEvaluacion: riesgo.metodologiaEvaluacion, codigoIsp: riesgo.codigoIsp,
       requiereEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica",
       protocoloAplicable: riesgo.protocoloAplicable,
       estadoEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica" ? "pendiente" as const : null,
       motivoSugerencia: texto(item.motivoSugerencia, "El motivo de sugerencia", 500), confirmadoPorUsuario: item.confirmado,
+      peligroGente: opcional(item.peligroGente, 500),
+      peligroEquipos: opcional(item.peligroEquipos, 500),
+      peligroMateriales: opcional(item.peligroMateriales, 500),
+      peligroAmbiente: opcional(item.peligroAmbiente, 500),
+      peligroDescripcion: opcional(item.peligroDescripcion, 1000),
       responsableTrabajadorId: item.responsableTrabajadorId, orden: index + 1, creadoPorId: usuarioId, actualizadoPorId: usuarioId,
     };
   });
@@ -287,7 +334,7 @@ export async function guardarRiesgosAsistente(input: {
 
 export async function guardarEvaluacionesAsistente(input: {
   miperId: string;
-  items: { id: string; consecuencia: string; probabilidad?: number; severidad?: number; magnitudExposicion?: string; nivelRiesgoEspecifico?: string; estadoEvaluacionEspecifica?: "pendiente" | "en_evaluacion" | "evaluado"; observacionTecnica?: string }[];
+  items: { id: string; consecuencia: string; probabilidad?: number | null; severidad?: number | null; magnitudExposicion?: string; nivelRiesgoEspecifico?: string; estadoEvaluacionEspecifica?: "pendiente" | "en_evaluacion" | "evaluado"; observacionTecnica?: string }[];
 }): Promise<void> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   await validarMiperAsistente(input.miperId, empresaId);
@@ -296,7 +343,21 @@ export async function guardarEvaluacionesAsistente(input: {
   const metodologias = new Map(existentes.map((item) => [item.id, item.metodologiaEvaluacion]));
   const evaluaciones = input.items.map((item) => {
     const usaVep = metodologias.get(item.id) === "vep_isp";
-    const evaluacion = usaVep ? evaluarVepIsp(Number(item.probabilidad), Number(item.severidad)) : null;
+    const probabilidad = typeof item.probabilidad === "number" ? item.probabilidad : null;
+    const severidad = typeof item.severidad === "number" ? item.severidad : null;
+    if (usaVep) {
+      const ambasPendientes = probabilidad === null && severidad === null;
+      const ambasInformadas = probabilidad !== null && severidad !== null;
+      if (!ambasPendientes && !ambasInformadas) {
+        throw new Error("La evaluación VEP requiere probabilidad y consecuencia juntas, o ambas pendientes.");
+      }
+      if (ambasInformadas && (!VALORES_VEP.has(probabilidad) || !VALORES_VEP.has(severidad))) {
+        throw new Error("Probabilidad y consecuencia VEP solo permiten valores ISP 1, 2 o 4.");
+      }
+    }
+    const evaluacion = usaVep && probabilidad !== null && severidad !== null
+      ? evaluarVepIsp(probabilidad, severidad)
+      : null;
     return { id: item.id, data: {
         consecuencia: texto(item.consecuencia, "La consecuencia", 500),
         probabilidad: evaluacion?.probabilidad ?? null, severidad: evaluacion?.severidad ?? null,
@@ -349,6 +410,19 @@ export async function finalizarMiperAsistente(input: { miperId: string }): Promi
   await validarMiperAsistente(input.miperId, empresaId);
   const confirmados = await prisma.ds44MiperItem.count({ where: { miperId: input.miperId, empresaId, tareaId: { not: null }, confirmadoPorUsuario: true } });
   if (confirmados < 1) throw new Error("Confirma al menos un riesgo antes de finalizar el borrador.");
+  const vepPendientes = await prisma.ds44MiperItem.count({
+    where: {
+      miperId: input.miperId,
+      empresaId,
+      tareaId: { not: null },
+      confirmadoPorUsuario: true,
+      metodologiaEvaluacion: "vep_isp",
+      OR: [{ probabilidad: null }, { severidad: null }],
+    },
+  });
+  if (vepPendientes > 0) {
+    throw new Error("Existen riesgos VEP confirmados con evaluación pendiente. Completa probabilidad y consecuencia antes de finalizar.");
+  }
   await prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 8, actualizadoPorId: usuarioId } });
   revalidatePath("/dicaprev/ds44/miper");
   revalidatePath(`/dicaprev/ds44/miper/${input.miperId}`);

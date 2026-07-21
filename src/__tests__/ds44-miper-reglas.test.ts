@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcularPasoReanudacion, controlPrioritarioValido, evaluacionEspecificaTieneRespaldo, puedeTransicionarMiper, validarAprobacionMiper } from "@/lib/ds44/miper-reglas";
+import { calcularPasoReanudacion, controlPrioritarioValido, evaluacionEspecificaTieneRespaldo, puedeTransicionarMiper, validarAprobacionMiper, validarVepCompletoParaTransicion } from "@/lib/ds44/miper-reglas";
 
 describe("ciclo de aprobación MIPER", () => {
   it("permite únicamente borrador → revisión → vigente → archivado", () => {
@@ -37,11 +37,18 @@ describe("ciclo de aprobación MIPER", () => {
     expect(() => validarAprobacionMiper({ estado: "en_revision", cantidadItems: 1, rol: "TRABAJADOR" })).toThrow("administración o prevención");
   });
 
+  it("bloquea revisión y aprobación cuando existe VEP pendiente", () => {
+    expect(() => validarVepCompletoParaTransicion(1, "en_revision")).toThrow("enviar la matriz a revisión");
+    expect(() => validarVepCompletoParaTransicion(1, "vigente")).toThrow("aprobar la matriz");
+    expect(() => validarVepCompletoParaTransicion(0, "en_revision")).not.toThrow();
+  });
+
   it.each([
     [{ responsableRegistrado: false }, "responsable de elaboración"],
     [{ respuestasNoSePendientes: 1 }, "No sé"],
     [{ riesgosPrioritariosSinControl: 1 }, "medida de control"],
     [{ evaluacionesEspecificasSinRespaldo: 1 }, "observación técnica"],
+    [{ evaluacionesVepPendientes: 1 }, "probabilidad y consecuencia"],
     [{ itemsIncompletos: 1 }, "Completa todos los ítems"],
   ] as const)("bloquea aprobación por pendientes formales", (restriccion, mensaje) => {
     expect(() => validarAprobacionMiper({ estado: "en_revision", cantidadItems: 1, rol: "PREVENCIONISTA", ...restriccion })).toThrow(mensaje);
