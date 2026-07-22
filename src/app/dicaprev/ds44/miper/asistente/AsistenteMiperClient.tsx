@@ -227,8 +227,8 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
   const [lugarMasivo, setLugarMasivo] = useState("");
 
   const centroSeleccionado = useMemo(() => data.centros.find((c) => c.id === cabecera.centroTrabajoId)?.nombre ?? "", [cabecera.centroTrabajoId, data.centros]);
-  const areaSeleccionada = useMemo(() => data.areas.find((a) => a.id === cabecera.areaId)?.nombre ?? "", [cabecera.areaId, data.areas]);
-  const lugarReferencia = useMemo(() => [centroSeleccionado, areaSeleccionada].filter(Boolean).join(" / "), [centroSeleccionado, areaSeleccionada]);
+  const lugarReferencia = centroSeleccionado;
+  const nombresCentrosActivos = useMemo(() => new Set(data.centros.map((centro) => centro.nombre)), [data.centros]);
 
   const [tareasEditorPorCargo, setTareasEditorPorCargo] = useState<Record<string, TareaEditor[]>>(() => {
     if (!inicial?.tareas?.length) return {};
@@ -525,7 +525,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
           <CardContent className="space-y-5">
             <div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:grid-cols-[220px_1fr_auto]">
               <label className="grid gap-1 text-sm font-medium">Rutina<select className={inputClass} value={rutinaMasiva} onChange={(e) => setRutinaMasiva(e.target.value as RutinaValor)}><option value="no_informado">No informado</option><option value="si">Sí</option><option value="no">No</option></select></label>
-              <label className="grid gap-1 text-sm font-medium">Lugar específico (aplicar a todas)<input className={inputClass} value={lugarMasivo} placeholder={lugarReferencia || "Centro / Área"} onChange={(e) => setLugarMasivo(e.target.value)} /></label>
+              <label className="grid gap-1 text-sm font-medium">Lugar específico (aplicar a todas)<select className={inputClass} value={lugarMasivo} onChange={(e) => setLugarMasivo(e.target.value)}><option value="">Selecciona centro activo</option>{data.centros.map((centro) => <option key={centro.id} value={centro.nombre}>{centro.nombre}</option>)}</select></label>
               <Button className="self-end rounded-xl" variant="outline" onClick={aplicarATodasLasTareas}>Aplicar a todas las tareas</Button>
             </div>
 
@@ -566,7 +566,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
                           <div className="grid gap-3 md:grid-cols-3">
                             <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Nombre<input className={inputClass} value={tarea.nombre} onChange={(e) => editarTarea(cargo.id, index, { nombre: e.target.value })} /></label>
                             <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Rutinaria<select className={inputClass} value={tarea.rutina} onChange={(e) => editarTarea(cargo.id, index, { rutina: e.target.value as RutinaValor })}><option value="no_informado">No informado</option><option value="si">Sí</option><option value="no">No</option></select></label>
-                            <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Lugar específico<input className={inputClass} placeholder={lugarReferencia || "Centro / Área"} value={tarea.lugarEspecifico} onChange={(e) => editarTarea(cargo.id, index, { lugarEspecifico: e.target.value })} /></label>
+                            <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Lugar específico<select className={inputClass} value={nombresCentrosActivos.has(tarea.lugarEspecifico) ? tarea.lugarEspecifico : ""} onChange={(e) => editarTarea(cargo.id, index, { lugarEspecifico: e.target.value })}><option value="">Selecciona centro activo</option>{data.centros.map((centro) => <option key={centro.id} value={centro.nombre}>{centro.nombre}</option>)}</select></label>
                           </div>
                           <details className="mt-3 rounded-xl bg-slate-50 p-3" open={tarea.expandido} onToggle={(e) => editarTarea(cargo.id, index, { expandido: (e.target as HTMLDetailsElement).open })}>
                             <summary className="cursor-pointer text-sm font-medium text-slate-700">Población expuesta y observaciones</summary>
