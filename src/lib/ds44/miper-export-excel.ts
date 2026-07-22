@@ -459,9 +459,9 @@ const ESTILOS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="4">
     <font><sz val="10"/><name val="Aptos"/><family val="2"/></font>
-    <font><b/><sz val="10"/><name val="Aptos"/><family val="2"/><color rgb="FF172033"/></font>
-    <font><b/><sz val="12"/><name val="Aptos Display"/><family val="2"/><color rgb="FFFFFFFF"/></font>
-    <font><b/><sz val="16"/><name val="Aptos Display"/><family val="2"/><color rgb="FFFFFFFF"/></font>
+    <font><b/><sz val="10"/><color rgb="FF172033"/><name val="Aptos"/><family val="2"/></font>
+    <font><b/><sz val="12"/><color rgb="FFFFFFFF"/><name val="Aptos Display"/><family val="2"/></font>
+    <font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Aptos Display"/><family val="2"/></font>
   </fonts>
   <fills count="13">
     <fill><patternFill patternType="none"/></fill>
@@ -520,10 +520,10 @@ const ESTILOS_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
   <dxfs count="5">
     <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFE8EDF3"/><bgColor indexed="64"/></patternFill></fill></dxf>
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFDDF3E5"/><bgColor indexed="64"/></patternFill></fill><font><b/><color rgb="FF185C37"/></font></dxf>
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFF1C7"/><bgColor indexed="64"/></patternFill></fill><font><b/><color rgb="FF765400"/></font></dxf>
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFDFC2"/><bgColor indexed="64"/></patternFill></fill><font><b/><color rgb="FF8A3C00"/></font></dxf>
-    <dxf><fill><patternFill patternType="solid"><fgColor rgb="FFF9D8DC"/><bgColor indexed="64"/></patternFill></fill><font><b/><color rgb="FF9B1C2C"/></font></dxf>
+    <dxf><font><b/><color rgb="FF185C37"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFDDF3E5"/><bgColor indexed="64"/></patternFill></fill></dxf>
+    <dxf><font><b/><color rgb="FF765400"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFFF1C7"/><bgColor indexed="64"/></patternFill></fill></dxf>
+    <dxf><font><b/><color rgb="FF8A3C00"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFFDFC2"/><bgColor indexed="64"/></patternFill></fill></dxf>
+    <dxf><font><b/><color rgb="FF9B1C2C"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFF9D8DC"/><bgColor indexed="64"/></patternFill></fill></dxf>
   </dxfs>
   <tableStyles count="0" defaultTableStyle="TableStyleMedium2" defaultPivotStyle="PivotStyleLight16"/>
 </styleSheet>`;
