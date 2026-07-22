@@ -102,6 +102,11 @@ describe("exportacion excel MIPER ISP", () => {
     const sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
     const workbookXml = await zip.file("xl/workbook.xml")!.async("string");
     expect(styles).toContain("FF0B1F3A");
+    const dxfs = styles.match(/<dxf>[\s\S]*?<\/dxf>/g) ?? [];
+    expect(dxfs).toHaveLength(5);
+    for (const dxf of dxfs.filter((bloque) => bloque.includes("<font>"))) {
+      expect(dxf.indexOf("<font>")).toBeLessThan(dxf.indexOf("<fill>"));
+    }
     expect(sheet).toContain("conditionalFormatting");
     expect(sheet).toContain("orientation=\"landscape\"");
     expect(sheet).toContain("state=\"frozen\"");

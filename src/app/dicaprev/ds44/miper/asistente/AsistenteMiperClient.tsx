@@ -195,6 +195,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
   const [paso, setPaso] = useState(inicial?.paso ?? 1);
   const [miperId, setMiperId] = useState(inicial?.id ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [errorObjetivo, setErrorObjetivo] = useState<string | null>(null);
   const [avisoIa, setAvisoIa] = useState<string | null>(null);
 
   const [cabecera, setCabecera] = useState(
@@ -245,6 +246,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
 
   function run(action: () => Promise<void>) {
     setError(null);
+    setErrorObjetivo(null);
     startTransition(async () => {
       try {
         await action();
@@ -252,6 +254,16 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
         setError(caught instanceof Error ? caught.message : "No fue posible guardar el paso.");
       }
     });
+  }
+
+  function irAlCampoPendiente() {
+    if (!errorObjetivo) return;
+    const objetivo = document.getElementById(errorObjetivo);
+    if (!objetivo) return;
+    objetivo.scrollIntoView({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => {
+      objetivo.querySelector<HTMLElement>("select, input, textarea, button")?.focus({ preventScroll: true });
+    }, 450);
   }
 
   function tareasDesdeTexto(cargo: CargoAsistente, texto: string): TareaEditor[] {
@@ -399,15 +411,17 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
     }
 
     if (paso === 6) {
+      const indiceVepPendiente = riesgos.findIndex((item) => {
+        const riesgo = catalogo.get(item.codigoIsp);
+        return item.confirmado && riesgo?.metodologiaEvaluacion === "vep_isp" && (item.probabilidad === null || item.severidad === null);
+      });
+      if (indiceVepPendiente >= 0) {
+        setError("Completa probabilidad y consecuencia en los riesgos VEP confirmados antes de continuar.");
+        setErrorObjetivo(`evaluacion-riesgo-${indiceVepPendiente}`);
+        return;
+      }
       return run(async () => {
         if (riesgos.some((item) => !item.id)) throw new Error("Guarda primero las sugerencias de riesgo.");
-        const hayVepPendiente = riesgos.some((item) => {
-          const riesgo = catalogo.get(item.codigoIsp);
-          return item.confirmado && riesgo?.metodologiaEvaluacion === "vep_isp" && (item.probabilidad === null || item.severidad === null);
-        });
-        if (hayVepPendiente) {
-          throw new Error("Completa probabilidad y consecuencia en los riesgos VEP confirmados antes de continuar.");
-        }
         await guardarEvaluacionesAsistente({
           miperId,
           items: riesgos.map((item) => ({
@@ -481,7 +495,12 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
         </div>
       </div>
 
-      {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>}
+      {error && (errorObjetivo ? (
+        <button type="button" onClick={irAlCampoPendiente} className="w-full rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left text-sm text-rose-800 transition hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-300">
+          <span className="block">{error}</span>
+          <span className="mt-1 block font-semibold underline">Presiona este mensaje para ir al primer campo pendiente.</span>
+        </button>
+      ) : <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>)}
       {avisoIa && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{avisoIa}</div>}
 
       {paso === 1 && (
@@ -658,7 +677,7 @@ export default function AsistenteMiperClient({ data }: { data: Data }) {
               const esVep = riesgo?.metodologiaEvaluacion === "vep_isp";
               const vep = calcularVep(item.probabilidad, item.severidad);
               return (
-                <div key={`eval-${item.tareaId}-${item.codigoIsp}`} className="rounded-xl border border-slate-200 p-4">
+                <div id={`evaluacion-riesgo-${index}`} key={`eval-${item.tareaId}-${item.codigoIsp}`} className={`rounded-xl border p-4 ${item.confirmado && esVep && (item.probabilidad === null || item.severidad === null) ? "border-rose-300 bg-rose-50/40" : "border-slate-200"}`}>
                   <p className="text-sm font-semibold">{item.codigoIsp} · {riesgo?.riesgoEspecifico ?? "Riesgo"}</p>
                   {esVep ? (
                     <div className="mt-3 grid gap-3 md:grid-cols-2">
