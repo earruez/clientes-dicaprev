@@ -39,6 +39,7 @@ import { getMiperAsistenteData, guardarRiesgosAsistente, guardarTareasAsistente,
 describe("asistente miper tareas y GEMA", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.centroTrabajo.findMany.mockResolvedValue([{ id: "centro-1", nombre: "Patio Norte" }]);
     prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock));
   });
 
@@ -95,6 +96,22 @@ describe("asistente miper tareas y GEMA", () => {
       personasExpuestasTotal: 5,
       observaciones: "Turno AM",
     });
+  });
+
+  it("rechaza lugares específicos que no sean centros activos de la empresa", async () => {
+    requirePermissionMock.mockResolvedValue({ empresaId: "empresa-1", usuarioId: "user-1" });
+    prismaMock.ds44Miper.findFirst.mockResolvedValue({ id: "miper-1" });
+    prismaMock.ds44MiperAsistenteCargo.findMany.mockResolvedValue([{ id: "ac-1" }]);
+
+    await expect(guardarTareasAsistente({
+      miperId: "miper-1",
+      cargos: [{
+        asistenteCargoId: "ac-1",
+        tareas: [{ nombre: "Inspección diaria", lugarEspecifico: "Patio inactivo" }],
+      }],
+    })).rejects.toThrow("El lugar específico de cada tarea debe ser un centro de trabajo activo de la empresa.");
+
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it("hidrata borrador con tareas y campos GEMA al reanudar", async () => {

@@ -192,9 +192,19 @@ export async function guardarTareasAsistente(input: { miperId: string; cargos: {
 }[] }[] }) {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   await validarMiperAsistente(input.miperId, empresaId);
-  const cargos = await prisma.ds44MiperAsistenteCargo.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true } });
+  const [cargos, centrosActivos] = await Promise.all([
+    prisma.ds44MiperAsistenteCargo.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true } }),
+    prisma.centroTrabajo.findMany({ where: { empresaId, estado: "activo" }, select: { nombre: true } }),
+  ]);
   const permitidos = new Set(cargos.map((item) => item.id));
   if (input.cargos.some((item) => !permitidos.has(item.asistenteCargoId))) throw new Error("Uno de los cargos no pertenece al asistente activo.");
+  const centrosPorNombre = new Map(centrosActivos.map((centro) => [centro.nombre.trim().toLocaleLowerCase("es-CL"), centro.nombre]));
+  const tareasEntrada = input.cargos.flatMap((cargo) => cargo.tareas);
+  const lugaresInvalidos = tareasEntrada.some((tarea) => {
+    const nombre = tarea.lugarEspecifico?.trim() ?? "";
+    return !nombre || !centrosPorNombre.has(nombre.toLocaleLowerCase("es-CL"));
+  });
+  if (lugaresInvalidos) throw new Error("El lugar específico de cada tarea debe ser un centro de trabajo activo de la empresa.");
   const result = await prisma.$transaction(async (tx) => {
     await tx.ds44MiperTarea.deleteMany({ where: { miperId: input.miperId, empresaId } });
     for (const cargo of input.cargos) {
@@ -205,7 +215,7 @@ export async function guardarTareasAsistente(input: { miperId: string; cargos: {
         asistenteCargoId: cargo.asistenteCargoId,
         nombre: texto(tarea.nombre, "La tarea", 300),
         esRutinaria: typeof tarea.esRutinaria === "boolean" ? tarea.esRutinaria : null,
-        lugarEspecifico: opcional(tarea.lugarEspecifico, 300),
+        lugarEspecifico: centrosPorNombre.get(tarea.lugarEspecifico!.trim().toLocaleLowerCase("es-CL"))!,
         personasExpuestasTotal: typeof tarea.personasExpuestasTotal === "number" && Number.isFinite(tarea.personasExpuestasTotal)
           ? Math.max(0, Math.floor(tarea.personasExpuestasTotal))
           : null,
