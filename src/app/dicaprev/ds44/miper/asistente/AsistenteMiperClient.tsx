@@ -2,32 +2,29 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, Check, ChevronDown, Search, Sparkles, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import type { ContextoLevantamientoMiper, EstadoSugerenciaMiper } from "@/lib/ds44/miper-flujo-simplificado";
+import { cambiarEstadoDs44Miper } from "../actions";
 import {
   finalizarMiperAsistente,
   guardarControlesAsistente,
   guardarDescripcionesAsistente,
   guardarEvaluacionesAsistente,
-  guardarExposicionesAsistente,
   guardarRiesgosAsistente,
   guardarTareasAsistente,
   iniciarMiperAsistente,
+  obtenerSugerenciasRiesgosIa,
   obtenerSugerenciasTareasIa,
 } from "./actions";
 
 type Data = Awaited<ReturnType<typeof import("./actions").getMiperAsistenteData>>;
-type Respuesta = "aplica" | "no_aplica" | "no_se";
-type RutinaValor = "si" | "no" | "no_informado";
-type Distribucion = {
-  noInformado?: boolean;
-  hombre?: number;
-  mujer?: number;
-  noBinario?: number;
-};
+type Rutina = "si" | "no";
+type ControlTipo = "eliminacion" | "sustitucion" | "ingenieria" | "administrativo" | "epp";
 
-type CargoAsistente = {
+type CargoAlcance = {
   id: string;
   cargoId: string;
   nombre: string;
@@ -35,46 +32,32 @@ type CargoAsistente = {
   tareasTexto: string;
 };
 
-type Tarea = {
-  id: string;
-  asistenteCargoId: string;
-  nombre: string;
-  esRutinaria?: boolean | null;
-  lugarEspecifico?: string;
-  personasExpuestasTotal?: number | null;
-  distribucionSexogenerica?: Record<string, unknown> | null;
-  observaciones?: string;
-};
-
 type TareaEditor = {
   id?: string;
+  asistenteCargoId: string;
   nombre: string;
-  rutina: RutinaValor;
-  lugarEspecifico: string;
-  personasExpuestasTotal: string;
-  distribucion: Distribucion;
+  rutina: Rutina;
+  lugar: string;
+  personas: number;
+  distribucion: Record<string, number>;
   observaciones: string;
-  expandido: boolean;
+  origen: "manual" | "ia";
 };
 
-type Riesgo = {
+type RiesgoEditor = {
   id?: string;
   tareaId: string;
   codigoIsp: string;
-  confirmado: boolean;
+  estadoSugerencia: EstadoSugerenciaMiper;
   consecuencia: string;
+  motivo: string;
   probabilidad: number | null;
   severidad: number | null;
-  magnitudExposicion: string;
-  nivelRiesgoEspecifico: string;
-  estadoEvaluacionEspecifica: "pendiente" | "en_evaluacion" | "evaluado";
-  observacionTecnica: string;
-  motivoSugerencia: string;
+  responsableId: string;
+  controlTipo: ControlTipo | "";
   control: string;
-  controlTipo: "eliminacion" | "sustitucion" | "ingenieria" | "administrativo" | "epp";
   controlResponsableId: string;
   controlFecha: string;
-  controlEstado: "pendiente" | "implementado" | "en_revision" | "descartado";
   peligroGente: string;
   peligroEquipos: string;
   peligroMateriales: string;
@@ -82,679 +65,418 @@ type Riesgo = {
   peligroDescripcion: string;
 };
 
-const OPCIONES_PROBABILIDAD = [
-  { value: 1, label: "Baja (1)" },
-  { value: 2, label: "Media (2)" },
-  { value: 4, label: "Alta (4)" },
-] as const;
+const PASOS = ["Alcance", "Tareas", "Peligros y riesgos", "Evaluación y plan preventivo"];
+const inputClass = "rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-slate-300";
+const hoy = () => new Date().toISOString().slice(0, 10);
 
-const OPCIONES_CONSECUENCIA = [
-  { value: 1, label: "Ligeramente dañino (1)" },
-  { value: 2, label: "Dañino (2)" },
-  { value: 4, label: "Extremadamente dañino (4)" },
-] as const;
-
-function calcularVep(probabilidad: number | null, severidad: number | null): number | null {
-  if (probabilidad === null || severidad === null) return null;
-  return probabilidad * severidad;
-}
-
-function clasificarVep(valor: number | null): string {
-  if (valor === null) return "Evaluación pendiente";
-  if (valor <= 2) return "Tolerable";
-  if (valor === 4) return "Moderado";
-  if (valor === 8) return "Importante";
-  return "Intolerable";
-}
-
-const PASOS = ["Alcance", "Trabajo", "Tareas", "Exposición", "Riesgos", "Evaluación", "Controles", "Resumen"];
-const inputClass = "rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-slate-200";
-
-const PREGUNTAS = [
-  { grupo: "Lugares y desplazamiento", clave: "transito", pregunta: "¿Existe tránsito por superficies con posibilidad de caída?", codigo: "A1" },
-  { grupo: "Lugares y desplazamiento", clave: "altura", pregunta: "¿Se trabaja sobre 1,8 metros o en profundidades equivalentes?", codigo: "A3" },
-  { grupo: "Equipos y herramientas", clave: "herramientas", pregunta: "¿Se usan herramientas u objetos cortopunzantes?", codigo: "B3" },
-  { grupo: "Equipos y herramientas", clave: "vehiculos", pregunta: "¿Hay interacción entre peatones y vehículos en movimiento?", codigo: "I1" },
-  { grupo: "Electricidad", clave: "electricidad", pregunta: "¿Existe contacto posible con energía eléctrica?", codigo: "F1" },
-  { grupo: "Emergencias", clave: "incendio", pregunta: "¿Existen combustibles, fuentes de ignición o escenarios de incendio?", codigo: "J" },
-  { grupo: "Químicos y agentes higiénicos", clave: "quimicos", pregunta: "¿Existe exposición a aerosoles, polvos, fibras o humos?", codigo: "O1" },
-  { grupo: "Químicos y agentes higiénicos", clave: "ruido", pregunta: "¿Existe exposición continua a niveles elevados de ruido?", codigo: "P1" },
-  { grupo: "Ergonomía y manipulación de cargas", clave: "carga", pregunta: "¿Se levantan, transportan, empujan o arrastran cargas?", codigo: "R1" },
-  { grupo: "Ergonomía y manipulación de cargas", clave: "repeticion", pregunta: "¿La tarea exige movimientos repetitivos de miembros superiores?", codigo: "S1" },
-  { grupo: "Organización y factores psicosociales", clave: "carga_trabajo", pregunta: "¿La carga o los plazos de trabajo podrían ser una fuente de exposición?", codigo: "D1" },
-] as const;
-
-function normalizarRutina(valor?: boolean | null): RutinaValor {
-  if (valor === true) return "si";
-  if (valor === false) return "no";
-  return "no_informado";
-}
-
-function construirEditorDesdeTarea(tarea: Tarea, lugarBase: string): TareaEditor {
-  const distribucionRaw = (tarea.distribucionSexogenerica ?? null) as Record<string, unknown> | null;
+function contextoInicial(): ContextoLevantamientoMiper {
   return {
-    id: tarea.id,
-    nombre: tarea.nombre,
-    rutina: normalizarRutina(tarea.esRutinaria),
-    lugarEspecifico: tarea.lugarEspecifico ?? lugarBase,
-    personasExpuestasTotal: typeof tarea.personasExpuestasTotal === "number" ? String(tarea.personasExpuestasTotal) : "",
-    distribucion: distribucionRaw
-      ? {
-          noInformado: false,
-          hombre: typeof distribucionRaw.hombre === "number" ? distribucionRaw.hombre : undefined,
-          mujer: typeof distribucionRaw.mujer === "number" ? distribucionRaw.mujer : undefined,
-          noBinario: typeof distribucionRaw.noBinario === "number" ? distribucionRaw.noBinario : undefined,
-        }
-      : { noInformado: true },
-    observaciones: tarea.observaciones ?? "",
-    expandido: false,
+    fechaLevantamiento: hoy(),
+    accidentesEnfermedades: "",
+    programasVigilancia: "",
+    personasEspecialmenteSensibles: false,
+    antecedentesSensibilidad: "",
+    participantes: "",
+    participacionLaboral: "",
+    motivo: "creacion",
+    difusionPosterior: "",
+    conexionProgramaPreventivo: "",
   };
 }
 
-function construirRiesgos(tareas: Tarea[], respuestas: Record<string, Respuesta>, responsableId: string): Riesgo[] {
-  const result: Riesgo[] = [];
-  for (const tarea of tareas) {
-    for (const pregunta of PREGUNTAS) {
-      const respuesta = respuestas[`${tarea.id}:${pregunta.clave}`];
-      if (respuesta === "aplica" || respuesta === "no_se") {
-        result.push({
-          tareaId: tarea.id,
-          codigoIsp: pregunta.codigo,
-          confirmado: true,
-          consecuencia: "Consecuencia por determinar y validar técnicamente",
-          probabilidad: null,
-          severidad: null,
-          magnitudExposicion: "Pendiente de medición o aplicación del método específico",
-          nivelRiesgoEspecifico: "Pendiente",
-          estadoEvaluacionEspecifica: "pendiente",
-          observacionTecnica: respuesta === "no_se" ? "Respuesta 'No sé': requiere revisión técnica." : "",
-          motivoSugerencia: `${pregunta.grupo}: ${pregunta.pregunta}`,
-          control: "",
-          controlTipo: "administrativo",
-          controlResponsableId: responsableId,
-          controlFecha: "",
-          controlEstado: "pendiente",
-          peligroGente: "",
-          peligroEquipos: "",
-          peligroMateriales: "",
-          peligroAmbiente: "",
-          peligroDescripcion: "",
-        });
-      }
-    }
-  }
-  return result;
+function rutina(value?: boolean | null): Rutina {
+  return value === false ? "no" : "si";
+}
+
+function numero(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 export default function AsistenteMiperClient({ data }: { data: Data }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const inicial = data.borrador;
-  const respuestasIniciales = Object.fromEntries((inicial?.respuestas ?? []).map((item) => [item.clave, item.respuesta])) as Record<string, Respuesta>;
-
+  const contextoGuardado = inicial?.cabecera.contexto;
   const [paso, setPaso] = useState(inicial?.paso ?? 1);
   const [miperId, setMiperId] = useState(inicial?.id ?? "");
   const [error, setError] = useState<string | null>(null);
-  const [errorObjetivo, setErrorObjetivo] = useState<string | null>(null);
-  const [avisoIa, setAvisoIa] = useState<string | null>(null);
-
-  const [cabecera, setCabecera] = useState(
-    inicial?.cabecera ?? {
-      codigo: "",
-      nombre: "",
-      procesoNombre: "",
-      procesoTipo: "",
-      procesoResponsableId: "",
-      centroTrabajoId: "",
-      areaId: "",
-      cargoIds: [] as string[],
-      responsableElaboracionId: "",
-      fechaProximaRevision: "",
-      observaciones: "",
-    },
-  );
-
-  const [cargos, setCargos] = useState<CargoAsistente[]>(inicial?.cargos ?? []);
-  const [tareas, setTareas] = useState<Tarea[]>(inicial?.tareas ?? []);
-  const [tareasSeleccionadas, setTareasSeleccionadas] = useState<string[]>((inicial?.tareas ?? []).map((item) => item.id));
-  const [preguntaMasiva, setPreguntaMasiva] = useState(PREGUNTAS[0].clave);
-  const [respuestaMasiva, setRespuestaMasiva] = useState<Respuesta>("no_se");
-  const [respuestas, setRespuestas] = useState<Record<string, Respuesta>>(respuestasIniciales);
-  const [riesgos, setRiesgos] = useState<Riesgo[]>(
-    () => (inicial?.riesgos.length ? (inicial.riesgos as Riesgo[]) : construirRiesgos(inicial?.tareas ?? [], respuestasIniciales, inicial?.cabecera.responsableElaboracionId ?? "")),
-  );
-
-  const [rutinaMasiva, setRutinaMasiva] = useState<RutinaValor>("no_informado");
-  const [lugarMasivo, setLugarMasivo] = useState("");
-
-  const centroSeleccionado = useMemo(() => data.centros.find((c) => c.id === cabecera.centroTrabajoId)?.nombre ?? "", [cabecera.centroTrabajoId, data.centros]);
-  const lugarReferencia = centroSeleccionado;
-  const nombresCentrosActivos = useMemo(() => new Set(data.centros.map((centro) => centro.nombre)), [data.centros]);
-
-  const [tareasEditorPorCargo, setTareasEditorPorCargo] = useState<Record<string, TareaEditor[]>>(() => {
-    if (!inicial?.tareas?.length) return {};
-    const grouped: Record<string, TareaEditor[]> = {};
-    for (const t of inicial.tareas) {
-      grouped[t.asistenteCargoId] = grouped[t.asistenteCargoId] ?? [];
-      grouped[t.asistenteCargoId].push(construirEditorDesdeTarea(t as Tarea, ""));
-    }
-    return grouped;
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [cabecera, setCabecera] = useState({
+    codigo: inicial?.cabecera.codigo || data.sugerencias.codigo,
+    nombre: inicial?.cabecera.nombre || `MIPER ${data.empresa.nombre}`,
+    procesoNombre: inicial?.cabecera.procesoNombre || "",
+    procesoTipo: inicial?.cabecera.procesoTipo || "operacional",
+    procesoResponsableId: inicial?.cabecera.procesoResponsableId || "",
+    centroTrabajoId: inicial?.cabecera.centroTrabajoId || "",
+    areaId: inicial?.cabecera.areaId || "",
+    cargoIds: inicial?.cabecera.cargoIds || [] as string[],
+    responsableElaboracionId: inicial?.cabecera.responsableElaboracionId || "",
+    fechaProximaRevision: inicial?.cabecera.fechaProximaRevision || data.sugerencias.fechaProximaRevision,
+    observaciones: inicial?.cabecera.observaciones || "",
   });
+  const [contexto, setContexto] = useState<ContextoLevantamientoMiper>(contextoGuardado ?? contextoInicial());
+  const [cargos, setCargos] = useState<CargoAlcance[]>(inicial?.cargos ?? []);
+
+  const centroNombre = data.centros.find((item) => item.id === cabecera.centroTrabajoId)?.nombre ?? "";
+  const areaNombre = data.areas.find((item) => item.id === cabecera.areaId)?.nombre ?? "";
+  const cargosDisponibles = data.cargos.filter((cargo) => !cabecera.areaId || !cargo.areaId || cargo.areaId === cabecera.areaId);
+  const trabajadoresAlcance = data.trabajadores.filter((trabajador) =>
+    (!cabecera.centroTrabajoId || !trabajador.centroTrabajoId || trabajador.centroTrabajoId === cabecera.centroTrabajoId)
+    && (!cabecera.areaId || !trabajador.areaId || trabajador.areaId === cabecera.areaId)
+    && (!cabecera.cargoIds.length || !trabajador.cargoId || cabecera.cargoIds.includes(trabajador.cargoId)),
+  );
+  const distribucionHeredada = { noInformado: trabajadoresAlcance.length };
+
+  const [tareas, setTareas] = useState<TareaEditor[]>(() => (inicial?.tareas ?? []).map((tarea) => ({
+    id: tarea.id,
+    asistenteCargoId: tarea.asistenteCargoId,
+    nombre: tarea.nombre,
+    rutina: rutina(tarea.esRutinaria),
+    lugar: tarea.lugarEspecifico || centroNombre,
+    personas: tarea.personasExpuestasTotal ?? 0,
+    distribucion: Object.fromEntries(Object.entries(tarea.distribucionSexogenerica ?? {}).filter((entry): entry is [string, number] => typeof entry[1] === "number")),
+    observaciones: tarea.observaciones || "",
+    origen: "manual",
+  })));
+
+  const [riesgos, setRiesgos] = useState<RiesgoEditor[]>(() => (inicial?.riesgos ?? []).map((item) => ({
+    id: item.id,
+    tareaId: item.tareaId,
+    codigoIsp: item.codigoIsp,
+    estadoSugerencia: item.estadoSugerencia,
+    consecuencia: item.consecuencia,
+    motivo: item.motivoSugerencia,
+    probabilidad: item.probabilidad,
+    severidad: item.severidad,
+    responsableId: inicial?.cabecera.responsableElaboracionId || "",
+    controlTipo: item.controlTipo,
+    control: item.control,
+    controlResponsableId: item.controlResponsableId,
+    controlFecha: item.controlFecha,
+    peligroGente: item.peligroGente,
+    peligroEquipos: item.peligroEquipos,
+    peligroMateriales: item.peligroMateriales,
+    peligroAmbiente: item.peligroAmbiente,
+    peligroDescripcion: item.peligroDescripcion,
+  })));
+  const [busquedaCatalogo, setBusquedaCatalogo] = useState("");
+  const [tareaManualId, setTareaManualId] = useState("");
+  const [riesgosSeleccionados, setRiesgosSeleccionados] = useState<string[]>([]);
+  const [controlMasivo, setControlMasivo] = useState({ tipo: "" as ControlTipo | "", descripcion: "", responsableId: "", fecha: "" });
 
   const catalogo = useMemo(() => new Map(data.catalogo.map((item) => [item.codigoIsp, item])), [data.catalogo]);
-  const cargosDisponibles = useMemo(() => data.cargos.filter((cargo) => !cabecera.areaId || !cargo.areaId || cargo.areaId === cabecera.areaId), [cabecera.areaId, data.cargos]);
+  const confirmados = riesgos.filter((item) => item.estadoSugerencia === "confirmado");
+  const catalogoFiltrado = data.catalogo.filter((item) => {
+    const q = busquedaCatalogo.trim().toLocaleLowerCase("es-CL");
+    return q && `${item.codigoIsp} ${item.familia} ${item.riesgoEspecifico}`.toLocaleLowerCase("es-CL").includes(q);
+  }).slice(0, 12);
 
   function run(action: () => Promise<void>) {
     setError(null);
-    setErrorObjetivo(null);
     startTransition(async () => {
       try {
         await action();
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "No fue posible guardar el paso.");
+        setError(caught instanceof Error ? caught.message : "No fue posible guardar los cambios.");
       }
     });
   }
 
-  function irAlCampoPendiente() {
-    if (!errorObjetivo) return;
-    const objetivo = document.getElementById(errorObjetivo);
-    if (!objetivo) return;
-    objetivo.scrollIntoView({ behavior: "smooth", block: "center" });
-    window.setTimeout(() => {
-      objetivo.querySelector<HTMLElement>("select, input, textarea, button")?.focus({ preventScroll: true });
-    }, 450);
+  function actualizarTarea(index: number, patch: Partial<TareaEditor>) {
+    setTareas((values) => values.map((item, i) => i === index ? { ...item, ...patch } : item));
   }
 
-  function tareasDesdeTexto(cargo: CargoAsistente, texto: string): TareaEditor[] {
-    const actuales = tareasEditorPorCargo[cargo.id] ?? [];
-    const lineas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
-    return lineas.map((nombre, index) => {
-      const anterior = actuales[index];
-      return {
-        id: anterior?.id,
-        nombre,
-        rutina: anterior?.rutina ?? "no_informado",
-        lugarEspecifico: anterior?.lugarEspecifico ?? lugarReferencia,
-        personasExpuestasTotal: anterior?.personasExpuestasTotal ?? "",
-        distribucion: anterior?.distribucion ?? { noInformado: true },
-        observaciones: anterior?.observaciones ?? "",
-        expandido: anterior?.expandido ?? false,
-      };
-    });
+  function agregarRiesgoManual(codigoIsp: string) {
+    if (!tareaManualId) return setError("Selecciona la tarea a la que corresponde el riesgo.");
+    if (riesgos.some((item) => item.tareaId === tareaManualId && item.codigoIsp === codigoIsp)) {
+      return setError("Ese riesgo ya está incorporado para la tarea.");
+    }
+    const item = catalogo.get(codigoIsp);
+    if (!item) return;
+    setRiesgos((values) => [...values, {
+      tareaId: tareaManualId,
+      codigoIsp,
+      estadoSugerencia: "sugerido",
+      consecuencia: "Consecuencia pendiente de confirmación",
+      motivo: "Agregado manualmente desde el catálogo ISP.",
+      probabilidad: null,
+      severidad: null,
+      responsableId: cabecera.responsableElaboracionId,
+      controlTipo: "",
+      control: "",
+      controlResponsableId: cabecera.responsableElaboracionId,
+      controlFecha: "",
+      peligroGente: "",
+      peligroEquipos: "",
+      peligroMateriales: "",
+      peligroAmbiente: "",
+      peligroDescripcion: "",
+    }]);
+    setBusquedaCatalogo("");
   }
 
-  function actualizarTextoCargo(cargoId: string, texto: string) {
-    const cargo = cargos.find((c) => c.id === cargoId);
-    if (!cargo) return;
-    setCargos((prev) => prev.map((c) => (c.id === cargoId ? { ...c, tareasTexto: texto } : c)));
-    setTareasEditorPorCargo((prev) => ({ ...prev, [cargoId]: tareasDesdeTexto({ ...cargo, tareasTexto: texto }, texto) }));
-  }
-
-  function editarTarea(cargoId: string, index: number, patch: Partial<TareaEditor>) {
-    setTareasEditorPorCargo((prev) => ({
-      ...prev,
-      [cargoId]: (prev[cargoId] ?? []).map((t, i) => (i === index ? { ...t, ...patch } : t)),
+  function aplicarControlMasivo() {
+    if (!riesgosSeleccionados.length) return setError("Selecciona al menos un riesgo confirmado.");
+    if (!controlMasivo.tipo || !controlMasivo.descripcion.trim()) return setError("Selecciona la jerarquía y describe el control.");
+    setRiesgos((values) => values.map((item) => {
+      const ref = item.id || `${item.tareaId}:${item.codigoIsp}`;
+      return riesgosSeleccionados.includes(ref) ? {
+        ...item,
+        controlTipo: controlMasivo.tipo,
+        control: controlMasivo.descripcion,
+        controlResponsableId: controlMasivo.responsableId || item.controlResponsableId,
+        controlFecha: controlMasivo.fecha || item.controlFecha,
+      } : item;
     }));
   }
 
-  function aplicarATodasLasTareas() {
-    setTareasEditorPorCargo((prev) => {
-      const next: Record<string, TareaEditor[]> = {};
-      for (const [cargoId, lista] of Object.entries(prev)) {
-        next[cargoId] = lista.map((t) => ({
-          ...t,
-          rutina: rutinaMasiva,
-          lugarEspecifico: lugarMasivo.trim() || t.lugarEspecifico || lugarReferencia,
-        }));
-      }
-      return next;
+  function guardarAlcance() {
+    run(async () => {
+      if (!cabecera.centroTrabajoId || !cabecera.areaId || !cabecera.cargoIds.length) throw new Error("Confirma centro, área y al menos un cargo.");
+      if (!cabecera.procesoResponsableId || !cabecera.responsableElaboracionId) throw new Error("Selecciona responsable del proceso y responsable de elaboración.");
+      if (!contexto.participantes.trim() || !contexto.participacionLaboral.trim()) throw new Error("Registra participantes y forma de participación del levantamiento.");
+      const result = await iniciarMiperAsistente({
+        ...cabecera,
+        procesoTipo: cabecera.procesoTipo as "operacional" | "apoyo",
+        contexto,
+      });
+      await guardarDescripcionesAsistente({
+        miperId: result.id,
+        cargos: result.cargos.map((cargo) => ({ id: cargo.id, descripcionTrabajo: cargo.descripcionTrabajo || "Descripción pendiente de revisión." })),
+      });
+      setMiperId(result.id);
+      setCargos(result.cargos.map((cargo) => ({ ...cargo, tareasTexto: "" })));
+      setPaso(2);
     });
   }
 
-  function crearSugerencias() {
-    const next = construirRiesgos(tareas, respuestas, cabecera.responsableElaboracionId);
-    if (!next.length) throw new Error("No hay exposiciones aplicables. Revisa las respuestas o agrega la evaluación en Modo experto.");
-    setRiesgos(next);
+  function guardarTareas() {
+    run(async () => {
+      if (!tareas.length) throw new Error("Confirma al menos una tarea.");
+      const agrupadas = cargos.map((cargo) => ({
+        asistenteCargoId: cargo.id,
+        tareas: tareas.filter((tarea) => tarea.asistenteCargoId === cargo.id).map((tarea) => ({
+          nombre: tarea.nombre,
+          origen: tarea.origen,
+          esRutinaria: tarea.rutina === "si",
+          lugarEspecifico: tarea.lugar || centroNombre,
+          personasExpuestasTotal: tarea.personas || trabajadoresAlcance.length,
+          distribucionSexogenerica: Object.keys(tarea.distribucion).length ? tarea.distribucion : distribucionHeredada,
+          observaciones: tarea.observaciones,
+        })),
+      }));
+      const saved = await guardarTareasAsistente({ miperId, cargos: agrupadas });
+      setTareas(saved.map((item) => ({
+        id: item.id,
+        asistenteCargoId: item.asistenteCargoId,
+        nombre: item.nombre,
+        rutina: rutina(item.esRutinaria),
+        lugar: item.lugarEspecifico || centroNombre,
+        personas: item.personasExpuestasTotal ?? trabajadoresAlcance.length,
+        distribucion: Object.fromEntries(Object.entries((item.distribucionSexogenerica ?? {}) as Record<string, unknown>).filter((entry): entry is [string, number] => typeof entry[1] === "number")),
+        observaciones: item.observaciones || "",
+        origen: "manual",
+      })));
+      setPaso(3);
+    });
   }
 
-  function continuar() {
-    if (paso === 1) {
-      return run(async () => {
-        const result = await iniciarMiperAsistente({
-          ...cabecera,
-          procesoTipo: cabecera.procesoTipo === "operacional" || cabecera.procesoTipo === "apoyo" ? cabecera.procesoTipo : undefined,
-        });
-        setMiperId(result.id);
-        setCargos(result.cargos.map((item) => ({ ...item, tareasTexto: "" })));
-        setPaso(2);
+  function guardarRiesgos() {
+    run(async () => {
+      if (!riesgos.some((item) => item.estadoSugerencia === "confirmado")) throw new Error("Confirma al menos un riesgo para continuar.");
+      const guardados = await guardarRiesgosAsistente({
+        miperId,
+        items: riesgos.map((item) => ({
+          tareaId: item.tareaId,
+          codigoIsp: item.codigoIsp,
+          confirmado: item.estadoSugerencia === "confirmado",
+          estadoSugerencia: item.estadoSugerencia,
+          consecuencia: item.consecuencia,
+          responsableTrabajadorId: item.responsableId || cabecera.responsableElaboracionId,
+          motivoSugerencia: item.motivo,
+          peligroGente: item.peligroGente,
+          peligroEquipos: item.peligroEquipos,
+          peligroMateriales: item.peligroMateriales,
+          peligroAmbiente: item.peligroAmbiente,
+          peligroDescripcion: item.peligroDescripcion,
+        })),
       });
-    }
+      const ids = new Map(guardados.map((item) => [`${item.tareaId}:${item.codigoIsp}`, item.id]));
+      setRiesgos((values) => values.map((item) => ({ ...item, id: ids.get(`${item.tareaId}:${item.codigoIsp}`) })));
+      setPaso(4);
+    });
+  }
 
-    if (paso === 2) {
-      return run(async () => {
-        await guardarDescripcionesAsistente({ miperId, cargos: cargos.map(({ id, descripcionTrabajo }) => ({ id, descripcionTrabajo })) });
-        setPaso(3);
-      });
-    }
+  async function persistirPlan() {
+    const activos = riesgos.filter((item) => item.estadoSugerencia === "confirmado");
+    if (activos.some((item) => !item.id)) throw new Error("Guarda primero la selección de riesgos.");
+    const vepPendiente = activos.find((item) => catalogo.get(item.codigoIsp)?.metodologiaEvaluacion === "vep_isp" && (item.probabilidad === null || item.severidad === null));
+    if (vepPendiente) throw new Error("Completa probabilidad y consecuencia de todos los riesgos VEP confirmados.");
+    await guardarEvaluacionesAsistente({
+      miperId,
+      items: activos.map((item) => ({
+        id: item.id!,
+        consecuencia: item.consecuencia,
+        probabilidad: item.probabilidad,
+        severidad: item.severidad,
+        estadoEvaluacionEspecifica: "pendiente",
+        observacionTecnica: catalogo.get(item.codigoIsp)?.metodologiaEvaluacion === "evaluacion_especifica"
+          ? `Evaluación técnica pendiente según ${catalogo.get(item.codigoIsp)?.protocoloAplicable || "metodología ISP aplicable"}.`
+          : undefined,
+      })),
+    });
+    await guardarControlesAsistente({
+      miperId,
+      items: activos.map((item) => ({
+        id: item.id!,
+        controles: item.control.trim() && item.controlTipo ? [{
+          tipoControl: item.controlTipo,
+          descripcion: item.control,
+          responsableTrabajadorId: item.controlResponsableId,
+          fechaCompromiso: item.controlFecha,
+          estado: "pendiente",
+        }] : [],
+      })),
+    });
+    return finalizarMiperAsistente({ miperId });
+  }
 
-    if (paso === 3) {
-      return run(async () => {
-        const payload = cargos.map((cargo) => {
-          const lista = (tareasEditorPorCargo[cargo.id] ?? tareasDesdeTexto(cargo, cargo.tareasTexto)).filter((t) => t.nombre.trim());
-          return {
-            asistenteCargoId: cargo.id,
-            tareas: lista.map((t) => ({
-              nombre: t.nombre,
-              origen: "manual" as const,
-              esRutinaria: t.rutina === "no_informado" ? null : t.rutina === "si",
-              lugarEspecifico: t.lugarEspecifico,
-              personasExpuestasTotal: t.personasExpuestasTotal ? Number(t.personasExpuestasTotal) : null,
-              distribucionSexogenerica: t.distribucion.noInformado
-                ? null
-                : {
-                    hombre: t.distribucion.hombre ?? 0,
-                    mujer: t.distribucion.mujer ?? 0,
-                    noBinario: t.distribucion.noBinario ?? 0,
-                  },
-              observaciones: t.observaciones,
-            })),
-          };
-        });
-
-        const saved = await guardarTareasAsistente({ miperId, cargos: payload });
-        setTareas(saved as Tarea[]);
-        setTareasSeleccionadas(saved.map((item) => item.id));
-        setPaso(4);
-      });
-    }
-
-    if (paso === 4) {
-      return run(async () => {
-        const payload = tareas.flatMap((tarea) =>
-          PREGUNTAS.map((pregunta) => ({
-            tareaId: tarea.id,
-            grupo: pregunta.grupo,
-            clave: pregunta.clave,
-            pregunta: pregunta.pregunta,
-            respuesta: respuestas[`${tarea.id}:${pregunta.clave}`] ?? "no_se",
-          })),
-        );
-        await guardarExposicionesAsistente({ miperId, respuestas: payload });
-        crearSugerencias();
-        setPaso(5);
-      });
-    }
-
-    if (paso === 5) {
-      return run(async () => {
-        const guardados = await guardarRiesgosAsistente({
-          miperId,
-          items: riesgos.map((item) => ({
-            tareaId: item.tareaId,
-            codigoIsp: item.codigoIsp,
-            confirmado: item.confirmado,
-            consecuencia: item.consecuencia,
-            responsableTrabajadorId: cabecera.responsableElaboracionId,
-            motivoSugerencia: item.motivoSugerencia,
-            peligroGente: item.peligroGente,
-            peligroEquipos: item.peligroEquipos,
-            peligroMateriales: item.peligroMateriales,
-            peligroAmbiente: item.peligroAmbiente,
-            peligroDescripcion: item.peligroDescripcion,
-          })),
-        });
-        const ids = new Map(guardados.map((item) => [`${item.tareaId}:${item.codigoIsp}`, item.id]));
-        setRiesgos((values) => values.map((item) => ({ ...item, id: ids.get(`${item.tareaId}:${item.codigoIsp}`) })));
-        setPaso(6);
-      });
-    }
-
-    if (paso === 6) {
-      const indiceVepPendiente = riesgos.findIndex((item) => {
-        const riesgo = catalogo.get(item.codigoIsp);
-        return item.confirmado && riesgo?.metodologiaEvaluacion === "vep_isp" && (item.probabilidad === null || item.severidad === null);
-      });
-      if (indiceVepPendiente >= 0) {
-        setError("Completa probabilidad y consecuencia en los riesgos VEP confirmados antes de continuar.");
-        setErrorObjetivo(`evaluacion-riesgo-${indiceVepPendiente}`);
-        return;
-      }
-      return run(async () => {
-        if (riesgos.some((item) => !item.id)) throw new Error("Guarda primero las sugerencias de riesgo.");
-        await guardarEvaluacionesAsistente({
-          miperId,
-          items: riesgos.map((item) => ({
-            id: item.id!,
-            consecuencia: item.consecuencia,
-            probabilidad: item.probabilidad,
-            severidad: item.severidad,
-            magnitudExposicion: item.magnitudExposicion,
-            nivelRiesgoEspecifico: item.nivelRiesgoEspecifico,
-            estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica,
-            observacionTecnica: item.observacionTecnica,
-          })),
-        });
-        setPaso(7);
-      });
-    }
-
-    if (paso === 7) {
-      return run(async () => {
-        if (riesgos.some((item) => !item.id)) throw new Error("Guarda primero las evaluaciones.");
-        await guardarControlesAsistente({
-          miperId,
-          items: riesgos.map((item) => ({
-            id: item.id!,
-            controles: item.control.trim()
-              ? [{
-                  tipoControl: item.controlTipo,
-                  descripcion: item.control,
-                  responsableTrabajadorId: item.controlResponsableId,
-                  fechaCompromiso: item.controlFecha,
-                  estado: item.controlEstado,
-                }]
-              : [],
-          })),
-        });
-        setPaso(8);
-      });
-    }
-
-    return run(async () => {
-      const result = await finalizarMiperAsistente({ miperId });
+  function guardarBorrador(enviarRevision: boolean) {
+    run(async () => {
+      const result = await persistirPlan();
+      if (enviarRevision) await cambiarEstadoDs44Miper({ miperId: result.id, estado: "en_revision" });
       router.push(`/dicaprev/ds44/miper/${result.id}`);
       router.refresh();
     });
-  }
-
-  function aplicarRespuestaMasiva(aTodas: boolean) {
-    const destino = aTodas ? tareas.map((item) => item.id) : tareasSeleccionadas;
-    if (!destino.length) {
-      setError("Selecciona al menos una tarea para aplicar la respuesta.");
-      return;
-    }
-    setRespuestas((values) => ({
-      ...values,
-      ...Object.fromEntries(destino.map((tareaId) => [`${tareaId}:${preguntaMasiva}`, respuestaMasiva])),
-    }));
   }
 
   return (
     <div className="space-y-5">
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
         <div className="flex min-w-max gap-1">
-          {PASOS.map((label, index) => (
-            <div
-              key={label}
-              className={`rounded-xl px-4 py-2 text-sm font-semibold ${paso === index + 1 ? "bg-slate-900 text-white" : paso > index + 1 ? "bg-emerald-50 text-emerald-700" : "text-slate-400"}`}
-            >
-              {index + 1}. {label}
-            </div>
-          ))}
+          {PASOS.map((label, index) => <div key={label} className={`rounded-xl px-4 py-2 text-sm font-semibold ${paso === index + 1 ? "bg-slate-900 text-white" : paso > index + 1 ? "bg-emerald-50 text-emerald-700" : "text-slate-400"}`}>{index + 1}. {label}</div>)}
         </div>
       </div>
 
-      {error && (errorObjetivo ? (
-        <button type="button" onClick={irAlCampoPendiente} className="w-full rounded-2xl border border-rose-200 bg-rose-50 p-4 text-left text-sm text-rose-800 transition hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-300">
-          <span className="block">{error}</span>
-          <span className="mt-1 block font-semibold underline">Presiona este mensaje para ir al primer campo pendiente.</span>
-        </button>
-      ) : <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>)}
-      {avisoIa && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{avisoIa}</div>}
+      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        <strong>Asistente simplificado:</strong> NextPrev precarga el contexto y la IA propone. La confirmación, evaluación y aprobación siempre son humanas. La revisión profesional usa el mismo registro con información técnica desplegable.
+      </div>
+      {error && <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>}
+      {aviso && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{aviso}</div>}
 
-      {paso === 1 && (
-        <Card className="rounded-2xl">
-          <CardHeader><h2 className="text-lg font-bold">1. Alcance de la matriz</h2></CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-sm font-medium">Código<input className={inputClass} value={cabecera.codigo} onChange={(e) => setCabecera((v) => ({ ...v, codigo: e.target.value }))} /></label>
-            <label className="grid gap-1 text-sm font-medium">Nombre<input className={inputClass} value={cabecera.nombre} onChange={(e) => setCabecera((v) => ({ ...v, nombre: e.target.value }))} /></label>
-            <label className="grid gap-1 text-sm font-medium">Proceso<input className={inputClass} value={cabecera.procesoNombre ?? ""} onChange={(e) => setCabecera((v) => ({ ...v, procesoNombre: e.target.value }))} /></label>
-            <label className="grid gap-1 text-sm font-medium">Tipo proceso<select className={inputClass} value={cabecera.procesoTipo ?? ""} onChange={(e) => setCabecera((v) => ({ ...v, procesoTipo: e.target.value }))}><option value="">Selecciona</option><option value="operacional">Operacional</option><option value="apoyo">Apoyo</option></select></label>
-            <label className="grid gap-1 text-sm font-medium md:col-span-2">Responsable del proceso<select className={inputClass} value={cabecera.procesoResponsableId} onChange={(e) => setCabecera((v) => ({ ...v, procesoResponsableId: e.target.value }))}><option value="">Selecciona trabajador</option>{data.responsables.map((item) => <option key={item.id} value={item.id}>{item.nombre}{item.cargo ? ` · ${item.cargo}` : ""}</option>)}</select></label>
-            <label className="grid gap-1 text-sm font-medium">Centro<select className={inputClass} value={cabecera.centroTrabajoId} onChange={(e) => setCabecera((v) => ({ ...v, centroTrabajoId: e.target.value }))}><option value="">Selecciona</option>{data.centros.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
-            <label className="grid gap-1 text-sm font-medium">Área<select className={inputClass} value={cabecera.areaId} onChange={(e) => setCabecera((v) => ({ ...v, areaId: e.target.value, cargoIds: [] }))}><option value="">Selecciona</option>{data.areas.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
-            <fieldset className="grid gap-2 rounded-xl border border-slate-200 p-4 md:col-span-2"><legend className="px-2 text-sm font-semibold">Cargos incluidos</legend>{cargosDisponibles.map((cargo) => <label key={cargo.id} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={cabecera.cargoIds.includes(cargo.id)} onChange={(e) => setCabecera((v) => ({ ...v, cargoIds: e.target.checked ? [...v.cargoIds, cargo.id] : v.cargoIds.filter((id) => id !== cargo.id) }))} />{cargo.nombre}</label>)}</fieldset>
-            <label className="grid gap-1 text-sm font-medium">Responsable elaboración<select className={inputClass} value={cabecera.responsableElaboracionId} onChange={(e) => setCabecera((v) => ({ ...v, responsableElaboracionId: e.target.value }))}><option value="">Selecciona</option>{data.responsables.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
-            <label className="grid gap-1 text-sm font-medium">Próxima revisión<input type="date" className={inputClass} value={cabecera.fechaProximaRevision} onChange={(e) => setCabecera((v) => ({ ...v, fechaProximaRevision: e.target.value }))} /></label>
-          </CardContent>
-        </Card>
-      )}
+      {paso === 1 && <Card className="rounded-2xl">
+        <CardHeader>
+          <h2 className="text-lg font-bold">1. Confirma el alcance</h2>
+          <p className="text-sm text-slate-500">Empresa, código, versión y revisión se completan automáticamente.</p>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-xl bg-slate-50 p-3 text-sm"><span className="text-slate-500">Empresa</span><strong className="block">{data.empresa.nombre || "Empresa activa"}</strong><span>{data.empresa.rut || "RUT no informado"}</span></div>
+          <div className="rounded-xl bg-slate-50 p-3 text-sm"><span className="text-slate-500">Identificación</span><strong className="block">{cabecera.codigo} · Versión {data.sugerencias.version}</strong><span>Revisión: {cabecera.fechaProximaRevision}</span></div>
+          <label className="grid gap-1 text-sm font-medium md:col-span-2">Nombre de la matriz<input className={inputClass} value={cabecera.nombre} onChange={(e) => setCabecera((value) => ({ ...value, nombre: e.target.value }))} /></label>
+          <label className="grid gap-1 text-sm font-medium">Centro de trabajo<select className={inputClass} value={cabecera.centroTrabajoId} onChange={(e) => setCabecera((value) => ({ ...value, centroTrabajoId: e.target.value }))}><option value="">Selecciona</option>{data.centros.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
+          <label className="grid gap-1 text-sm font-medium">Área<select className={inputClass} value={cabecera.areaId} onChange={(e) => setCabecera((value) => ({ ...value, areaId: e.target.value, cargoIds: [] }))}><option value="">Selecciona</option>{data.areas.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
+          <label className="grid gap-1 text-sm font-medium">Proceso<input className={inputClass} value={cabecera.procesoNombre} onChange={(e) => setCabecera((value) => ({ ...value, procesoNombre: e.target.value }))} /></label>
+          <label className="grid gap-1 text-sm font-medium">Tipo de proceso<select className={inputClass} value={cabecera.procesoTipo} onChange={(e) => setCabecera((value) => ({ ...value, procesoTipo: e.target.value }))}><option value="operacional">Operacional</option><option value="apoyo">Apoyo</option></select></label>
+          <label className="grid gap-1 text-sm font-medium">Responsable del proceso<select className={inputClass} value={cabecera.procesoResponsableId} onChange={(e) => setCabecera((value) => ({ ...value, procesoResponsableId: e.target.value }))}><option value="">Selecciona trabajador</option>{data.responsables.map((item) => <option key={item.id} value={item.id}>{item.nombre}{item.cargo ? ` · ${item.cargo}` : ""}</option>)}</select></label>
+          <label className="grid gap-1 text-sm font-medium">Responsable de elaboración<select className={inputClass} value={cabecera.responsableElaboracionId} onChange={(e) => setCabecera((value) => ({ ...value, responsableElaboracionId: e.target.value }))}><option value="">Selecciona trabajador</option>{data.responsables.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select></label>
+          <fieldset className="rounded-xl border border-slate-200 p-4 md:col-span-2"><legend className="px-2 text-sm font-semibold">Cargos incluidos</legend><div className="grid gap-2 sm:grid-cols-2">{cargosDisponibles.map((cargo) => <label key={cargo.id} className="flex gap-2 text-sm"><input type="checkbox" checked={cabecera.cargoIds.includes(cargo.id)} onChange={(e) => setCabecera((value) => ({ ...value, cargoIds: e.target.checked ? [...value.cargoIds, cargo.id] : value.cargoIds.filter((id) => id !== cargo.id) }))} />{cargo.nombre}</label>)}</div></fieldset>
+          <div className="rounded-xl bg-emerald-50 p-3 text-sm md:col-span-2"><strong>{trabajadoresAlcance.length} trabajadores activos precargados</strong><p className="text-emerald-800">La ficha actual no registra sexo; la distribución se conserva como “no informada” para no inferir datos.</p></div>
+          <label className="grid gap-1 text-sm font-medium">Fecha del levantamiento<input type="date" className={inputClass} value={contexto.fechaLevantamiento} onChange={(e) => setContexto((value) => ({ ...value, fechaLevantamiento: e.target.value }))} /></label>
+          <label className="grid gap-1 text-sm font-medium">Motivo<select className={inputClass} value={contexto.motivo} onChange={(e) => setContexto((value) => ({ ...value, motivo: e.target.value as ContextoLevantamientoMiper["motivo"] }))}><option value="creacion">Creación inicial</option><option value="revision_anual">Revisión anual</option><option value="cambio_condiciones">Cambio de condiciones</option><option value="accidente_enfermedad">Accidente o enfermedad profesional</option><option value="riesgo_grave">Riesgo grave</option></select></label>
+          <label className="grid gap-1 text-sm font-medium">Accidentes y enfermedades profesionales anteriores<textarea className={inputClass} value={contexto.accidentesEnfermedades} onChange={(e) => setContexto((value) => ({ ...value, accidentesEnfermedades: e.target.value }))} /></label>
+          <label className="grid gap-1 text-sm font-medium">Programas de vigilancia aplicables<textarea className={inputClass} value={contexto.programasVigilancia} onChange={(e) => setContexto((value) => ({ ...value, programasVigilancia: e.target.value }))} /></label>
+          <label className="flex items-center gap-2 text-sm font-medium md:col-span-2"><input type="checkbox" checked={contexto.personasEspecialmenteSensibles} onChange={(e) => setContexto((value) => ({ ...value, personasEspecialmenteSensibles: e.target.checked }))} />Existen personas especialmente sensibles (sin registrar diagnósticos)</label>
+          {contexto.personasEspecialmenteSensibles && <label className="grid gap-1 text-sm font-medium md:col-span-2">Consideración preventiva breve<textarea className={inputClass} value={contexto.antecedentesSensibilidad} onChange={(e) => setContexto((value) => ({ ...value, antecedentesSensibilidad: e.target.value }))} /></label>}
+          <label className="grid gap-1 text-sm font-medium">Participantes del levantamiento<textarea className={inputClass} value={contexto.participantes} onChange={(e) => setContexto((value) => ({ ...value, participantes: e.target.value }))} /></label>
+          <label className="grid gap-1 text-sm font-medium">Participación de trabajadores, CPHS o delegado<textarea className={inputClass} value={contexto.participacionLaboral} onChange={(e) => setContexto((value) => ({ ...value, participacionLaboral: e.target.value }))} /></label>
+          <details className="rounded-xl border border-slate-200 p-4 md:col-span-2"><summary className="flex cursor-pointer items-center gap-2 font-semibold">Trazabilidad posterior <ChevronDown className="h-4 w-4" /></summary><div className="mt-3 grid gap-3 md:grid-cols-2"><label className="grid gap-1 text-sm">Registro de difusión<textarea className={inputClass} value={contexto.difusionPosterior} onChange={(e) => setContexto((value) => ({ ...value, difusionPosterior: e.target.value }))} /></label><label className="grid gap-1 text-sm">Conexión con programa preventivo<textarea className={inputClass} value={contexto.conexionProgramaPreventivo} onChange={(e) => setContexto((value) => ({ ...value, conexionProgramaPreventivo: e.target.value }))} /></label></div></details>
+        </CardContent>
+      </Card>}
 
-      {paso === 2 && (
-        <Card className="rounded-2xl">
-          <CardHeader><h2 className="text-lg font-bold">2. Descripción del trabajo por cargo</h2></CardHeader>
-          <CardContent className="space-y-4">
-            {cargos.map((cargo) => (
-              <label key={cargo.id} className="grid gap-1 text-sm font-medium">
-                {cargo.nombre}
-                <textarea className={`${inputClass} min-h-28`} value={cargo.descripcionTrabajo} onChange={(e) => setCargos((values) => values.map((item) => item.id === cargo.id ? { ...item, descripcionTrabajo: e.target.value } : item))} />
-              </label>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      {paso === 2 && <Card className="rounded-2xl">
+        <CardHeader><h2 className="text-lg font-bold">2. Confirma las tareas</h2><p className="text-sm text-slate-500">Se heredan centro, población, distribución, proceso y responsable. Abre Información avanzada solo si necesitas corregir una excepción.</p></CardHeader>
+        <CardContent className="space-y-4">
+          {cargos.map((cargo) => <div key={cargo.id} className="rounded-xl border border-slate-200 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2"><strong>{cargo.nombre}</strong><Button variant="outline" size="sm" disabled={pending} onClick={() => run(async () => {
+              const result = await obtenerSugerenciasTareasIa({ miperId, asistenteCargoId: cargo.id });
+              setAviso(result.mensaje);
+              const nuevas = result.resultado.tareas.map((sugerencia) => ({ asistenteCargoId: cargo.id, nombre: sugerencia.nombre, rutina: "si" as const, lugar: centroNombre, personas: trabajadoresAlcance.filter((item) => item.cargoId === cargo.cargoId).length, distribucion: distribucionHeredada, observaciones: "", origen: "ia" as const }));
+              setTareas((values) => [...values.filter((item) => item.asistenteCargoId !== cargo.id), ...nuevas]);
+            })}><Sparkles className="mr-2 h-4 w-4" />Sugerir con IA</Button></div>
+            <p className="mt-1 text-xs text-slate-500">{cargo.descripcionTrabajo || "Descripción del cargo precargada."} · {areaNombre} · {centroNombre}</p>
+            <div className="mt-3 space-y-3">{tareas.filter((item) => item.asistenteCargoId === cargo.id).map((tarea, indexCargo) => {
+              const index = tareas.indexOf(tarea);
+              return <div key={`${cargo.id}-${indexCargo}`} className="rounded-xl bg-slate-50 p-3">
+                <div className="grid gap-3 md:grid-cols-[1fr_180px_1fr_auto]"><input aria-label="Nombre tarea" className={inputClass} value={tarea.nombre} onChange={(e) => actualizarTarea(index, { nombre: e.target.value })} /><select aria-label="Rutina" className={inputClass} value={tarea.rutina} onChange={(e) => actualizarTarea(index, { rutina: e.target.value as Rutina })}><option value="si">Rutinaria</option><option value="no">No rutinaria</option></select><select aria-label="Lugar" className={inputClass} value={tarea.lugar} onChange={(e) => actualizarTarea(index, { lugar: e.target.value })}>{data.centros.map((centro) => <option key={centro.id} value={centro.nombre}>{centro.nombre}</option>)}</select><Button variant="ghost" size="icon" onClick={() => setTareas((values) => values.filter((_, i) => i !== index))}><X className="h-4 w-4" /></Button></div>
+                <details className="mt-2"><summary className="cursor-pointer text-xs font-semibold text-slate-600">Información avanzada</summary><div className="mt-2 grid gap-2 md:grid-cols-2"><label className="grid gap-1 text-xs">Personas expuestas<input type="number" min={0} className={inputClass} value={tarea.personas} onChange={(e) => actualizarTarea(index, { personas: numero(Number(e.target.value)) })} /></label><label className="grid gap-1 text-xs">Observaciones<textarea className={inputClass} value={tarea.observaciones} onChange={(e) => actualizarTarea(index, { observaciones: e.target.value })} /></label></div></details>
+              </div>;
+            })}</div>
+            <Button className="mt-3" variant="ghost" size="sm" onClick={() => setTareas((values) => [...values, { asistenteCargoId: cargo.id, nombre: "", rutina: "si", lugar: centroNombre, personas: trabajadoresAlcance.filter((item) => item.cargoId === cargo.cargoId).length, distribucion: distribucionHeredada, observaciones: "", origen: "manual" }])}>Agregar tarea manual</Button>
+          </div>)}
+        </CardContent>
+      </Card>}
 
-      {paso === 3 && (
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <h2 className="text-lg font-bold">3. Tareas propuestas y confirmadas</h2>
-            <p className="text-sm text-slate-500">Edita nombre, rutina y lugar por tarea. Población y observaciones quedan en bloque expandible.</p>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:grid-cols-[220px_1fr_auto]">
-              <label className="grid gap-1 text-sm font-medium">Rutina<select className={inputClass} value={rutinaMasiva} onChange={(e) => setRutinaMasiva(e.target.value as RutinaValor)}><option value="no_informado">No informado</option><option value="si">Sí</option><option value="no">No</option></select></label>
-              <label className="grid gap-1 text-sm font-medium">Lugar específico (aplicar a todas)<select className={inputClass} value={lugarMasivo} onChange={(e) => setLugarMasivo(e.target.value)}><option value="">Selecciona centro activo</option>{data.centros.map((centro) => <option key={centro.id} value={centro.nombre}>{centro.nombre}</option>)}</select></label>
-              <Button className="self-end rounded-xl" variant="outline" onClick={aplicarATodasLasTareas}>Aplicar a todas las tareas</Button>
-            </div>
+      {paso === 3 && <Card className="rounded-2xl">
+        <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-bold">3. Confirma peligros y riesgos</h2><p className="text-sm text-slate-500">La IA solo propone códigos del catálogo ISP. Ninguna sugerencia queda confirmada por defecto.</p></div><Button disabled={pending} onClick={() => run(async () => {
+          const result = await obtenerSugerenciasRiesgosIa({ miperId });
+          setAviso(result.mensaje);
+          const sugeridos: RiesgoEditor[] = result.riesgos.map((item) => ({
+            tareaId: item.tareaRef, codigoIsp: item.codigoIsp, estadoSugerencia: "sugerido", consecuencia: item.consecuenciaSugerida, motivo: item.motivo,
+            probabilidad: null, severidad: null, responsableId: cabecera.responsableElaboracionId,
+            controlTipo: item.controlesSugeridos[0]?.tipoControl || "", control: item.controlesSugeridos[0]?.descripcion || "",
+            controlResponsableId: cabecera.responsableElaboracionId, controlFecha: "", peligroGente: "", peligroEquipos: "", peligroMateriales: "", peligroAmbiente: "", peligroDescripcion: "",
+          }));
+          if (sugeridos.length) {
+            const unicos = new Map(sugeridos.map((item) => [`${item.tareaId}:${item.codigoIsp}`, item]));
+            setRiesgos([...unicos.values()]);
+          }
+        })}><Sparkles className="mr-2 h-4 w-4" />Analizar riesgos con IA</Button></div></CardHeader>
+        <CardContent className="space-y-4">
+          {(inicial?.pendientesHistoricos ?? []).length > 0 && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><strong className="flex items-center gap-2 text-amber-900"><AlertTriangle className="h-4 w-4" />Revisión técnica pendiente de registros históricos</strong>{inicial?.pendientesHistoricos.map((item) => <p key={item.id} className="mt-1 text-sm text-amber-800">{item.tarea}: {item.pregunta}</p>)}</div>}
+          <div className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-[220px_1fr]"><select className={inputClass} value={tareaManualId} onChange={(e) => setTareaManualId(e.target.value)}><option value="">Selecciona tarea</option>{tareas.map((tarea) => <option key={tarea.id} value={tarea.id}>{tarea.nombre}</option>)}</select><div className="relative"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" /><input className={`${inputClass} w-full pl-9`} value={busquedaCatalogo} onChange={(e) => setBusquedaCatalogo(e.target.value)} placeholder="Buscar otro riesgo: atrapamiento, partículas, temperatura, vibración, biológico, postura, violencia, acoso…" />{catalogoFiltrado.length > 0 && <div className="absolute z-10 mt-1 max-h-72 w-full overflow-auto rounded-xl border bg-white p-2 shadow-xl">{catalogoFiltrado.map((item) => <button key={item.codigoIsp} type="button" className="block w-full rounded-lg p-2 text-left text-sm hover:bg-slate-50" onClick={() => agregarRiesgoManual(item.codigoIsp)}><strong>{item.codigoIsp} · {item.riesgoEspecifico}</strong><span className="block text-xs text-slate-500">{item.familia}</span></button>)}</div>}</div></div>
+          {riesgos.length === 0 && <div className="rounded-xl bg-slate-50 p-8 text-center text-sm text-slate-500">Analiza con IA o agrega riesgos desde el catálogo ISP.</div>}
+          {riesgos.map((item, index) => {
+            const riesgo = catalogo.get(item.codigoIsp);
+            const tarea = tareas.find((value) => value.id === item.tareaId);
+            return <div key={`${item.tareaId}-${item.codigoIsp}-${index}`} className={`rounded-xl border p-4 ${item.estadoSugerencia === "confirmado" ? "border-emerald-200 bg-emerald-50/40" : item.estadoSugerencia === "revision_tecnica" ? "border-amber-200 bg-amber-50/50" : "border-slate-200"}`}>
+              <div className="flex flex-wrap justify-between gap-3"><div><strong>{item.codigoIsp} · {riesgo?.riesgoEspecifico}</strong><p className="text-sm text-slate-600">{tarea?.nombre} · {item.motivo}</p></div><Badge variant="outline">{item.estadoSugerencia === "confirmado" ? "Confirmado" : item.estadoSugerencia === "no_aplica" ? "No aplica" : item.estadoSugerencia === "revision_tecnica" ? "Revisión técnica pendiente" : "Sugerido"}</Badge></div>
+              <label className="mt-3 grid gap-1 text-sm font-medium">Consecuencia prevista<input className={inputClass} value={item.consecuencia} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, consecuencia: e.target.value } : value))} /></label>
+              <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant={item.estadoSugerencia === "confirmado" ? "default" : "outline"} onClick={() => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, estadoSugerencia: "confirmado" } : value))}><Check className="mr-1 h-4 w-4" />Confirmar</Button><Button size="sm" variant="outline" onClick={() => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, estadoSugerencia: "no_aplica" } : value))}>No aplica</Button><Button size="sm" variant="outline" onClick={() => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, estadoSugerencia: "revision_tecnica" } : value))}><AlertTriangle className="mr-1 h-4 w-4" />Enviar a revisión técnica</Button></div>
+              <details className="mt-3 rounded-lg bg-white/70 p-3"><summary className="cursor-pointer text-sm font-semibold">Información técnica avanzada (GEMA)</summary><div className="mt-3 grid gap-2 md:grid-cols-2">{(["peligroGente", "peligroEquipos", "peligroMateriales", "peligroAmbiente"] as const).map((campo) => <label key={campo} className="grid gap-1 text-xs capitalize">{campo.replace("peligro", "")}<input className={inputClass} value={item[campo]} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, [campo]: e.target.value } : value))} /></label>)}</div></details>
+            </div>;
+          })}
+        </CardContent>
+      </Card>}
 
-            {cargos.map((cargo) => {
-              const lista = tareasEditorPorCargo[cargo.id] ?? [];
-              return (
-                <div key={cargo.id} className="space-y-3 rounded-xl border border-slate-200 p-4">
-                  <div className="flex items-center justify-between">
-                    <strong className="text-sm">{cargo.nombre}</strong>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() => run(async () => {
-                        const result = await obtenerSugerenciasTareasIa({ miperId, asistenteCargoId: cargo.id });
-                        setAvisoIa(result.mensaje);
-                        if (result.resultado.tareas.length) {
-                          const texto = result.resultado.tareas.map((t) => t.nombre).join("\n");
-                          actualizarTextoCargo(cargo.id, texto);
-                        }
-                      })}
-                    >
-                      Sugerir con IA
-                    </Button>
-                  </div>
-
-                  <textarea
-                    className={`${inputClass} min-h-24 w-full`}
-                    value={cargo.tareasTexto}
-                    onChange={(e) => actualizarTextoCargo(cargo.id, e.target.value)}
-                    placeholder="Una tarea por línea"
-                  />
-
-                  {lista.length === 0 ? <p className="text-sm text-slate-500">Ingresa tareas para este cargo.</p> : (
-                    <div className="space-y-3">
-                      {lista.map((tarea, index) => (
-                        <div key={`${cargo.id}-${index}`} className="rounded-xl border border-slate-200 p-3">
-                          <div className="grid gap-3 md:grid-cols-3">
-                            <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Nombre<input className={inputClass} value={tarea.nombre} onChange={(e) => editarTarea(cargo.id, index, { nombre: e.target.value })} /></label>
-                            <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Rutinaria<select className={inputClass} value={tarea.rutina} onChange={(e) => editarTarea(cargo.id, index, { rutina: e.target.value as RutinaValor })}><option value="no_informado">No informado</option><option value="si">Sí</option><option value="no">No</option></select></label>
-                            <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Lugar específico<select className={inputClass} value={nombresCentrosActivos.has(tarea.lugarEspecifico) ? tarea.lugarEspecifico : ""} onChange={(e) => editarTarea(cargo.id, index, { lugarEspecifico: e.target.value })}><option value="">Selecciona centro activo</option>{data.centros.map((centro) => <option key={centro.id} value={centro.nombre}>{centro.nombre}</option>)}</select></label>
-                          </div>
-                          <details className="mt-3 rounded-xl bg-slate-50 p-3" open={tarea.expandido} onToggle={(e) => editarTarea(cargo.id, index, { expandido: (e.target as HTMLDetailsElement).open })}>
-                            <summary className="cursor-pointer text-sm font-medium text-slate-700">Población expuesta y observaciones</summary>
-                            <div className="mt-3 grid gap-3 md:grid-cols-2">
-                              <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Personas expuestas total<input type="number" min={0} className={inputClass} value={tarea.personasExpuestasTotal} onChange={(e) => editarTarea(cargo.id, index, { personasExpuestasTotal: e.target.value })} /></label>
-                              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(tarea.distribucion.noInformado)} onChange={(e) => editarTarea(cargo.id, index, { distribucion: e.target.checked ? { noInformado: true } : { noInformado: false, hombre: 0, mujer: 0, noBinario: 0 } })} />Distribución sexogenérica: No informado</label>
-                              {!tarea.distribucion.noInformado && (
-                                <>
-                                  <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Hombre<input type="number" min={0} className={inputClass} value={tarea.distribucion.hombre ?? 0} onChange={(e) => editarTarea(cargo.id, index, { distribucion: { ...tarea.distribucion, noInformado: false, hombre: Number(e.target.value || 0) } })} /></label>
-                                  <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">Mujer<input type="number" min={0} className={inputClass} value={tarea.distribucion.mujer ?? 0} onChange={(e) => editarTarea(cargo.id, index, { distribucion: { ...tarea.distribucion, noInformado: false, mujer: Number(e.target.value || 0) } })} /></label>
-                                  <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500">No binario<input type="number" min={0} className={inputClass} value={tarea.distribucion.noBinario ?? 0} onChange={(e) => editarTarea(cargo.id, index, { distribucion: { ...tarea.distribucion, noInformado: false, noBinario: Number(e.target.value || 0) } })} /></label>
-                                </>
-                              )}
-                              <label className="grid gap-1 text-xs font-semibold uppercase text-slate-500 md:col-span-2">Observaciones<textarea className={`${inputClass} min-h-20`} value={tarea.observaciones} onChange={(e) => editarTarea(cargo.id, index, { observaciones: e.target.value })} /></label>
-                            </div>
-                          </details>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {paso === 4 && (
-        <Card className="rounded-2xl">
-          <CardHeader><h2 className="text-lg font-bold">4. Exposiciones por tarea</h2></CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:grid-cols-[1fr_180px_auto_auto]">
-              <label className="grid gap-1 text-sm font-medium">Pregunta<select className={inputClass} value={preguntaMasiva} onChange={(e) => setPreguntaMasiva(e.target.value as typeof preguntaMasiva)}>{PREGUNTAS.map((item) => <option key={item.clave} value={item.clave}>{item.grupo} · {item.pregunta}</option>)}</select></label>
-              <label className="grid gap-1 text-sm font-medium">Respuesta<select className={inputClass} value={respuestaMasiva} onChange={(e) => setRespuestaMasiva(e.target.value as Respuesta)}><option value="aplica">Sí</option><option value="no_aplica">No</option><option value="no_se">No sé</option></select></label>
-              <Button variant="outline" className="self-end rounded-xl" onClick={() => aplicarRespuestaMasiva(false)}>Aplicar a seleccionadas</Button>
-              <Button className="self-end rounded-xl" onClick={() => aplicarRespuestaMasiva(true)}>Aplicar a todas las tareas</Button>
-            </div>
-            {tareas.map((tarea) => (
-              <div key={tarea.id} className="space-y-3 rounded-xl border border-slate-200 p-4">
-                <label className="flex items-center gap-2 font-bold"><input type="checkbox" checked={tareasSeleccionadas.includes(tarea.id)} onChange={(e) => setTareasSeleccionadas((values) => e.target.checked ? [...values, tarea.id] : values.filter((id) => id !== tarea.id))} />{tarea.nombre}</label>
-                {PREGUNTAS.map((pregunta) => (
-                  <label key={pregunta.clave} className="grid gap-2 text-sm md:grid-cols-[1fr_160px] md:items-center"><span><Badge variant="outline" className="mr-2">{pregunta.grupo}</Badge>{pregunta.pregunta}</span><select className={inputClass} value={respuestas[`${tarea.id}:${pregunta.clave}`] ?? "no_se"} onChange={(e) => setRespuestas((values) => ({ ...values, [`${tarea.id}:${pregunta.clave}`]: e.target.value as Respuesta }))}><option value="aplica">Sí</option><option value="no_aplica">No</option><option value="no_se">No sé</option></select></label>
-                ))}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {paso === 5 && (
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <h2 className="text-lg font-bold">5. Riesgos sugeridos</h2>
-            <p className="text-sm text-slate-500">Detalla GEMA opcional por riesgo cuando aplique.</p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {riesgos.map((item, index) => {
-              const riesgo = catalogo.get(item.codigoIsp)!;
-              const tarea = tareas.find((value) => value.id === item.tareaId);
-              return (
-                <div key={`${item.tareaId}-${item.codigoIsp}`} className="rounded-xl border border-slate-200 p-4">
-                  <label className="flex gap-3"><input type="checkbox" checked={item.confirmado} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, confirmado: e.target.checked } : value))} /><span><strong>{riesgo.codigoIsp} · {riesgo.riesgoEspecifico}</strong><span className="mt-1 block text-sm text-slate-500">{tarea?.nombre} · {riesgo.familia}</span></span></label>
-                  <details className="mt-3 rounded-xl bg-slate-50 p-3">
-                    <summary className="cursor-pointer text-sm font-medium">Detallar peligros/factores de riesgo (opcional)</summary>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <label className="grid gap-1 text-sm">Gente<input className={inputClass} value={item.peligroGente} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, peligroGente: e.target.value } : value))} /></label>
-                      <label className="grid gap-1 text-sm">Equipos<input className={inputClass} value={item.peligroEquipos} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, peligroEquipos: e.target.value } : value))} /></label>
-                      <label className="grid gap-1 text-sm">Materiales<input className={inputClass} value={item.peligroMateriales} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, peligroMateriales: e.target.value } : value))} /></label>
-                      <label className="grid gap-1 text-sm">Ambiente<input className={inputClass} value={item.peligroAmbiente} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, peligroAmbiente: e.target.value } : value))} /></label>
-                      <label className="grid gap-1 text-sm md:col-span-2">Descripción consolidada<input className={inputClass} value={item.peligroDescripcion} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, peligroDescripcion: e.target.value } : value))} /></label>
-                    </div>
-                  </details>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {paso === 6 && (
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <h2 className="text-lg font-bold">6. Evaluación de riesgos</h2>
-            <p className="text-sm text-slate-500">VEP solo admite valores ISP 1, 2 y 4. Si falta alguno, el riesgo queda como Evaluación pendiente.</p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {riesgos.map((item, index) => {
-              const riesgo = catalogo.get(item.codigoIsp);
-              const esVep = riesgo?.metodologiaEvaluacion === "vep_isp";
-              const vep = calcularVep(item.probabilidad, item.severidad);
-              return (
-                <div id={`evaluacion-riesgo-${index}`} key={`eval-${item.tareaId}-${item.codigoIsp}`} className={`rounded-xl border p-4 ${item.confirmado && esVep && (item.probabilidad === null || item.severidad === null) ? "border-rose-300 bg-rose-50/40" : "border-slate-200"}`}>
-                  <p className="text-sm font-semibold">{item.codigoIsp} · {riesgo?.riesgoEspecifico ?? "Riesgo"}</p>
-                  {esVep ? (
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <label className="grid gap-1 text-sm font-medium">
-                        Probabilidad
-                        <select
-                          className={inputClass}
-                          value={item.probabilidad ?? ""}
-                          onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, probabilidad: e.target.value ? Number(e.target.value) : null } : value))}
-                        >
-                          <option value="">Selecciona</option>
-                          {OPCIONES_PROBABILIDAD.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}
-                        </select>
-                      </label>
-                      <label className="grid gap-1 text-sm font-medium">
-                        Consecuencia
-                        <select
-                          className={inputClass}
-                          value={item.severidad ?? ""}
-                          onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, severidad: e.target.value ? Number(e.target.value) : null } : value))}
-                        >
-                          <option value="">Selecciona</option>
-                          {OPCIONES_CONSECUENCIA.map((op) => <option key={op.value} value={op.value}>{op.label}</option>)}
-                        </select>
-                      </label>
-                      <div className="rounded-xl bg-slate-50 p-3 text-sm md:col-span-2">
-                        <p><strong>VEP:</strong> {vep ?? "Pendiente"}</p>
-                        <p><strong>Nivel:</strong> {clasificarVep(vep)}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <label className="grid gap-1 text-sm font-medium">Magnitud<input className={inputClass} value={item.magnitudExposicion} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, magnitudExposicion: e.target.value } : value))} /></label>
-                      <label className="grid gap-1 text-sm font-medium">Nivel<input className={inputClass} value={item.nivelRiesgoEspecifico} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, nivelRiesgoEspecifico: e.target.value } : value))} /></label>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
-      )}
-
-      {paso === 7 && (
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <h2 className="text-lg font-bold">7. Medidas de control</h2>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {riesgos.map((item, index) => (
-              <div key={`ctrl-${item.tareaId}-${item.codigoIsp}`} className="rounded-xl border border-slate-200 p-4">
-                <p className="mb-3 text-sm font-semibold">{item.codigoIsp} · {catalogo.get(item.codigoIsp)?.riesgoEspecifico ?? "Riesgo"}</p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <label className="grid gap-1 text-sm font-medium md:col-span-2">Medida<textarea className={`${inputClass} min-h-20`} value={item.control} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, control: e.target.value } : value))} /></label>
-                  <label className="grid gap-1 text-sm font-medium">Jerarquía<select className={inputClass} value={item.controlTipo} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, controlTipo: e.target.value as Riesgo["controlTipo"] } : value))}><option value="eliminacion">Eliminación</option><option value="sustitucion">Sustitución</option><option value="ingenieria">Ingeniería</option><option value="administrativo">Administrativo</option><option value="epp">EPP</option></select></label>
-                  <label className="grid gap-1 text-sm font-medium">Estado<select className={inputClass} value={item.controlEstado} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, controlEstado: e.target.value as Riesgo["controlEstado"] } : value))}><option value="pendiente">Pendiente</option><option value="implementado">Implementado</option><option value="en_revision">En revisión</option><option value="descartado">Descartado</option></select></label>
-                  <label className="grid gap-1 text-sm font-medium">Responsable<select className={inputClass} value={item.controlResponsableId} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, controlResponsableId: e.target.value } : value))}><option value="">Selecciona</option>{data.responsables.map((resp) => <option key={resp.id} value={resp.id}>{resp.nombre}</option>)}</select></label>
-                  <label className="grid gap-1 text-sm font-medium">Fecha compromiso<input type="date" className={inputClass} value={item.controlFecha} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, controlFecha: e.target.value } : value))} /></label>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {paso === 8 && (
-        <Card className="rounded-2xl">
-          <CardHeader><h2 className="text-lg font-bold">8. Resumen final</h2></CardHeader>
-          <CardContent>
-            <p className="text-sm text-slate-600">Se creará el borrador MIPER con tareas, riesgos, evaluaciones y controles registrados.</p>
-          </CardContent>
-        </Card>
-      )}
+      {paso === 4 && <Card className="rounded-2xl">
+        <CardHeader><h2 className="text-lg font-bold">4. Evalúa y planifica controles</h2><p className="text-sm text-slate-500">Solo se muestran riesgos confirmados. Las evaluaciones específicas quedan guiadas para revisión profesional.</p></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:grid-cols-2 lg:grid-cols-4">
+            <select className={inputClass} value={controlMasivo.tipo} onChange={(e) => setControlMasivo((value) => ({ ...value, tipo: e.target.value as ControlTipo }))}><option value="">Jerarquía del control</option><option value="eliminacion">1. Eliminación</option><option value="sustitucion">2. Sustitución</option><option value="ingenieria">2. Ingeniería</option><option value="administrativo">3. Administrativo</option><option value="epp">4. EPP</option></select>
+            <input className={inputClass} placeholder="Medida para riesgos seleccionados" value={controlMasivo.descripcion} onChange={(e) => setControlMasivo((value) => ({ ...value, descripcion: e.target.value }))} />
+            <select className={inputClass} value={controlMasivo.responsableId} onChange={(e) => setControlMasivo((value) => ({ ...value, responsableId: e.target.value }))}><option value="">Responsable en bloque</option>{data.responsables.map((item) => <option key={item.id} value={item.id}>{item.nombre}</option>)}</select>
+            <div className="flex gap-2"><input type="date" className={`${inputClass} min-w-0 flex-1`} value={controlMasivo.fecha} onChange={(e) => setControlMasivo((value) => ({ ...value, fecha: e.target.value }))} /><Button variant="outline" onClick={aplicarControlMasivo}>Aplicar</Button></div>
+          </div>
+          {confirmados.map((item, indexConfirmado) => {
+            const riesgo = catalogo.get(item.codigoIsp);
+            const index = riesgos.indexOf(item);
+            const ref = item.id || `${item.tareaId}:${item.codigoIsp}`;
+            const vep = item.probabilidad !== null && item.severidad !== null ? item.probabilidad * item.severidad : null;
+            const especifica = riesgo?.metodologiaEvaluacion === "evaluacion_especifica";
+            return <div key={ref} className="rounded-xl border border-slate-200 p-4">
+              <div className="flex gap-3"><input type="checkbox" checked={riesgosSeleccionados.includes(ref)} onChange={(e) => setRiesgosSeleccionados((values) => e.target.checked ? [...values, ref] : values.filter((value) => value !== ref))} /><div className="flex-1"><strong>{item.codigoIsp} · {riesgo?.riesgoEspecifico}</strong><p className="text-sm text-slate-500">{tareas.find((tarea) => tarea.id === item.tareaId)?.nombre}</p></div></div>
+              {especifica ? <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Evaluación técnica pendiente</strong><p>Protocolo o metodología: {riesgo?.protocoloAplicable || "Metodología ISP específica aplicable"}. El prevencionista completará la medición y su respaldo en revisión profesional.</p></div> : <div className="mt-3 grid gap-3 md:grid-cols-3"><label className="grid gap-1 text-sm">Probabilidad<select className={inputClass} value={item.probabilidad ?? ""} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, probabilidad: e.target.value ? Number(e.target.value) : null } : value))}><option value="">Pendiente</option><option value="1">Baja (1)</option><option value="2">Media (2)</option><option value="4">Alta (4)</option></select></label><label className="grid gap-1 text-sm">Consecuencia VEP<select className={inputClass} value={item.severidad ?? ""} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, severidad: e.target.value ? Number(e.target.value) : null } : value))}><option value="">Pendiente</option><option value="1">Ligeramente dañina (1)</option><option value="2">Dañina (2)</option><option value="4">Extremadamente dañina (4)</option></select></label><div className="rounded-xl bg-slate-50 p-3 text-sm"><span className="text-slate-500">VEP</span><strong className="block text-lg">{vep ?? "Pendiente"}</strong></div></div>}
+              <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4"><select className={inputClass} value={item.controlTipo} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, controlTipo: e.target.value as ControlTipo } : value))}><option value="">Selecciona jerarquía</option><option value="eliminacion">1. Eliminación</option><option value="sustitucion">2. Sustitución</option><option value="ingenieria">2. Ingeniería</option><option value="administrativo">3. Administrativo</option><option value="epp">4. EPP</option></select><input className={inputClass} placeholder="Medida de control" value={item.control} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, control: e.target.value } : value))} /><select className={inputClass} value={item.controlResponsableId} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, controlResponsableId: e.target.value } : value))}><option value="">Responsable</option>{data.responsables.map((responsable) => <option key={responsable.id} value={responsable.id}>{responsable.nombre}</option>)}</select><input type="date" className={inputClass} value={item.controlFecha} onChange={(e) => setRiesgos((values) => values.map((value, i) => i === index ? { ...value, controlFecha: e.target.value } : value))} /></div>
+              <details className="mt-3"><summary className="cursor-pointer text-sm font-semibold text-slate-600">Revisión profesional y trazabilidad</summary><p className="mt-2 text-sm text-slate-500">Código ISP {item.codigoIsp}; metodología {riesgo?.metodologiaEvaluacion}; protocolo {riesgo?.protocoloAplicable || "no aplica"}; orden {indexConfirmado + 1}.</p></details>
+            </div>;
+          })}
+          <div className="flex flex-wrap justify-end gap-3"><Button variant="outline" disabled={pending} onClick={() => guardarBorrador(false)}>Guardar borrador</Button><Button disabled={pending} onClick={() => guardarBorrador(true)}>Enviar a revisión profesional</Button></div>
+        </CardContent>
+      </Card>}
 
       <div className="flex justify-between">
-        <Button variant="outline" className="rounded-2xl" disabled={pending || paso === 1} onClick={() => setPaso((value) => Math.max(1, value - 1))}>Anterior</Button>
-        <Button className="rounded-2xl font-semibold" disabled={pending} onClick={continuar}>{paso === 8 ? "Crear borrador MIPER" : "Guardar y continuar"}</Button>
+        <Button variant="outline" disabled={pending || paso === 1} onClick={() => setPaso((value) => Math.max(1, value - 1))}>Anterior</Button>
+        {paso < 4 && <Button disabled={pending} onClick={paso === 1 ? guardarAlcance : paso === 2 ? guardarTareas : guardarRiesgos}>Guardar y continuar</Button>}
       </div>
     </div>
   );

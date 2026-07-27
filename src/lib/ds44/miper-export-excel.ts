@@ -30,6 +30,7 @@ type ExportMiperMeta = {
   centroTipo: string | null;
   centroDireccion: string | null;
   areaNombre: string | null;
+  contextoLevantamiento?: Record<string, unknown> | null;
 };
 
 type ExportItem = {
@@ -53,6 +54,8 @@ type ExportItem = {
   nivelRiesgoEspecifico: string | null;
   protocoloAplicable?: string | null;
   estadoEvaluacionEspecifica?: string | null;
+  confirmadoPorUsuario?: boolean;
+  estadoSugerencia?: "sugerido" | "confirmado" | "no_aplica" | "revision_tecnica";
   responsableNombre: string | null;
   observacionTecnica: string | null;
   observaciones?: string | null;
@@ -421,14 +424,18 @@ function buildTrazabilidadSheet(input: ExportInput): XLSX.WorkSheet {
   rows.push(["Código", safeCell(input.miper.codigo), "Versión", input.miper.version, "Estado", safeCell(input.miper.estado)]);
   rows.push(["Versión anterior", safeCell(input.miper.versionAnterior ?? "No informado"), "Fecha descarga", safeCell(ymd(input.miper.fechaDescarga)), "Nota legacy", safeCell(legacy)]);
   rows.push(["Elaborado por", safeCell(input.miper.responsableElaboracion ?? "Pendiente"), "Revisado por", safeCell(input.miper.responsableRevision ?? "Pendiente"), "Aprobado por", safeCell(input.miper.responsableAprobacion ?? "Pendiente")]);
+  const contexto = input.miper.contextoLevantamiento ?? {};
+  rows.push(["Fecha levantamiento", safeCell(contexto.fechaLevantamiento ?? "No informado"), "Motivo", safeCell(contexto.motivo ?? "No informado"), "Participantes", safeCell(contexto.participantes ?? "No informado")]);
+  rows.push(["Participación laboral / CPHS", safeCell(contexto.participacionLaboral ?? "No informado"), "Antecedentes considerados", safeCell(contexto.accidentesEnfermedades ?? "No informado"), "Vigilancia", safeCell(contexto.programasVigilancia ?? "No informado")]);
   rows.push([]);
-  rows.push(["ID ítem", "ID tarea", "Metodología", "Motivo sugerencia", "Estado técnico", "Observación interna", "Auditoría"]);
+  rows.push(["ID ítem", "ID tarea", "Estado sugerencia", "Metodología", "Motivo sugerencia", "Estado técnico", "Observación interna", "Auditoría"]);
 
   for (const item of input.items) {
     const auditoria = `Responsable: ${noInfo(item.responsableNombre)} | Protocolo: ${noInfo(item.protocoloAplicable)}`;
     rows.push([
       safeCell(item.id),
       safeCell(item.tareaId ?? "Sin tarea"),
+      safeCell(item.estadoSugerencia === "revision_tecnica" ? "Revisión técnica pendiente" : item.estadoSugerencia === "no_aplica" ? "Descartado / no aplica" : item.estadoSugerencia ?? (item.confirmadoPorUsuario === false ? "Descartado / no aplica" : "confirmado")),
       safeCell(item.metodologiaEvaluacion),
       safeCell(item.motivoSugerencia ?? ""),
       safeCell(item.estadoEvaluacionEspecifica ?? (item.metodologiaEvaluacion === "vep_isp" ? "vep" : "pendiente")),
@@ -438,19 +445,20 @@ function buildTrazabilidadSheet(input: ExportInput): XLSX.WorkSheet {
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws["!merges"] = [XLSX.utils.decode_range("A1:G1")];
-  ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 34 }, { wch: 18 }, { wch: 36 }, { wch: 42 }];
-  ws["!autofilter"] = { ref: `A6:G${Math.max(6, rows.length)}` };
-  (ws as XLSX.WorkSheet & { "!freeze"?: { xSplit: number; ySplit: number } })["!freeze"] = { xSplit: 0, ySplit: 6 };
+  ws["!merges"] = [XLSX.utils.decode_range("A1:H1")];
+  ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 24 }, { wch: 18 }, { wch: 34 }, { wch: 18 }, { wch: 36 }, { wch: 42 }];
+  ws["!autofilter"] = { ref: `A8:H${Math.max(8, rows.length)}` };
+  (ws as XLSX.WorkSheet & { "!freeze"?: { xSplit: number; ySplit: number } })["!freeze"] = { xSplit: 0, ySplit: 8 };
   return ws;
 }
 
 export function generarWorkbookMiperIsp(input: ExportInput): XLSX.WorkBook {
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, buildMiperSheet(input), "MIPER");
-  XLSX.utils.book_append_sheet(workbook, buildLevantamientoSheet(input), "LEVANTAMIENTO");
-  XLSX.utils.book_append_sheet(workbook, buildControlesSheet(input), "CONTROLES");
-  XLSX.utils.book_append_sheet(workbook, buildCatalogoSheet(input), "CATALOGO ISP");
+  const confirmados = { ...input, items: input.items.filter((item) => (item.estadoSugerencia === "confirmado" || !item.estadoSugerencia) && item.confirmadoPorUsuario !== false) };
+  XLSX.utils.book_append_sheet(workbook, buildMiperSheet(confirmados), "MIPER");
+  XLSX.utils.book_append_sheet(workbook, buildLevantamientoSheet(confirmados), "LEVANTAMIENTO");
+  XLSX.utils.book_append_sheet(workbook, buildControlesSheet(confirmados), "CONTROLES");
+  XLSX.utils.book_append_sheet(workbook, buildCatalogoSheet(confirmados), "CATALOGO ISP");
   XLSX.utils.book_append_sheet(workbook, buildTrazabilidadSheet(input), "TRAZABILIDAD");
   return workbook;
 }

@@ -19,11 +19,12 @@ const txMock = vi.hoisted(() => ({
 }));
 
 const prismaMock = vi.hoisted(() => ({
+  empresa: { findFirst: vi.fn() },
   centroTrabajo: { findMany: vi.fn(), findFirst: vi.fn() },
   area: { findMany: vi.fn(), findFirst: vi.fn() },
   cargo: { findMany: vi.fn() },
   trabajador: { findMany: vi.fn(), findFirst: vi.fn() },
-  ds44Miper: { findFirst: vi.fn(), create: vi.fn() },
+  ds44Miper: { findFirst: vi.fn(), create: vi.fn(), count: vi.fn() },
   ds44MiperAsistenteCargo: { findMany: vi.fn() },
   ds44MiperTarea: { findMany: vi.fn() },
   ds44MiperRiesgoCatalogo: { createMany: vi.fn(), findMany: vi.fn() },
@@ -39,6 +40,8 @@ import { getMiperAsistenteData, guardarRiesgosAsistente, guardarTareasAsistente,
 describe("asistente miper tareas y GEMA", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.empresa.findFirst.mockResolvedValue({ nombre: "Empresa", razonSocial: null, rut: "76.000.000-1" });
+    prismaMock.ds44Miper.count.mockResolvedValue(0);
     prismaMock.centroTrabajo.findMany.mockResolvedValue([{ id: "centro-1", nombre: "Patio Norte" }]);
     prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof txMock) => Promise<unknown>) => cb(txMock));
   });

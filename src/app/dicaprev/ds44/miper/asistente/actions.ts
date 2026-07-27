@@ -4,13 +4,21 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { CATALOGO_RIESGOS_ISP } from "@/lib/ds44/miper-catalogo-isp";
-import { sugerirTareasMiperConIa } from "@/lib/ds44/miper-asistente-ia";
-import { obtenerProveedorTareasMiperOpenAI } from "@/lib/ds44/miper-asistente-openai.server";
+import { sugerirRiesgosMiperConIa, sugerirTareasMiperConIa } from "@/lib/ds44/miper-asistente-ia";
+import { obtenerProveedorRiesgosMiperOpenAI, obtenerProveedorTareasMiperOpenAI } from "@/lib/ds44/miper-asistente-openai.server";
 import { evaluarVepIsp } from "@/lib/ds44/miper-vep-isp";
-import { calcularPasoReanudacion } from "@/lib/ds44/miper-reglas";
+import {
+  calcularPasoSimplificado,
+  crearPendienteEvaluacionEspecifica,
+  ESTADOS_SUGERENCIA_MIPER,
+  esRespuestaNuevaValida,
+  type ContextoLevantamientoMiper,
+  type EstadoSugerenciaMiper,
+} from "@/lib/ds44/miper-flujo-simplificado";
 import { requirePermission } from "@/server/auth/permissions";
 
 const RESPUESTAS = new Set(["aplica", "no_aplica", "no_se"]);
+const ESTADOS_SUGERENCIA = new Set<string>(ESTADOS_SUGERENCIA_MIPER);
 const TIPOS_CONTROL = new Set(["eliminacion", "sustitucion", "ingenieria", "administrativo", "epp"]);
 const ESTADOS_CONTROL = new Set(["pendiente", "implementado", "en_revision", "descartado"]);
 const TAMANO_LOTE_ACTUALIZACION = 20;
@@ -42,7 +50,7 @@ async function ejecutarEnLotes<T>(items: T[], ejecutar: (item: T) => Promise<unk
 }
 
 async function validarMiperAsistente(miperId: string, empresaId: string) {
-  const miper = await prisma.ds44Miper.findFirst({ where: { id: miperId, empresaId, estado: "borrador", modoCreacion: "asistente" }, select: { id: true } });
+  const miper = await prisma.ds44Miper.findFirst({ where: { id: miperId, empresaId, estado: "borrador", modoCreacion: { in: ["asistente", "asistente_simplificado"] } }, select: { id: true, modoCreacion: true } });
   if (!miper) throw new Error("El borrador del asistente no pertenece a la empresa activa.");
   return miper;
 }
@@ -56,28 +64,38 @@ async function asegurarCatalogoIsp(): Promise<void> {
 
 export async function getMiperAsistenteData(miperId?: string) {
   const { empresaId } = await requirePermission("canReadCumplimiento");
-  const [centros, areas, cargos, responsables, borrador] = await Promise.all([
+  const [empresa, centros, areas, cargos, responsables, borrador] = await Promise.all([
+    prisma.empresa.findFirst({ where: { id: empresaId, activa: true }, select: { nombre: true, razonSocial: true, rut: true } }),
     prisma.centroTrabajo.findMany({ where: { empresaId, estado: "activo" }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
     prisma.area.findMany({ where: { empresaId, estado: "activa" }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
     prisma.cargo.findMany({ where: { empresaId, estado: "activo" }, select: { id: true, nombre: true, areaId: true, descripcion: true, perfilSST: true, riesgosClave: true }, orderBy: { nombre: "asc" } }),
-    prisma.trabajador.findMany({ where: { empresaId, estado: "activo" }, select: { id: true, nombres: true, apellidos: true, cargo: { select: { nombre: true } } }, orderBy: [{ apellidos: "asc" }, { nombres: "asc" }] }),
+    prisma.trabajador.findMany({ where: { empresaId, estado: "activo" }, select: { id: true, nombres: true, apellidos: true, centroTrabajoId: true, areaId: true, cargoId: true, cargo: { select: { nombre: true } } }, orderBy: [{ apellidos: "asc" }, { nombres: "asc" }] }),
     miperId ? prisma.ds44Miper.findFirst({
-      where: { id: miperId, empresaId, estado: "borrador", modoCreacion: "asistente" },
+      where: { id: miperId, empresaId, estado: "borrador", modoCreacion: { in: ["asistente", "asistente_simplificado"] } },
       include: {
         asistenteCargos: { include: { cargo: { select: { nombre: true } }, tareas: { orderBy: { orden: "asc" }, include: { exposiciones: true } } }, orderBy: { orden: "asc" } },
         items: { where: { tareaId: { not: null } }, orderBy: { orden: "asc" }, include: { controles: { orderBy: { orden: "asc" } } } },
       },
     }) : null,
   ]);
+  const fechaRevisionSugerida = new Date();
+  fechaRevisionSugerida.setFullYear(fechaRevisionSugerida.getFullYear() + 1);
   return {
+    empresa: { nombre: empresa?.razonSocial || empresa?.nombre || "", rut: empresa?.rut ?? "" },
+    sugerencias: {
+      codigo: `MIPER-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`,
+      version: 1,
+      fechaProximaRevision: fechaRevisionSugerida.toISOString().slice(0, 10),
+    },
     centros,
     areas,
     cargos,
     responsables: responsables.map((item) => ({ id: item.id, nombre: `${item.nombres} ${item.apellidos}`.replace(/\s+/g, " ").trim(), cargo: item.cargo?.nombre ?? null })),
+    trabajadores: responsables.map((item) => ({ id: item.id, centroTrabajoId: item.centroTrabajoId, areaId: item.areaId, cargoId: item.cargoId })),
     catalogo: CATALOGO_RIESGOS_ISP,
     borrador: borrador ? {
       id: borrador.id,
-      paso: calcularPasoReanudacion(borrador.asistentePaso),
+      paso: calcularPasoSimplificado(borrador.asistentePaso, borrador.modoCreacion),
       cabecera: {
         codigo: borrador.codigo, nombre: borrador.nombre,
         procesoNombre: borrador.procesoNombre ?? "",
@@ -89,6 +107,7 @@ export async function getMiperAsistenteData(miperId?: string) {
         responsableElaboracionId: borrador.responsableElaboracionId ?? "",
         fechaProximaRevision: borrador.fechaProximaRevision?.toISOString().slice(0, 10) ?? "",
         observaciones: borrador.observaciones ?? "",
+        contexto: (borrador.contextoLevantamiento ?? null) as ContextoLevantamientoMiper | null,
       },
       cargos: borrador.asistenteCargos.map((item) => ({ id: item.id, cargoId: item.cargoId, nombre: item.cargo.nombre, descripcionTrabajo: item.descripcionTrabajo ?? "", tareasTexto: item.tareas.map((tarea) => tarea.nombre).join("\n") })),
       tareas: borrador.asistenteCargos.flatMap((item) => item.tareas.map((tarea) => ({
@@ -102,8 +121,12 @@ export async function getMiperAsistenteData(miperId?: string) {
         observaciones: tarea.observaciones ?? "",
       }))),
       respuestas: borrador.asistenteCargos.flatMap((item) => item.tareas.flatMap((tarea) => tarea.exposiciones.map((respuesta) => ({ clave: `${tarea.id}:${respuesta.clave}`, respuesta: respuesta.respuesta })))),
+      pendientesHistoricos: borrador.asistenteCargos.flatMap((item) => item.tareas.flatMap((tarea) => tarea.exposiciones
+        .filter((respuesta) => respuesta.respuesta === "no_se")
+        .map((respuesta) => ({ id: respuesta.id, tareaId: tarea.id, tarea: tarea.nombre, pregunta: respuesta.pregunta })))),
       riesgos: borrador.items.map((item) => ({
         id: item.id, tareaId: item.tareaId!, codigoIsp: item.codigoIsp!, confirmado: item.confirmadoPorUsuario,
+        estadoSugerencia: item.estadoSugerencia,
         consecuencia: item.consecuencia, probabilidad: item.probabilidad ?? null, severidad: item.severidad ?? null,
         magnitudExposicion: item.magnitudExposicion ?? "", nivelRiesgoEspecifico: item.nivelRiesgoEspecifico ?? "",
         estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica ?? "pendiente", observacionTecnica: item.observacionTecnica ?? "",
@@ -123,11 +146,12 @@ export async function getMiperAsistenteData(miperId?: string) {
 }
 
 export async function iniciarMiperAsistente(input: {
-  codigo: string; nombre: string; centroTrabajoId: string; areaId: string; cargoIds: string[];
+  codigo?: string; nombre: string; centroTrabajoId: string; areaId: string; cargoIds: string[];
   responsableElaboracionId: string; fechaProximaRevision: string; observaciones?: string;
   procesoNombre?: string;
   procesoTipo?: "operacional" | "apoyo";
   procesoResponsableId: string;
+  contexto?: ContextoLevantamientoMiper;
 }): Promise<{ id: string; cargos: { id: string; cargoId: string; nombre: string; descripcionTrabajo: string }[] }> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   if (input.cargoIds.length < 1 || input.cargoIds.length > 30) throw new Error("Selecciona entre 1 y 30 cargos.");
@@ -141,15 +165,21 @@ export async function iniciarMiperAsistente(input: {
   if (!centro || !area || !responsableElaboracion || !responsableProceso || cargos.length !== new Set(input.cargoIds).size) throw new Error("El alcance contiene registros inactivos o ajenos a la empresa.");
   if (cargos.some((cargo) => cargo.areaId && cargo.areaId !== area.id)) throw new Error("Todos los cargos deben pertenecer al área seleccionada.");
   await asegurarCatalogoIsp();
+  const codigoAutomatico = `MIPER-${new Date().getFullYear()}-${String(Date.now()).slice(-8)}`;
+  const fechaRevision = new Date();
+  fechaRevision.setFullYear(fechaRevision.getFullYear() + 1);
 
   const miper = await prisma.ds44Miper.create({
     data: {
-      empresaId, codigo: texto(input.codigo, "El código", 40).toUpperCase(), nombre: texto(input.nombre, "El nombre", 160),
+      empresaId, codigo: texto(input.codigo || codigoAutomatico, "El código", 40).toUpperCase(), nombre: texto(input.nombre, "El nombre", 160),
       procesoNombre: opcional(input.procesoNombre, 160),
       procesoTipo: input.procesoTipo ?? null,
       procesoResponsableId: responsableProceso.id,
-      fechaProximaRevision: fecha(input.fechaProximaRevision), observaciones: opcional(input.observaciones),
-      responsableElaboracionId: responsableElaboracion.id, modoCreacion: "asistente", asistentePaso: 1,
+      fechaProximaRevision: input.fechaProximaRevision ? fecha(input.fechaProximaRevision) : fechaRevision, observaciones: opcional(input.observaciones),
+      contextoLevantamiento: input.contexto
+        ? input.contexto as unknown as Prisma.InputJsonValue
+        : undefined,
+      responsableElaboracionId: responsableElaboracion.id, modoCreacion: "asistente_simplificado", asistentePaso: 1,
       creadoPorId: usuarioId, actualizadoPorId: usuarioId,
       asistenteCargos: { create: cargos.map((cargo, index) => ({ empresaId, cargoId: cargo.id, centroTrabajoId: centro.id, areaId: area.id, descripcionTrabajo: cargo.descripcion, orden: index + 1 })) },
     },
@@ -160,23 +190,27 @@ export async function iniciarMiperAsistente(input: {
 
 export async function guardarDescripcionesAsistente(input: { miperId: string; cargos: { id: string; descripcionTrabajo: string }[] }): Promise<void> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
-  await validarMiperAsistente(input.miperId, empresaId);
+  const miperActivo = await validarMiperAsistente(input.miperId, empresaId);
   const existentes = await prisma.ds44MiperAsistenteCargo.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true } });
   const permitidos = new Set(existentes.map((item) => item.id));
   if (input.cargos.some((item) => !permitidos.has(item.id))) throw new Error("Uno de los cargos no pertenece al asistente activo.");
   await prisma.$transaction([
     ...input.cargos.map((item) => prisma.ds44MiperAsistenteCargo.update({ where: { id: item.id }, data: { descripcionTrabajo: texto(item.descripcionTrabajo, "La descripción del trabajo", 2000) } })),
-    prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 2, actualizadoPorId: usuarioId } }),
+    prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: miperActivo.modoCreacion === "asistente_simplificado" ? 1 : 2, actualizadoPorId: usuarioId } }),
   ]);
 }
 
 export async function obtenerSugerenciasTareasIa(input: { miperId: string; asistenteCargoId: string }) {
   const { empresaId } = await requirePermission("canManageCumplimiento");
   await validarMiperAsistente(input.miperId, empresaId);
-  const alcance = await prisma.ds44MiperAsistenteCargo.findFirst({ where: { id: input.asistenteCargoId, miperId: input.miperId, empresaId }, include: { cargo: { select: { id: true, nombre: true, descripcion: true, perfilSST: true, riesgosClave: true } } } });
+  const alcance = await prisma.ds44MiperAsistenteCargo.findFirst({ where: { id: input.asistenteCargoId, miperId: input.miperId, empresaId }, include: {
+    cargo: { select: { id: true, nombre: true, descripcion: true, perfilSST: true, riesgosClave: true } },
+    area: { select: { nombre: true } },
+    centroTrabajo: { select: { nombre: true } },
+  } });
   if (!alcance) throw new Error("El cargo no pertenece al asistente activo.");
   return sugerirTareasMiperConIa(
-    { cargoId: alcance.cargo.id, nombre: alcance.cargo.nombre, descripcion: [alcance.cargo.descripcion, alcance.descripcionTrabajo].filter(Boolean).join("\n\n") || null, perfilSst: alcance.cargo.perfilSST, riesgosClave: alcance.cargo.riesgosClave },
+    { cargoId: alcance.cargo.id, nombre: alcance.cargo.nombre, descripcion: [alcance.cargo.descripcion, alcance.descripcionTrabajo].filter(Boolean).join("\n\n") || null, perfilSst: alcance.cargo.perfilSST, riesgosClave: alcance.cargo.riesgosClave, area: alcance.area.nombre, centroTrabajo: alcance.centroTrabajo.nombre },
     obtenerProveedorTareasMiperOpenAI(),
   );
 }
@@ -191,7 +225,7 @@ export async function guardarTareasAsistente(input: { miperId: string; cargos: {
   observaciones?: string;
 }[] }[] }) {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
-  await validarMiperAsistente(input.miperId, empresaId);
+  const miperActivo = await validarMiperAsistente(input.miperId, empresaId);
   const [cargos, centrosActivos] = await Promise.all([
     prisma.ds44MiperAsistenteCargo.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true } }),
     prisma.centroTrabajo.findMany({ where: { empresaId, estado: "activo" }, select: { nombre: true } }),
@@ -228,7 +262,7 @@ export async function guardarTareasAsistente(input: { miperId: string; cargos: {
         orden: index + 1,
       })) });
     }
-    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 3, actualizadoPorId: usuarioId } });
+    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: miperActivo.modoCreacion === "asistente_simplificado" ? 2 : 3, actualizadoPorId: usuarioId } });
     return tx.ds44MiperTarea.findMany({
       where: { miperId: input.miperId, empresaId },
       select: {
@@ -247,12 +281,67 @@ export async function guardarTareasAsistente(input: { miperId: string; cargos: {
   return result;
 }
 
+export async function obtenerSugerenciasRiesgosIa(input: { miperId: string }) {
+  const { empresaId } = await requirePermission("canManageCumplimiento");
+  await validarMiperAsistente(input.miperId, empresaId);
+  const miper = await prisma.ds44Miper.findFirst({
+    where: { id: input.miperId, empresaId },
+    include: {
+      asistenteCargos: {
+        include: {
+          cargo: { select: { nombre: true, descripcion: true } },
+          area: { select: { nombre: true } },
+          centroTrabajo: { select: { nombre: true } },
+          tareas: { orderBy: { orden: "asc" } },
+        },
+      },
+    },
+  });
+  if (!miper) throw new Error("El borrador no pertenece a la empresa activa.");
+  const contexto = (miper.contextoLevantamiento ?? {}) as Record<string, unknown>;
+  const resultados = [];
+  const mensajes: string[] = [];
+  for (const alcance of miper.asistenteCargos) {
+    if (!alcance.tareas.length) continue;
+    const result = await sugerirRiesgosMiperConIa({
+      cargo: alcance.cargo.nombre,
+      descripcionCargo: alcance.descripcionTrabajo || alcance.cargo.descripcion,
+      area: alcance.area.nombre,
+      centroTrabajo: alcance.centroTrabajo.nombre,
+      proceso: miper.procesoNombre,
+      tareas: alcance.tareas.map((tarea) => ({
+        id: tarea.id,
+        nombre: tarea.nombre,
+        esRutinaria: tarea.esRutinaria,
+        lugar: tarea.lugarEspecifico,
+      })),
+      antecedentes: [
+        contexto.accidentesEnfermedades,
+        contexto.programasVigilancia,
+        contexto.antecedentesSensibilidad,
+      ].filter((value): value is string => typeof value === "string" && value.trim().length > 0),
+    }, obtenerProveedorRiesgosMiperOpenAI());
+    resultados.push(...result.resultado.riesgos);
+    mensajes.push(result.mensaje);
+  }
+  return {
+    riesgos: resultados,
+    mensaje: resultados.length
+      ? "Riesgos probables sugeridos con IA. Confirma, descarta o envía cada uno a revisión técnica."
+      : mensajes[0] ?? "No se generaron sugerencias. Usa el catálogo ISP manual.",
+  };
+}
+
 export async function guardarExposicionesAsistente(input: { miperId: string; respuestas: { tareaId: string; grupo: string; clave: string; pregunta: string; respuesta: "aplica" | "no_aplica" | "no_se" }[] }): Promise<void> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
   await validarMiperAsistente(input.miperId, empresaId);
   const tareas = await prisma.ds44MiperTarea.findMany({ where: { miperId: input.miperId, empresaId }, select: { id: true } });
   const permitidas = new Set(tareas.map((item) => item.id));
   if (input.respuestas.some((item) => !permitidas.has(item.tareaId) || !RESPUESTAS.has(item.respuesta))) throw new Error("Las respuestas de exposición no son válidas para este borrador.");
+  const miper = await prisma.ds44Miper.findFirst({ where: { id: input.miperId, empresaId }, select: { modoCreacion: true } });
+  if (miper?.modoCreacion === "asistente_simplificado" && input.respuestas.some((item) => !esRespuestaNuevaValida(item.respuesta))) {
+    throw new Error("Los registros nuevos solo admiten Aplica o No aplica. Usa revisión técnica para conservar una duda.");
+  }
   const respuestas = input.respuestas.map((item) => ({
     empresaId,
     tareaId: item.tareaId,
@@ -278,6 +367,7 @@ export async function guardarRiesgosAsistente(input: {
     tareaId: string;
     codigoIsp: string;
     confirmado: boolean;
+    estadoSugerencia?: EstadoSugerenciaMiper;
     consecuencia: string;
     responsableTrabajadorId: string;
     motivoSugerencia: string;
@@ -289,8 +379,11 @@ export async function guardarRiesgosAsistente(input: {
   }[];
 }) {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
-  await validarMiperAsistente(input.miperId, empresaId);
+  const miperActivo = await validarMiperAsistente(input.miperId, empresaId);
   if (input.items.length < 1 || input.items.length > 200) throw new Error("El paso debe contener entre 1 y 200 sugerencias de riesgo.");
+  if (input.items.some((item) => item.estadoSugerencia && !ESTADOS_SUGERENCIA.has(item.estadoSugerencia))) {
+    throw new Error("Uno de los estados de sugerencia no es válido.");
+  }
   await asegurarCatalogoIsp();
   const [tareas, responsables, catalogo] = await Promise.all([
     prisma.ds44MiperTarea.findMany({ where: { miperId: input.miperId, empresaId }, include: { asistenteCargo: true } }),
@@ -305,6 +398,8 @@ export async function guardarRiesgosAsistente(input: {
   const items = input.items.map((item, index) => {
     const tarea = tareasMap.get(item.tareaId)!;
     const riesgo = catalogoMap.get(item.codigoIsp)!;
+    const estadoSugerencia = item.estadoSugerencia ?? (item.confirmado ? "confirmado" : "no_aplica");
+    const pendienteEspecifica = crearPendienteEvaluacionEspecifica(riesgo);
     const gema = [
       item.peligroGente?.trim() ? `Gente: ${item.peligroGente.trim()}` : null,
       item.peligroEquipos?.trim() ? `Equipos: ${item.peligroEquipos.trim()}` : null,
@@ -321,10 +416,12 @@ export async function guardarRiesgosAsistente(input: {
       riesgo: riesgo.riesgoEspecifico,
       consecuencia: texto(item.consecuencia, "La consecuencia", 500),
       categoriaRiesgo: riesgo.categoria, metodologiaEvaluacion: riesgo.metodologiaEvaluacion, codigoIsp: riesgo.codigoIsp,
-      requiereEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica",
+      requiereEvaluacionEspecifica: pendienteEspecifica.requiereEvaluacionEspecifica,
       protocoloAplicable: riesgo.protocoloAplicable,
-      estadoEvaluacionEspecifica: riesgo.metodologiaEvaluacion === "evaluacion_especifica" ? "pendiente" as const : null,
+      estadoEvaluacionEspecifica: pendienteEspecifica.estadoEvaluacionEspecifica,
+      observacionTecnica: pendienteEspecifica.observacionTecnica,
       motivoSugerencia: texto(item.motivoSugerencia, "El motivo de sugerencia", 500), confirmadoPorUsuario: item.confirmado,
+      estadoSugerencia,
       peligroGente: opcional(item.peligroGente, 500),
       peligroEquipos: opcional(item.peligroEquipos, 500),
       peligroMateriales: opcional(item.peligroMateriales, 500),
@@ -337,7 +434,7 @@ export async function guardarRiesgosAsistente(input: {
   const guardados = await prisma.$transaction(async (tx) => {
     await tx.ds44MiperItem.deleteMany({ where: { miperId: input.miperId, empresaId, tareaId: { not: null } } });
     await tx.ds44MiperItem.createMany({ data: items });
-    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 5, actualizadoPorId: usuarioId } });
+    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: miperActivo.modoCreacion === "asistente_simplificado" ? 3 : 5, actualizadoPorId: usuarioId } });
     return tx.ds44MiperItem.findMany({ where: { miperId: input.miperId, empresaId, tareaId: { not: null } }, select: { id: true, tareaId: true, codigoIsp: true }, orderBy: { orden: "asc" } });
   });
   return guardados;
@@ -348,8 +445,8 @@ export async function guardarEvaluacionesAsistente(input: {
   items: { id: string; consecuencia: string; probabilidad?: number | null; severidad?: number | null; magnitudExposicion?: string; nivelRiesgoEspecifico?: string; estadoEvaluacionEspecifica?: "pendiente" | "en_evaluacion" | "evaluado"; observacionTecnica?: string }[];
 }): Promise<void> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
-  await validarMiperAsistente(input.miperId, empresaId);
-  const existentes = await prisma.ds44MiperItem.findMany({ where: { id: { in: input.items.map((item) => item.id) }, miperId: input.miperId, empresaId, tareaId: { not: null } }, select: { id: true, metodologiaEvaluacion: true } });
+  const miperActivo = await validarMiperAsistente(input.miperId, empresaId);
+  const existentes = await prisma.ds44MiperItem.findMany({ where: { id: { in: input.items.map((item) => item.id) }, miperId: input.miperId, empresaId, tareaId: { not: null }, confirmadoPorUsuario: true }, select: { id: true, metodologiaEvaluacion: true } });
   if (existentes.length !== new Set(input.items.map((item) => item.id)).size) throw new Error("Una evaluación no pertenece al borrador activo.");
   const metodologias = new Map(existentes.map((item) => [item.id, item.metodologiaEvaluacion]));
   const evaluaciones = input.items.map((item) => {
@@ -382,7 +479,7 @@ export async function guardarEvaluacionesAsistente(input: {
   // Estas actualizaciones son idempotentes y se ejecutan en lotes fuera de una transacción larga.
   // El paso solo avanza cuando todas finalizaron, de modo que un reintento completa cualquier lote pendiente.
   await ejecutarEnLotes(evaluaciones, (item) => prisma.ds44MiperItem.update({ where: { id: item.id }, data: item.data }));
-  await prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 6, actualizadoPorId: usuarioId } });
+  await prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: miperActivo.modoCreacion === "asistente_simplificado" ? 4 : 6, actualizadoPorId: usuarioId } });
 }
 
 export async function guardarControlesAsistente(input: {
@@ -390,8 +487,8 @@ export async function guardarControlesAsistente(input: {
   items: { id: string; controles: { tipoControl: string; descripcion: string; responsableTrabajadorId: string; fechaCompromiso?: string; estado: string }[] }[];
 }): Promise<void> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
-  await validarMiperAsistente(input.miperId, empresaId);
-  const items = await prisma.ds44MiperItem.findMany({ where: { id: { in: input.items.map((item) => item.id) }, miperId: input.miperId, empresaId, tareaId: { not: null } }, select: { id: true } });
+  const miperActivo = await validarMiperAsistente(input.miperId, empresaId);
+  const items = await prisma.ds44MiperItem.findMany({ where: { id: { in: input.items.map((item) => item.id) }, miperId: input.miperId, empresaId, tareaId: { not: null }, confirmadoPorUsuario: true }, select: { id: true } });
   if (items.length !== new Set(input.items.map((item) => item.id)).size) throw new Error("Un control no pertenece al borrador activo.");
   const idsResponsables = input.items.flatMap((item) => item.controles.map((control) => control.responsableTrabajadorId).filter(Boolean));
   const responsables = await prisma.trabajador.findMany({ where: { id: { in: idsResponsables }, empresaId, estado: "activo" }, select: { id: true } });
@@ -412,13 +509,13 @@ export async function guardarControlesAsistente(input: {
   await prisma.$transaction(async (tx) => {
     await tx.ds44MiperControl.deleteMany({ where: { empresaId, miperItemId: { in: items.map((item) => item.id) } } });
     if (controles.length > 0) await tx.ds44MiperControl.createMany({ data: controles });
-    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 7, actualizadoPorId: usuarioId } });
+    await tx.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: miperActivo.modoCreacion === "asistente_simplificado" ? 4 : 7, actualizadoPorId: usuarioId } });
   });
 }
 
 export async function finalizarMiperAsistente(input: { miperId: string }): Promise<{ id: string }> {
   const { empresaId, usuarioId } = await requirePermission("canManageCumplimiento");
-  await validarMiperAsistente(input.miperId, empresaId);
+  const miperActivo = await validarMiperAsistente(input.miperId, empresaId);
   const confirmados = await prisma.ds44MiperItem.count({ where: { miperId: input.miperId, empresaId, tareaId: { not: null }, confirmadoPorUsuario: true } });
   if (confirmados < 1) throw new Error("Confirma al menos un riesgo antes de finalizar el borrador.");
   const vepPendientes = await prisma.ds44MiperItem.count({
@@ -434,7 +531,7 @@ export async function finalizarMiperAsistente(input: { miperId: string }): Promi
   if (vepPendientes > 0) {
     throw new Error("Existen riesgos VEP confirmados con evaluación pendiente. Completa probabilidad y consecuencia antes de finalizar.");
   }
-  await prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: 8, actualizadoPorId: usuarioId } });
+  await prisma.ds44Miper.update({ where: { id: input.miperId }, data: { asistentePaso: miperActivo.modoCreacion === "asistente_simplificado" ? 4 : 8, actualizadoPorId: usuarioId } });
   revalidatePath("/dicaprev/ds44/miper");
   revalidatePath(`/dicaprev/ds44/miper/${input.miperId}`);
   return { id: input.miperId };

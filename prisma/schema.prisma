@@ -199,6 +199,13 @@ enum RespuestaExposicionDs44Miper {
   no_se
 }
 
+enum EstadoSugerenciaDs44Miper {
+  sugerido
+  confirmado
+  no_aplica
+  revision_tecnica
+}
+
 enum OrigenTareaDs44Miper {
   manual
   ia
@@ -605,6 +612,7 @@ model Ds44Miper {
   procesoResponsableId String?
   modoCreacion         String            @default("experto")
   asistentePaso        Int               @default(0)
+  contextoLevantamiento Json?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
@@ -658,6 +666,7 @@ model Ds44MiperItem {
   observacionTecnica        String?
   motivoSugerencia          String?
   confirmadoPorUsuario      Boolean @default(true)
+  estadoSugerencia          EstadoSugerenciaDs44Miper @default(confirmado)
   responsableTrabajadorId    String?
   observaciones              String?
   peligroGente               String?
@@ -693,6 +702,7 @@ model Ds44MiperItem {
   @@index([catalogoRiesgoId])
   @@index([tareaId])
   @@index([categoriaRiesgo])
+  @@index([estadoSugerencia])
   @@index([creadoPorId])
   @@index([actualizadoPorId])
 }
