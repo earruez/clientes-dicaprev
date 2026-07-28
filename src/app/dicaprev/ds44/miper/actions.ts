@@ -324,6 +324,8 @@ export async function getDs44MiperDetalleData(miperId: string): Promise<MiperDet
       protocoloAplicable: item.protocoloAplicable,
       estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica,
       observacionTecnica: item.observacionTecnica,
+      confirmadoPorUsuario: item.confirmadoPorUsuario,
+      estadoSugerencia: item.estadoSugerencia,
       responsableTrabajadorId: item.responsableTrabajadorId,
       responsableNombre: item.responsableTrabajador
         ? `${item.responsableTrabajador.nombres} ${item.responsableTrabajador.apellidos}`.replace(/\s+/g, " ").trim()
@@ -569,6 +571,7 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
         responsableElaboracionId: origen.responsableElaboracionId,
         modoCreacion: origen.modoCreacion,
         asistentePaso: origen.asistentePaso,
+        contextoLevantamiento: origen.contextoLevantamiento ?? undefined,
         creadoPorId: context.usuarioId,
         actualizadoPorId: context.usuarioId,
       },
@@ -583,7 +586,11 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
       for (const tarea of alcance.tareas) {
         const tareaNueva = await tx.ds44MiperTarea.create({ data: {
           empresaId: context.empresaId, miperId: creada.id, asistenteCargoId: alcanceNuevo.id,
-          nombre: tarea.nombre, origen: tarea.origen, confirmada: tarea.confirmada, orden: tarea.orden,
+          nombre: tarea.nombre, esRutinaria: tarea.esRutinaria, lugarEspecifico: tarea.lugarEspecifico,
+          personasExpuestasTotal: tarea.personasExpuestasTotal,
+          distribucionSexogenerica: tarea.distribucionSexogenerica ?? undefined,
+          observaciones: tarea.observaciones,
+          origen: tarea.origen, confirmada: tarea.confirmada, orden: tarea.orden,
         } });
         tareasNuevas.set(tarea.id, tareaNueva.id);
         if (tarea.exposiciones.length) await tx.ds44MiperExposicionRespuesta.createMany({ data: tarea.exposiciones.map((respuesta) => ({
@@ -610,6 +617,7 @@ export async function crearNuevaRevisionDs44Miper(miperId: string): Promise<{ id
           nivelRiesgoEspecifico: item.nivelRiesgoEspecifico,
           estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica, observacionTecnica: item.observacionTecnica,
           motivoSugerencia: item.motivoSugerencia, confirmadoPorUsuario: item.confirmadoPorUsuario,
+          estadoSugerencia: item.estadoSugerencia,
           responsableTrabajadorId: item.responsableTrabajadorId, observaciones: item.observaciones,
           peligroGente: item.peligroGente, peligroEquipos: item.peligroEquipos,
           peligroMateriales: item.peligroMateriales, peligroAmbiente: item.peligroAmbiente,
@@ -649,7 +657,6 @@ export async function descargarExcelDs44Miper(miperId: string): Promise<Descarga
         },
       },
       items: {
-        where: { confirmadoPorUsuario: true },
         orderBy: [{ orden: "asc" }, { createdAt: "asc" }],
         include: {
           centroTrabajo: { select: { nombre: true } },
@@ -698,6 +705,7 @@ export async function descargarExcelDs44Miper(miperId: string): Promise<Descarga
       centroTipo: null,
       centroDireccion: null,
       areaNombre: miper.items[0]?.area?.nombre ?? null,
+      contextoLevantamiento: (miper.contextoLevantamiento ?? null) as Record<string, unknown> | null,
     },
     tareas: miper.tareas.map((tarea) => ({
       id: tarea.id,
@@ -732,6 +740,8 @@ export async function descargarExcelDs44Miper(miperId: string): Promise<Descarga
       protocoloAplicable: item.protocoloAplicable,
       estadoEvaluacionEspecifica: item.estadoEvaluacionEspecifica,
       observacionTecnica: item.observacionTecnica,
+      confirmadoPorUsuario: item.confirmadoPorUsuario,
+      estadoSugerencia: item.estadoSugerencia,
       responsableNombre: item.responsableTrabajador
         ? `${item.responsableTrabajador.nombres} ${item.responsableTrabajador.apellidos}`.replace(/\s+/g, " ").trim()
         : null,

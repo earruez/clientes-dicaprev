@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { sugerirTareasMiperConIa, validarSugerenciasRiesgosIa } from "@/lib/ds44/miper-asistente-ia";
+import { sugerirRiesgosMiperConIa, sugerirTareasMiperConIa, validarSugerenciasRiesgosIa } from "@/lib/ds44/miper-asistente-ia";
 import {
+  crearProveedorRiesgosMiperOpenAI,
   crearProveedorTareasMiperOpenAI,
   resolverModeloMiperOpenAI,
 } from "@/lib/ds44/miper-asistente-openai.server";
@@ -25,7 +26,7 @@ describe("asistencia IA MIPER desacoplada", () => {
 
   it("impide que la IA introduzca códigos fuera del catálogo ISP", () => {
     expect(() => validarSugerenciasRiesgosIa({ riesgos: [{ tareaRef: "t1", codigoIsp: "ZZ9", consecuenciaSugerida: "Lesión", motivo: "Exposición confirmada", controlesSugeridos: [] }] })).toThrow("ajeno al catálogo ISP");
-    expect(() => validarSugerenciasRiesgosIa({ riesgos: [{ tareaRef: "t1", codigoIsp: "A1", consecuenciaSugerida: "Lesión menor", motivo: "Desplazamiento confirmado", controlesSugeridos: ["Mantener vías despejadas"] }] })).not.toThrow();
+    expect(() => validarSugerenciasRiesgosIa({ riesgos: [{ tareaRef: "t1", codigoIsp: "A1", consecuenciaSugerida: "Lesión menor", motivo: "Desplazamiento confirmado", controlesSugeridos: [{ tipoControl: "eliminacion", descripcion: "Eliminar desniveles de la ruta" }] }] })).not.toThrow();
   });
 });
 
@@ -98,5 +99,42 @@ describe("proveedor OpenAI de tareas MIPER", () => {
     expect(resolverModeloMiperOpenAI({ OPENAI_MIPER_MODEL: "miper", OPENAI_MODEL: "general" })).toBe("miper");
     expect(resolverModeloMiperOpenAI({ OPENAI_MODEL: "general" })).toBe("general");
     expect(resolverModeloMiperOpenAI({})).toBe("gpt-5.6-sol");
+  });
+});
+
+describe("proveedor OpenAI de riesgos MIPER", () => {
+  it("limita la salida al catálogo ISP y mantiene toda sugerencia sin confirmar", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      void input;
+      void init;
+      return respuestaOpenAI({
+        riesgos: [{
+          tareaRef: "tarea-1",
+          codigoIsp: "B1",
+          consecuenciaSugerida: "Lesión por atrapamiento",
+          motivo: "La tarea considera operación de equipo",
+          controlesSugeridos: [{ tipoControl: "ingenieria", descripcion: "Instalar resguardo físico en la zona móvil" }],
+        }],
+      });
+    });
+    const proveedor = crearProveedorRiesgosMiperOpenAI({
+      apiKey: "clave-simulada",
+      model: "modelo-prueba",
+      fetchImpl: fetchMock,
+    });
+    const resultado = await sugerirRiesgosMiperConIa({
+      cargo: "Operador",
+      descripcionCargo: "Opera equipo",
+      area: "Producción",
+      centroTrabajo: "Planta",
+      proceso: "Fabricación",
+      tareas: [{ id: "tarea-1", nombre: "Operar equipo", esRutinaria: true, lugar: "Planta" }],
+      antecedentes: [],
+    }, proveedor);
+
+    expect(resultado.disponible).toBe(true);
+    expect(resultado.resultado.riesgos[0]).toMatchObject({ codigoIsp: "B1", tareaRef: "tarea-1" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).text.format.schema.properties.riesgos.items.properties.codigoIsp.enum).toContain("B1");
+    expect(JSON.stringify(resultado.resultado)).not.toContain("confirmado");
   });
 });

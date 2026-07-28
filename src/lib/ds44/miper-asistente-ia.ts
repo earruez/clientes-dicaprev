@@ -14,6 +14,8 @@ export type ContextoCargoMiperIa = {
   descripcion: string | null;
   perfilSst: string | null;
   riesgosClave: unknown;
+  area?: string | null;
+  centroTrabajo?: string | null;
 };
 
 export type RespuestaTareasMiperIa = z.infer<typeof respuestaSchema>;
@@ -39,7 +41,10 @@ const riesgoSugeridoSchema = z.object({
   codigoIsp: z.string().trim().min(1).max(10),
   consecuenciaSugerida: z.string().trim().min(3).max(500),
   motivo: z.string().trim().min(3).max(500),
-  controlesSugeridos: z.array(z.string().trim().min(3).max(500)).max(10),
+  controlesSugeridos: z.array(z.object({
+    tipoControl: z.enum(["eliminacion", "sustitucion", "ingenieria", "administrativo", "epp"]),
+    descripcion: z.string().trim().min(3).max(500),
+  }).strict()).max(10),
 }).strict();
 
 const riesgosSchema = z.object({ riesgos: z.array(riesgoSugeridoSchema).max(100) }).strict();
@@ -52,6 +57,52 @@ export function validarSugerenciasRiesgosIa(value: unknown) {
     }
   }
   return resultado;
+}
+
+export type ContextoRiesgosMiperIa = {
+  cargo: string;
+  descripcionCargo: string | null;
+  area: string;
+  centroTrabajo: string;
+  proceso: string | null;
+  tareas: Array<{ id: string; nombre: string; esRutinaria: boolean | null; lugar: string | null }>;
+  antecedentes: string[];
+};
+
+export type RespuestaRiesgosMiperIa = z.infer<typeof riesgosSchema>;
+export type ProveedorRiesgosMiperIa = (contexto: ContextoRiesgosMiperIa) => Promise<unknown>;
+
+export async function sugerirRiesgosMiperConIa(
+  contexto: ContextoRiesgosMiperIa,
+  proveedor?: ProveedorRiesgosMiperIa,
+): Promise<{ disponible: boolean; resultado: RespuestaRiesgosMiperIa; mensaje: string }> {
+  if (!proveedor) {
+    return {
+      disponible: false,
+      resultado: { riesgos: [] },
+      mensaje: "La asistencia IA de riesgos no está disponible. Puedes buscar y agregar riesgos del catálogo ISP manualmente.",
+    };
+  }
+  try {
+    const resultado = validarSugerenciasRiesgosIa(await proveedor(contexto));
+    const tareas = new Set(contexto.tareas.map((tarea) => tarea.id));
+    if (resultado.riesgos.some((riesgo) => !tareas.has(riesgo.tareaRef))) {
+      throw new Error("La respuesta contiene una tarea ajena al alcance.");
+    }
+    return {
+      disponible: true,
+      resultado,
+      mensaje: "Riesgos probables sugeridos con IA desde el catálogo ISP. Ninguno fue confirmado automáticamente.",
+    };
+  } catch (error) {
+    let mensaje = "La asistencia IA devolvió sugerencias no válidas. Puedes continuar con el catálogo ISP manual.";
+    if (error instanceof ErrorProveedorTareasMiperIa) {
+      if (error.codigo === "timeout") mensaje = "La asistencia IA tardó demasiado. Puedes continuar con el catálogo ISP manual.";
+      else if (error.codigo === "autenticacion" || error.codigo === "cuota") mensaje = "La asistencia IA no está disponible temporalmente. Puedes continuar con el catálogo ISP manual.";
+      else if (error.codigo === "http") mensaje = "No fue posible consultar la asistencia IA. Puedes continuar con el catálogo ISP manual.";
+    }
+    return { disponible: false, resultado: { riesgos: [] }, mensaje };
+  }
 }
 
 export async function sugerirTareasMiperConIa(

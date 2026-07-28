@@ -47,7 +47,7 @@ describe("descargarExcelDs44Miper", () => {
     generarExcelMiperIspMock.mockReturnValue({ nombre: "archivo.xlsx", base64: "abc" });
   });
 
-  it("consulta solo items confirmados para exportar", async () => {
+  it("consulta todos los estados para trazabilidad y filtra confirmados dentro del exportador", async () => {
     const result = await descargarExcelDs44Miper("miper-1");
 
     expect(result).toEqual({ nombre: "archivo.xlsx", base64: "abc" });
@@ -56,7 +56,7 @@ describe("descargarExcelDs44Miper", () => {
       where: { id: "miper-1", empresaId: "empresa-1" },
       include: {
         items: {
-          where: { confirmadoPorUsuario: true },
+          orderBy: [{ orden: "asc" }, { createdAt: "asc" }],
         },
       },
     });
