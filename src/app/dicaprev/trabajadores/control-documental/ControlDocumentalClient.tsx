@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { FileStack, ShieldCheck, FileWarning, CalendarClock, Settings2, ArrowLeft, UploadCloud } from "lucide-react";
+import { FileStack, ShieldCheck, FileWarning, CalendarClock, Settings2, ArrowLeft, UploadCloud, FileDown } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { TiposDocPanel }    from "@/components/trabajadores-v2/documental/TiposDocPanel";
 import { PlantillasPanel }  from "@/components/trabajadores-v2/documental/PlantillasPanel";
@@ -47,6 +47,28 @@ export default function ControlDocumentalClient({
   const [evaluandoReglas, setEvaluandoReglas] = useState(false);
   const [evaluacionMsg, setEvaluacionMsg] = useState<string | null>(null);
   const [documentalData, setDocumentalData] = useState<ControlDocumentalTrabajadoresPayload>(initialData);
+  const [generandoInforme, setGenerandoInforme] = useState(false);
+  const [informeError, setInformeError] = useState<string | null>(null);
+  const [informeFiltros, setInformeFiltros] = useState({ centro: centro ?? "", area: "", cargo: "", trabajadorId: workerId ?? "", estado: "" });
+
+  const opcionesInforme = useMemo(() => ({
+    centros: [...new Set(documentalData.workers.map((w) => w.centroTrabajo).filter(Boolean))].sort(),
+    areas: [...new Set(documentalData.workers.map((w) => w.area).filter(Boolean))].sort(),
+    cargos: [...new Set(documentalData.workers.map((w) => w.cargo).filter(Boolean))].sort(),
+  }), [documentalData.workers]);
+
+  const handleGenerarInforme = async () => {
+    setGenerandoInforme(true); setInformeError(null);
+    try {
+      const response = await fetch("/api/dicaprev/trabajadores/control-documental/informe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(informeFiltros) });
+      if (!response.ok) { const body = await response.json().catch(() => ({})); throw new Error(body.error || "No fue posible generar el informe PDF."); }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const filename = disposition.match(/filename="([^"]+)"/)?.[1] ?? "informe-control-documental.pdf";
+      const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = filename; document.body.appendChild(anchor); anchor.click(); anchor.remove(); URL.revokeObjectURL(url);
+    } catch (error) { setInformeError(error instanceof Error ? error.message : "No fue posible generar el informe PDF."); }
+    finally { setGenerandoInforme(false); }
+  };
 
   const refreshDocumentalData = async () => {
     try {
@@ -126,6 +148,10 @@ export default function ControlDocumentalClient({
                 <ArrowLeft className="h-3.5 w-3.5" /> Trabajadores
               </Link>
 
+            <button onClick={handleGenerarInforme} disabled={generandoInforme} className="inline-flex items-center gap-2 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60">
+              <FileDown className="h-4 w-4" /> {generandoInforme ? "Generando informe…" : "Generar informe PDF"}
+            </button>
+
             <button
               onClick={handleEvaluarReglas}
               disabled={evaluandoReglas}
@@ -162,9 +188,21 @@ export default function ControlDocumentalClient({
             {evaluacionMsg ? (
               <p className="text-[11px] font-medium text-slate-500">{evaluacionMsg}</p>
             ) : null}
+            {informeError ? <p role="alert" className="max-w-xs text-right text-[11px] font-medium text-red-600">{informeError}</p> : null}
             </div>
           }
         />
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Filtros del informe PDF</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {([
+              ["centro", "Todos los centros", opcionesInforme.centros], ["area", "Todas las areas", opcionesInforme.areas], ["cargo", "Todos los cargos", opcionesInforme.cargos],
+            ] as const).map(([key, placeholder, options]) => <select key={key} aria-label={placeholder} value={informeFiltros[key]} onChange={(e) => setInformeFiltros((f) => ({ ...f, [key]: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"><option value="">{placeholder}</option>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select>)}
+            <select aria-label="Todos los trabajadores" value={informeFiltros.trabajadorId} onChange={(e) => setInformeFiltros((f) => ({ ...f, trabajadorId: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"><option value="">Todos los trabajadores</option>{documentalData.workers.map((w) => <option key={w.id} value={w.id}>{w.nombre} {w.apellido}</option>)}</select>
+            <select aria-label="Estados activos" value={informeFiltros.estado} onChange={(e) => setInformeFiltros((f) => ({ ...f, estado: e.target.value }))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"><option value="">Estados activos</option><option value="activo">Activo</option><option value="licencia">Licencia</option><option value="vacaciones">Vacaciones</option></select>
+          </div>
+        </div>
 
         {/* ── Stats strip ── */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
