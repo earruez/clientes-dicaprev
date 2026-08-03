@@ -71,6 +71,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { PorCentroView }       from "./PorCentroView";
 import { PorCargoView }        from "./PorCargoView";
 import { PorVencimientosView } from "./PorVencimientosView";
+import { obtenerAccionArchivoDocumento } from "./documento-archivo-action";
 
 type FilterEstado = "todos" | "criticos" | "pendientes" | "vencidos" | "rechazados" | "en_revision";
 type BulkModal    = null | "plantilla" | "revisado" | "exportar" | "recordar" | "estado";
@@ -1213,7 +1214,11 @@ export function PendientesPanel({
                               const estCfg    = ESTADO_DOC_CONFIG[doc.estado];
                               const isAutomatizable = puedeGenerarseConIA(doc.tipo);
                               const hasStructuredIaContent = !!doc.observacion?.trim() && !esContenidoPlaceholder(doc.observacion);
-                              const hasUploadedFile = Boolean(doc.archivoUrl || doc.archivoNombre || doc.archivoNombreOriginal);
+                              const {
+                                archivoUrlSeguro,
+                                tieneArchivo: hasUploadedFile,
+                                etiquetaCarga,
+                              } = obtenerAccionArchivoDocumento(doc);
                               const hasAnyRecord = Boolean(doc.documentoId);
                               const hasCarga = Boolean(doc.fechaCarga || doc.cargadoPor || hasUploadedFile);
                               const isSigned = doc.estado === "firmado";
@@ -1296,24 +1301,38 @@ export function PendientesPanel({
 
                                   <div className="flex flex-wrap items-center gap-1">
                                     {/* Botones de carga/IA primarios */}
+                                    {archivoUrlSeguro && (
+                                      <a
+                                        href={archivoUrlSeguro}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800"
+                                        title="Ver archivo"
+                                      >
+                                        <ExternalLink className="h-2.5 w-2.5" />
+                                        Ver archivo
+                                      </a>
+                                    )}
                                     {!isSigned && (
                                       <>
-                                        <button
-                                          onClick={() =>
-                                            openUpload({
-                                              documentoId: doc.documentoId,
-                                              workerId: worker.id,
-                                              tipoDocumentoId: doc.tipo.id,
-                                              mode: hasAnyRecord ? "reenviar" : "subir",
-                                              rejectionObservation: doc.estado === "rechazado" ? doc.observacion : undefined,
-                                            })
-                                          }
-                                          className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800"
-                                          title="Subir documento"
-                                        >
-                                          <UploadCloud className="h-2.5 w-2.5" />
-                                          Subir documento
-                                        </button>
+                                        {!archivoUrlSeguro && (
+                                          <button
+                                            onClick={() =>
+                                              openUpload({
+                                                documentoId: doc.documentoId,
+                                                workerId: worker.id,
+                                                tipoDocumentoId: doc.tipo.id,
+                                                mode: hasAnyRecord ? "reenviar" : "subir",
+                                                rejectionObservation: doc.estado === "rechazado" ? doc.observacion : undefined,
+                                              })
+                                            }
+                                            className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white transition hover:bg-slate-800"
+                                            title={etiquetaCarga}
+                                          >
+                                            <UploadCloud className="h-2.5 w-2.5" />
+                                            {etiquetaCarga}
+                                          </button>
+                                        )}
                                         {puedeGenerarIa && (
                                           <button
                                             onClick={() => handleGenerarConIA(doc, worker)}
@@ -1413,7 +1432,7 @@ export function PendientesPanel({
                                               }} 
                                               className="w-full rounded-lg px-2 py-1.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50"
                                             >
-                                              Subir documento
+                                              {etiquetaCarga}
                                             </button>
                                           )}
                                           {!isSigned && puedeGenerarIa && (
