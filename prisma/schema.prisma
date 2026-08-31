@@ -309,6 +309,7 @@ model Empresa {
   // Permisos
   permisoOrganismos          PermisoOrganismo[]
   permisoResponsables        PermisoResponsable[]
+  permisoClientes            PermisoCliente[]
   permisoInstalaciones       PermisoInstalacion[]
 }
 
@@ -2409,6 +2410,7 @@ model HistorialPlanTrabajo {
 model PermisoOrganismo {
   id                    String   @id @default(cuid())
   empresaId             String
+  tipo                  String   @default("MUNICIPAL") // "MUNICIPAL" | "PRIVADO" | "OTRO"
   codigoCUT             String?
   region                String?
   provincia             String?
@@ -2442,6 +2444,7 @@ model PermisoOrganismo {
   @@index([activo])
   @@index([comuna])
   @@index([region])
+  @@index([tipo])
 }
 
 model PermisoResponsable {
@@ -2457,8 +2460,27 @@ model PermisoResponsable {
 
   empresa  Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   permisos PermisoInstalacion[]
+  permisosAdicionales PermisoInstalacionResponsable[]
 
   @@unique([empresaId, email])
+  @@index([empresaId])
+  @@index([activo])
+}
+
+model PermisoCliente {
+  id               String   @id @default(cuid())
+  empresaId        String
+  nombre           String
+  contactoEmail    String?
+  contactoTelefono String?
+  activo           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  empresa  Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  permisos PermisoInstalacion[]
+
+  @@unique([empresaId, nombre])
   @@index([empresaId])
   @@index([activo])
 }
@@ -2471,6 +2493,8 @@ model PermisoInstalacion {
   clienteId                 String?
   sucursalId                String?
   direccion                 String
+  comuna                    String?
+  region                    String?
   fechaInstalacion          DateTime
   
   // Solicitud
@@ -2500,9 +2524,15 @@ model PermisoInstalacion {
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
 
+  // Respuesta pública a observaciones (link por correo, sin login)
+  tokenRespuestaObservacion String?  @unique
+  tokenRespuestaUsado       Boolean  @default(false)
+
   empresa    Empresa                  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente    PermisoCliente?          @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   organismo  PermisoOrganismo         @relation(fields: [organismoId], references: [id], onDelete: Restrict)
   responsable PermisoResponsable      @relation(fields: [responsableId], references: [id], onDelete: Restrict)
+  responsablesAdicionales PermisoInstalacionResponsable[]
   historial  PermisoHistorial[]
   notificaciones PermisoNotificacion[]
 
@@ -2515,6 +2545,20 @@ model PermisoInstalacion {
   @@index([organismoId])
   @@index([updatedAt])
   @@index([clienteId])
+}
+
+model PermisoInstalacionResponsable {
+  id            String   @id @default(cuid())
+  permisoId     String
+  responsableId String
+  createdAt     DateTime @default(now())
+
+  permiso     PermisoInstalacion @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+  responsable PermisoResponsable @relation(fields: [responsableId], references: [id], onDelete: Cascade)
+
+  @@unique([permisoId, responsableId])
+  @@index([permisoId])
+  @@index([responsableId])
 }
 
 model PermisoHistorial {

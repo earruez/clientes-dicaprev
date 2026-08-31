@@ -4,12 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { ResponsablesTable } from "./ResponsablesTable";
+import { ClientesTable } from "./ClientesTable";
 
-async function ResponsablesContent() {
+async function ClientesContent() {
   const { empresaId } = await requirePermission("canManagePermisos");
 
-  const responsables = await prisma.permisoResponsable.findMany({
+  const clientes = await prisma.permisoCliente.findMany({
     where: { empresaId },
     orderBy: { nombre: "asc" },
   });
@@ -26,24 +26,26 @@ async function ResponsablesContent() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Responsables</h1>
-            <p className="text-slate-600 text-sm mt-0.5">Gestiona los responsables de permisos</p>
+            <h1 className="text-2xl font-bold text-slate-900">Clientes</h1>
+            <p className="text-slate-600 text-sm mt-0.5">
+              Clientes que solicitan permisos de instalación recurrentemente
+            </p>
           </div>
         </div>
-        <Link href="/dicaprev/permisos/responsables/nuevo">
-          <Button className="gap-2">+ Nuevo responsable</Button>
+        <Link href="/dicaprev/permisos/clientes/nuevo">
+          <Button className="gap-2">+ Nuevo cliente</Button>
         </Link>
       </div>
 
-      <ResponsablesTable responsables={responsables} />
+      <ClientesTable clientes={clientes} />
     </div>
   );
 }
 
-export default function ResponsablesPage() {
+export default function ClientesPage() {
   return (
-    <Suspense fallback={<div>Cargando responsables...</div>}>
-      <ResponsablesContent />
+    <Suspense fallback={<div>Cargando clientes...</div>}>
+      <ClientesContent />
     </Suspense>
   );
 }

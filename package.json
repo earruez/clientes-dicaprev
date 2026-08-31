@@ -25,7 +25,8 @@
     "seed:acreditaciones": "node prisma/seed-acreditaciones.mjs",
     "seed:demo-comercial": "node prisma/seed-demo-comercial.mjs",
     "superadmin:cleanup-baker": "npx tsx --import dotenv/config scripts/limpiar-empresas-baker-duplicadas.ts",
-    "superadmin:audit-baker": "npx tsx --import dotenv/config scripts/auditar-empresas-baker.ts"
+    "superadmin:audit-baker": "npx tsx --import dotenv/config scripts/auditar-empresas-baker.ts",
+    "import:municipalidades-permisos": "node scripts/importar-municipalidades-permisos.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

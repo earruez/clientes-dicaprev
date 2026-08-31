@@ -1,15 +1,10 @@
 // Estados disponibles para Permisos de Instalación
 export const PERMISO_ESTADOS = {
-  SOLICITUD_RECIBIDA: "Solicitud recibida",
-  PREPARANDO_ANTECEDENTES: "Preparando antecedentes",
-  PENDIENTE_ANTECEDENTES: "Pendiente de antecedentes",
-  LISTO_PARA_SOLICITAR: "Listo para solicitar",
-  SOLICITADO: "Solicitado",
-  EN_REVISION: "En revisión",
+  PERMISO_CREADO: "Permiso creado",
+  PREPARANDO_DOCUMENTACION: "Preparando documentación",
+  SOLICITADO: "Solicitado / en espera de respuesta",
   OBSERVADO: "Observado",
-  SUBSANACION_ENVIADA: "Subsanación enviada",
   APROBADO: "Aprobado",
-  RECHAZADO: "Rechazado",
   CANCELADO: "Cancelado",
 } as const;
 
@@ -44,18 +39,22 @@ export const PERMISO_TIPOS_PLAZO = {
 
 export type PermisoTipoPlazo = keyof typeof PERMISO_TIPOS_PLAZO;
 
+// Tipos de organismo
+export const PERMISO_ORGANISMO_TIPOS = {
+  MUNICIPAL: "Municipal",
+  PRIVADO: "Privado",
+  OTRO: "Otro",
+} as const;
+
+export type PermisoOrganismoTipo = keyof typeof PERMISO_ORGANISMO_TIPOS;
+
 // Colores para estados y riesgos
 export const ESTADO_COLORS: Record<PermisoEstado, string> = {
-  SOLICITUD_RECIBIDA: "bg-blue-100 text-blue-800 border-blue-300",
-  PREPARANDO_ANTECEDENTES: "bg-cyan-100 text-cyan-800 border-cyan-300",
-  PENDIENTE_ANTECEDENTES: "bg-yellow-100 text-yellow-800 border-yellow-300",
-  LISTO_PARA_SOLICITAR: "bg-green-100 text-green-800 border-green-300",
+  PERMISO_CREADO: "bg-blue-100 text-blue-800 border-blue-300",
+  PREPARANDO_DOCUMENTACION: "bg-cyan-100 text-cyan-800 border-cyan-300",
   SOLICITADO: "bg-indigo-100 text-indigo-800 border-indigo-300",
-  EN_REVISION: "bg-purple-100 text-purple-800 border-purple-300",
   OBSERVADO: "bg-orange-100 text-orange-800 border-orange-300",
-  SUBSANACION_ENVIADA: "bg-amber-100 text-amber-800 border-amber-300",
   APROBADO: "bg-green-100 text-green-800 border-green-300",
-  RECHAZADO: "bg-red-100 text-red-800 border-red-300",
   CANCELADO: "bg-gray-100 text-gray-800 border-gray-300",
 };
 
@@ -73,15 +72,21 @@ export const RIESGO_ICONS: Record<PermisoRiesgo, string> = {
   EN_RIESGO: "🔴",
 };
 
+// Estados que requieren un comentario/observación obligatorio al seleccionarlos
+export const ESTADOS_REQUIEREN_COMENTARIO: PermisoEstado[] = ["OBSERVADO", "CANCELADO"];
+
 // Tipos para UI
 export interface PermisoFormData {
   clienteId?: string;
   sucursalId?: string;
   direccion: string;
+  comuna?: string;
+  region?: string;
   fechaInstalacion: string;
   fechaRecepcionSolicitud: string;
   organismoId: string;
   responsableId: string;
+  responsableIds?: string[];
   modalidad?: string;
   estado: PermisoEstado;
   observaciones?: string;
@@ -95,8 +100,15 @@ export interface PermisoResponsableFormData {
   telefono?: string;
 }
 
+export interface PermisoClienteFormData {
+  nombre: string;
+  contactoEmail?: string;
+  contactoTelefono?: string;
+}
+
 export interface PermisoOrganismoFormData {
   nombre: string;
+  tipo?: string;
   codigoCUT?: string;
   region?: string;
   provincia?: string;
@@ -117,21 +129,6 @@ export interface PermisoOrganismoFormData {
   fuente?: string;
   observaciones?: string;
 }
-
-// Transiciones de estado permitidas (para fase 1, permitimos todas)
-export const ESTADO_TRANSICIONES: Record<PermisoEstado, PermisoEstado[]> = {
-  SOLICITUD_RECIBIDA: ["PREPARANDO_ANTECEDENTES", "CANCELADO"],
-  PREPARANDO_ANTECEDENTES: ["PENDIENTE_ANTECEDENTES", "LISTO_PARA_SOLICITAR", "CANCELADO"],
-  PENDIENTE_ANTECEDENTES: ["PREPARANDO_ANTECEDENTES", "CANCELADO"],
-  LISTO_PARA_SOLICITAR: ["SOLICITADO", "CANCELADO"],
-  SOLICITADO: ["EN_REVISION", "CANCELADO"],
-  EN_REVISION: ["OBSERVADO", "APROBADO", "RECHAZADO", "CANCELADO"],
-  OBSERVADO: ["SUBSANACION_ENVIADA", "CANCELADO"],
-  SUBSANACION_ENVIADA: ["EN_REVISION", "CANCELADO"],
-  APROBADO: [],
-  RECHAZADO: [],
-  CANCELADO: [],
-};
 
 // Margen de días para considerar "ATENCION"
 export const DIAS_ATENCION_INSTALACION = 3;

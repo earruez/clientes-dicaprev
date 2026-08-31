@@ -149,6 +149,7 @@ const MODULES: ModuleItem[] = [
     permission: "canReadPermisos",
     items: [
       { href: "/dicaprev/permisos", label: "Gestión de permisos" },
+      { href: "/dicaprev/permisos/clientes", label: "Clientes" },
       { href: "/dicaprev/permisos/responsables", label: "Responsables" },
       { href: "/dicaprev/permisos/organismos", label: "Organismos" },
     ],

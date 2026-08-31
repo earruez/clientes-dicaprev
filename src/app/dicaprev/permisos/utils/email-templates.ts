@@ -2,12 +2,14 @@ import {
   PermisoInstalacion,
   PermisoResponsable,
   PermisoOrganismo,
+  PermisoCliente,
 } from "@prisma/client";
 import { PERMISO_ESTADOS, PERMISO_RIESGOS, RIESGO_ICONS } from "../types";
 import { formatearFecha } from "./calculos";
 
 interface PermisoConRelaciones extends PermisoInstalacion {
   organismo?: PermisoOrganismo | null;
+  cliente?: PermisoCliente | null;
 }
 
 /**
@@ -17,7 +19,7 @@ export function generarEmailPermiso(
   permiso: PermisoConRelaciones,
   responsable: PermisoResponsable,
   tipo: "PERMISO_CREADO" | "CAMBIO_ESTADO",
-  metadatos?: { estadoAnterior?: string; comentario?: string },
+  metadatos?: { estadoAnterior?: string; comentario?: string; tokenRespuestaObservacion?: string },
 ): string {
   const estadoLabel = PERMISO_ESTADOS[permiso.estado as keyof typeof PERMISO_ESTADOS] || permiso.estado;
   const riesgoLabel = PERMISO_RIESGOS[permiso.nivelRiesgo as keyof typeof PERMISO_RIESGOS] || permiso.nivelRiesgo;
@@ -97,6 +99,20 @@ export function generarEmailPermiso(
     `
       : "";
 
+  const bloqueRespuestaObservacion = metadatos?.tokenRespuestaObservacion
+    ? `
+      <div style="margin-top: 20px; padding: 15px; background-color: #fff7ed; border-left: 4px solid #f97316; border-radius: 4px; text-align: center;">
+        <p style="margin: 0 0 12px 0; color: #7c2d12; font-size: 14px;">
+          El organismo solicitó información adicional. Puedes responder directamente desde este enlace, sin necesidad de iniciar sesión:
+        </p>
+        <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/permisos/responder/${metadatos.tokenRespuestaObservacion}"
+           style="display: inline-block; padding: 10px 20px; background-color: #f97316; color: #ffffff; border-radius: 6px; font-weight: 600; text-decoration: none;">
+          Contesta las observaciones aquí
+        </a>
+      </div>
+    `
+    : "";
+
   return `
 <!DOCTYPE html>
 <html>
@@ -140,7 +156,7 @@ export function generarEmailPermiso(
         <div class="seccion-titulo">Instalación</div>
         <div class="dato">
           <span class="etiqueta">Cliente</span>
-          <span class="valor">${permiso.clienteId || "—"}</span>
+          <span class="valor">${permiso.cliente?.nombre || "—"}</span>
         </div>
         <div class="dato">
           <span class="etiqueta">Dirección</span>
@@ -217,6 +233,9 @@ export function generarEmailPermiso(
 
       <!-- Cambio de Estado -->
       ${bloqueCambioEstado}
+
+      <!-- Respuesta a observaciones -->
+      ${bloqueRespuestaObservacion}
 
       <!-- Observaciones -->
       ${permiso.observaciones ? `
