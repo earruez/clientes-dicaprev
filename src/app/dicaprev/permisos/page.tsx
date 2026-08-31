@@ -51,9 +51,9 @@ async function PermisosContent() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Permisos de instalación</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Permisos de instalación</h1>
           <p className="text-slate-600 mt-1">Gestiona solicitudes, plazos y estados de permisos asociados a instalaciones.</p>
           <p className="text-slate-500 text-sm mt-1">
             Tiempo promedio de aprobación:{" "}
@@ -65,14 +65,14 @@ async function PermisosContent() {
             Ver muestra de correos de notificación
           </Link>
         </div>
-        <div className="flex items-start gap-3">
+        <div className="flex flex-wrap items-start gap-3">
           <InformeMensualModal />
           <NuevoPermisoModal clientes={clientes} organismos={organismos} responsables={responsables} comunas={comunas} />
         </div>
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <div className="bg-white rounded-lg border border-slate-200 p-4">
           <div className="text-sm text-slate-600 font-medium">Permiso creado</div>
           <div className="text-2xl font-bold text-blue-600 mt-2">{estadisticas.permisoCreado}</div>
