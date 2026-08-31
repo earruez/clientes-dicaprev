@@ -133,18 +133,18 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <input
           type="text"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar por dirección, cliente, organismo o responsable..."
-          className="col-span-2 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2"
         />
         <select
           value={filtroEstado}
           onChange={(e) => setFiltroEstado(e.target.value)}
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Todos los estados</option>
           {Object.entries(PERMISO_ESTADOS).map(([value, label]) => (
@@ -161,7 +161,7 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
 
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="min-w-[960px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Estado</th>
