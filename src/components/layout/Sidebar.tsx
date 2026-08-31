@@ -141,6 +141,19 @@ const MODULES: ModuleItem[] = [
     ],
   },
   {
+    id: "permisos",
+    label: "Permisos",
+    icon: FileCheck2,
+    defaultHref: "/dicaprev/permisos",
+    moduleKey: "permisos",
+    permission: "canReadPermisos",
+    items: [
+      { href: "/dicaprev/permisos", label: "Gestión de permisos" },
+      { href: "/dicaprev/permisos/responsables", label: "Responsables" },
+      { href: "/dicaprev/permisos/organismos", label: "Organismos" },
+    ],
+  },
+  {
     id: "plan",
     label: "Plan",
     icon: CalendarRange,
