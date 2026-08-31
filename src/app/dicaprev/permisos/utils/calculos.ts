@@ -127,7 +127,7 @@ export function tiempoRelativo(fecha: Date | string | null | undefined): string 
  */
 export function construirQueryString(params: Record<string, string | number | boolean | null | undefined>): string {
   const entries = Object.entries(params)
-    .filter(([key, value]) => value !== null && value !== undefined && value !== "")
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
 
   return entries.length > 0 ? "?" + entries.join("&") : "";
