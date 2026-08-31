@@ -1,13 +1,13 @@
 import {
   PermisoInstalacion,
   PermisoResponsable,
+  PermisoOrganismo,
 } from "@prisma/client";
 import { PERMISO_ESTADOS, PERMISO_RIESGOS, RIESGO_ICONS } from "../types";
 import { formatearFecha } from "./calculos";
 
 interface PermisoConRelaciones extends PermisoInstalacion {
-  organismo?: any;
-  responsable?: any;
+  organismo?: PermisoOrganismo | null;
 }
 
 /**

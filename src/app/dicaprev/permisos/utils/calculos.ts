@@ -1,4 +1,4 @@
-import { DIAS_ATENCION_INSTALACION, PERMISO_RIESGOS, PermisoRiesgo, PermisoTipoPlazo } from "../types";
+import { DIAS_ATENCION_INSTALACION, PermisoRiesgo, PermisoTipoPlazo } from "../types";
 
 /**
  * Calcula la fecha estimada de resolución basada en:
@@ -127,7 +127,7 @@ export function tiempoRelativo(fecha: Date | string | null | undefined): string 
  */
 export function construirQueryString(params: Record<string, string | number | boolean | null | undefined>): string {
   const entries = Object.entries(params)
-    .filter(([_, value]) => value !== null && value !== undefined && value !== "")
+    .filter(([key, value]) => value !== null && value !== undefined && value !== "")
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
 
   return entries.length > 0 ? "?" + entries.join("&") : "";
