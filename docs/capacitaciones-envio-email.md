@@ -11,6 +11,8 @@
 - CAPACITACION_FROM_EMAIL o EMAIL_FROM: remitente para correos de capacitaciones.
 - APP_URL o NEXT_PUBLIC_APP_URL o NEXTAUTH_URL: URL publica base para enlaces de capacitacion.
 
+Estas mismas variables habilitan los correos de bienvenida de usuarios. Al crear una cuenta se envia un enlace de activacion para establecer la contraseña, valido por 24 horas y de un solo uso.
+
 Si falta configuracion, el sistema devuelve error y no marca la asignacion como enviada.
 
 ## Flujo operativo
