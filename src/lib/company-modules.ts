@@ -6,6 +6,7 @@ export const COMPANY_MODULES = [
   "documentacion",
   "plan_trabajo",
   "acreditaciones",
+  "permisos",
   "biblioteca_capacitaciones",
   "notificaciones",
 ] as const;
@@ -20,6 +21,7 @@ export const COMPANY_MODULE_LABELS: Record<CompanyModuleKey, string> = {
   documentacion: "Documentación",
   plan_trabajo: "Plan de trabajo",
   acreditaciones: "Acreditaciones",
+  permisos: "Permisos",
   biblioteca_capacitaciones: "Biblioteca / Capacitaciones",
   notificaciones: "Notificaciones",
 };

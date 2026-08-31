@@ -306,6 +306,11 @@ model Empresa {
   ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
   ds44MiperTareas            Ds44MiperTarea[]
   ds44MiperExposiciones      Ds44MiperExposicionRespuesta[]
+  // Permisos
+  permisoOrganismos          PermisoOrganismo[]
+  permisoResponsables        PermisoResponsable[]
+  permisoClientes            PermisoCliente[]
+  permisoInstalaciones       PermisoInstalacion[]
 }
 
 model Usuario {
@@ -2395,5 +2400,196 @@ model HistorialPlanTrabajo {
   plan PlanTrabajo @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@index([planId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// PERMISOS DE INSTALACION
+// ─────────────────────────────────────────────
+
+model PermisoOrganismo {
+  id                    String   @id @default(cuid())
+  empresaId             String
+  tipo                  String   @default("MUNICIPAL") // "MUNICIPAL" | "PRIVADO" | "OTRO"
+  codigoCUT             String?
+  region                String?
+  provincia             String?
+  comuna                String?
+  nombre                String
+  nombreOficial         String?
+  unidad                String?
+  tipoTramite           String?
+  descripcionTramite    String?
+  modalidad             String?  @default("NO_INFORMADO") // "ONLINE" | "PRESENCIAL" | "ONLINE_PRESENCIAL" | "NO_INFORMADO"
+  plazoDias             Int?
+  tipoPlazo             String?  @default("NO_INFORMADO") // "HABILES" | "CORRIDOS" | "NO_INFORMADO"
+  direccion             String?
+  horario               String?
+  urlTramite            String?
+  urlInstitucional      String?
+  documentosRequeridos  String?
+  costo                 String?
+  fuente                String?
+  fechaVerificacion     DateTime?
+  observaciones         String?
+  activo                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  permisos PermisoInstalacion[]
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@index([activo])
+  @@index([comuna])
+  @@index([region])
+  @@index([tipo])
+}
+
+model PermisoResponsable {
+  id        String   @id @default(cuid())
+  empresaId String
+  nombre    String
+  cargo     String
+  email     String
+  telefono  String?
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  empresa  Empresa                @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  permisos PermisoInstalacion[]
+  permisosAdicionales PermisoInstalacionResponsable[]
+
+  @@unique([empresaId, email])
+  @@index([empresaId])
+  @@index([activo])
+}
+
+model PermisoCliente {
+  id               String   @id @default(cuid())
+  empresaId        String
+  nombre           String
+  contactoEmail    String?
+  contactoTelefono String?
+  activo           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  empresa  Empresa               @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  permisos PermisoInstalacion[]
+
+  @@unique([empresaId, nombre])
+  @@index([empresaId])
+  @@index([activo])
+}
+
+model PermisoInstalacion {
+  id                        String   @id @default(cuid())
+  empresaId                 String
+  
+  // Instalación
+  clienteId                 String?
+  sucursalId                String?
+  direccion                 String
+  comuna                    String?
+  region                    String?
+  fechaInstalacion          DateTime
+  
+  // Solicitud
+  fechaRecepcionSolicitud   DateTime
+  fechaPresentacion         DateTime?
+  
+  // Organismo y plazo
+  organismoId               String
+  responsableId             String
+  
+  // Estado y riesgo
+  estado                    String   @default("SOLICITUD_RECIBIDA")
+  nivelRiesgo               String   @default("SIN_DATOS") // "SIN_DATOS" | "EN_PLAZO" | "ATENCION" | "EN_RIESGO"
+  
+  // Snapshot del plazo utilizado (para no cambiar históricamente)
+  plazoDiasSnapshot         Int?
+  tipoPlazoSnapshot         String?  @default("NO_INFORMADO")
+  modalidadSnapshot         String?
+  nombreOrganismoSnapshot   String?
+  
+  // Cálculos
+  fechaEstimadaResolucion   DateTime?
+  
+  // Datos
+  observaciones             String?
+  createdBy                 String
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  // Respuesta pública a observaciones (link por correo, sin login)
+  tokenRespuestaObservacion String?  @unique
+  tokenRespuestaUsado       Boolean  @default(false)
+
+  empresa    Empresa                  @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  cliente    PermisoCliente?          @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  organismo  PermisoOrganismo         @relation(fields: [organismoId], references: [id], onDelete: Restrict)
+  responsable PermisoResponsable      @relation(fields: [responsableId], references: [id], onDelete: Restrict)
+  responsablesAdicionales PermisoInstalacionResponsable[]
+  historial  PermisoHistorial[]
+  notificaciones PermisoNotificacion[]
+
+  @@index([empresaId])
+  @@index([estado])
+  @@index([nivelRiesgo])
+  @@index([fechaInstalacion])
+  @@index([fechaPresentacion])
+  @@index([responsableId])
+  @@index([organismoId])
+  @@index([updatedAt])
+  @@index([clienteId])
+}
+
+model PermisoInstalacionResponsable {
+  id            String   @id @default(cuid())
+  permisoId     String
+  responsableId String
+  createdAt     DateTime @default(now())
+
+  permiso     PermisoInstalacion @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+  responsable PermisoResponsable @relation(fields: [responsableId], references: [id], onDelete: Cascade)
+
+  @@unique([permisoId, responsableId])
+  @@index([permisoId])
+  @@index([responsableId])
+}
+
+model PermisoHistorial {
+  id              String   @id @default(cuid())
+  permisoId       String
+  estadoAnterior  String?
+  estadoNuevo     String
+  comentario      String?
+  usuarioId       String
+  createdAt       DateTime @default(now())
+
+  permiso PermisoInstalacion @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+
+  @@index([permisoId])
+  @@index([createdAt])
+  @@index([usuarioId])
+}
+
+model PermisoNotificacion {
+  id                String   @id @default(cuid())
+  permisoId         String
+  tipo              String   // "PERMISO_CREADO" | "CAMBIO_ESTADO" | "ALERTA_PLAZO"
+  destinatario      String
+  estado            String   @default("PENDIENTE") // "PENDIENTE" | "ENVIADO" | "ERROR"
+  providerMessageId String?
+  error             String?
+  createdAt         DateTime @default(now())
+
+  permiso PermisoInstalacion @relation(fields: [permisoId], references: [id], onDelete: Cascade)
+
+  @@index([permisoId])
+  @@index([estado])
   @@index([createdAt])
 }

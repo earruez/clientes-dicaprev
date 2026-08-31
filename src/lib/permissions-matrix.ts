@@ -23,6 +23,8 @@ export const PERMISSIONS = {
   canReadOrganigrama: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR", "AUDITOR", "LECTURA"],
   canCreateDocumentacion: ["ADMIN_EMPRESA", "PREVENCIONISTA"],
   canDeactivateTrabajador: ["ADMIN_EMPRESA", "PREVENCIONISTA"],
+  canReadPermisos: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR", "AUDITOR", "LECTURA"],
+  canManagePermisos: ["ADMIN_EMPRESA", "PREVENCIONISTA", "SUPERVISOR"],
 } as const;
 
 export type PermissionKey = keyof typeof PERMISSIONS;

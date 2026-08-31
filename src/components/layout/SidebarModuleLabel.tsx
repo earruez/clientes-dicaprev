@@ -43,6 +43,11 @@ const MODULE_META: Record<string, ModuleMeta> = {
     icon: BadgeCheck,
     className: "bg-violet-500/15 text-violet-100 border-violet-300/20",
   },
+  permisos: {
+    label: "Permisos",
+    icon: BadgeCheck,
+    className: "bg-orange-500/15 text-orange-100 border-orange-300/20",
+  },
   planificacion: {
     label: "Planificación",
     icon: CalendarDays,
