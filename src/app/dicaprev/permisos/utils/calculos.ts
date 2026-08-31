@@ -1,4 +1,4 @@
-import { DIAS_ATENCION_INSTALACION, PERMISO_RIESGOS, PermisoRiesgo, PermisoTipoPlazo } from "./types";
+import { DIAS_ATENCION_INSTALACION, PERMISO_RIESGOS, PermisoRiesgo, PermisoTipoPlazo } from "../types";
 
 /**
  * Calcula la fecha estimada de resolución basada en:

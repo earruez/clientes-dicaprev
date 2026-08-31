@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { requirePermission } from "@/lib/permissions";
+import { requirePermission } from "@/server/auth/permissions";
 import { PermisoOrganismoFormData, PermisoResponsableFormData, PermisoFormData } from "../types";
 import { calcularFechaEstimadaResolucion, calcularNivelRiesgo } from "../utils/calculos";
 import { sendEmail } from "@/lib/email/send-email";

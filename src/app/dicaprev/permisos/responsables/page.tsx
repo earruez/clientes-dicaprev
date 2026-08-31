@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { requirePermission } from "@/lib/permissions";
+import { requirePermission } from "@/server/auth/permissions";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
