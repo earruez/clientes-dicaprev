@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { requirePermission } from "@/server/auth/permissions";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { obtenerClientes, obtenerOrganismos, obtenerResponsables } from "./actions/permisos";
+import { obtenerClientes, obtenerOrganismos, obtenerResponsables, obtenerComunasConRegion } from "./actions/permisos";
 import { NuevoPermisoModal } from "./NuevoPermisoModal";
 import { InformeMensualModal } from "./InformeMensualModal";
 import { PermisosTable } from "./PermisosTable";
@@ -11,7 +11,7 @@ async function PermisosContent() {
   const { empresaId } = await requirePermission("canReadPermisos");
 
   // Obtener estadísticas
-  const [permisos, clientes, organismos, responsables] = await Promise.all([
+  const [permisos, clientes, organismos, responsables, comunas] = await Promise.all([
     prisma.permisoInstalacion.findMany({
       where: { empresaId },
       include: {
@@ -25,6 +25,7 @@ async function PermisosContent() {
     obtenerClientes({ activos: true }),
     obtenerOrganismos({ activos: true }),
     obtenerResponsables({ activos: true }),
+    obtenerComunasConRegion(),
   ]);
 
   const estadisticas = {
@@ -66,7 +67,7 @@ async function PermisosContent() {
         </div>
         <div className="flex items-start gap-3">
           <InformeMensualModal />
-          <NuevoPermisoModal clientes={clientes} organismos={organismos} responsables={responsables} />
+          <NuevoPermisoModal clientes={clientes} organismos={organismos} responsables={responsables} comunas={comunas} />
         </div>
       </div>
 

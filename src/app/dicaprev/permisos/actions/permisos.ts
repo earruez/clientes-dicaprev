@@ -67,7 +67,26 @@ export async function obtenerOrganismos(filtros?: { activos?: boolean; comuna?: 
 }
 
 /**
- * Sugerir el organismo m\u00e1s probable seg\u00fan la comuna/regi\u00f3n de la instalaci\u00f3n.
+ * Lista de comunas con su región asociada (derivada de la matriz de organismos importada),
+ * usada para el desplegable de comuna/región del formulario de nuevo permiso.
+ */
+export async function obtenerComunasConRegion() {
+  const { empresaId } = await requirePermission("canReadPermisos");
+
+  const registros = await prisma.permisoOrganismo.findMany({
+    where: { empresaId, comuna: { not: null }, region: { not: null } },
+    select: { comuna: true, region: true },
+    distinct: ["comuna"],
+    orderBy: { comuna: "asc" },
+  });
+
+  return registros
+    .filter((r): r is { comuna: string; region: string } => Boolean(r.comuna && r.region))
+    .sort((a, b) => a.comuna.localeCompare(b.comuna, "es"));
+}
+
+/**
+ * Sugerir el organismo más probable según la comuna/región de la instalación.
  * El usuario siempre puede seleccionar otro organismo manualmente.
  */
 export async function obtenerOrganismoSugerido(comuna?: string, region?: string) {

@@ -20,6 +20,7 @@ interface NuevoPermisoModalProps {
   clientes: PermisoCliente[];
   organismos: PermisoOrganismo[];
   responsables: PermisoResponsable[];
+  comunas: { comuna: string; region: string }[];
 }
 
 function hoyISO(): string {
@@ -40,7 +41,7 @@ const initialForm = {
   observaciones: "",
 };
 
-export function NuevoPermisoModal({ clientes, organismos, responsables }: NuevoPermisoModalProps) {
+export function NuevoPermisoModal({ clientes, organismos, responsables, comunas }: NuevoPermisoModalProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
@@ -204,28 +205,48 @@ export function NuevoPermisoModal({ clientes, organismos, responsables }: NuevoP
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Comuna</label>
-                <input
-                  type="text"
+                <select
                   value={form.comuna}
-                  onChange={(e) => setForm((f) => ({ ...f, comuna: e.target.value }))}
-                  placeholder="Ej: Ñuble"
+                  onChange={(e) => {
+                    const comunaSeleccionada = e.target.value;
+                    const match = comunas.find((c) => c.comuna === comunaSeleccionada);
+                    setForm((f) => ({
+                      ...f,
+                      comuna: comunaSeleccionada,
+                      region: match ? match.region : f.region,
+                    }));
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                >
+                  <option value="">Selecciona comuna...</option>
+                  {comunas.map((c) => (
+                    <option key={c.comuna} value={c.comuna}>
+                      {c.comuna}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Región</label>
-                <input
-                  type="text"
+                <select
                   value={form.region}
                   onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
-                  placeholder="Ej: Ñuble"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                >
+                  <option value="">Selecciona región...</option>
+                  {Array.from(new Set(comunas.map((c) => c.region)))
+                    .sort((a, b) => a.localeCompare(b, "es"))
+                    .map((region) => (
+                      <option key={region} value={region}>
+                        {region}
+                      </option>
+                    ))}
+                </select>
               </div>
             </div>
             <p className="text-xs text-slate-500">
-              Con la comuna/región intentaremos sugerir automáticamente el organismo a solicitar (puedes cambiarlo en
-              el siguiente paso).
+              Al elegir la comuna completamos automáticamente la región, y con ambas intentamos sugerir el organismo a
+              solicitar (puedes cambiarlo en el siguiente paso).
             </p>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Fecha de instalación *</label>
