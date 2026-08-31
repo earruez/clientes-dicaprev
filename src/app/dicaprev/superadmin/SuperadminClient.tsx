@@ -273,6 +273,7 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
   const handleCreateUsuario = async (formData: FormData) => {
     const nombre = formData.get("nombre") as string;
     const email = formData.get("email") as string;
+    const empresaId = formData.get("empresaId") as string;
     const rol = formData.get("rol") as string;
     const passwordTemporal = formData.get("passwordTemporal") as string;
     const confirmarPasswordTemporal = formData.get("confirmarPasswordTemporal") as string;
@@ -284,6 +285,11 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
 
     if (!email?.trim() || !email.includes("@")) {
       addMessage("error", "Email válido es requerido");
+      return;
+    }
+
+    if (!empresaId) {
+      addMessage("error", "Empresa es requerida");
       return;
     }
 
@@ -316,8 +322,13 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
 
     startTransition(async () => {
       try {
-        await createUsuarioAction(formData);
-        addMessage("success", `Usuario "${email}" creado exitosamente`);
+        const result = await createUsuarioAction(formData);
+        addMessage(
+          result.correoEnviado ? "success" : "error",
+          result.correoEnviado
+            ? `Usuario "${email}" creado y correo de bienvenida enviado`
+            : `Usuario "${email}" creado, pero no fue posible enviar el correo de bienvenida`,
+        );
         if (createUsuarioFormRef.current) {
           createUsuarioFormRef.current.reset();
         }
@@ -677,6 +688,14 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
           <form onSubmit={(e) => { e.preventDefault(); handleCreateUsuario(new FormData(e.currentTarget)); }} ref={createUsuarioFormRef} className="mt-4 grid gap-3 md:grid-cols-6">
             <input name="nombre" placeholder="Nombre" disabled={isLoading} className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50" />
             <input name="email" placeholder="email@dominio.cl" type="email" disabled={isLoading} className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50" />
+            <select name="empresaId" disabled={isLoading} defaultValue="" className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50">
+              <option value="">Empresa</option>
+              {data.empresas.filter((empresa) => empresa.activa).map((empresa) => (
+                <option key={empresa.id} value={empresa.id}>
+                  {empresa.nombre}
+                </option>
+              ))}
+            </select>
             <select name="rol" disabled={isLoading} defaultValue="ADMIN_EMPRESA" className="rounded-md border border-slate-300 px-3 py-2 text-sm disabled:opacity-50">
               {SUPERADMIN_ROLES.map((rol) => (
                 <option key={rol} value={rol}>

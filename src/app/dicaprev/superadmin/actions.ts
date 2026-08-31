@@ -6,6 +6,9 @@ import { COMPANY_MODULES, type CompanyModuleKey } from "@/lib/company-modules";
 import { requireRole } from "@/server/auth/permissions";
 import { bootstrapEmpresaOperativa } from "@/server/bootstrap/empresa-operativa";
 import { hashPassword, verifyPassword } from "@/lib/password-hash";
+import { generarTokenCambioContraseña, calcularFechaExpiracion } from "@/lib/password-reset";
+import { generarEmailBienvenidaUsuario } from "@/lib/email/templates/welcome-user";
+import { sendEmail } from "@/lib/email/send-email";
 import { Prisma } from "@prisma/client";
 import type { Rol } from "@prisma/client";
 
@@ -626,6 +629,7 @@ export async function createUsuarioAction(formData: FormData) {
 
   const nombre = parseString(formData, "nombre");
   const email = parseString(formData, "email").toLowerCase();
+  const empresaId = parseString(formData, "empresaId");
   const rol = parseString(formData, "rol") as Rol;
   const passwordTemporal = parseString(formData, "passwordTemporal");
   const confirmarPasswordTemporal = parseString(formData, "confirmarPasswordTemporal");
@@ -640,6 +644,10 @@ export async function createUsuarioAction(formData: FormData) {
 
   if (!email || !email.includes("@")) {
     throw new Error("Email válido es requerido");
+  }
+
+  if (!empresaId) {
+    throw new Error("Empresa es requerida");
   }
 
   if (!passwordTemporal) {
@@ -667,19 +675,74 @@ export async function createUsuarioAction(formData: FormData) {
     throw new Error(`Un usuario con el email "${email}" ya existe`);
   }
 
-  const passwordHash = hashPassword(passwordTemporal);
+  const empresa = await prisma.empresa.findUnique({
+    where: { id: empresaId },
+    select: { id: true, nombre: true, activa: true },
+  });
 
-  await prisma.usuario.create({
-    data: {
+  if (!empresa || !empresa.activa) {
+    throw new Error("Empresa activa no encontrada");
+  }
+
+  const passwordHash = hashPassword(passwordTemporal);
+  const token = generarTokenCambioContraseña();
+  const expiresAt = calcularFechaExpiracion(24);
+
+  await prisma.$transaction(async (tx) => {
+    const usuario = await tx.usuario.create({
+      data: {
+        nombre,
+        email,
+        rol,
+        activo: true,
+        passwordHash,
+        empresaId: empresa.id,
+      },
+    });
+
+    await tx.usuarioEmpresa.create({
+      data: {
+        usuarioId: usuario.id,
+        empresaId: empresa.id,
+        rol,
+        activo: true,
+      },
+    });
+
+    await tx.usuarioCambioContraseña.create({
+      data: {
+        usuarioId: usuario.id,
+        token,
+        expires: expiresAt,
+      },
+    });
+  });
+
+  let correoEnviado = true;
+
+  try {
+    const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const linkCambioContraseña = `${appUrl}/cambiar-contrasena/${token}`;
+    const htmlEmail = generarEmailBienvenidaUsuario(
       nombre,
       email,
       rol,
-      activo: true,
-      passwordHash,
-    },
-  });
+      empresa.nombre,
+      linkCambioContraseña,
+    );
+
+    await sendEmail({
+      to: email,
+      subject: "Bienvenido a NextPrev: activa tu cuenta",
+      html: htmlEmail,
+    });
+  } catch (emailError) {
+    correoEnviado = false;
+    console.error(`Error enviando email de bienvenida a ${email}:`, emailError);
+  }
 
   revalidatePath("/dicaprev/superadmin");
+  return { correoEnviado };
 }
 
 export async function toggleUsuarioActivoAction(formData: FormData) {
