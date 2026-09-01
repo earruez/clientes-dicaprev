@@ -3,10 +3,10 @@
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
-import { ESTADOS_REQUIEREN_COMENTARIO, PERMISO_ESTADOS, PermisoClienteFormData, PermisoFormData, PermisoOrganismoFormData, PermisoResponsableFormData } from "../types";
+import { ESTADOS_REQUIEREN_COMENTARIO, PermisoClienteFormData, PermisoFormData, PermisoOrganismoFormData, PermisoResponsableFormData } from "../types";
 import { calcularFechaEstimadaResolucion, calcularNivelRiesgo } from "../utils/calculos";
 import { sendEmail } from "@/lib/email/send-email";
-import { generarEmailPermiso } from "../utils/email-templates";
+import { generarAsuntoEmailPermiso, generarEmailPermiso } from "../utils/email-templates";
 
 type DestinatarioNotificacion = { email: string };
 
@@ -465,7 +465,7 @@ export async function crearPermiso(data: PermisoFormData) {
     permiso.id,
     [responsable, ...responsablesAdicionales],
     "PERMISO_CREADO",
-    `Nuevo permiso registrado · ${permiso.cliente?.nombre || permiso.direccion}`,
+    generarAsuntoEmailPermiso(permiso),
     generarEmailPermiso(permiso, responsable, "PERMISO_CREADO"),
   );
 
@@ -630,8 +630,12 @@ export async function cambiarEstadoPermiso(
       permisoId,
       destinatarios,
       "CAMBIO_ESTADO",
-      `Permiso ${PERMISO_ESTADOS[nuevoEstado as keyof typeof PERMISO_ESTADOS]}`,
-      generarEmailPermiso(permisoActualizado, permiso.responsable, "CAMBIO_ESTADO"),
+      generarAsuntoEmailPermiso(permisoActualizado),
+      generarEmailPermiso(permisoActualizado, permiso.responsable, "CAMBIO_ESTADO", {
+        estadoAnterior,
+        comentario,
+        tokenRespuestaObservacion,
+      }),
     );
   }
 
