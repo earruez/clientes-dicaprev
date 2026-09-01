@@ -661,9 +661,6 @@ async function ensureCapacitacionesBase(empresaId: string): Promise<number> {
 }
 
 async function ensureMunicipalidadesBase(empresaId: string): Promise<number> {
-  const existentes = await prisma.permisoOrganismo.count({ where: { empresaId } });
-  if (existentes > 0) return 0;
-
   const empresasConCatalogo = await prisma.empresa.findMany({
     where: { id: { not: empresaId } },
     select: {
