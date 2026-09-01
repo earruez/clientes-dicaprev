@@ -3,7 +3,7 @@
 import { useMemo, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { PermisoCliente, PermisoInstalacion, PermisoOrganismo, PermisoResponsable } from "@prisma/client";
@@ -24,6 +24,9 @@ type PermisoConRelaciones = PermisoInstalacion & {
 interface PermisosTableProps {
   permisos: PermisoConRelaciones[];
 }
+
+type OrdenClave = "estado" | "riesgo" | "cliente" | "direccion" | "instalacion" | "municipalidad" | "responsable" | "actualizacion";
+type OrdenDireccion = "asc" | "desc";
 
 function hoyISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -115,7 +118,8 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
   const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
-  const [orden, setOrden] = useState("actualizacion_desc");
+  const [ordenClave, setOrdenClave] = useState<OrdenClave>("actualizacion");
+  const [ordenDireccion, setOrdenDireccion] = useState<OrdenDireccion>("desc");
   const [expandido, setExpandido] = useState<string | null>(null);
   const [permisoSeleccionado, setPermisoSeleccionado] = useState<PermisoConRelaciones | null>(null);
   const [eliminandoId, setEliminandoId] = useState<string | null>(null);
@@ -137,27 +141,63 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
     });
 
     return permisosFiltrados.sort((a, b) => {
-      switch (orden) {
-        case "actualizacion_asc":
-          return a.updatedAt.getTime() - b.updatedAt.getTime();
-        case "instalacion_asc":
-          return a.fechaInstalacion.getTime() - b.fechaInstalacion.getTime();
-        case "instalacion_desc":
-          return b.fechaInstalacion.getTime() - a.fechaInstalacion.getTime();
-        case "estado_asc":
-          return (PERMISO_ESTADOS[a.estado as PermisoEstado] || a.estado).localeCompare(
-            PERMISO_ESTADOS[b.estado as PermisoEstado] || b.estado,
-            "es",
-          );
-        case "cliente_asc":
-          return (a.cliente?.nombre || "").localeCompare(b.cliente?.nombre || "", "es");
-        case "municipalidad_asc":
-          return (a.organismo?.nombre || "").localeCompare(b.organismo?.nombre || "", "es");
+      const texto = (valor: string, otroValor: string) => valor.localeCompare(otroValor, "es");
+      const riesgoOrden = { EN_RIESGO: 0, ATENCION: 1, SIN_DATOS: 2, EN_PLAZO: 3 } as const;
+      let resultado: number;
+
+      switch (ordenClave) {
+        case "estado":
+          resultado = texto(PERMISO_ESTADOS[a.estado as PermisoEstado] || a.estado, PERMISO_ESTADOS[b.estado as PermisoEstado] || b.estado);
+          break;
+        case "riesgo":
+          resultado = (riesgoOrden[a.nivelRiesgo as keyof typeof riesgoOrden] ?? 99) - (riesgoOrden[b.nivelRiesgo as keyof typeof riesgoOrden] ?? 99);
+          break;
+        case "cliente":
+          resultado = texto(a.cliente?.nombre || "", b.cliente?.nombre || "");
+          break;
+        case "direccion":
+          resultado = texto(a.direccion, b.direccion);
+          break;
+        case "instalacion":
+          resultado = a.fechaInstalacion.getTime() - b.fechaInstalacion.getTime();
+          break;
+        case "municipalidad":
+          resultado = texto(a.organismo?.nombre || "", b.organismo?.nombre || "");
+          break;
+        case "responsable":
+          resultado = texto(a.responsable?.nombre || "", b.responsable?.nombre || "");
+          break;
         default:
-          return b.updatedAt.getTime() - a.updatedAt.getTime();
+          resultado = a.updatedAt.getTime() - b.updatedAt.getTime();
       }
+
+      return ordenDireccion === "asc" ? resultado : -resultado;
     });
-  }, [permisos, busqueda, filtroEstado, orden]);
+  }, [permisos, busqueda, filtroEstado, ordenClave, ordenDireccion]);
+
+  const cambiarOrden = (clave: OrdenClave) => {
+    if (ordenClave === clave) {
+      setOrdenDireccion((direccion) => (direccion === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setOrdenClave(clave);
+    setOrdenDireccion(clave === "actualizacion" ? "desc" : "asc");
+  };
+
+  const encabezadoOrdenable = (etiqueta: string, clave: OrdenClave) => (
+    <button
+      type="button"
+      onClick={() => cambiarOrden(clave)}
+      className="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-blue-700"
+      aria-label={`Ordenar por ${etiqueta}`}
+    >
+      {etiqueta}
+      {ordenClave !== clave && <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />}
+      {ordenClave === clave && ordenDireccion === "asc" && <ArrowUp className="h-3.5 w-3.5 text-blue-700" />}
+      {ordenClave === clave && ordenDireccion === "desc" && <ArrowDown className="h-3.5 w-3.5 text-blue-700" />}
+    </button>
+  );
 
   const handleEliminar = async (permiso: PermisoConRelaciones) => {
     if (!window.confirm(`¿Eliminar definitivamente el permiso de "${permiso.direccion}"? Esta acción no se puede deshacer.`)) {
@@ -198,20 +238,6 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
             </option>
           ))}
         </select>
-        <select
-          value={orden}
-          onChange={(e) => setOrden(e.target.value)}
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          aria-label="Ordenar permisos"
-        >
-          <option value="actualizacion_desc">Actualización: reciente primero</option>
-          <option value="actualizacion_asc">Actualización: antigua primero</option>
-          <option value="instalacion_asc">Instalación: próxima primero</option>
-          <option value="instalacion_desc">Instalación: lejana primero</option>
-          <option value="estado_asc">Estado: A-Z</option>
-          <option value="cliente_asc">Cliente: A-Z</option>
-          <option value="municipalidad_asc">Municipalidad: A-Z</option>
-        </select>
       </div>
 
       <p className="text-sm text-slate-500">
@@ -223,14 +249,14 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
           <table className="min-w-[960px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Estado</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Riesgo</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Cliente</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Dirección</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Fecha instalación</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Municipalidad</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Responsable</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Último movimiento</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Estado", "estado")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Riesgo", "riesgo")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Cliente", "cliente")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Dirección", "direccion")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Fecha instalación", "instalacion")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Municipalidad", "municipalidad")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Responsable", "responsable")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Último movimiento", "actualizacion")}</th>
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Acciones</th>
               </tr>
             </thead>
