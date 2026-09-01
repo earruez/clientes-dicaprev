@@ -151,7 +151,7 @@ const MODULES: ModuleItem[] = [
       { href: "/dicaprev/permisos", label: "Gestión de permisos" },
       { href: "/dicaprev/permisos/clientes", label: "Clientes" },
       { href: "/dicaprev/permisos/responsables", label: "Responsables" },
-      { href: "/dicaprev/permisos/organismos", label: "Organismos" },
+      { href: "/dicaprev/permisos/organismos", label: "Municipalidades" },
     ],
   },
   {

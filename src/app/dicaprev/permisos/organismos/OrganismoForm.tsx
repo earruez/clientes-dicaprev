@@ -7,7 +7,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import type { PermisoOrganismo } from "@prisma/client";
 import { guardarOrganismo } from "../actions/permisos";
-import { PERMISO_ORGANISMO_TIPOS, PERMISO_MODALIDADES, PERMISO_TIPOS_PLAZO } from "../types";
+import { PERMISO_MODALIDADES, PERMISO_TIPOS_PLAZO } from "../types";
 
 interface OrganismoFormProps {
   organismo?: PermisoOrganismo;
@@ -29,7 +29,7 @@ export function OrganismoForm({ organismo }: OrganismoFormProps) {
 
       const data = {
         nombre: formData.get("nombre") as string,
-        tipo: formData.get("tipo") as string,
+        tipo: "MUNICIPAL",
         region: (formData.get("region") as string) || undefined,
         provincia: (formData.get("provincia") as string) || undefined,
         comuna: (formData.get("comuna") as string) || undefined,
@@ -51,7 +51,7 @@ export function OrganismoForm({ organismo }: OrganismoFormProps) {
       router.push("/dicaprev/permisos/organismos");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar el organismo");
+      setError(err instanceof Error ? err.message : "Error al guardar la municipalidad");
       setLoading(false);
     }
   };
@@ -67,10 +67,10 @@ export function OrganismoForm({ organismo }: OrganismoFormProps) {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            {organismo ? "Editar organismo" : "Nuevo organismo"}
+            {organismo ? "Editar municipalidad" : "Nueva municipalidad"}
           </h1>
           <p className="text-slate-600 text-sm mt-0.5">
-            Municipalidades u otros organismos (privados, regionales, etc.) que emiten permisos de instalación.
+            Municipalidades que emiten permisos de instalación.
           </p>
         </div>
       </div>
@@ -94,23 +94,8 @@ export function OrganismoForm({ organismo }: OrganismoFormProps) {
                   required
                   defaultValue={organismo?.nombre}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: Municipalidad de Providencia, Aeropuerto SCL S.A."
+                  placeholder="Ej: Municipalidad de Providencia"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tipo *</label>
-                <select
-                  name="tipo"
-                  required
-                  defaultValue={organismo?.tipo || "MUNICIPAL"}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {Object.entries(PERMISO_ORGANISMO_TIPOS).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Región</label>
@@ -283,7 +268,7 @@ export function OrganismoForm({ organismo }: OrganismoFormProps) {
               </Button>
             </Link>
             <Button type="submit" disabled={loading}>
-              {loading ? "Guardando..." : organismo ? "Guardar cambios" : "Crear organismo"}
+              {loading ? "Guardando..." : organismo ? "Guardar cambios" : "Crear municipalidad"}
             </Button>
           </div>
         </form>

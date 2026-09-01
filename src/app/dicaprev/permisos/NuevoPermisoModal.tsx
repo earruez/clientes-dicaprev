@@ -72,7 +72,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
       const sugerido = await obtenerOrganismoSugerido(form.comuna.trim() || undefined, form.region.trim() || undefined);
       if (sugerido) {
         setForm((f) => ({ ...f, organismoId: sugerido.id }));
-        setSugerencia(`Organismo sugerido según la comuna/región: ${sugerido.nombre}. Puedes cambiarlo.`);
+        setSugerencia(`Municipalidad sugerida según la comuna/región: ${sugerido.nombre}. Puedes cambiarla.`);
       }
     }
 
@@ -84,7 +84,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
     setError(null);
 
     if (!form.organismoId || !form.responsableId || !form.fechaRecepcionSolicitud) {
-      setError("Completa organismo, responsable y fecha de recepción de la solicitud.");
+      setError("Completa municipalidad, responsable y fecha de recepción de la solicitud.");
       return;
     }
 
@@ -136,9 +136,9 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
             {organismos.length === 0 && (
               <p>
-                No hay organismos registrados. Crea uno en{" "}
+                No hay municipalidades registradas. Crea una en{" "}
                 <Link href="/dicaprev/permisos/organismos" className="underline font-medium">
-                  Organismos
+                  Municipalidades
                 </Link>
                 .
               </p>
@@ -245,7 +245,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
               </div>
             </div>
             <p className="text-xs text-slate-500">
-              Al elegir la comuna completamos automáticamente la región, y con ambas intentamos sugerir el organismo a
+              Al elegir la comuna completamos automáticamente la región, y con ambas intentamos sugerir la municipalidad a
               solicitar (puedes cambiarlo en el siguiente paso).
             </p>
             <div>
@@ -286,7 +286,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Organismo *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Municipalidad *</label>
               <select
                 required
                 value={form.organismoId}
@@ -294,7 +294,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="" disabled>
-                  Selecciona organismo...
+                  Selecciona municipalidad...
                 </option>
                 {organismos.map((organismo) => (
                   <option key={organismo.id} value={organismo.id}>
