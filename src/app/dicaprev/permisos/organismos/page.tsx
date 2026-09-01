@@ -26,12 +26,12 @@ async function OrganismosContent() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Organismos</h1>
-            <p className="text-slate-600 text-sm mt-0.5">Gestiona municipalidades y organismos</p>
+            <h1 className="text-2xl font-bold text-slate-900">Municipalidades</h1>
+            <p className="text-slate-600 text-sm mt-0.5">Gestiona las municipalidades para permisos de instalación</p>
           </div>
         </div>
         <Link href="/dicaprev/permisos/organismos/nuevo">
-          <Button className="gap-2">+ Nuevo organismo</Button>
+          <Button className="gap-2">+ Nueva municipalidad</Button>
         </Link>
       </div>
 
@@ -42,7 +42,7 @@ async function OrganismosContent() {
 
 export default function OrganismosPage() {
   return (
-    <Suspense fallback={<div>Cargando organismos...</div>}>
+    <Suspense fallback={<div>Cargando municipalidades...</div>}>
       <OrganismosContent />
     </Suspense>
   );

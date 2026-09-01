@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 import { requirePermission } from "@/server/auth/permissions";
 import { prisma } from "@/lib/prisma";
-import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { ResponsablesTable } from "./ResponsablesTable";
+import { NuevoResponsableModal } from "./NuevoResponsableModal";
+import { Button } from "@/components/ui/button";
 
 async function ResponsablesContent() {
   const { empresaId } = await requirePermission("canManagePermisos");
@@ -30,9 +31,7 @@ async function ResponsablesContent() {
             <p className="text-slate-600 text-sm mt-0.5">Gestiona los responsables de permisos</p>
           </div>
         </div>
-        <Link href="/dicaprev/permisos/responsables/nuevo">
-          <Button className="gap-2">+ Nuevo responsable</Button>
-        </Link>
+        <NuevoResponsableModal />
       </div>
 
       <ResponsablesTable responsables={responsables} />

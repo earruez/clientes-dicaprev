@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import type { PermisoOrganismo } from "@prisma/client";
-import { PERMISO_ORGANISMO_TIPOS, PermisoOrganismoTipo, PERMISO_MODALIDADES, PermisoModalidad } from "../types";
+import { PERMISO_MODALIDADES, PermisoModalidad } from "../types";
 
 interface OrganismosTableProps {
   organismos: PermisoOrganismo[];
@@ -12,7 +12,6 @@ interface OrganismosTableProps {
 
 export function OrganismosTable({ organismos }: OrganismosTableProps) {
   const [busqueda, setBusqueda] = useState("");
-  const [tipo, setTipo] = useState("");
   const [region, setRegion] = useState("");
   const [modalidad, setModalidad] = useState("");
 
@@ -32,37 +31,24 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
         (o.region || "").toLowerCase().includes(texto) ||
         (o.nombreOficial || "").toLowerCase().includes(texto);
 
-      const coincideTipo = !tipo || o.tipo === tipo;
       const coincideRegion = !region || o.region === region;
       const coincideModalidad = !modalidad || o.modalidad === modalidad;
 
-      return coincideTexto && coincideTipo && coincideRegion && coincideModalidad;
+      return coincideTexto && coincideRegion && coincideModalidad;
     });
-  }, [organismos, busqueda, tipo, region, modalidad]);
+  }, [organismos, busqueda, region, modalidad]);
 
   return (
     <div className="space-y-4">
       {/* Buscador y filtros */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <input
           type="text"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar por nombre, comuna o región..."
-          className="col-span-2 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <select
-          value={tipo}
-          onChange={(e) => setTipo(e.target.value)}
-          className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Todos los tipos</option>
-          {Object.entries(PERMISO_ORGANISMO_TIPOS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
         <select
           value={region}
           onChange={(e) => setRegion(e.target.value)}
@@ -78,7 +64,7 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
         <select
           value={modalidad}
           onChange={(e) => setModalidad(e.target.value)}
-          className="col-span-4 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 md:col-span-1"
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="">Todas las modalidades</option>
           {Object.entries(PERMISO_MODALIDADES).map(([value, label]) => (
@@ -90,7 +76,7 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
       </div>
 
       <p className="text-sm text-slate-500">
-        Mostrando {filtrados.length} de {organismos.length} organismos
+        Mostrando {filtrados.length} de {organismos.length} municipalidades
       </p>
 
       {/* Tabla */}
@@ -99,8 +85,7 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Organismo</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Tipo</th>
+                <th className="px-6 py-3 text-left font-semibold text-slate-900">Municipalidad</th>
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Región</th>
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Comuna</th>
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Modalidad</th>
@@ -114,17 +99,14 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
                 <tr>
                   <td colSpan={8} className="px-6 py-8 text-center text-slate-500">
                     {organismos.length === 0
-                      ? "No hay organismos registrados. Importa la matriz municipal o crea uno manualmente."
-                      : "Ningún organismo coincide con la búsqueda/filtros."}
+                      ? "No hay municipalidades registradas. Importa la matriz municipal o crea una manualmente."
+                      : "Ninguna municipalidad coincide con la búsqueda/filtros."}
                   </td>
                 </tr>
               ) : (
                 filtrados.map((o) => (
                   <tr key={o.id} className="border-b border-slate-200 hover:bg-slate-50">
                     <td className="px-6 py-3 font-medium text-slate-900">{o.nombre}</td>
-                    <td className="px-6 py-3 text-slate-600">
-                      {PERMISO_ORGANISMO_TIPOS[o.tipo as PermisoOrganismoTipo] || o.tipo}
-                    </td>
                     <td className="px-6 py-3 text-slate-600">{o.region || "—"}</td>
                     <td className="px-6 py-3 text-slate-600">{o.comuna || "—"}</td>
                     <td className="px-6 py-3 text-slate-600">

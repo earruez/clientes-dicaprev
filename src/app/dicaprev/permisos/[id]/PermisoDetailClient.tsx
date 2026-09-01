@@ -68,7 +68,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
     setEstadoError(null);
 
     if (requiereComentario && !comentario.trim()) {
-      setEstadoError("Pega el texto de la observación del organismo antes de continuar.");
+      setEstadoError("Pega el texto de la observación de la municipalidad antes de continuar.");
       return;
     }
 
@@ -116,7 +116,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             <span className="text-slate-900">{permiso.responsable.nombre}</span>
             <span className="text-slate-500">Fecha de instalación</span>
             <span className="text-slate-900">{new Date(permiso.fechaInstalacion).toLocaleDateString("es-CL")}</span>
-            <span className="text-slate-500">Fecha de recepción</span>
+            <span className="text-slate-500">Fecha de solicitud</span>
             <span className="text-slate-900">
               {new Date(permiso.fechaRecepcionSolicitud).toLocaleDateString("es-CL")}
             </span>
@@ -145,7 +145,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         <div className="bg-white rounded-lg border border-slate-200 p-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-2">Fecha de presentación</h2>
           <p className="text-sm text-slate-500 mb-4">
-            Registra la fecha en que el permiso fue efectivamente presentado ante el organismo.
+            Registra la fecha en que el permiso fue efectivamente presentado ante la municipalidad.
           </p>
           <form onSubmit={handleGuardarFecha} className="flex gap-3 items-end">
             <div className="flex-1">
@@ -193,7 +193,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 {nuevoEstado === "OBSERVADO"
-                  ? "Pega aquí el texto de la observación del organismo *"
+                  ? "Pega aquí el texto de la observación de la municipalidad *"
                   : requiereComentario
                     ? "Motivo *"
                     : "Comentario (opcional)"}
@@ -205,7 +205,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
                 required={requiereComentario}
                 placeholder={
                   nuevoEstado === "OBSERVADO"
-                    ? "Copia y pega el texto de la observación / solicitud de información del organismo"
+                    ? "Copia y pega el texto de la observación / solicitud de información de la municipalidad"
                     : requiereComentario
                       ? "Indica el motivo de este cambio de estado"
                       : "Notas adicionales (opcional)"

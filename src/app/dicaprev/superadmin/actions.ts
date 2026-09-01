@@ -745,28 +745,36 @@ export async function createUsuarioAction(formData: FormData) {
   return { correoEnviado };
 }
 
-export async function toggleUsuarioActivoAction(formData: FormData) {
-  await requireRole("SUPERADMIN");
+export async function toggleUsuarioActivoAction(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireRole("SUPERADMIN");
 
-  const usuarioId = parseString(formData, "usuarioId");
-  const activo = parseBooleanFromFormData(formData, "activo");
+    const usuarioId = parseString(formData, "usuarioId");
+    const activo = parseBooleanFromFormData(formData, "activo");
 
-  if (!usuarioId) {
-    throw new Error("Usuario es requerido");
+    if (!usuarioId) {
+      return { ok: false, error: "Usuario es requerido" };
+    }
+
+    const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId } });
+    if (!usuario) {
+      return { ok: false, error: "Usuario no encontrado o ya fue eliminado" };
+    }
+
+    await prisma.usuario.update({
+      where: { id: usuarioId },
+      data: { activo },
+    });
+
+    revalidatePath("/dicaprev/superadmin");
+    return { ok: true };
+  } catch (error) {
+    console.error("Error al actualizar estado de usuario:", error);
+    return {
+      ok: false,
+      error: "No fue posible actualizar el estado del usuario. Intenta nuevamente o contacta a soporte.",
+    };
   }
-
-  // Verify usuario exists
-  const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId } });
-  if (!usuario) {
-    throw new Error("Usuario no encontrado");
-  }
-
-  await prisma.usuario.update({
-    where: { id: usuarioId },
-    data: { activo },
-  });
-
-  revalidatePath("/dicaprev/superadmin");
 }
 
 export async function upsertUsuarioEmpresaAction(formData: FormData) {

@@ -348,7 +348,10 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
         const formData = new FormData();
         formData.set("usuarioId", usuario.id);
         formData.set("activo", newState ? "1" : "0");
-        await toggleUsuarioActivoAction(formData);
+        const result = await toggleUsuarioActivoAction(formData);
+        if (!result.ok) {
+          throw new Error(result.error);
+        }
         addMessage("success", `Usuario ${newState ? "activado" : "desactivado"}`);
         router.refresh();
       },

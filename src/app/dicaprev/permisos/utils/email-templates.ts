@@ -42,8 +42,8 @@ export function generarEmailPermiso(
       <div style="margin-top: 20px; padding: 15px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
         <p style="margin: 0; font-weight: bold; color: #92400e;">⚠️ Atención con la fecha de instalación</p>
         <p style="margin: 10px 0 0 0; color: #78350f; font-size: 14px;">
-          El organismo seleccionado registra un plazo aproximado de ${permiso.plazoDiasSnapshot || "N/A"} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}.
-          Considerando que la solicitud fue presentada el ${permiso.fechaPresentacion ? formatearFecha(permiso.fechaPresentacion) : "N/A"}, 
+          La municipalidad seleccionada registra un plazo aproximado de ${permiso.plazoDiasSnapshot || "N/A"} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}.
+          Considerando la fecha de solicitud ${formatearFecha(permiso.fechaRecepcionSolicitud)},
           la resolución se estima aproximadamente para el ${formatearFecha(permiso.fechaEstimadaResolucion)}.
         </p>
         <p style="margin: 10px 0 0 0; color: #78350f; font-size: 14px;">
@@ -79,7 +79,7 @@ export function generarEmailPermiso(
       <div style="margin-top: 20px; padding: 15px; background-color: #f3f4f6; border-left: 4px solid #9ca3af; border-radius: 4px;">
         <p style="margin: 0; font-weight: bold; color: #374151;">ℹ️ Plazo no informado</p>
         <p style="margin: 10px 0 0 0; color: #374151; font-size: 14px;">
-          No existe información de plazo para este organismo. 
+          No existe información de plazo para esta municipalidad.
           Se recomienda verificar los plazos antes de comprometer definitivamente la fecha de instalación.
         </p>
       </div>
@@ -103,7 +103,7 @@ export function generarEmailPermiso(
     ? `
       <div style="margin-top: 20px; padding: 15px; background-color: #fff7ed; border-left: 4px solid #f97316; border-radius: 4px; text-align: center;">
         <p style="margin: 0 0 12px 0; color: #7c2d12; font-size: 14px;">
-          El organismo solicitó información adicional. Puedes responder directamente desde este enlace, sin necesidad de iniciar sesión:
+          La municipalidad solicitó información adicional. Puedes responder directamente desde este enlace, sin necesidad de iniciar sesión:
         </p>
         <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/permisos/responder/${metadatos.tokenRespuestaObservacion}"
            style="display: inline-block; padding: 10px 20px; background-color: #f97316; color: #ffffff; border-radius: 6px; font-weight: 600; text-decoration: none;">
@@ -180,7 +180,7 @@ export function generarEmailPermiso(
           <span class="valor">${riesgoIcon} ${riesgoLabel}</span>
         </div>
         <div class="dato">
-          <span class="etiqueta">Organismo</span>
+          <span class="etiqueta">Municipalidad</span>
           <span class="valor">${permiso.nombreOrganismoSnapshot || "—"}</span>
         </div>
         <div class="dato">
@@ -188,7 +188,7 @@ export function generarEmailPermiso(
           <span class="valor">${permiso.modalidadSnapshot || "No informada"}</span>
         </div>
         <div class="dato">
-          <span class="etiqueta">Fecha de Recepción</span>
+          <span class="etiqueta">Fecha de Solicitud</span>
           <span class="valor">${formatearFecha(permiso.fechaRecepcionSolicitud)}</span>
         </div>
         <div class="dato">
