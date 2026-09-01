@@ -3,12 +3,14 @@
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
-import { PermisoOrganismoFormData, PermisoResponsableFormData, PermisoClienteFormData, PermisoFormData, ESTADOS_REQUIEREN_COMENTARIO } from "../types";
+import { ESTADOS_REQUIEREN_COMENTARIO, PERMISO_ESTADOS, PermisoClienteFormData, PermisoFormData, PermisoOrganismoFormData, PermisoResponsableFormData } from "../types";
 import { calcularFechaEstimadaResolucion, calcularNivelRiesgo } from "../utils/calculos";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarEmailPermiso } from "../utils/email-templates";
 
 type DestinatarioNotificacion = { email: string };
+
+const ESTADOS_CON_NOTIFICACION = new Set(["SOLICITADO", "APROBADO", "CANCELADO"]);
 
 async function enviarNotificacionATodos(
   permisoId: string,
@@ -565,19 +567,16 @@ export async function cambiarEstadoPermiso(
     },
   });
 
-  // Enviar email a todos los responsables asignados
-  const destinatarios = [permiso.responsable, ...permiso.responsablesAdicionales.map((r) => r.responsable)];
-  await enviarNotificacionATodos(
-    permisoId,
-    destinatarios,
-    "CAMBIO_ESTADO",
-    `Actualización de permiso · ${permisoId.slice(0, 8)} · ${nuevoEstado}`,
-    generarEmailPermiso(permisoActualizado, permiso.responsable, "CAMBIO_ESTADO", {
-      estadoAnterior,
-      comentario,
-      tokenRespuestaObservacion,
-    }),
-  );
+  if (ESTADOS_CON_NOTIFICACION.has(nuevoEstado)) {
+    const destinatarios = [permiso.responsable, ...permiso.responsablesAdicionales.map((r) => r.responsable)];
+    await enviarNotificacionATodos(
+      permisoId,
+      destinatarios,
+      "CAMBIO_ESTADO",
+      `Permiso ${PERMISO_ESTADOS[nuevoEstado as keyof typeof PERMISO_ESTADOS]}`,
+      generarEmailPermiso(permisoActualizado, permiso.responsable, "CAMBIO_ESTADO"),
+    );
+  }
 
   return permisoActualizado;
 }

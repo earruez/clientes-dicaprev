@@ -212,9 +212,11 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
                 }
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Se enviará un correo automático al responsable ({permiso.responsable.email}) informando este cambio.
-              </p>
+              {["SOLICITADO", "APROBADO", "CANCELADO"].includes(nuevoEstado) && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Se enviará un correo automático a los coordinadores asignados informando este cambio.
+                </p>
+              )}
             </div>
             {estadoError && <p className="text-red-600 text-sm">{estadoError}</p>}
             <div className="flex justify-end">
