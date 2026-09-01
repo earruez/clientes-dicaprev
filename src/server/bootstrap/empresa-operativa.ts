@@ -17,6 +17,7 @@ export type BootstrapEmpresaOperativaResult = {
   reglasTrabajadorCreadas: number;
   documentosVehiculoCreados: number;
   capacitacionesCreadas: number;
+  municipalidadesCreadas: number;
 };
 
 type AreaTemplate = {
@@ -659,6 +660,60 @@ async function ensureCapacitacionesBase(empresaId: string): Promise<number> {
   return created;
 }
 
+async function ensureMunicipalidadesBase(empresaId: string): Promise<number> {
+  const existentes = await prisma.permisoOrganismo.count({ where: { empresaId } });
+  if (existentes > 0) return 0;
+
+  const empresasConCatalogo = await prisma.empresa.findMany({
+    where: { id: { not: empresaId } },
+    select: {
+      id: true,
+      _count: { select: { permisoOrganismos: true } },
+    },
+  });
+  const fuente = empresasConCatalogo.find((empresa) => empresa._count.permisoOrganismos >= 300);
+  if (!fuente) return 0;
+
+  const municipalidades = await prisma.permisoOrganismo.findMany({
+    where: { empresaId: fuente.id },
+    select: {
+      codigoCUT: true,
+      region: true,
+      provincia: true,
+      comuna: true,
+      nombre: true,
+      nombreOficial: true,
+      unidad: true,
+      tipoTramite: true,
+      descripcionTramite: true,
+      modalidad: true,
+      plazoDias: true,
+      tipoPlazo: true,
+      direccion: true,
+      horario: true,
+      urlTramite: true,
+      urlInstitucional: true,
+      documentosRequeridos: true,
+      costo: true,
+      fuente: true,
+      fechaVerificacion: true,
+      observaciones: true,
+      activo: true,
+    },
+  });
+
+  const result = await prisma.permisoOrganismo.createMany({
+    data: municipalidades.map((municipalidad) => ({
+      ...municipalidad,
+      empresaId,
+      tipo: "MUNICIPAL",
+    })),
+    skipDuplicates: true,
+  });
+
+  return result.count;
+}
+
 export async function bootstrapEmpresaOperativa(
   empresaId: string,
   opciones: BootstrapOptions = {},
@@ -693,6 +748,7 @@ export async function bootstrapEmpresaOperativa(
   const reglasTrabajadorCreadas = await ensureReglaDocumentoTrabajadorBase(empresa.id);
   const documentosVehiculoCreados = await ensureDocumentoTipoVehiculoBase(empresa.id);
   const capacitacionesCreadas = await ensureCapacitacionesBase(empresa.id);
+  const municipalidadesCreadas = await ensureMunicipalidadesBase(empresa.id);
 
   return {
     empresaId: empresa.id,
@@ -705,5 +761,6 @@ export async function bootstrapEmpresaOperativa(
     reglasTrabajadorCreadas,
     documentosVehiculoCreados,
     capacitacionesCreadas,
+    municipalidadesCreadas,
   };
 }

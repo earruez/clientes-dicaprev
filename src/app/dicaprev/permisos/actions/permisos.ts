@@ -323,7 +323,7 @@ export async function desactivarCliente(id: string) {
 export async function crearPermiso(data: PermisoFormData) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
 
-  const { responsableIds, ...permisoData } = data;
+  const { responsableIds, clienteNombre, clienteContactoEmail, clienteContactoTelefono, ...permisoData } = data;
   const fechaInstalacion = new Date(permisoData.fechaInstalacion);
   const fechaSolicitud = new Date(permisoData.fechaRecepcionSolicitud);
   const hoy = new Date();
@@ -337,6 +337,47 @@ export async function crearPermiso(data: PermisoFormData) {
 
   if (fechaInstalacion < hoy) {
     throw new Error("La fecha de instalación no puede ser anterior a hoy");
+  }
+
+  const contactoCliente = {
+    ...(clienteContactoEmail?.trim() ? { contactoEmail: clienteContactoEmail.trim() } : {}),
+    ...(clienteContactoTelefono?.trim() ? { contactoTelefono: clienteContactoTelefono.trim() } : {}),
+  };
+  let clienteId = permisoData.clienteId || undefined;
+
+  if (clienteId) {
+    const clienteExistente = await prisma.permisoCliente.findFirst({
+      where: { id: clienteId, empresaId },
+      select: { id: true },
+    });
+
+    if (!clienteExistente) {
+      throw new Error("Cliente no encontrado");
+    }
+
+    if (Object.keys(contactoCliente).length > 0) {
+      await prisma.permisoCliente.update({
+        where: { id: clienteId },
+        data: contactoCliente,
+      });
+    }
+  } else if (clienteNombre?.trim()) {
+    const cliente = await prisma.permisoCliente.upsert({
+      where: {
+        empresaId_nombre: {
+          empresaId,
+          nombre: clienteNombre.trim(),
+        },
+      },
+      update: contactoCliente,
+      create: {
+        empresaId,
+        nombre: clienteNombre.trim(),
+        ...contactoCliente,
+      },
+      select: { id: true },
+    });
+    clienteId = cliente.id;
   }
 
   // Obtener organismo para snapshot de datos
@@ -375,6 +416,7 @@ export async function crearPermiso(data: PermisoFormData) {
     data: {
       empresaId,
       ...permisoData,
+      clienteId,
       estado: permisoData.estado || "PERMISO_CREADO",
       nivelRiesgo,
       fechaInstalacion,
@@ -507,6 +549,21 @@ export async function actualizarFechaPresentacion(
   });
 
   return permisoActualizado;
+}
+
+export async function eliminarPermiso(permisoId: string) {
+  const { empresaId } = await requirePermission("canManagePermisos");
+
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId },
+    select: { id: true },
+  });
+
+  if (!permiso) {
+    throw new Error("Permiso no encontrado");
+  }
+
+  await prisma.permisoInstalacion.delete({ where: { id: permiso.id } });
 }
 
 /**

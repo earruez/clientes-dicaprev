@@ -3,7 +3,9 @@
 import { useMemo, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { PermisoCliente, PermisoInstalacion, PermisoOrganismo, PermisoResponsable } from "@prisma/client";
 import {
   PERMISO_ESTADOS,
@@ -11,7 +13,7 @@ import {
   ESTADOS_REQUIEREN_COMENTARIO,
   PermisoEstado,
 } from "./types";
-import { actualizarFechaPresentacion, cambiarEstadoPermiso } from "./actions/permisos";
+import { actualizarFechaPresentacion, cambiarEstadoPermiso, eliminarPermiso } from "./actions/permisos";
 
 type PermisoConRelaciones = PermisoInstalacion & {
   organismo: PermisoOrganismo | null;
@@ -110,14 +112,18 @@ function CambiarEstadoInline({ permiso }: { permiso: PermisoConRelaciones }) {
 }
 
 export function PermisosTable({ permisos }: PermisosTableProps) {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  const [orden, setOrden] = useState("actualizacion_desc");
   const [expandido, setExpandido] = useState<string | null>(null);
+  const [permisoSeleccionado, setPermisoSeleccionado] = useState<PermisoConRelaciones | null>(null);
+  const [eliminandoId, setEliminandoId] = useState<string | null>(null);
 
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
 
-    return permisos.filter((p) => {
+    const permisosFiltrados = permisos.filter((p) => {
       const coincideTexto =
         !texto ||
         p.direccion.toLowerCase().includes(texto) ||
@@ -129,11 +135,50 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
 
       return coincideTexto && coincideEstado;
     });
-  }, [permisos, busqueda, filtroEstado]);
+
+    return permisosFiltrados.sort((a, b) => {
+      switch (orden) {
+        case "actualizacion_asc":
+          return a.updatedAt.getTime() - b.updatedAt.getTime();
+        case "instalacion_asc":
+          return a.fechaInstalacion.getTime() - b.fechaInstalacion.getTime();
+        case "instalacion_desc":
+          return b.fechaInstalacion.getTime() - a.fechaInstalacion.getTime();
+        case "estado_asc":
+          return (PERMISO_ESTADOS[a.estado as PermisoEstado] || a.estado).localeCompare(
+            PERMISO_ESTADOS[b.estado as PermisoEstado] || b.estado,
+            "es",
+          );
+        case "cliente_asc":
+          return (a.cliente?.nombre || "").localeCompare(b.cliente?.nombre || "", "es");
+        case "municipalidad_asc":
+          return (a.organismo?.nombre || "").localeCompare(b.organismo?.nombre || "", "es");
+        default:
+          return b.updatedAt.getTime() - a.updatedAt.getTime();
+      }
+    });
+  }, [permisos, busqueda, filtroEstado, orden]);
+
+  const handleEliminar = async (permiso: PermisoConRelaciones) => {
+    if (!window.confirm(`¿Eliminar definitivamente el permiso de "${permiso.direccion}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    setEliminandoId(permiso.id);
+    try {
+      await eliminarPermiso(permiso.id);
+      setPermisoSeleccionado(null);
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "No fue posible eliminar el permiso");
+    } finally {
+      setEliminandoId(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <input
           type="text"
           value={busqueda}
@@ -152,6 +197,20 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
               {label}
             </option>
           ))}
+        </select>
+        <select
+          value={orden}
+          onChange={(e) => setOrden(e.target.value)}
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          aria-label="Ordenar permisos"
+        >
+          <option value="actualizacion_desc">Actualización: reciente primero</option>
+          <option value="actualizacion_asc">Actualización: antigua primero</option>
+          <option value="instalacion_asc">Instalación: próxima primero</option>
+          <option value="instalacion_desc">Instalación: lejana primero</option>
+          <option value="estado_asc">Estado: A-Z</option>
+          <option value="cliente_asc">Cliente: A-Z</option>
+          <option value="municipalidad_asc">Municipalidad: A-Z</option>
         </select>
       </div>
 
@@ -187,7 +246,10 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
               ) : (
                 filtrados.map((permiso) => (
                   <Fragment key={permiso.id}>
-                    <tr className="border-b border-slate-200 hover:bg-slate-50">
+                    <tr
+                      className="cursor-pointer border-b border-slate-200 hover:bg-slate-50"
+                      onClick={() => setPermisoSeleccionado(permiso)}
+                    >
                       <td className="px-6 py-3">
                         <span
                           className={`inline-block px-2.5 py-1 rounded-md text-xs font-medium border leading-snug whitespace-normal max-w-[160px] ${ESTADO_COLORS[permiso.estado as PermisoEstado]}`}
@@ -203,9 +265,9 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                       </td>
                       <td className="px-6 py-3 text-sm text-slate-900">{permiso.cliente?.nombre || "—"}</td>
                       <td className="px-6 py-3 text-sm max-w-xs truncate">
-                        <Link href={`/dicaprev/permisos/${permiso.id}`} className="text-blue-600 hover:underline">
+                        <button type="button" className="text-left text-blue-600 hover:underline" onClick={() => setPermisoSeleccionado(permiso)}>
                           {permiso.direccion}
-                        </Link>
+                        </button>
                       </td>
                       <td className="px-6 py-3 text-sm text-slate-900">
                         {permiso.fechaInstalacion.toLocaleDateString("es-CL")}
@@ -215,7 +277,7 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                       <td className="px-6 py-3 text-sm text-slate-500">
                         {new Date().getTime() - new Date(permiso.updatedAt).getTime() < 86400000 ? "Hoy" : "Hace días"}
                       </td>
-                      <td className="px-6 py-3 text-sm">
+                      <td className="px-6 py-3 text-sm" onClick={(event) => event.stopPropagation()}>
                         {permiso.estado === "APROBADO" ? (
                           <span className="text-xs text-slate-400">Estado final</span>
                         ) : (
@@ -228,6 +290,17 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                             Cambiar estado
                           </Button>
                         )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="ml-2 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                          onClick={() => handleEliminar(permiso)}
+                          disabled={eliminandoId === permiso.id}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span className="sr-only">Eliminar permiso</span>
+                        </Button>
                       </td>
                     </tr>
                     {expandido === permiso.id && permiso.estado !== "APROBADO" && (
@@ -244,6 +317,36 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
           </table>
         </div>
       </div>
+
+      <Dialog open={Boolean(permisoSeleccionado)} onOpenChange={(open) => !open && setPermisoSeleccionado(null)}>
+        <DialogContent size="sm">
+          {permisoSeleccionado && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Ficha del permiso</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 text-sm">
+                <div className={`rounded-lg border p-3 ${ESTADO_COLORS[permisoSeleccionado.estado as PermisoEstado]}`}>
+                  <p className="text-xs font-semibold uppercase">Estado actual</p>
+                  <p className="mt-1 text-base font-bold">{PERMISO_ESTADOS[permisoSeleccionado.estado as PermisoEstado] || permisoSeleccionado.estado}</p>
+                </div>
+                <dl className="divide-y divide-slate-200 rounded-lg border border-slate-200 px-4">
+                  <div className="grid grid-cols-2 gap-3 py-3"><dt className="text-slate-500">Cliente</dt><dd className="text-right font-medium text-slate-900">{permisoSeleccionado.cliente?.nombre || "Sin cliente"}</dd></div>
+                  <div className="grid grid-cols-2 gap-3 py-3"><dt className="text-slate-500">Dirección</dt><dd className="text-right font-medium text-slate-900">{permisoSeleccionado.direccion}</dd></div>
+                  <div className="grid grid-cols-2 gap-3 py-3"><dt className="text-slate-500">Municipalidad</dt><dd className="text-right font-medium text-slate-900">{permisoSeleccionado.organismo?.nombre || "-"}</dd></div>
+                  <div className="grid grid-cols-2 gap-3 py-3"><dt className="text-slate-500">Coordinador</dt><dd className="text-right font-medium text-slate-900">{permisoSeleccionado.responsable?.nombre || "-"}</dd></div>
+                  <div className="grid grid-cols-2 gap-3 py-3"><dt className="text-slate-500">Fecha de instalación</dt><dd className="text-right font-medium text-slate-900">{permisoSeleccionado.fechaInstalacion.toLocaleDateString("es-CL")}</dd></div>
+                  <div className="grid grid-cols-2 gap-3 py-3"><dt className="text-slate-500">Fecha de solicitud</dt><dd className="text-right font-medium text-slate-900">{permisoSeleccionado.fechaRecepcionSolicitud.toLocaleDateString("es-CL")}</dd></div>
+                </dl>
+                {permisoSeleccionado.observaciones && <p className="rounded-lg bg-slate-50 p-3 text-slate-700">{permisoSeleccionado.observaciones}</p>}
+                <div className="flex justify-end">
+                  <Link href={`/dicaprev/permisos/${permisoSeleccionado.id}`} className="text-sm font-semibold text-blue-700 hover:underline">Ver detalle completo</Link>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

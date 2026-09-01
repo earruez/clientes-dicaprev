@@ -29,6 +29,9 @@ function hoyISO(): string {
 
 const initialForm = {
   clienteId: "",
+  clienteNombre: "",
+  clienteContactoEmail: "",
+  clienteContactoTelefono: "",
   sucursalId: "",
   direccion: "",
   comuna: "",
@@ -158,13 +161,13 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
         {step === 1 ? (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Cliente</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Cliente existente</label>
               <select
                 value={form.clienteId}
                 onChange={(e) => setForm((f) => ({ ...f, clienteId: e.target.value }))}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Sin cliente / otro</option>
+                <option value="">Selecciona un cliente o ingrésalo abajo</option>
                 {clientes.map((cliente) => (
                   <option key={cliente.id} value={cliente.id}>
                     {cliente.nombre}
@@ -180,6 +183,40 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
                   .
                 </p>
               )}
+            </div>
+            {!form.clienteId && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del cliente</label>
+                <input
+                  type="text"
+                  value={form.clienteNombre}
+                  onChange={(e) => setForm((f) => ({ ...f, clienteNombre: e.target.value }))}
+                  placeholder="Nombre opcional"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Correo del cliente</label>
+                <input
+                  type="email"
+                  value={form.clienteContactoEmail}
+                  onChange={(e) => setForm((f) => ({ ...f, clienteContactoEmail: e.target.value }))}
+                  placeholder="Opcional"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono del cliente</label>
+                <input
+                  type="tel"
+                  value={form.clienteContactoTelefono}
+                  onChange={(e) => setForm((f) => ({ ...f, clienteContactoTelefono: e.target.value }))}
+                  placeholder="Opcional"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Sucursal</label>
