@@ -84,7 +84,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
     setError(null);
 
     if (!form.organismoId || !form.responsableId || !form.fechaRecepcionSolicitud) {
-      setError("Completa municipalidad, responsable y fecha de recepción de la solicitud.");
+      setError("Completa municipalidad, responsable y fecha de solicitud.");
       return;
     }
 
@@ -253,6 +253,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
               <input
                 type="date"
                 required
+                min={hoyISO()}
                 value={form.fechaInstalacion}
                 onChange={(e) => setForm((f) => ({ ...f, fechaInstalacion: e.target.value }))}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -275,7 +276,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
             )}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Fecha de recepción de la solicitud *
+                Fecha de solicitud *
               </label>
               <input
                 type="date"

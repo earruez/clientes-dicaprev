@@ -322,6 +322,20 @@ export async function crearPermiso(data: PermisoFormData) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
 
   const { responsableIds, ...permisoData } = data;
+  const fechaInstalacion = new Date(permisoData.fechaInstalacion);
+  const fechaSolicitud = new Date(permisoData.fechaRecepcionSolicitud);
+  const hoy = new Date();
+
+  hoy.setHours(0, 0, 0, 0);
+  fechaInstalacion.setHours(0, 0, 0, 0);
+
+  if (Number.isNaN(fechaInstalacion.getTime()) || Number.isNaN(fechaSolicitud.getTime())) {
+    throw new Error("Las fechas de instalación y solicitud son requeridas");
+  }
+
+  if (fechaInstalacion < hoy) {
+    throw new Error("La fecha de instalación no puede ser anterior a hoy");
+  }
 
   // Obtener organismo para snapshot de datos
   const organismo = await prisma.permisoOrganismo.findUniqueOrThrow({
@@ -338,19 +352,17 @@ export async function crearPermiso(data: PermisoFormData) {
     new Set((responsableIds || []).filter((id) => id && id !== permisoData.responsableId)),
   );
 
-  // Calcular fecha estimada si tenemos fecha de presentación
-  let fechaEstimadaResolucion: Date | null = null;
-  if (permisoData.fechaPresentacion) {
-    fechaEstimadaResolucion = calcularFechaEstimadaResolucion(
-      new Date(permisoData.fechaPresentacion),
-      organismo.plazoDias,
-      (organismo.tipoPlazo as "HABILES" | "CORRIDOS" | "NO_INFORMADO" | null) || "NO_INFORMADO",
-    );
-  }
+  // El plazo comienza desde la fecha de solicitud; la presentación efectiva puede reemplazarla después.
+  const fechaBaseResolucion = permisoData.fechaPresentacion ? new Date(permisoData.fechaPresentacion) : fechaSolicitud;
+  const fechaEstimadaResolucion = calcularFechaEstimadaResolucion(
+    fechaBaseResolucion,
+    organismo.plazoDias,
+    (organismo.tipoPlazo as "HABILES" | "CORRIDOS" | "NO_INFORMADO" | null) || "NO_INFORMADO",
+  );
 
   // Calcular riesgo
   const nivelRiesgo = calcularNivelRiesgo(
-    new Date(permisoData.fechaInstalacion),
+    fechaInstalacion,
     fechaEstimadaResolucion,
     organismo.plazoDias,
     (organismo.tipoPlazo as "HABILES" | "CORRIDOS" | "NO_INFORMADO" | null) || "NO_INFORMADO",
@@ -363,8 +375,8 @@ export async function crearPermiso(data: PermisoFormData) {
       ...permisoData,
       estado: permisoData.estado || "PERMISO_CREADO",
       nivelRiesgo,
-      fechaInstalacion: new Date(permisoData.fechaInstalacion),
-      fechaRecepcionSolicitud: new Date(permisoData.fechaRecepcionSolicitud),
+      fechaInstalacion,
+      fechaRecepcionSolicitud: fechaSolicitud,
       fechaPresentacion: permisoData.fechaPresentacion ? new Date(permisoData.fechaPresentacion) : null,
       fechaEstimadaResolucion,
       plazoDiasSnapshot: organismo.plazoDias,

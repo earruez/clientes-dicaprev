@@ -43,7 +43,7 @@ export function generarEmailPermiso(
         <p style="margin: 0; font-weight: bold; color: #92400e;">⚠️ Atención con la fecha de instalación</p>
         <p style="margin: 10px 0 0 0; color: #78350f; font-size: 14px;">
           La municipalidad seleccionada registra un plazo aproximado de ${permiso.plazoDiasSnapshot || "N/A"} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}.
-          Considerando que la solicitud fue presentada el ${permiso.fechaPresentacion ? formatearFecha(permiso.fechaPresentacion) : "N/A"}, 
+          Considerando la fecha de solicitud ${formatearFecha(permiso.fechaRecepcionSolicitud)},
           la resolución se estima aproximadamente para el ${formatearFecha(permiso.fechaEstimadaResolucion)}.
         </p>
         <p style="margin: 10px 0 0 0; color: #78350f; font-size: 14px;">
@@ -188,7 +188,7 @@ export function generarEmailPermiso(
           <span class="valor">${permiso.modalidadSnapshot || "No informada"}</span>
         </div>
         <div class="dato">
-          <span class="etiqueta">Fecha de Recepción</span>
+          <span class="etiqueta">Fecha de Solicitud</span>
           <span class="valor">${formatearFecha(permiso.fechaRecepcionSolicitud)}</span>
         </div>
         <div class="dato">

@@ -116,7 +116,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             <span className="text-slate-900">{permiso.responsable.nombre}</span>
             <span className="text-slate-500">Fecha de instalación</span>
             <span className="text-slate-900">{new Date(permiso.fechaInstalacion).toLocaleDateString("es-CL")}</span>
-            <span className="text-slate-500">Fecha de recepción</span>
+            <span className="text-slate-500">Fecha de solicitud</span>
             <span className="text-slate-900">
               {new Date(permiso.fechaRecepcionSolicitud).toLocaleDateString("es-CL")}
             </span>
