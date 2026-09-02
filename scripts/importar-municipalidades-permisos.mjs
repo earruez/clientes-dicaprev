@@ -223,8 +223,8 @@ for (const empresa of empresas) {
           where: { organismoId: existentePorCodigo.id },
           data: { organismoId: existentePorNombre.id },
         }),
-        prisma.permisoOrganismo.update({ where: { id: existentePorNombre.id }, data: payload }),
         prisma.permisoOrganismo.delete({ where: { id: existentePorCodigo.id } }),
+        prisma.permisoOrganismo.update({ where: { id: existentePorNombre.id }, data: payload }),
       ]);
       porCodigoCUT.set(row.codigoCUT, existentePorNombre);
       porNombre.set(row.nombre.trim().toLocaleLowerCase('es'), existentePorNombre);
@@ -235,8 +235,18 @@ for (const empresa of empresas) {
 
     const existente = existentePorCodigo || existentePorNombre;
 
+    if (!existentePorCodigo && existentePorNombre && existentePorNombre.codigoCUT && existentePorNombre.codigoCUT !== row.codigoCUT) {
+      const creado = await prisma.permisoOrganismo.create({ data: payload });
+      if (row.codigoCUT) porCodigoCUT.set(row.codigoCUT, creado);
+      creadas += 1;
+      continue;
+    }
+
     if (existente) {
       await prisma.permisoOrganismo.update({ where: { id: existente.id }, data: payload });
+      if (existente.codigoCUT && existente.codigoCUT !== row.codigoCUT) {
+        porCodigoCUT.delete(existente.codigoCUT);
+      }
       if (row.codigoCUT) porCodigoCUT.set(row.codigoCUT, existente);
       porNombre.set(row.nombre.trim().toLocaleLowerCase('es'), existente);
       actualizadas += 1;
