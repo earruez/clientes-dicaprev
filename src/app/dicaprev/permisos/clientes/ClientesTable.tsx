@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { PermisoCliente } from "@prisma/client";
 import { desactivarCliente } from "../actions/permisos";
 import { ConfirmarEliminacionDialog } from "../ConfirmarEliminacionDialog";
@@ -12,10 +13,15 @@ interface ClientesTableProps {
   clientes: PermisoCliente[];
 }
 
+type OrdenClave = "nombre" | "email" | "telefono" | "estado";
+type OrdenDireccion = "asc" | "desc";
+
 export function ClientesTable({ clientes }: ClientesTableProps) {
   const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  const [ordenClave, setOrdenClave] = useState<OrdenClave>("nombre");
+  const [ordenDireccion, setOrdenDireccion] = useState<OrdenDireccion>("asc");
   const [clienteAEliminar, setClienteAEliminar] = useState<PermisoCliente | null>(null);
   const [eliminando, setEliminando] = useState(false);
 
@@ -37,7 +43,7 @@ export function ClientesTable({ clientes }: ClientesTableProps) {
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
 
-    return clientes.filter((c) => {
+    const clientesFiltrados = clientes.filter((c) => {
       const coincideTexto =
         !texto ||
         c.nombre.toLowerCase().includes(texto) ||
@@ -48,7 +54,36 @@ export function ClientesTable({ clientes }: ClientesTableProps) {
 
       return coincideTexto && coincideEstado;
     });
-  }, [clientes, busqueda, filtroEstado]);
+
+    return clientesFiltrados.sort((a, b) => {
+      const compararTexto = (valor: string | null, otroValor: string | null) => (valor || "").localeCompare(otroValor || "", "es");
+      const resultado = ordenClave === "estado"
+        ? Number(a.activo) - Number(b.activo)
+        : compararTexto(
+            ordenClave === "nombre" ? a.nombre : ordenClave === "email" ? a.contactoEmail : a.contactoTelefono,
+            ordenClave === "nombre" ? b.nombre : ordenClave === "email" ? b.contactoEmail : b.contactoTelefono,
+          );
+      return ordenDireccion === "asc" ? resultado : -resultado;
+    });
+  }, [clientes, busqueda, filtroEstado, ordenClave, ordenDireccion]);
+
+  const cambiarOrden = (clave: OrdenClave) => {
+    if (ordenClave === clave) {
+      setOrdenDireccion((direccion) => (direccion === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setOrdenClave(clave);
+    setOrdenDireccion("asc");
+  };
+
+  const encabezadoOrdenable = (etiqueta: string, clave: OrdenClave) => (
+    <button type="button" onClick={() => cambiarOrden(clave)} className="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-blue-700" aria-label={`Ordenar por ${etiqueta}`}>
+      {etiqueta}
+      {ordenClave !== clave && <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />}
+      {ordenClave === clave && ordenDireccion === "asc" && <ArrowUp className="h-3.5 w-3.5 text-blue-700" />}
+      {ordenClave === clave && ordenDireccion === "desc" && <ArrowDown className="h-3.5 w-3.5 text-blue-700" />}
+    </button>
+  );
 
   return (
     <div className="space-y-4">
@@ -80,10 +115,10 @@ export function ClientesTable({ clientes }: ClientesTableProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Nombre</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Email</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Teléfono</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Estado</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Nombre", "nombre")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Email", "email")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Teléfono", "telefono")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Estado", "estado")}</th>
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Acciones</th>
               </tr>
             </thead>

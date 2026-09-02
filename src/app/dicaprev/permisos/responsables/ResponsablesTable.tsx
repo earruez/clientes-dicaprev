@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { PermisoResponsable } from "@prisma/client";
 import { desactivarResponsable } from "../actions/permisos";
 import { ConfirmarEliminacionDialog } from "../ConfirmarEliminacionDialog";
@@ -12,10 +13,15 @@ interface ResponsablesTableProps {
   responsables: PermisoResponsable[];
 }
 
+type OrdenClave = "nombre" | "cargo" | "email" | "telefono" | "estado";
+type OrdenDireccion = "asc" | "desc";
+
 export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
   const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  const [ordenClave, setOrdenClave] = useState<OrdenClave>("nombre");
+  const [ordenDireccion, setOrdenDireccion] = useState<OrdenDireccion>("asc");
   const [coordinadorAEliminar, setCoordinadorAEliminar] = useState<PermisoResponsable | null>(null);
   const [eliminando, setEliminando] = useState(false);
 
@@ -37,7 +43,7 @@ export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
 
-    return responsables.filter((r) => {
+    const responsablesFiltrados = responsables.filter((r) => {
       const coincideTexto =
         !texto ||
         r.nombre.toLowerCase().includes(texto) ||
@@ -48,7 +54,36 @@ export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
 
       return coincideTexto && coincideEstado;
     });
-  }, [responsables, busqueda, filtroEstado]);
+
+    return responsablesFiltrados.sort((a, b) => {
+      const compararTexto = (valor: string | null, otroValor: string | null) => (valor || "").localeCompare(otroValor || "", "es");
+      const resultado = ordenClave === "estado"
+        ? Number(a.activo) - Number(b.activo)
+        : compararTexto(
+            ordenClave === "nombre" ? a.nombre : ordenClave === "cargo" ? a.cargo : ordenClave === "email" ? a.email : a.telefono,
+            ordenClave === "nombre" ? b.nombre : ordenClave === "cargo" ? b.cargo : ordenClave === "email" ? b.email : b.telefono,
+          );
+      return ordenDireccion === "asc" ? resultado : -resultado;
+    });
+  }, [responsables, busqueda, filtroEstado, ordenClave, ordenDireccion]);
+
+  const cambiarOrden = (clave: OrdenClave) => {
+    if (ordenClave === clave) {
+      setOrdenDireccion((direccion) => (direccion === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setOrdenClave(clave);
+    setOrdenDireccion("asc");
+  };
+
+  const encabezadoOrdenable = (etiqueta: string, clave: OrdenClave) => (
+    <button type="button" onClick={() => cambiarOrden(clave)} className="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-blue-700" aria-label={`Ordenar por ${etiqueta}`}>
+      {etiqueta}
+      {ordenClave !== clave && <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />}
+      {ordenClave === clave && ordenDireccion === "asc" && <ArrowUp className="h-3.5 w-3.5 text-blue-700" />}
+      {ordenClave === clave && ordenDireccion === "desc" && <ArrowDown className="h-3.5 w-3.5 text-blue-700" />}
+    </button>
+  );
 
   return (
     <div className="space-y-4">
@@ -80,11 +115,11 @@ export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Nombre</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Cargo</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Email</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Teléfono</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Estado</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Nombre", "nombre")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Cargo", "cargo")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Email", "email")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Teléfono", "telefono")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Estado", "estado")}</th>
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Acciones</th>
               </tr>
             </thead>
