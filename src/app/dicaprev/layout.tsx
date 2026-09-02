@@ -70,7 +70,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-[#f5f7ff]">
       <Sidebar />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
         <header className="sticky top-0 z-30 flex h-13 items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-5">
           <div className="flex items-center gap-3">
@@ -99,7 +99,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto bg-[#f5f7ff] px-6 py-6 md:py-8 [&>div]:mx-0 [&>div]:max-w-none [&>div]:px-0 [&>section]:mx-0 [&>section]:max-w-none [&>section]:px-0 [&_[class*='mx-auto'][class*='max-w-']]:mx-0 [&_[class*='mx-auto'][class*='max-w-']]:max-w-none [&_[class*='mx-auto'][class*='max-w-']]:px-0">
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#f5f7ff] px-4 py-5 sm:px-6 sm:py-6 md:py-8 [&>div]:mx-0 [&>div]:max-w-none [&>div]:px-0 [&>section]:mx-0 [&>section]:max-w-none [&>section]:px-0 [&_[class*='mx-auto'][class*='max-w-']]:mx-0 [&_[class*='mx-auto'][class*='max-w-']]:max-w-none [&_[class*='mx-auto'][class*='max-w-']]:px-0">
           {children}
         </main>
 
