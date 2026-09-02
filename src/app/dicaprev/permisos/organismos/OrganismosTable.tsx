@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { PermisoOrganismo } from "@prisma/client";
 import { desactivarOrganismo } from "../actions/permisos";
 import { PERMISO_MODALIDADES, PermisoModalidad } from "../types";
@@ -13,11 +14,16 @@ interface OrganismosTableProps {
   organismos: PermisoOrganismo[];
 }
 
+type OrdenClave = "nombre" | "region" | "comuna" | "modalidad" | "plazo" | "verificacion";
+type OrdenDireccion = "asc" | "desc";
+
 export function OrganismosTable({ organismos }: OrganismosTableProps) {
   const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [region, setRegion] = useState("");
   const [modalidad, setModalidad] = useState("");
+  const [ordenClave, setOrdenClave] = useState<OrdenClave>("nombre");
+  const [ordenDireccion, setOrdenDireccion] = useState<OrdenDireccion>("asc");
   const [organismoAEliminar, setOrganismoAEliminar] = useState<PermisoOrganismo | null>(null);
   const [eliminando, setEliminando] = useState(false);
 
@@ -44,7 +50,7 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
 
-    return organismos.filter((o) => {
+    const organismosFiltrados = organismos.filter((o) => {
       const coincideTexto =
         !texto ||
         o.nombre.toLowerCase().includes(texto) ||
@@ -57,7 +63,53 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
 
       return coincideTexto && coincideRegion && coincideModalidad;
     });
-  }, [organismos, busqueda, region, modalidad]);
+
+    return organismosFiltrados.sort((a, b) => {
+      const compararTexto = (valor: string | null, otroValor: string | null) => (valor || "").localeCompare(otroValor || "", "es");
+      let resultado: number;
+
+      switch (ordenClave) {
+        case "region":
+          resultado = compararTexto(a.region, b.region);
+          break;
+        case "comuna":
+          resultado = compararTexto(a.comuna, b.comuna);
+          break;
+        case "modalidad":
+          resultado = compararTexto(PERMISO_MODALIDADES[a.modalidad as PermisoModalidad] || a.modalidad, PERMISO_MODALIDADES[b.modalidad as PermisoModalidad] || b.modalidad);
+          break;
+        case "plazo":
+          resultado = (a.plazoDias ?? Number.MAX_SAFE_INTEGER) - (b.plazoDias ?? Number.MAX_SAFE_INTEGER);
+          break;
+        case "verificacion":
+          resultado = (a.fechaVerificacion?.getTime() ?? 0) - (b.fechaVerificacion?.getTime() ?? 0);
+          break;
+        default:
+          resultado = compararTexto(a.nombre, b.nombre);
+      }
+
+      return ordenDireccion === "asc" ? resultado : -resultado;
+    });
+  }, [organismos, busqueda, region, modalidad, ordenClave, ordenDireccion]);
+
+  const cambiarOrden = (clave: OrdenClave) => {
+    if (ordenClave === clave) {
+      setOrdenDireccion((direccion) => (direccion === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setOrdenClave(clave);
+    setOrdenDireccion("asc");
+  };
+
+  const encabezadoOrdenable = (etiqueta: string, clave: OrdenClave) => (
+    <button type="button" onClick={() => cambiarOrden(clave)} className="inline-flex items-center gap-1 font-semibold text-slate-900 hover:text-blue-700" aria-label={`Ordenar por ${etiqueta}`}>
+      {etiqueta}
+      {ordenClave !== clave && <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />}
+      {ordenClave === clave && ordenDireccion === "asc" && <ArrowUp className="h-3.5 w-3.5 text-blue-700" />}
+      {ordenClave === clave && ordenDireccion === "desc" && <ArrowDown className="h-3.5 w-3.5 text-blue-700" />}
+    </button>
+  );
 
   return (
     <div className="space-y-4">
@@ -106,12 +158,12 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Municipalidad</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Región</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Comuna</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Modalidad</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Plazo</th>
-                <th className="px-6 py-3 text-left font-semibold text-slate-900">Última verificación</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Municipalidad", "nombre")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Región", "region")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Comuna", "comuna")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Modalidad", "modalidad")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Plazo", "plazo")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Última verificación", "verificacion")}</th>
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Acciones</th>
               </tr>
             </thead>
