@@ -6,8 +6,6 @@ import type { Worker, WorkerContrato, WorkerEstado } from "@/components/trabajad
 import type { EmpresaArea, EmpresaCargo, CargoTipoUI } from "@/lib/empresa/empresa-store";
 import type { CentroAdmin, DotacionCargo, TrabajadorAsociado } from "@/lib/centros/centros-store";
 
-const EMPRESA_ID = "1b3f9c7e-8c2a-4f6a-9d1e-123456789abc";
-
 type HierarchyTrabajador = {
   id: string;
   nombres: string;
@@ -95,31 +93,31 @@ function makeCode(prefix: string, value: string) {
 }
 
 export async function getOrganigramaEmpresa(): Promise<OrganigramaEmpresaData> {
-  await requirePermission("canReadOrganigrama");
+  const { empresaId } = await requirePermission("canReadOrganigrama");
 
-  const empresa =
-    (await prisma.empresa.findFirst({ where: { id: EMPRESA_ID } })) ||
-    (await prisma.empresa.findFirst({ orderBy: { createdAt: "asc" } }));
+  const empresa = await prisma.empresa.findFirst({
+    where: { id: empresaId, activa: true },
+  });
 
   if (!empresa) {
-    throw new Error("No existe empresa configurada para construir organigrama");
+    throw new Error("La empresa activa no está disponible para construir el organigrama");
   }
 
   const [centrosRows, areasRows, cargosRows, trabajadoresRows, posicionesRows] = await Promise.all([
     prisma.centroTrabajo.findMany({
-      where: { empresaId: empresa.id },
+      where: { empresaId },
       orderBy: { nombre: "asc" },
     }),
     prisma.area.findMany({
-      where: { empresaId: empresa.id },
+      where: { empresaId },
       orderBy: { nombre: "asc" },
     }),
     prisma.cargo.findMany({
-      where: { empresaId: empresa.id },
+      where: { empresaId },
       orderBy: { nombre: "asc" },
     }),
     prisma.trabajador.findMany({
-      where: { empresaId: empresa.id },
+      where: { empresaId },
       include: {
         centroTrabajo: { select: { id: true, nombre: true } },
         area: { select: { id: true, nombre: true } },
@@ -128,7 +126,7 @@ export async function getOrganigramaEmpresa(): Promise<OrganigramaEmpresaData> {
       orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
     }),
     prisma.posicionDotacion.findMany({
-      where: { empresaId: empresa.id },
+      where: { empresaId },
       orderBy: { createdAt: "asc" },
     }),
   ]);
