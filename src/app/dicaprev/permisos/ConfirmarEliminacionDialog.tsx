@@ -37,7 +37,7 @@ export function ConfirmarEliminacionDialog({
         <DialogHeader>
           <DialogTitle>Eliminar {entidad}</DialogTitle>
           <DialogDescription>
-            ¿Quieres eliminar {entidad.toLowerCase()} "{nombre}"?
+            ¿Quieres eliminar {entidad.toLowerCase()} &quot;{nombre}&quot;?
           </DialogDescription>
         </DialogHeader>
         <p className="text-sm text-slate-700">{detalle}</p>
