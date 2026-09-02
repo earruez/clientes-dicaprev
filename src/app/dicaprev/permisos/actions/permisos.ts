@@ -3,12 +3,14 @@
 import { randomBytes } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
-import { PermisoOrganismoFormData, PermisoResponsableFormData, PermisoClienteFormData, PermisoFormData, ESTADOS_REQUIEREN_COMENTARIO } from "../types";
+import { ESTADOS_REQUIEREN_COMENTARIO, PermisoClienteFormData, PermisoFormData, PermisoOrganismoFormData, PermisoResponsableFormData } from "../types";
 import { calcularFechaEstimadaResolucion, calcularNivelRiesgo } from "../utils/calculos";
 import { sendEmail } from "@/lib/email/send-email";
-import { generarEmailPermiso } from "../utils/email-templates";
+import { generarAsuntoEmailPermiso, generarEmailPermiso } from "../utils/email-templates";
 
 type DestinatarioNotificacion = { email: string };
+
+const ESTADOS_CON_NOTIFICACION = new Set(["SOLICITADO", "APROBADO", "CANCELADO"]);
 
 async function enviarNotificacionATodos(
   permisoId: string,
@@ -229,10 +231,30 @@ export async function desactivarResponsable(id: string) {
   });
 
   if (!responsable) {
-    throw new Error("Responsable no encontrado");
+    throw new Error("Coordinador no encontrado");
   }
 
   return prisma.permisoResponsable.update({
+    where: { id },
+    data: { activo: false },
+  });
+}
+
+/**
+ * Desactivar organismo (soft delete)
+ */
+export async function desactivarOrganismo(id: string) {
+  const { empresaId } = await requirePermission("canManagePermisos");
+
+  const organismo = await prisma.permisoOrganismo.findFirst({
+    where: { id, empresaId },
+  });
+
+  if (!organismo) {
+    throw new Error("Municipalidad no encontrada");
+  }
+
+  return prisma.permisoOrganismo.update({
     where: { id },
     data: { activo: false },
   });
@@ -321,7 +343,7 @@ export async function desactivarCliente(id: string) {
 export async function crearPermiso(data: PermisoFormData) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
 
-  const { responsableIds, ...permisoData } = data;
+  const { responsableIds, clienteNombre, clienteContactoEmail, clienteContactoTelefono, ...permisoData } = data;
   const fechaInstalacion = new Date(permisoData.fechaInstalacion);
   const fechaSolicitud = new Date(permisoData.fechaRecepcionSolicitud);
   const hoy = new Date();
@@ -335,6 +357,47 @@ export async function crearPermiso(data: PermisoFormData) {
 
   if (fechaInstalacion < hoy) {
     throw new Error("La fecha de instalación no puede ser anterior a hoy");
+  }
+
+  const contactoCliente = {
+    ...(clienteContactoEmail?.trim() ? { contactoEmail: clienteContactoEmail.trim() } : {}),
+    ...(clienteContactoTelefono?.trim() ? { contactoTelefono: clienteContactoTelefono.trim() } : {}),
+  };
+  let clienteId = permisoData.clienteId || undefined;
+
+  if (clienteId) {
+    const clienteExistente = await prisma.permisoCliente.findFirst({
+      where: { id: clienteId, empresaId },
+      select: { id: true },
+    });
+
+    if (!clienteExistente) {
+      throw new Error("Cliente no encontrado");
+    }
+
+    if (Object.keys(contactoCliente).length > 0) {
+      await prisma.permisoCliente.update({
+        where: { id: clienteId },
+        data: contactoCliente,
+      });
+    }
+  } else if (clienteNombre?.trim()) {
+    const cliente = await prisma.permisoCliente.upsert({
+      where: {
+        empresaId_nombre: {
+          empresaId,
+          nombre: clienteNombre.trim(),
+        },
+      },
+      update: contactoCliente,
+      create: {
+        empresaId,
+        nombre: clienteNombre.trim(),
+        ...contactoCliente,
+      },
+      select: { id: true },
+    });
+    clienteId = cliente.id;
   }
 
   // Obtener organismo para snapshot de datos
@@ -373,6 +436,7 @@ export async function crearPermiso(data: PermisoFormData) {
     data: {
       empresaId,
       ...permisoData,
+      clienteId,
       estado: permisoData.estado || "PERMISO_CREADO",
       nivelRiesgo,
       fechaInstalacion,
@@ -421,7 +485,7 @@ export async function crearPermiso(data: PermisoFormData) {
     permiso.id,
     [responsable, ...responsablesAdicionales],
     "PERMISO_CREADO",
-    `Nuevo permiso registrado · ${permiso.cliente?.nombre || permiso.direccion}`,
+    generarAsuntoEmailPermiso(permiso),
     generarEmailPermiso(permiso, responsable, "PERMISO_CREADO"),
   );
 
@@ -507,6 +571,21 @@ export async function actualizarFechaPresentacion(
   return permisoActualizado;
 }
 
+export async function eliminarPermiso(permisoId: string) {
+  const { empresaId } = await requirePermission("canManagePermisos");
+
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId },
+    select: { id: true },
+  });
+
+  if (!permiso) {
+    throw new Error("Permiso no encontrado");
+  }
+
+  await prisma.permisoInstalacion.delete({ where: { id: permiso.id } });
+}
+
 /**
  * Cambiar estado de permiso
  */
@@ -565,19 +644,20 @@ export async function cambiarEstadoPermiso(
     },
   });
 
-  // Enviar email a todos los responsables asignados
-  const destinatarios = [permiso.responsable, ...permiso.responsablesAdicionales.map((r) => r.responsable)];
-  await enviarNotificacionATodos(
-    permisoId,
-    destinatarios,
-    "CAMBIO_ESTADO",
-    `Actualización de permiso · ${permisoId.slice(0, 8)} · ${nuevoEstado}`,
-    generarEmailPermiso(permisoActualizado, permiso.responsable, "CAMBIO_ESTADO", {
-      estadoAnterior,
-      comentario,
-      tokenRespuestaObservacion,
-    }),
-  );
+  if (ESTADOS_CON_NOTIFICACION.has(nuevoEstado)) {
+    const destinatarios = [permiso.responsable, ...permiso.responsablesAdicionales.map((r) => r.responsable)];
+    await enviarNotificacionATodos(
+      permisoId,
+      destinatarios,
+      "CAMBIO_ESTADO",
+      generarAsuntoEmailPermiso(permisoActualizado),
+      generarEmailPermiso(permisoActualizado, permiso.responsable, "CAMBIO_ESTADO", {
+        estadoAnterior,
+        comentario,
+        tokenRespuestaObservacion,
+      }),
+    );
+  }
 
   return permisoActualizado;
 }

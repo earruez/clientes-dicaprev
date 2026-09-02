@@ -11,7 +11,7 @@ async function ResponsablesContent() {
   const { empresaId } = await requirePermission("canManagePermisos");
 
   const responsables = await prisma.permisoResponsable.findMany({
-    where: { empresaId },
+    where: { empresaId, activo: true },
     orderBy: { nombre: "asc" },
   });
 
@@ -27,8 +27,8 @@ async function ResponsablesContent() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Responsables</h1>
-            <p className="text-slate-600 text-sm mt-0.5">Gestiona los responsables de permisos</p>
+            <h1 className="text-2xl font-bold text-slate-900">Coordinadores</h1>
+            <p className="text-slate-600 text-sm mt-0.5">Gestiona los coordinadores de permisos</p>
           </div>
         </div>
         <NuevoResponsableModal />
@@ -41,7 +41,7 @@ async function ResponsablesContent() {
 
 export default function ResponsablesPage() {
   return (
-    <Suspense fallback={<div>Cargando responsables...</div>}>
+    <Suspense fallback={<div>Cargando coordinadores...</div>}>
       <ResponsablesContent />
     </Suspense>
   );

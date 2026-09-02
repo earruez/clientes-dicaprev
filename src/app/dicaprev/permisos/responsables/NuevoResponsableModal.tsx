@@ -36,7 +36,7 @@ export function NuevoResponsableModal() {
       setOpen(false);
       router.refresh();
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Error al guardar el responsable");
+      setError(submissionError instanceof Error ? submissionError.message : "Error al guardar el coordinador");
     } finally {
       setLoading(false);
     }
@@ -46,11 +46,11 @@ export function NuevoResponsableModal() {
     <Dialog open={open} onOpenChange={setOpen}>
       <Button className="gap-2" onClick={() => setOpen(true)}>
         <Plus className="h-4 w-4" />
-        Nuevo responsable
+        Nuevo coordinador
       </Button>
       <DialogContent size="sm">
         <DialogHeader>
-          <DialogTitle>Nuevo responsable</DialogTitle>
+          <DialogTitle>Nuevo coordinador</DialogTitle>
           <DialogDescription>Esta persona recibirá las actualizaciones de los permisos asignados.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -73,7 +73,7 @@ export function NuevoResponsableModal() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={loading}>Cancelar</Button>
-            <Button type="submit" disabled={loading}>{loading ? "Guardando..." : "Crear responsable"}</Button>
+            <Button type="submit" disabled={loading}>{loading ? "Guardando..." : "Crear coordinador"}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

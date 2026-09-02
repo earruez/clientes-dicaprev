@@ -112,7 +112,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-3">
           <h2 className="text-lg font-semibold text-slate-900 mb-2">Datos del permiso</h2>
           <div className="text-sm text-slate-600 grid grid-cols-2 gap-y-2">
-            <span className="text-slate-500">Responsable</span>
+            <span className="text-slate-500">Coordinador</span>
             <span className="text-slate-900">{permiso.responsable.nombre}</span>
             <span className="text-slate-500">Fecha de instalación</span>
             <span className="text-slate-900">{new Date(permiso.fechaInstalacion).toLocaleDateString("es-CL")}</span>
@@ -212,9 +212,11 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
                 }
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Se enviará un correo automático al responsable ({permiso.responsable.email}) informando este cambio.
-              </p>
+              {["SOLICITADO", "APROBADO", "CANCELADO"].includes(nuevoEstado) && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Se enviará un correo automático a los coordinadores asignados informando este cambio.
+                </p>
+              )}
             </div>
             {estadoError && <p className="text-red-600 text-sm">{estadoError}</p>}
             <div className="flex justify-end">

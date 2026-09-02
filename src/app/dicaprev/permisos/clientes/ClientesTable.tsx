@@ -1,17 +1,38 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import type { PermisoCliente } from "@prisma/client";
+import { desactivarCliente } from "../actions/permisos";
+import { ConfirmarEliminacionDialog } from "../ConfirmarEliminacionDialog";
 
 interface ClientesTableProps {
   clientes: PermisoCliente[];
 }
 
 export function ClientesTable({ clientes }: ClientesTableProps) {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  const [clienteAEliminar, setClienteAEliminar] = useState<PermisoCliente | null>(null);
+  const [eliminando, setEliminando] = useState(false);
+
+  const handleDelete = async () => {
+    if (!clienteAEliminar) return;
+
+    setEliminando(true);
+    try {
+      await desactivarCliente(clienteAEliminar.id);
+      setClienteAEliminar(null);
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "No fue posible eliminar el cliente");
+    } finally {
+      setEliminando(false);
+    }
+  };
 
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
@@ -31,13 +52,13 @@ export function ClientesTable({ clientes }: ClientesTableProps) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.7fr_1fr]">
         <input
           type="text"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar por nombre, email o teléfono..."
-          className="col-span-2 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <select
           value={filtroEstado}
@@ -87,9 +108,14 @@ export function ClientesTable({ clientes }: ClientesTableProps) {
                       </span>
                     </td>
                     <td className="px-6 py-3 text-sm">
-                      <Link href={`/dicaprev/permisos/clientes/${c.id}`}>
-                        <Button variant="outline" size="sm">Editar</Button>
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link href={`/dicaprev/permisos/clientes/${c.id}`}>
+                          <Button variant="outline" size="sm">Editar</Button>
+                        </Link>
+                        <Button variant="outline" size="sm" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => setClienteAEliminar(c)}>
+                          Eliminar
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -98,6 +124,15 @@ export function ClientesTable({ clientes }: ClientesTableProps) {
           </table>
         </div>
       </div>
+
+      <ConfirmarEliminacionDialog
+        open={Boolean(clienteAEliminar)}
+        entidad="Cliente"
+        nombre={clienteAEliminar?.nombre || ""}
+        loading={eliminando}
+        onOpenChange={(open) => !open && setClienteAEliminar(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

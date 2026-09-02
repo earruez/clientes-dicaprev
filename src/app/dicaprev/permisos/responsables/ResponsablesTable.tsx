@@ -1,17 +1,38 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import type { PermisoResponsable } from "@prisma/client";
+import { desactivarResponsable } from "../actions/permisos";
+import { ConfirmarEliminacionDialog } from "../ConfirmarEliminacionDialog";
 
 interface ResponsablesTableProps {
   responsables: PermisoResponsable[];
 }
 
 export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
+  const [coordinadorAEliminar, setCoordinadorAEliminar] = useState<PermisoResponsable | null>(null);
+  const [eliminando, setEliminando] = useState(false);
+
+  const handleDelete = async () => {
+    if (!coordinadorAEliminar) return;
+
+    setEliminando(true);
+    try {
+      await desactivarResponsable(coordinadorAEliminar.id);
+      setCoordinadorAEliminar(null);
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "No fue posible eliminar el coordinador");
+    } finally {
+      setEliminando(false);
+    }
+  };
 
   const filtrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
@@ -31,13 +52,13 @@ export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[1.7fr_1fr]">
         <input
           type="text"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           placeholder="Buscar por nombre, cargo o email..."
-          className="col-span-2 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <select
           value={filtroEstado}
@@ -51,7 +72,7 @@ export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
       </div>
 
       <p className="text-sm text-slate-500">
-        Mostrando {filtrados.length} de {responsables.length} responsables
+        Mostrando {filtrados.length} de {responsables.length} coordinadores
       </p>
 
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
@@ -72,8 +93,8 @@ export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                     {responsables.length === 0
-                      ? "No hay responsables registrados"
-                      : "Ningún responsable coincide con la búsqueda/filtros."}
+                      ? "No hay coordinadores registrados"
+                      : "Ningún coordinador coincide con la búsqueda/filtros."}
                   </td>
                 </tr>
               ) : (
@@ -89,9 +110,14 @@ export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
                       </span>
                     </td>
                     <td className="px-6 py-3 text-sm">
-                      <Link href={`/dicaprev/permisos/responsables/${r.id}`}>
-                        <Button variant="outline" size="sm">Editar</Button>
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link href={`/dicaprev/permisos/responsables/${r.id}`}>
+                          <Button variant="outline" size="sm">Editar</Button>
+                        </Link>
+                        <Button variant="outline" size="sm" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => setCoordinadorAEliminar(r)}>
+                          Eliminar
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -100,6 +126,15 @@ export function ResponsablesTable({ responsables }: ResponsablesTableProps) {
           </table>
         </div>
       </div>
+
+      <ConfirmarEliminacionDialog
+        open={Boolean(coordinadorAEliminar)}
+        entidad="Coordinador"
+        nombre={coordinadorAEliminar?.nombre || ""}
+        loading={eliminando}
+        onOpenChange={(open) => !open && setCoordinadorAEliminar(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

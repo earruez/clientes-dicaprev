@@ -59,7 +59,7 @@ export function NuevoClienteModal() {
             <input name="nombre" required placeholder="Ej: Salcobrand" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Email de contacto</label>
+            <label className="mb-1 block text-sm font-medium text-slate-700">Correo de contacto</label>
             <input name="contactoEmail" type="email" placeholder="Correo opcional" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>

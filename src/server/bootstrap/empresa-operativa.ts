@@ -17,6 +17,7 @@ export type BootstrapEmpresaOperativaResult = {
   reglasTrabajadorCreadas: number;
   documentosVehiculoCreados: number;
   capacitacionesCreadas: number;
+  municipalidadesCreadas: number;
 };
 
 type AreaTemplate = {
@@ -496,6 +497,57 @@ async function ensureReglaDocumentoTrabajadorBase(empresaId: string): Promise<nu
   return created;
 }
 
+const MUNICIPALIDADES_BASE = [
+  {
+    codigoCUT: "C-AY-001",
+    region: "Aysén",
+    provincia: "Coyhaique",
+    comuna: "Coyhaique",
+    nombre: "Municipalidad de Coyhaique",
+    nombreOficial: "Municipalidad de Coyhaique",
+    unidad: "Departamento de Permisos",
+    tipoTramite: "Permiso de instalación",
+    descripcionTramite: "Trámite de permiso de instalación para proyectos urbanos y de infraestructura.",
+    modalidad: "PRESENCIAL",
+    plazoDias: 15,
+    tipoPlazo: "HABILES",
+    direccion: "Av. Brasil 1234, Coyhaique",
+    horario: "Lunes a viernes, 09:00 - 17:00",
+    urlTramite: null,
+    urlInstitucional: null,
+    documentosRequeridos: "Formulario de solicitud, antecedentes del proyecto y documentación asociada.",
+    costo: null,
+    fuente: "Bootstrap inicial",
+    fechaVerificacion: new Date("2026-01-01T00:00:00.000Z"),
+    observaciones: "Municipalidad base de demostración",
+    activo: true,
+  },
+  {
+    codigoCUT: "C-RM-002",
+    region: "Metropolitana",
+    provincia: "Santiago",
+    comuna: "La Reina",
+    nombre: "Municipalidad de La Reina",
+    nombreOficial: "Municipalidad de La Reina",
+    unidad: "Dirección de Obras y Permisos",
+    tipoTramite: "Permiso de instalación",
+    descripcionTramite: "Trámite de permiso de instalación para construcciones y obras menores.",
+    modalidad: "PRESENCIAL",
+    plazoDias: 15,
+    tipoPlazo: "HABILES",
+    direccion: "Av. Presidente Kennedy 555, La Reina",
+    horario: "Lunes a viernes, 09:00 - 17:00",
+    urlTramite: null,
+    urlInstitucional: null,
+    documentosRequeridos: "Formulario, planos, antecedentes técnicos y documentos del proyecto.",
+    costo: null,
+    fuente: "Bootstrap inicial",
+    fechaVerificacion: new Date("2026-01-01T00:00:00.000Z"),
+    observaciones: "Municipalidad base de demostración",
+    activo: true,
+  },
+] as const;
+
 const CAPACITACIONES_CATALOGO_BASE = [
   {
     codigo: "CAP-IRL-001",
@@ -659,6 +711,69 @@ async function ensureCapacitacionesBase(empresaId: string): Promise<number> {
   return created;
 }
 
+async function ensureMunicipalidadesBase(empresaId: string): Promise<number> {
+  const existingCount = await prisma.permisoOrganismo.count({ where: { empresaId } });
+  if (existingCount > 0) {
+    return 0;
+  }
+
+  const empresasConCatalogo = await prisma.empresa.findMany({
+    where: { id: { not: empresaId } },
+    select: {
+      id: true,
+      _count: { select: { permisoOrganismos: true } },
+    },
+  });
+
+  const fuente = empresasConCatalogo.find((empresa) => empresa._count.permisoOrganismos >= 300);
+  const municipalidades = fuente
+    ? await prisma.permisoOrganismo.findMany({
+        where: { empresaId: fuente.id },
+        select: {
+          codigoCUT: true,
+          region: true,
+          provincia: true,
+          comuna: true,
+          nombre: true,
+          nombreOficial: true,
+          unidad: true,
+          tipoTramite: true,
+          descripcionTramite: true,
+          modalidad: true,
+          plazoDias: true,
+          tipoPlazo: true,
+          direccion: true,
+          horario: true,
+          urlTramite: true,
+          urlInstitucional: true,
+          documentosRequeridos: true,
+          costo: true,
+          fuente: true,
+          fechaVerificacion: true,
+          observaciones: true,
+          activo: true,
+        },
+      })
+    : [...MUNICIPALIDADES_BASE];
+
+  if (municipalidades.length === 0) {
+    return 0;
+  }
+
+  const result = await prisma.permisoOrganismo.createMany({
+    data: municipalidades
+      .filter((municipalidad) => Boolean(municipalidad.nombre))
+      .map((municipalidad) => ({
+        ...municipalidad,
+        empresaId,
+        tipo: "MUNICIPAL",
+      })),
+    skipDuplicates: true,
+  });
+
+  return result.count;
+}
+
 export async function bootstrapEmpresaOperativa(
   empresaId: string,
   opciones: BootstrapOptions = {},
@@ -693,6 +808,7 @@ export async function bootstrapEmpresaOperativa(
   const reglasTrabajadorCreadas = await ensureReglaDocumentoTrabajadorBase(empresa.id);
   const documentosVehiculoCreados = await ensureDocumentoTipoVehiculoBase(empresa.id);
   const capacitacionesCreadas = await ensureCapacitacionesBase(empresa.id);
+  const municipalidadesCreadas = await ensureMunicipalidadesBase(empresa.id);
 
   return {
     empresaId: empresa.id,
@@ -705,5 +821,6 @@ export async function bootstrapEmpresaOperativa(
     reglasTrabajadorCreadas,
     documentosVehiculoCreados,
     capacitacionesCreadas,
+    municipalidadesCreadas,
   };
 }

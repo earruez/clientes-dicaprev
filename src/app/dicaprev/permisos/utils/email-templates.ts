@@ -1,10 +1,10 @@
 import {
-  PermisoInstalacion,
-  PermisoResponsable,
-  PermisoOrganismo,
   PermisoCliente,
+  PermisoInstalacion,
+  PermisoOrganismo,
+  PermisoResponsable,
 } from "@prisma/client";
-import { PERMISO_ESTADOS, PERMISO_RIESGOS, RIESGO_ICONS } from "../types";
+import { PERMISO_ESTADOS } from "../types";
 import { formatearFecha } from "./calculos";
 
 interface PermisoConRelaciones extends PermisoInstalacion {
@@ -12,249 +12,105 @@ interface PermisoConRelaciones extends PermisoInstalacion {
   cliente?: PermisoCliente | null;
 }
 
-/**
- * Genera HTML profesional para email de permiso
- */
+const ESTADO_EMAIL_ESTILOS: Record<string, { fondo: string; borde: string; texto: string }> = {
+  PERMISO_CREADO: { fondo: "#dbeafe", borde: "#2563eb", texto: "#1d4ed8" },
+  SOLICITADO: { fondo: "#e0e7ff", borde: "#4f46e5", texto: "#3730a3" },
+  APROBADO: { fondo: "#dcfce7", borde: "#16a34a", texto: "#15803d" },
+  CANCELADO: { fondo: "#fee2e2", borde: "#dc2626", texto: "#b91c1c" },
+};
+
+type MetadatosCorreo = { estadoAnterior?: string; comentario?: string; tokenRespuestaObservacion?: string };
+
+export function generarAsuntoEmailPermiso(permiso: PermisoConRelaciones): string {
+  const estado = permiso.estado as keyof typeof PERMISO_ESTADOS;
+  const estadoLabel = PERMISO_ESTADOS[estado] || permiso.estado;
+  const cliente = permiso.cliente?.nombre || "Sin cliente";
+  const sucursal = permiso.sucursalId || "Sin sucursal";
+  return `${estadoLabel} | ${cliente} | ${sucursal}`;
+}
+
 export function generarEmailPermiso(
   permiso: PermisoConRelaciones,
   responsable: PermisoResponsable,
   tipo: "PERMISO_CREADO" | "CAMBIO_ESTADO",
-  metadatos?: { estadoAnterior?: string; comentario?: string; tokenRespuestaObservacion?: string },
+  metadatos?: MetadatosCorreo,
 ): string {
-  const estadoLabel = PERMISO_ESTADOS[permiso.estado as keyof typeof PERMISO_ESTADOS] || permiso.estado;
-  const riesgoLabel = PERMISO_RIESGOS[permiso.nivelRiesgo as keyof typeof PERMISO_RIESGOS] || permiso.nivelRiesgo;
-  const riesgoIcon = RIESGO_ICONS[permiso.nivelRiesgo as keyof typeof RIESGO_ICONS] || "•";
-
-  let titulo = "";
-  let mensajePrincipal = "";
-
-  if (tipo === "PERMISO_CREADO") {
-    titulo = "✓ Nuevo Permiso Registrado";
-    mensajePrincipal = "Se ha registrado un nuevo permiso de instalación en NextPrev.";
-  } else {
-    titulo = "📋 Cambio de Estado";
-    mensajePrincipal = "El estado del permiso ha sido actualizado.";
-  }
-
-  const riesgoAlerta =
-    permiso.nivelRiesgo === "EN_RIESGO"
-      ? `
-      <div style="margin-top: 20px; padding: 15px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 4px;">
-        <p style="margin: 0; font-weight: bold; color: #92400e;">⚠️ Atención con la fecha de instalación</p>
-        <p style="margin: 10px 0 0 0; color: #78350f; font-size: 14px;">
-          La municipalidad seleccionada registra un plazo aproximado de ${permiso.plazoDiasSnapshot || "N/A"} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}.
-          Considerando la fecha de solicitud ${formatearFecha(permiso.fechaRecepcionSolicitud)},
-          la resolución se estima aproximadamente para el ${formatearFecha(permiso.fechaEstimadaResolucion)}.
-        </p>
-        <p style="margin: 10px 0 0 0; color: #78350f; font-size: 14px;">
-          La instalación actualmente está programada para el ${formatearFecha(permiso.fechaInstalacion)}, 
-          por lo que existe riesgo de que el permiso no se encuentre aprobado a tiempo.
-        </p>
-        <p style="margin: 10px 0 0 0; color: #78350f; font-size: 14px;">
-          Se recomienda revisar la programación de la instalación.
-        </p>
-      </div>
-    `
-      : permiso.nivelRiesgo === "ATENCION"
-        ? `
-      <div style="margin-top: 20px; padding: 15px; background-color: #fef08a; border-left: 4px solid #eab308; border-radius: 4px;">
-        <p style="margin: 0; font-weight: bold; color: #78350f;">⚠️ Plazo próximo a la instalación</p>
-        <p style="margin: 10px 0 0 0; color: #78350f; font-size: 14px;">
-          La fecha estimada de resolución está muy próxima a la fecha de instalación.
-          Se recomienda seguimiento activo del trámite.
-        </p>
-      </div>
-    `
-        : permiso.nivelRiesgo === "EN_PLAZO"
-          ? `
-      <div style="margin-top: 20px; padding: 15px; background-color: #dcfce7; border-left: 4px solid #22c55e; border-radius: 4px;">
-        <p style="margin: 0; font-weight: bold; color: #15803d;">✓ Plazo compatible con la instalación</p>
-        <p style="margin: 10px 0 0 0; color: #15803d; font-size: 14px;">
-          La fecha estimada de resolución (${formatearFecha(permiso.fechaEstimadaResolucion)}) 
-          ocurre antes de la instalación programada (${formatearFecha(permiso.fechaInstalacion)}).
-        </p>
-      </div>
-    `
-          : `
-      <div style="margin-top: 20px; padding: 15px; background-color: #f3f4f6; border-left: 4px solid #9ca3af; border-radius: 4px;">
-        <p style="margin: 0; font-weight: bold; color: #374151;">ℹ️ Plazo no informado</p>
-        <p style="margin: 10px 0 0 0; color: #374151; font-size: 14px;">
-          No existe información de plazo para esta municipalidad.
-          Se recomienda verificar los plazos antes de comprometer definitivamente la fecha de instalación.
-        </p>
-      </div>
-    `;
-
-  const bloqueCambioEstado =
-    tipo === "CAMBIO_ESTADO" && metadatos?.estadoAnterior
-      ? `
-      <div style="margin-top: 20px; padding: 15px; background-color: #e0e7ff; border-left: 4px solid #6366f1; border-radius: 4px;">
-        <p style="margin: 0; font-weight: bold; color: #312e81;">Cambio de Estado</p>
-        <p style="margin: 10px 0 0 0; color: #312e81; font-size: 14px;">
-          <strong>Anterior:</strong> ${PERMISO_ESTADOS[metadatos.estadoAnterior as keyof typeof PERMISO_ESTADOS] || metadatos.estadoAnterior}<br/>
-          <strong>Nuevo:</strong> ${estadoLabel}
-        </p>
-        ${metadatos.comentario ? `<p style="margin: 10px 0 0 0; color: #312e81; font-size: 14px;"><strong>Comentario:</strong> ${metadatos.comentario}</p>` : ""}
-      </div>
-    `
-      : "";
-
-  const bloqueRespuestaObservacion = metadatos?.tokenRespuestaObservacion
+  const estado = permiso.estado as keyof typeof PERMISO_ESTADOS;
+  const estadoLabel = PERMISO_ESTADOS[estado] || permiso.estado;
+  const estilo = ESTADO_EMAIL_ESTILOS[estado] || ESTADO_EMAIL_ESTILOS.PERMISO_CREADO;
+  const titulo = tipo === "PERMISO_CREADO" ? "Nuevo permiso de instalación" : "Actualización de permiso";
+  const mostrarDetalleOperativo = estado === "PERMISO_CREADO" || estado === "SOLICITADO";
+  const riesgoLabel = {
+    SIN_DATOS: "Sin datos",
+    EN_PLAZO: "En plazo",
+    ATENCION: "Atención",
+    EN_RIESGO: "En riesgo",
+  }[permiso.nivelRiesgo] || permiso.nivelRiesgo;
+  const alertaRiesgo = permiso.nivelRiesgo === "EN_RIESGO"
+    ? `<div style="margin-top:24px;padding:16px;background:#fff7d6;border-left:5px solid #f59e0b;border-radius:8px;color:#92400e;font-size:14px;line-height:1.55;"><strong>Atención con la fecha de instalación</strong><br>La municipalidad registra un plazo aproximado de ${permiso.plazoDiasSnapshot || "-"} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}. La resolución se estima para el ${formatearFecha(permiso.fechaEstimadaResolucion)}, posterior a la instalación programada para el ${formatearFecha(permiso.fechaInstalacion)}. Se recomienda revisar la programación.</div>`
+    : "";
+  const detalleOperativo = mostrarDetalleOperativo
     ? `
-      <div style="margin-top: 20px; padding: 15px; background-color: #fff7ed; border-left: 4px solid #f97316; border-radius: 4px; text-align: center;">
-        <p style="margin: 0 0 12px 0; color: #7c2d12; font-size: 14px;">
-          La municipalidad solicitó información adicional. Puedes responder directamente desde este enlace, sin necesidad de iniciar sesión:
-        </p>
-        <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/permisos/responder/${metadatos.tokenRespuestaObservacion}"
-           style="display: inline-block; padding: 10px 20px; background-color: #f97316; color: #ffffff; border-radius: 6px; font-weight: 600; text-decoration: none;">
-          Contesta las observaciones aquí
-        </a>
-      </div>
-    `
+          <h2 style="margin:28px 0 14px;color:#172033;font-size:16px;font-weight:800;">Seguimiento del permiso</h2>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e2e8f0;font-size:14px;">
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Riesgo</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${riesgoLabel}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Modalidad</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${permiso.modalidadSnapshot || "No informada"}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Fecha de solicitud</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${formatearFecha(permiso.fechaRecepcionSolicitud)}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Fecha de presentación</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${permiso.fechaPresentacion ? formatearFecha(permiso.fechaPresentacion) : "Pendiente"}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Plazo</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${permiso.plazoDiasSnapshot ? `${permiso.plazoDiasSnapshot} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}` : "No informado"}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Resolución estimada</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${formatearFecha(permiso.fechaEstimadaResolucion)}</td></tr>
+          </table>
+          ${alertaRiesgo}
+          ${metadatos?.estadoAnterior ? `<div style="margin-top:24px;padding:16px;background:#eef2ff;border-left:5px solid #4f46e5;border-radius:8px;color:#312e81;font-size:14px;"><strong>Cambio de estado</strong><br><span style="display:inline-block;margin-top:8px;"><strong>Anterior:</strong> ${PERMISO_ESTADOS[metadatos.estadoAnterior as keyof typeof PERMISO_ESTADOS] || metadatos.estadoAnterior}<br><strong>Nuevo:</strong> ${estadoLabel}</span></div>` : ""}
+          ${metadatos?.comentario ? `<div style="margin-top:24px;"><h2 style="margin:0 0 10px;color:#172033;font-size:16px;font-weight:800;">Observaciones</h2><p style="margin:0;padding:14px;background:#f8fafc;border-radius:8px;color:#334155;font-size:14px;">${metadatos.comentario}</p></div>` : ""}`
+    : "";
+  const bloqueRespuestaObservacion = metadatos?.tokenRespuestaObservacion
+    ? `<div style="margin-top:24px;padding:16px;background:#fff7ed;border-left:5px solid #f97316;border-radius:8px;color:#7c2d12;font-size:14px;line-height:1.55;">
+        La municipalidad solicitó información adicional. Puedes responder desde este enlace:
+        <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/permisos/responder/${metadatos.tokenRespuestaObservacion}" style="display:inline-block;margin-top:12px;padding:10px 16px;background:#f97316;color:#ffffff;border-radius:6px;font-weight:600;text-decoration:none;">Responder observaciones</a>
+      </div>`
     : "";
 
   return `
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #333; line-height: 1.6; }
-    .container { max-width: 600px; margin: 0 auto; padding: 0; background-color: #ffffff; }
-    .header { background-color: #0f172a; padding: 30px; text-align: center; }
-    .logo { color: white; font-size: 24px; font-weight: bold; }
-    .content { padding: 30px; }
-    .titulo { font-size: 20px; font-weight: bold; color: #1f2937; margin-bottom: 10px; }
-    .subtitulo { font-size: 14px; color: #6b7280; margin-bottom: 20px; }
-    .seccion { margin-bottom: 30px; }
-    .seccion-titulo { font-size: 14px; font-weight: bold; color: #374151; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .dato { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e5e7eb; font-size: 14px; }
-    .dato:last-child { border-bottom: none; }
-    .etiqueta { color: #6b7280; font-weight: 500; }
-    .valor { color: #1f2937; font-weight: 600; }
-    .badge { display: inline-block; padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-    .footer { padding: 20px 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; text-align: center; }
-    a { color: #3b82f6; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-  </style>
 </head>
-<body>
-  <div class="container">
-    <!-- Header -->
-    <div class="header">
-      <div class="logo">NextPrev</div>
-    </div>
-
-    <!-- Contenido -->
-    <div class="content">
-      <div class="titulo">${titulo}</div>
-      <div class="subtitulo">${mensajePrincipal}</div>
-
-      <!-- Información de Instalación -->
-      <div class="seccion">
-        <div class="seccion-titulo">Instalación</div>
-        <div class="dato">
-          <span class="etiqueta">Cliente</span>
-          <span class="valor">${permiso.cliente?.nombre || "—"}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Dirección</span>
-          <span class="valor">${permiso.direccion}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Fecha de Instalación</span>
-          <span class="valor">${formatearFecha(permiso.fechaInstalacion)}</span>
-        </div>
-      </div>
-
-      <!-- Información del Permiso -->
-      <div class="seccion">
-        <div class="seccion-titulo">Permiso</div>
-        <div class="dato">
-          <span class="etiqueta">Estado</span>
-          <span class="valor"><span class="badge" style="background-color: #dbeafe; color: #1e40af;">${estadoLabel}</span></span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Riesgo</span>
-          <span class="valor">${riesgoIcon} ${riesgoLabel}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Municipalidad</span>
-          <span class="valor">${permiso.nombreOrganismoSnapshot || "—"}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Modalidad</span>
-          <span class="valor">${permiso.modalidadSnapshot || "No informada"}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Fecha de Solicitud</span>
-          <span class="valor">${formatearFecha(permiso.fechaRecepcionSolicitud)}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Fecha de Presentación</span>
-          <span class="valor">${permiso.fechaPresentacion ? formatearFecha(permiso.fechaPresentacion) : "Pendiente"}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Plazo</span>
-          <span class="valor">${permiso.plazoDiasSnapshot ? `${permiso.plazoDiasSnapshot} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}` : "No informado"}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Fecha Estimada de Resolución</span>
-          <span class="valor">${permiso.fechaEstimadaResolucion ? formatearFecha(permiso.fechaEstimadaResolucion) : "No calculada"}</span>
-        </div>
-      </div>
-
-      <!-- Información del Responsable -->
-      <div class="seccion">
-        <div class="seccion-titulo">Responsable</div>
-        <div class="dato">
-          <span class="etiqueta">Nombre</span>
-          <span class="valor">${responsable.nombre}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Cargo</span>
-          <span class="valor">${responsable.cargo}</span>
-        </div>
-        <div class="dato">
-          <span class="etiqueta">Email</span>
-          <span class="valor"><a href="mailto:${responsable.email}">${responsable.email}</a></span>
-        </div>
-        ${responsable.telefono ? `
-        <div class="dato">
-          <span class="etiqueta">Teléfono</span>
-          <span class="valor">${responsable.telefono}</span>
-        </div>
-        ` : ""}
-      </div>
-
-      <!-- Alerta de Riesgo -->
-      ${riesgoAlerta}
-
-      <!-- Cambio de Estado -->
-      ${bloqueCambioEstado}
-
-      <!-- Respuesta a observaciones -->
-      ${bloqueRespuestaObservacion}
-
-      <!-- Observaciones -->
-      ${permiso.observaciones ? `
-      <div class="seccion">
-        <div class="seccion-titulo">Observaciones</div>
-        <p style="font-size: 14px; color: #374151; margin: 0; padding: 10px; background-color: #f9fafb; border-radius: 4px;">
-          ${permiso.observaciones}
-        </p>
-      </div>
-      ` : ""}
-    </div>
-
-    <!-- Footer -->
-    <div class="footer">
-      <p style="margin: 0;">Generado por NextPrev • ${new Date().toLocaleDateString("es-CL")}</p>
-      <p style="margin: 5px 0 0 0; font-size: 11px;">Este es un correo automático. Por favor, no responda a este mensaje.</p>
-    </div>
-  </div>
+<body style="margin:0;background:#f1f5f9;color:#172033;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;background:#f1f5f9;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #dbe3ee;border-radius:12px;overflow:hidden;">
+        <tr><td style="padding:28px 32px;background:#0f2747;">
+          <div style="color:#ffffff;font-size:22px;font-weight:800;letter-spacing:0;">NEXTPREV</div>
+          <div style="margin-top:5px;color:#bfdbfe;font-size:12px;font-weight:600;letter-spacing:0;">SEGURIDAD Y CUMPLIMIENTO</div>
+        </td></tr>
+        <tr><td style="padding:32px;">
+          <p style="margin:0 0 8px;color:#64748b;font-size:14px;">${titulo}</p>
+          <div style="margin:0 0 28px;padding:18px 20px;background:${estilo.fondo};border-left:6px solid ${estilo.borde};border-radius:8px;color:${estilo.texto};font-size:25px;font-weight:800;line-height:1.2;">
+            ${estadoLabel}
+          </div>
+          <h2 style="margin:0 0 14px;color:#172033;font-size:16px;font-weight:800;">Datos de la instalación</h2>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e2e8f0;font-size:14px;">
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Cliente</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${permiso.cliente?.nombre || "Sin cliente"}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Dirección</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${permiso.direccion}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Municipalidad</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${permiso.nombreOrganismoSnapshot || permiso.organismo?.nombre || "-"}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Fecha de instalación</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${formatearFecha(permiso.fechaInstalacion)}</td></tr>
+          </table>
+          ${detalleOperativo}
+          <h2 style="margin:28px 0 14px;color:#172033;font-size:16px;font-weight:800;">Coordinador</h2>
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e2e8f0;font-size:14px;">
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Nombre</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${responsable.nombre}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Cargo</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${responsable.cargo}</td></tr>
+            <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Email</td><td align="right" style="padding:12px 0;color:#2563eb;font-weight:700;border-bottom:1px solid #e2e8f0;">${responsable.email}</td></tr>
+          </table>
+          ${bloqueRespuestaObservacion}
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;color:#64748b;font-size:12px;text-align:center;">Generado por NextPrev</td></tr>
+      </table>
+    </td></tr>
+  </table>
 </body>
-</html>
-  `;
+</html>`;
 }

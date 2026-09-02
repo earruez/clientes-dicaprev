@@ -26,8 +26,6 @@ export function ClienteForm({ cliente }: ClienteFormProps) {
       const formData = new FormData(e.currentTarget);
       const data = {
         nombre: formData.get("nombre") as string,
-        contactoEmail: (formData.get("contactoEmail") as string) || undefined,
-        contactoTelefono: (formData.get("contactoTelefono") as string) || undefined,
       };
 
       await guardarCliente(data, cliente?.id);
@@ -75,26 +73,6 @@ export function ClienteForm({ cliente }: ClienteFormProps) {
               defaultValue={cliente?.nombre}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Ej: Salcobrand"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email de contacto</label>
-            <input
-              type="email"
-              name="contactoEmail"
-              defaultValue={cliente?.contactoEmail || ""}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Email de contacto (opcional)"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono de contacto</label>
-            <input
-              type="text"
-              name="contactoTelefono"
-              defaultValue={cliente?.contactoTelefono || ""}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Teléfono de contacto (opcional)"
             />
           </div>
 

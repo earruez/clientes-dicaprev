@@ -78,6 +78,9 @@ export const ESTADOS_REQUIEREN_COMENTARIO: PermisoEstado[] = ["OBSERVADO", "CANC
 // Tipos para UI
 export interface PermisoFormData {
   clienteId?: string;
+  clienteNombre?: string;
+  clienteContactoEmail?: string;
+  clienteContactoTelefono?: string;
   sucursalId?: string;
   direccion: string;
   comuna?: string;
