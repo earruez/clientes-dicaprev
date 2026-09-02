@@ -11,6 +11,7 @@ const args = new Map(process.argv.slice(2).map((arg) => {
 
 const filePath = args.get('file') || '/Users/dicaprev/Downloads/matriz_municipalidades_chile.xlsx';
 const empresaId = args.get('empresa-id') || args.get('empresaId') || null;
+const allEmpresas = args.has('all-empresas') || args.has('allEmpresas');
 const dryRun = args.has('dry-run') || args.has('dryRun');
 const outFile = '/Users/dicaprev/Desktop/clientes-dicaprev/scripts/matriz-municipalidades-mapeo.json';
 
@@ -97,9 +98,10 @@ const readSheet = () => {
       const codigoCUT = getValue(row, ['Código CUT']);
       const region = getValue(row, ['Región']);
       const provincia = getValue(row, ['Provincia']);
-      const comuna = getValue(row, ['Comuna / municipalidad']);
+      const comuna = getValue(row, ['Comuna', 'Comuna / municipalidad']);
+      const municipalidad = getValue(row, ['Municipalidad']);
       const nombreOficial = getValue(row, ['Nombre oficial municipalidad']);
-      const nombre = comuna || nombreOficial || '';
+      const nombre = municipalidad || nombreOficial || comuna || '';
       const unidad = getValue(row, ['DOM — nombre/unidad', 'Tránsito — nombre/unidad']);
       const direccion = getValue(row, ['DOM — dirección', 'Tránsito — dirección']);
       const horario = getValue(row, ['DOM — horario', 'Tránsito — horario']);
@@ -159,8 +161,8 @@ if (dryRun) {
   process.exit(0);
 }
 
-if (!empresaId) {
-  throw new Error('Falta --empresa-id. Ejemplo: node scripts/importar-municipalidades-permisos.mjs --empresa-id=cm1abc123');
+if (!empresaId && !allEmpresas) {
+  throw new Error('Falta --empresa-id o --all-empresas. Ejemplo: node scripts/importar-municipalidades-permisos.mjs --all-empresas');
 }
 
 const { PrismaClient } = await import('@prisma/client');
@@ -168,50 +170,98 @@ const { PrismaPg } = await import('@prisma/adapter-pg');
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
-const updates = [];
-for (const row of records) {
-  if (!row.nombre) continue;
+const empresas = allEmpresas
+  ? await prisma.empresa.findMany({ select: { id: true, nombre: true } })
+  : [{ id: empresaId, nombre: null }];
 
-  const payload = {
-    empresaId,
-    nombre: row.nombre,
-    codigoCUT: row.codigoCUT,
-    region: row.region,
-    provincia: row.provincia,
-    comuna: row.comuna,
-    nombreOficial: row.nombreOficial,
-    unidad: row.unidad,
-    direccion: row.direccion,
-    horario: row.horario,
-    tipoTramite: row.tipoTramite,
-    descripcionTramite: row.descripcionTramite,
-    documentosRequeridos: row.documentosRequeridos,
-    modalidad: row.modalidad,
-    plazoDias: row.plazoDias,
-    tipoPlazo: row.tipoPlazo,
-    urlTramite: row.urlTramite,
-    urlInstitucional: row.urlInstitucional,
-    fuente: row.fuente,
-    observaciones: row.observaciones,
-    costo: row.costo,
-    activo: true,
-  };
+const resultados = [];
+for (const empresa of empresas) {
+  const existentes = await prisma.permisoOrganismo.findMany({
+    where: { empresaId: empresa.id },
+    select: { id: true, nombre: true, codigoCUT: true },
+  });
+  const porCodigoCUT = new Map(existentes.filter((registro) => registro.codigoCUT).map((registro) => [registro.codigoCUT, registro]));
+  const porNombre = new Map(existentes.map((registro) => [registro.nombre.trim().toLocaleLowerCase('es'), registro]));
+  let creadas = 0;
+  let actualizadas = 0;
+  let consolidadas = 0;
 
-  updates.push(
-    prisma.permisoOrganismo.upsert({
-      where: {
-        empresaId_nombre: {
-          empresaId,
-          nombre: row.nombre,
-        },
-      },
-      update: payload,
-      create: payload,
-    }),
-  );
+  for (const row of records) {
+    if (!row.nombre) continue;
+
+    const payload = {
+      empresaId: empresa.id,
+      tipo: 'MUNICIPAL',
+      nombre: row.nombre,
+      codigoCUT: row.codigoCUT,
+      region: row.region,
+      provincia: row.provincia,
+      comuna: row.comuna,
+      nombreOficial: row.nombreOficial,
+      unidad: row.unidad,
+      direccion: row.direccion,
+      horario: row.horario,
+      tipoTramite: row.tipoTramite,
+      descripcionTramite: row.descripcionTramite,
+      documentosRequeridos: row.documentosRequeridos,
+      modalidad: row.modalidad,
+      plazoDias: row.plazoDias,
+      tipoPlazo: row.tipoPlazo,
+      urlTramite: row.urlTramite,
+      urlInstitucional: row.urlInstitucional,
+      fuente: row.fuente,
+      observaciones: row.observaciones,
+      costo: row.costo,
+      activo: true,
+    };
+    const existentePorCodigo = row.codigoCUT ? porCodigoCUT.get(row.codigoCUT) : undefined;
+    const existentePorNombre = porNombre.get(row.nombre.trim().toLocaleLowerCase('es'));
+
+    if (existentePorCodigo && existentePorNombre && existentePorCodigo.id !== existentePorNombre.id) {
+      await prisma.$transaction([
+        prisma.permisoInstalacion.updateMany({
+          where: { organismoId: existentePorCodigo.id },
+          data: { organismoId: existentePorNombre.id },
+        }),
+        prisma.permisoOrganismo.delete({ where: { id: existentePorCodigo.id } }),
+        prisma.permisoOrganismo.update({ where: { id: existentePorNombre.id }, data: payload }),
+      ]);
+      porCodigoCUT.set(row.codigoCUT, existentePorNombre);
+      porNombre.set(row.nombre.trim().toLocaleLowerCase('es'), existentePorNombre);
+      actualizadas += 1;
+      consolidadas += 1;
+      continue;
+    }
+
+    const existente = existentePorCodigo || existentePorNombre;
+
+    if (!existentePorCodigo && existentePorNombre && existentePorNombre.codigoCUT && existentePorNombre.codigoCUT !== row.codigoCUT) {
+      const creado = await prisma.permisoOrganismo.create({ data: payload });
+      if (row.codigoCUT) porCodigoCUT.set(row.codigoCUT, creado);
+      creadas += 1;
+      continue;
+    }
+
+    if (existente) {
+      await prisma.permisoOrganismo.update({ where: { id: existente.id }, data: payload });
+      if (existente.codigoCUT && existente.codigoCUT !== row.codigoCUT) {
+        porCodigoCUT.delete(existente.codigoCUT);
+      }
+      if (row.codigoCUT) porCodigoCUT.set(row.codigoCUT, existente);
+      porNombre.set(row.nombre.trim().toLocaleLowerCase('es'), existente);
+      actualizadas += 1;
+      continue;
+    }
+
+    const creado = await prisma.permisoOrganismo.create({ data: payload });
+    if (row.codigoCUT) porCodigoCUT.set(row.codigoCUT, creado);
+    porNombre.set(row.nombre.trim().toLocaleLowerCase('es'), creado);
+    creadas += 1;
+  }
+
+  resultados.push({ empresa: empresa.nombre || empresa.id, creadas, actualizadas, consolidadas });
 }
 
-const result = await Promise.all(updates);
-console.log(JSON.stringify({ total: records.length, insertados_actualizados: result.length, conPlazo: summary.conPlazo, sinPlazo: summary.sinPlazo }, null, 2));
+console.log(JSON.stringify({ total: records.length, empresas: resultados, conPlazo: summary.conPlazo, sinPlazo: summary.sinPlazo }, null, 2));
 
 await prisma.$disconnect();

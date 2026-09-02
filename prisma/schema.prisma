@@ -2454,7 +2454,7 @@ model PermisoOrganismo {
   empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   permisos PermisoInstalacion[]
 
-  @@unique([empresaId, nombre])
+  @@unique([empresaId, codigoCUT])
   @@index([empresaId])
   @@index([activo])
   @@index([comuna])

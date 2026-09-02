@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -116,6 +116,10 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
   };
 
   const sinCatalogos = organismos.length === 0 || responsables.length === 0;
+  const municipalidadesDisponibles = useMemo(
+    () => organismos.filter((organismo) => !form.comuna || organismo.comuna?.localeCompare(form.comuna, "es", { sensitivity: "base" }) === 0),
+    [organismos, form.comuna],
+  );
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : resetAndClose())}>
@@ -251,6 +255,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
                       ...f,
                       comuna: comunaSeleccionada,
                       region: match ? match.region : f.region,
+                      organismoId: "",
                     }));
                   }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -334,7 +339,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
                 <option value="" disabled>
                   Selecciona municipalidad...
                 </option>
-                {organismos.map((organismo) => (
+                {municipalidadesDisponibles.map((organismo) => (
                   <option key={organismo.id} value={organismo.id}>
                     {organismo.nombre}
                   </option>
