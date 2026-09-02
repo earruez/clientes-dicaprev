@@ -2,8 +2,14 @@ import type { NextAuthOptions } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password-hash";
+import { authRateLimitKey, clearAuthRateLimit, consumeAuthRateLimit } from "@/server/auth/rate-limit";
 
 const NO_PASSWORD_CONFIGURED_ERROR = "NO_PASSWORD_CONFIGURED";
+const LOGIN_RATE_LIMIT = {
+  maxAttempts: 10,
+  windowMs: 15 * 60 * 1000,
+  blockMs: 15 * 60 * 1000,
+};
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -21,12 +27,15 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const email = String(credentials?.email ?? "")
-          .trim()
-          .toLowerCase();
+        const email = String(credentials?.email ?? "").trim().toLowerCase();
         const password = String(credentials?.password ?? "");
 
-        if (!email || !password) {
+        if (!email || !password) return null;
+
+        const rateKey = authRateLimitKey("login", email);
+        const rate = await consumeAuthRateLimit(rateKey, LOGIN_RATE_LIMIT);
+        if (rate.limited) {
+          console.warn(`[auth] Intentos limitados temporalmente para identificador ${rateKey.slice(0, 10)}`);
           return null;
         }
 
@@ -35,41 +44,21 @@ export const authOptions: NextAuthOptions = {
           select: { id: true, nombre: true, email: true, activo: true, passwordHash: true },
         });
 
-        if (!usuario) {
-          console.log(`[auth] Usuario no encontrado: ${email}`);
-          return null;
-        }
-
-        if (!usuario.activo) {
-          console.log(`[auth] Usuario inactivo: ${email}`);
-          return null;
-        }
+        if (!usuario || !usuario.activo) return null;
 
         if (usuario.passwordHash) {
-          // Usuario con hash de contraseña real (e.g. SUPERADMIN creado por bootstrap)
-          if (!verifyPassword(password, usuario.passwordHash)) {
-            console.log(`[auth] Contraseña incorrecta (hash) para: ${email}`);
-            return null;
-          }
+          if (!verifyPassword(password, usuario.passwordHash)) return null;
         } else {
-          // En producción nunca permitimos fallback de clave compartida.
           if (process.env.NODE_ENV === "production") {
-            console.log(`[auth] Usuario sin passwordHash bloqueado en producción: ${email}`);
             throw new Error(NO_PASSWORD_CONFIGURED_ERROR);
           }
 
-          // Solo en desarrollo/local: fallback temporal para usuarios legacy sin hash.
           const devPassword = process.env.AUTH_DEV_PASSWORD;
-          if (!devPassword) {
-            console.log(`[auth] AUTH_DEV_PASSWORD no definida, usuario sin hash: ${email}`);
-            throw new Error(NO_PASSWORD_CONFIGURED_ERROR);
-          }
-
-          if (password !== devPassword) {
-            console.log(`[auth] Contraseña devPassword incorrecta para: ${email}`);
-            return null;
-          }
+          if (!devPassword) throw new Error(NO_PASSWORD_CONFIGURED_ERROR);
+          if (password !== devPassword) return null;
         }
+
+        await clearAuthRateLimit(rateKey).catch(() => undefined);
 
         return {
           id: usuario.id,
