@@ -111,6 +111,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al crear el permiso");
+    } finally {
       setLoading(false);
     }
   };

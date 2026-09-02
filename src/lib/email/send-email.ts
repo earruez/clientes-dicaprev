@@ -52,6 +52,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
+    signal: AbortSignal.timeout(10_000),
     headers: {
       Authorization: `Bearer ${resendApiKey}`,
       "Content-Type": "application/json",
