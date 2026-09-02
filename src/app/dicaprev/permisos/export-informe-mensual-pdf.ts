@@ -177,7 +177,7 @@ export function exportInformeMensualPermisosPdf(data: InformeMensualPermisosData
     { key: "direccion", label: "Dirección", width: 118 },
     { key: "fechaInstalacion", label: "Fecha de instalación", width: 78 },
     { key: "estado", label: "Estado", width: 78 },
-    { key: "responsable", label: "Responsable", width: 81 },
+    { key: "responsable", label: "Coordinador", width: 81 },
   ] as const;
   const tableWidth = columnas.reduce((acc, c) => acc + c.width, 0);
   const rowHeight = 22;

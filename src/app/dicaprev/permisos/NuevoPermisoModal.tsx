@@ -87,7 +87,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
     setError(null);
 
     if (!form.organismoId || !form.responsableId || !form.fechaRecepcionSolicitud) {
-      setError("Completa municipalidad, responsable y fecha de solicitud.");
+      setError("Completa municipalidad, coordinador y fecha de solicitud.");
       return;
     }
 
@@ -148,9 +148,9 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
             )}
             {responsables.length === 0 && (
               <p>
-                No hay responsables registrados. Crea uno en{" "}
+                No hay coordinadores registrados. Crea uno en{" "}
                 <Link href="/dicaprev/permisos/responsables" className="underline font-medium">
-                  Responsables
+                  Coordinadores
                 </Link>
                 .
               </p>
@@ -342,7 +342,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Responsable *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Coordinador *</label>
               <select
                 required
                 value={form.responsableId}
@@ -356,7 +356,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="" disabled>
-                  Selecciona responsable...
+                  Selecciona coordinador...
                 </option>
                 {responsables.map((responsable) => (
                   <option key={responsable.id} value={responsable.id}>
@@ -368,7 +368,7 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
             {responsables.length > 1 && (
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Responsables adicionales (opcional)
+                  Coordinadores adicionales (opcional)
                 </label>
                 <p className="text-xs text-slate-500 mb-2">
                   También recibirán los correos de actualización de estado (sugerido: 1 a 2 adicionales).

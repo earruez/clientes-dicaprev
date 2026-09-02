@@ -231,10 +231,30 @@ export async function desactivarResponsable(id: string) {
   });
 
   if (!responsable) {
-    throw new Error("Responsable no encontrado");
+    throw new Error("Coordinador no encontrado");
   }
 
   return prisma.permisoResponsable.update({
+    where: { id },
+    data: { activo: false },
+  });
+}
+
+/**
+ * Desactivar organismo (soft delete)
+ */
+export async function desactivarOrganismo(id: string) {
+  const { empresaId } = await requirePermission("canManagePermisos");
+
+  const organismo = await prisma.permisoOrganismo.findFirst({
+    where: { id, empresaId },
+  });
+
+  if (!organismo) {
+    throw new Error("Municipalidad no encontrada");
+  }
+
+  return prisma.permisoOrganismo.update({
     where: { id },
     data: { activo: false },
   });

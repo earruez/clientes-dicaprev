@@ -51,7 +51,7 @@ async function PermisosContent() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Permisos de instalación</h1>
           <p className="text-slate-600 mt-1">Gestiona solicitudes, plazos y estados de permisos asociados a instalaciones.</p>
@@ -65,7 +65,7 @@ async function PermisosContent() {
             Ver muestra de correos de notificación
           </Link>
         </div>
-        <div className="flex flex-wrap items-start gap-3">
+        <div className="flex flex-wrap items-start gap-3 w-full lg:w-auto">
           <InformeMensualModal />
           <NuevoPermisoModal clientes={clientes} organismos={organismos} responsables={responsables} comunas={comunas} />
         </div>

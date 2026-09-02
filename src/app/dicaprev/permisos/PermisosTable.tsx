@@ -14,6 +14,7 @@ import {
   PermisoEstado,
 } from "./types";
 import { actualizarFechaPresentacion, cambiarEstadoPermiso, eliminarPermiso } from "./actions/permisos";
+import { ConfirmarEliminacionDialog } from "./ConfirmarEliminacionDialog";
 
 type PermisoConRelaciones = PermisoInstalacion & {
   organismo: PermisoOrganismo | null;
@@ -122,6 +123,7 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
   const [ordenDireccion, setOrdenDireccion] = useState<OrdenDireccion>("desc");
   const [expandido, setExpandido] = useState<string | null>(null);
   const [permisoSeleccionado, setPermisoSeleccionado] = useState<PermisoConRelaciones | null>(null);
+  const [permisoAEliminar, setPermisoAEliminar] = useState<PermisoConRelaciones | null>(null);
   const [eliminandoId, setEliminandoId] = useState<string | null>(null);
 
   const filtrados = useMemo(() => {
@@ -199,15 +201,14 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
     </button>
   );
 
-  const handleEliminar = async (permiso: PermisoConRelaciones) => {
-    if (!window.confirm(`¿Eliminar definitivamente el permiso de "${permiso.direccion}"? Esta acción no se puede deshacer.`)) {
-      return;
-    }
+  const handleEliminar = async () => {
+    if (!permisoAEliminar) return;
 
-    setEliminandoId(permiso.id);
+    setEliminandoId(permisoAEliminar.id);
     try {
-      await eliminarPermiso(permiso.id);
+      await eliminarPermiso(permisoAEliminar.id);
       setPermisoSeleccionado(null);
+      setPermisoAEliminar(null);
       router.refresh();
     } catch (error) {
       window.alert(error instanceof Error ? error.message : "No fue posible eliminar el permiso");
@@ -218,13 +219,13 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <input
           type="text"
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          placeholder="Buscar por dirección, cliente, municipalidad o responsable..."
-          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2"
+          placeholder="Buscar por dirección, cliente, municipalidad o coordinador..."
+          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 sm:col-span-2 xl:col-span-3"
         />
         <select
           value={filtroEstado}
@@ -246,7 +247,7 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
 
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-[960px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th className="px-6 py-3 text-left">{encabezadoOrdenable("Estado", "estado")}</th>
@@ -255,7 +256,7 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                 <th className="px-6 py-3 text-left">{encabezadoOrdenable("Dirección", "direccion")}</th>
                 <th className="px-6 py-3 text-left">{encabezadoOrdenable("Fecha instalación", "instalacion")}</th>
                 <th className="px-6 py-3 text-left">{encabezadoOrdenable("Municipalidad", "municipalidad")}</th>
-                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Responsable", "responsable")}</th>
+                <th className="px-6 py-3 text-left">{encabezadoOrdenable("Coordinador", "responsable")}</th>
                 <th className="px-6 py-3 text-left">{encabezadoOrdenable("Último movimiento", "actualizacion")}</th>
                 <th className="px-6 py-3 text-left font-semibold text-slate-900">Acciones</th>
               </tr>
@@ -290,8 +291,8 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                         {permiso.nivelRiesgo === "SIN_DATOS" && "⚪"}
                       </td>
                       <td className="px-6 py-3 text-sm text-slate-900">{permiso.cliente?.nombre || "—"}</td>
-                      <td className="px-6 py-3 text-sm max-w-xs truncate">
-                        <button type="button" className="text-left text-blue-600 hover:underline" onClick={() => setPermisoSeleccionado(permiso)}>
+                      <td className="px-6 py-3 text-sm max-w-[220px]">
+                        <button type="button" className="block max-w-full truncate text-left text-blue-600 hover:underline" onClick={() => setPermisoSeleccionado(permiso)}>
                           {permiso.direccion}
                         </button>
                       </td>
@@ -304,29 +305,31 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                         {new Date().getTime() - new Date(permiso.updatedAt).getTime() < 86400000 ? "Hoy" : "Hace días"}
                       </td>
                       <td className="px-6 py-3 text-sm" onClick={(event) => event.stopPropagation()}>
-                        {permiso.estado === "APROBADO" ? (
-                          <span className="text-xs text-slate-400">Estado final</span>
-                        ) : (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {permiso.estado === "APROBADO" ? (
+                            <span className="text-xs text-slate-400">Estado final</span>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setExpandido(expandido === permiso.id ? null : permiso.id)}
+                            >
+                              Cambiar estado
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setExpandido(expandido === permiso.id ? null : permiso.id)}
+                            className="text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                            onClick={() => setPermisoAEliminar(permiso)}
+                            disabled={eliminandoId === permiso.id}
                           >
-                            Cambiar estado
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Eliminar permiso</span>
                           </Button>
-                        )}
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="ml-2 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                          onClick={() => handleEliminar(permiso)}
-                          disabled={eliminandoId === permiso.id}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="sr-only">Eliminar permiso</span>
-                        </Button>
+                        </div>
                       </td>
                     </tr>
                     {expandido === permiso.id && permiso.estado !== "APROBADO" && (
@@ -343,6 +346,17 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
           </table>
         </div>
       </div>
+
+      <ConfirmarEliminacionDialog
+        open={Boolean(permisoAEliminar)}
+        entidad="Permiso"
+        nombre={permisoAEliminar?.direccion || ""}
+        detalle="Este permiso y su historial se eliminarán definitivamente. Esta acción no se puede deshacer."
+        accion="Eliminar definitivamente"
+        loading={Boolean(eliminandoId)}
+        onOpenChange={(open) => !open && setPermisoAEliminar(null)}
+        onConfirm={handleEliminar}
+      />
 
       <Dialog open={Boolean(permisoSeleccionado)} onOpenChange={(open) => !open && setPermisoSeleccionado(null)}>
         <DialogContent size="sm">

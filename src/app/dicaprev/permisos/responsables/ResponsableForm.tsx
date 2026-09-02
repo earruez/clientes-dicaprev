@@ -35,7 +35,7 @@ export function ResponsableForm({ responsable }: ResponsableFormProps) {
       router.push("/dicaprev/permisos/responsables");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar el responsable");
+      setError(err instanceof Error ? err.message : "Error al guardar el coordinador");
       setLoading(false);
     }
   };
@@ -51,7 +51,7 @@ export function ResponsableForm({ responsable }: ResponsableFormProps) {
         </Link>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
-            {responsable ? "Editar responsable" : "Nuevo responsable"}
+            {responsable ? "Editar coordinador" : "Nuevo coordinador"}
           </h1>
           <p className="text-slate-600 text-sm mt-0.5">
             Persona que recibe las notificaciones de seguimiento de un permiso
@@ -114,7 +114,7 @@ export function ResponsableForm({ responsable }: ResponsableFormProps) {
               </Button>
             </Link>
             <Button type="submit" disabled={loading}>
-              {loading ? "Guardando..." : responsable ? "Guardar cambios" : "Crear responsable"}
+              {loading ? "Guardando..." : responsable ? "Guardar cambios" : "Crear coordinador"}
             </Button>
           </div>
         </form>

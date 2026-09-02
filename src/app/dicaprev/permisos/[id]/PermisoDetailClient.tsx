@@ -112,7 +112,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-3">
           <h2 className="text-lg font-semibold text-slate-900 mb-2">Datos del permiso</h2>
           <div className="text-sm text-slate-600 grid grid-cols-2 gap-y-2">
-            <span className="text-slate-500">Responsable</span>
+            <span className="text-slate-500">Coordinador</span>
             <span className="text-slate-900">{permiso.responsable.nombre}</span>
             <span className="text-slate-500">Fecha de instalación</span>
             <span className="text-slate-900">{new Date(permiso.fechaInstalacion).toLocaleDateString("es-CL")}</span>

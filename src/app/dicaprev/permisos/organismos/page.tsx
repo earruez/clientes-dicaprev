@@ -10,7 +10,7 @@ async function OrganismosContent() {
   const { empresaId } = await requirePermission("canManagePermisos");
 
   const organismos = await prisma.permisoOrganismo.findMany({
-    where: { empresaId },
+    where: { empresaId, activo: true },
     orderBy: { nombre: "asc" },
   });
 

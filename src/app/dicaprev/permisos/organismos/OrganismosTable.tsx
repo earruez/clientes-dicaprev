@@ -1,19 +1,40 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import type { PermisoOrganismo } from "@prisma/client";
+import { desactivarOrganismo } from "../actions/permisos";
 import { PERMISO_MODALIDADES, PermisoModalidad } from "../types";
+import { ConfirmarEliminacionDialog } from "../ConfirmarEliminacionDialog";
 
 interface OrganismosTableProps {
   organismos: PermisoOrganismo[];
 }
 
 export function OrganismosTable({ organismos }: OrganismosTableProps) {
+  const router = useRouter();
   const [busqueda, setBusqueda] = useState("");
   const [region, setRegion] = useState("");
   const [modalidad, setModalidad] = useState("");
+  const [organismoAEliminar, setOrganismoAEliminar] = useState<PermisoOrganismo | null>(null);
+  const [eliminando, setEliminando] = useState(false);
+
+  const handleDelete = async () => {
+    if (!organismoAEliminar) return;
+
+    setEliminando(true);
+    try {
+      await desactivarOrganismo(organismoAEliminar.id);
+      setOrganismoAEliminar(null);
+      router.refresh();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "No fue posible eliminar la municipalidad");
+    } finally {
+      setEliminando(false);
+    }
+  };
 
   const regiones = useMemo(
     () => Array.from(new Set(organismos.map((o) => o.region).filter(Boolean))).sort() as string[],
@@ -41,7 +62,7 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
   return (
     <div className="space-y-4">
       {/* Buscador y filtros */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         <input
           type="text"
           value={busqueda}
@@ -119,9 +140,14 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
                       {o.fechaVerificacion ? new Date(o.fechaVerificacion).toLocaleDateString("es-CL") : "—"}
                     </td>
                     <td className="px-6 py-3 text-sm">
-                      <Link href={`/dicaprev/permisos/organismos/${o.id}`}>
-                        <Button variant="outline" size="sm">Editar</Button>
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link href={`/dicaprev/permisos/organismos/${o.id}`}>
+                          <Button variant="outline" size="sm">Editar</Button>
+                        </Link>
+                        <Button variant="outline" size="sm" className="border-red-200 text-red-600 hover:bg-red-50" onClick={() => setOrganismoAEliminar(o)}>
+                          Eliminar
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -130,6 +156,15 @@ export function OrganismosTable({ organismos }: OrganismosTableProps) {
           </table>
         </div>
       </div>
+
+      <ConfirmarEliminacionDialog
+        open={Boolean(organismoAEliminar)}
+        entidad="Municipalidad"
+        nombre={organismoAEliminar?.nombre || ""}
+        loading={eliminando}
+        onOpenChange={(open) => !open && setOrganismoAEliminar(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }
