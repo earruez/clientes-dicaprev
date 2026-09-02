@@ -3,13 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BadgeCheck,
   Bell,
   BookOpen,
+  Briefcase,
   Building2,
-  CalendarRange,
-  ClipboardList,
-  FileCheck2,
+  CalendarDays,
+  ClipboardCheck,
+  Crown,
+  Factory,
+  HardHat,
   Home,
+  Landmark,
+  Settings,
   ShieldCheck,
   Users,
 } from "lucide-react";
@@ -97,7 +103,7 @@ const MODULES: ModuleItem[] = [
   {
     id: "ds44",
     label: "DS44",
-    icon: FileCheck2,
+    icon: ClipboardCheck,
     defaultHref: "/dicaprev/ds44",
     permission: "canReadCumplimiento",
     moduleKey: "cumplimiento",
@@ -114,7 +120,7 @@ const MODULES: ModuleItem[] = [
   {
     id: "epp",
     label: "EPP",
-    icon: ShieldCheck,
+    icon: HardHat,
     defaultHref: "/dicaprev/epp",
     permission: "canReadCumplimiento",
     items: [{ href: "/dicaprev/epp", label: "Gestión EPP" }],
@@ -122,7 +128,7 @@ const MODULES: ModuleItem[] = [
   {
     id: "contratistas",
     label: "Contratistas",
-    icon: ClipboardList,
+    icon: Briefcase,
     defaultHref: "/dicaprev/contratistas",
     permission: "canReadCumplimiento",
     items: [{ href: "/dicaprev/contratistas", label: "Gestión contratistas" }],
@@ -130,7 +136,7 @@ const MODULES: ModuleItem[] = [
   {
     id: "acreditaciones",
     label: "Acreditación",
-    icon: FileCheck2,
+    icon: BadgeCheck,
     defaultHref: "/dicaprev/acreditaciones",
     moduleKey: "acreditaciones",
     items: [
@@ -143,7 +149,7 @@ const MODULES: ModuleItem[] = [
   {
     id: "permisos",
     label: "Permisos",
-    icon: FileCheck2,
+    icon: Landmark,
     defaultHref: "/dicaprev/permisos",
     moduleKey: "permisos",
     permission: "canReadPermisos",
@@ -157,7 +163,7 @@ const MODULES: ModuleItem[] = [
   {
     id: "plan",
     label: "Plan",
-    icon: CalendarRange,
+    icon: CalendarDays,
     defaultHref: "/dicaprev/plandetrabajo",
     moduleKey: "plan_trabajo",
     items: [
@@ -174,7 +180,7 @@ const MODULES: ModuleItem[] = [
   {
     id: "select-company",
     label: "Empresa activa",
-    icon: Building2,
+    icon: Factory,
     defaultHref: "/dicaprev/superadmin",
     alwaysVisible: true,
     items: [{ href: "/dicaprev/superadmin", label: "Seleccionar empresa" }],
@@ -182,7 +188,7 @@ const MODULES: ModuleItem[] = [
   {
     id: "sistema",
     label: "Sistema",
-    icon: ClipboardList,
+    icon: Settings,
     defaultHref: "/dicaprev/auditoria",
     items: [
       { href: "/dicaprev/auditoria", label: "Auditoría" },
@@ -311,7 +317,7 @@ function useSidebarData() {
       visibleModules.push({
         id: "superadmin",
         label: "Admin",
-        icon: ShieldCheck,
+        icon: Crown,
         defaultHref: "/dicaprev/superadmin",
         items: [{ href: "/dicaprev/superadmin", label: "Panel superadmin" }],
       });
