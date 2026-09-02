@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/password-hash";
 import { esTokenExpirado } from "@/lib/password-reset";
+import { sendEmail } from "@/lib/email/send-email";
+import { generarEmailContraseñaActualizada } from "@/lib/email/templates/password-recovery";
 
 type RequestBody = {
   token?: string;
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
     const result = await prisma.$transaction(async (tx) => {
       const tokenRecord = await tx.usuarioCambioContraseña.findUnique({
         where: { token },
-        include: { usuario: { select: { id: true, email: true } } },
+        include: { usuario: { select: { id: true, nombre: true, email: true } } },
       });
 
       if (!tokenRecord) return { status: "not-found" as const };
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
         data: { passwordHash },
       });
 
-      return { status: "updated" as const, email: tokenRecord.usuario.email };
+      return { status: "updated" as const, nombre: tokenRecord.usuario.nombre, email: tokenRecord.usuario.email };
     });
 
     if (result.status === "not-found") {
@@ -80,6 +82,16 @@ export async function POST(request: Request) {
         { error: "El enlace no es válido, ya fue utilizado o ha expirado." },
         { status: 400 }
       );
+    }
+
+    try {
+      await sendEmail({
+        to: result.email,
+        subject: "NextPrev: contraseña actualizada correctamente",
+        html: generarEmailContraseñaActualizada(result.nombre),
+      });
+    } catch (emailError) {
+      console.error(`Error enviando confirmación de contraseña a ${result.email}:`, emailError);
     }
 
     return NextResponse.json({
