@@ -1,24 +1,21 @@
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 
-/**
- * Genera un token seguro para cambio de contraseña
- */
+/** Genera un token aleatorio que solo se entrega al usuario. */
 export function generarTokenCambioContraseña(): string {
   return randomBytes(32).toString("hex");
 }
 
-/**
- * Calcula la fecha de expiración (24 horas desde ahora)
- */
+/** Persiste únicamente un hash SHA-256 del token para reducir impacto ante fuga de BD. */
+export function hashTokenCambioContraseña(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 export function calcularFechaExpiracion(horas: number = 24): Date {
   const fecha = new Date();
   fecha.setHours(fecha.getHours() + horas);
   return fecha;
 }
 
-/**
- * Valida si un token ha expirado
- */
 export function esTokenExpirado(fechaExpiracion: Date): boolean {
   return new Date() > fechaExpiracion;
 }
