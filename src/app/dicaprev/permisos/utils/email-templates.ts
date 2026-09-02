@@ -64,6 +64,12 @@ export function generarEmailPermiso(
           ${metadatos?.estadoAnterior ? `<div style="margin-top:24px;padding:16px;background:#eef2ff;border-left:5px solid #4f46e5;border-radius:8px;color:#312e81;font-size:14px;"><strong>Cambio de estado</strong><br><span style="display:inline-block;margin-top:8px;"><strong>Anterior:</strong> ${PERMISO_ESTADOS[metadatos.estadoAnterior as keyof typeof PERMISO_ESTADOS] || metadatos.estadoAnterior}<br><strong>Nuevo:</strong> ${estadoLabel}</span></div>` : ""}
           ${metadatos?.comentario ? `<div style="margin-top:24px;"><h2 style="margin:0 0 10px;color:#172033;font-size:16px;font-weight:800;">Observaciones</h2><p style="margin:0;padding:14px;background:#f8fafc;border-radius:8px;color:#334155;font-size:14px;">${metadatos.comentario}</p></div>` : ""}`
     : "";
+  const bloqueRespuestaObservacion = metadatos?.tokenRespuestaObservacion
+    ? `<div style="margin-top:24px;padding:16px;background:#fff7ed;border-left:5px solid #f97316;border-radius:8px;color:#7c2d12;font-size:14px;line-height:1.55;">
+        La municipalidad solicitó información adicional. Puedes responder desde este enlace:
+        <a href="${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/permisos/responder/${metadatos.tokenRespuestaObservacion}" style="display:inline-block;margin-top:12px;padding:10px 16px;background:#f97316;color:#ffffff;border-radius:6px;font-weight:600;text-decoration:none;">Responder observaciones</a>
+      </div>`
+    : "";
 
   return `
 <!DOCTYPE html>
@@ -99,6 +105,7 @@ export function generarEmailPermiso(
             <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Cargo</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${responsable.cargo}</td></tr>
             <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Email</td><td align="right" style="padding:12px 0;color:#2563eb;font-weight:700;border-bottom:1px solid #e2e8f0;">${responsable.email}</td></tr>
           </table>
+          ${bloqueRespuestaObservacion}
         </td></tr>
         <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;color:#64748b;font-size:12px;text-align:center;">Generado por NextPrev</td></tr>
       </table>
