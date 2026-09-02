@@ -17,6 +17,7 @@ import {
   type FilaNormalizada,
   type IncidenciaCarga,
 } from "@/lib/trabajadores/carga-masiva";
+import { leerMatrizXlsxSegura } from "@/lib/xlsx/secure-xlsx-reader";
 import { requirePermission } from "@/server/auth/permissions";
 
 const COLUMNAS = [
@@ -34,7 +35,10 @@ const COLUMNAS = [
   { campo: "estado", titulo: "Estado", aliases: ["estado"] },
 ] as const;
 
-const CAMPOS_OBLIGATORIOS = new Set(["rut", "nombres", "apellidos", "email", "fechaNacimiento", "fechaIngreso", "cargo", "area", "centroTrabajo", "tipoContrato"]);
+const CAMPOS_OBLIGATORIOS = new Set([
+  "rut", "nombres", "apellidos", "email", "fechaNacimiento", "fechaIngreso",
+  "cargo", "area", "centroTrabajo", "tipoContrato",
+]);
 
 export type ResumenValidacionCarga = {
   totalFilas: number;
@@ -79,23 +83,16 @@ async function cargarCatalogos(empresaId: string): Promise<CatalogosCarga> {
 
 async function leerFilas(file: File) {
   validarArchivo(file);
-  let workbook: XLSX.WorkBook;
+
+  let matriz: unknown[][];
   try {
-    workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
-  } catch {
-    throw new Error("No se pudo leer el Excel. Descarga una plantilla nueva y vuelve a intentarlo.");
-  }
-  const sheet = workbook.Sheets.Trabajadores;
-  if (!sheet) throw new Error('El archivo debe incluir una hoja llamada "Trabajadores".');
-
-  if (sheet["!ref"]) {
-    const range = XLSX.utils.decode_range(sheet["!ref"]);
-    if (range.e.r > MAX_FILAS_TRABAJADORES + 1) {
-      throw new Error("El archivo supera el máximo de 1.000 trabajadores.");
-    }
+    matriz = await leerMatrizXlsxSegura(await file.arrayBuffer(), "Trabajadores", MAX_FILAS_TRABAJADORES);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Trabajadores")) throw error;
+    console.warn("[carga-trabajadores] XLSX rechazado:", error instanceof Error ? error.message : "error desconocido");
+    throw new Error("No se pudo leer el Excel de forma segura. Descarga una plantilla nueva y vuelve a intentarlo.");
   }
 
-  const matriz = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: true });
   if (matriz.length === 0) throw new Error("La hoja Trabajadores está vacía.");
   const encabezados = matriz[0] ?? [];
   const indices = new Map<string, number>();
@@ -103,9 +100,12 @@ async function leerFilas(file: File) {
     const campo = campoDesdeEncabezado(value);
     if (campo) indices.set(campo, index);
   });
+
   const faltantes = [...CAMPOS_OBLIGATORIOS].filter((campo) => !indices.has(campo));
   if (faltantes.length > 0) {
-    const titulos = COLUMNAS.filter((columna) => faltantes.includes(columna.campo)).map((columna) => columna.titulo.replace(" *", ""));
+    const titulos = COLUMNAS
+      .filter((columna) => faltantes.includes(columna.campo))
+      .map((columna) => columna.titulo.replace(" *", ""));
     throw new Error(`Faltan columnas obligatorias: ${titulos.join(", ")}.`);
   }
 
@@ -117,12 +117,21 @@ async function leerFilas(file: File) {
     if (normalizarClave(valor("rut")) === "ejemplo no importar") continue;
     filas.push({
       fila: index + 1,
-      rut: valor("rut"), nombres: valor("nombres"), apellidos: valor("apellidos"),
-      email: valor("email"), telefono: valor("telefono"), fechaNacimiento: valor("fechaNacimiento"),
-      fechaIngreso: valor("fechaIngreso"), cargo: valor("cargo"), area: valor("area"),
-      centroTrabajo: valor("centroTrabajo"), tipoContrato: valor("tipoContrato"), estado: valor("estado"),
+      rut: valor("rut"),
+      nombres: valor("nombres"),
+      apellidos: valor("apellidos"),
+      email: valor("email"),
+      telefono: valor("telefono"),
+      fechaNacimiento: valor("fechaNacimiento"),
+      fechaIngreso: valor("fechaIngreso"),
+      cargo: valor("cargo"),
+      area: valor("area"),
+      centroTrabajo: valor("centroTrabajo"),
+      tipoContrato: valor("tipoContrato"),
+      estado: valor("estado"),
     });
   }
+
   if (filas.length === 0) throw new Error("No se encontraron trabajadores para validar. Elimina la fila de ejemplo y agrega al menos una fila.");
   if (filas.length > MAX_FILAS_TRABAJADORES) throw new Error("El archivo supera el máximo de 1.000 trabajadores.");
   return filas;
@@ -164,10 +173,15 @@ export async function descargarPlantillaTrabajadores() {
   const catalogos = await cargarCatalogos(empresaId);
   const workbook = XLSX.utils.book_new();
   const encabezados = COLUMNAS.map((columna) => columna.titulo);
-  const ejemplo = ["EJEMPLO NO IMPORTAR", "María", "González Soto", "maria@empresa.cl", "+56 9 1234 5678", "1990-05-20", "2026-01-15", catalogos.cargos[0]?.nombre ?? "Cargo existente", catalogos.areas[0]?.nombre ?? "Área existente", catalogos.centros[0]?.nombre ?? "Centro existente", "Indefinido", "Activo"];
+  const ejemplo = [
+    "EJEMPLO NO IMPORTAR", "María", "González Soto", "maria@empresa.cl", "+56 9 1234 5678",
+    "1990-05-20", "2026-01-15", catalogos.cargos[0]?.nombre ?? "Cargo existente",
+    catalogos.areas[0]?.nombre ?? "Área existente", catalogos.centros[0]?.nombre ?? "Centro existente",
+    "Indefinido", "Activo",
+  ];
   const trabajadores = XLSX.utils.aoa_to_sheet([encabezados, ejemplo]);
   trabajadores["!cols"] = [16, 20, 22, 28, 18, 20, 18, 24, 24, 28, 20, 16].map((wch) => ({ wch }));
-  trabajadores["!autofilter"] = { ref: `A1:L2` };
+  trabajadores["!autofilter"] = { ref: "A1:L2" };
 
   const instrucciones = XLSX.utils.aoa_to_sheet([
     ["Plantilla de carga masiva de trabajadores"],
@@ -179,15 +193,34 @@ export async function descargarPlantillaTrabajadores() {
     ["La carga se realizará únicamente si no existen errores bloqueantes."],
   ]);
   instrucciones["!cols"] = [{ wch: 100 }];
-  const max = Math.max(catalogos.cargos.length, catalogos.areas.length, catalogos.centros.length, TIPOS_CONTRATO.length, ESTADOS_TRABAJADOR.length);
+
+  const max = Math.max(
+    catalogos.cargos.length,
+    catalogos.areas.length,
+    catalogos.centros.length,
+    TIPOS_CONTRATO.length,
+    ESTADOS_TRABAJADOR.length,
+  );
   const catalogRows = [["Cargos", "Áreas", "Centros de trabajo", "Tipos de contrato", "Estados"]];
-  for (let i = 0; i < max; i += 1) catalogRows.push([catalogos.cargos[i]?.nombre ?? "", catalogos.areas[i]?.nombre ?? "", catalogos.centros[i]?.nombre ?? "", TIPOS_CONTRATO[i] ?? "", ESTADOS_TRABAJADOR[i] ?? ""]);
+  for (let i = 0; i < max; i += 1) {
+    catalogRows.push([
+      catalogos.cargos[i]?.nombre ?? "",
+      catalogos.areas[i]?.nombre ?? "",
+      catalogos.centros[i]?.nombre ?? "",
+      TIPOS_CONTRATO[i] ?? "",
+      ESTADOS_TRABAJADOR[i] ?? "",
+    ]);
+  }
   const catalogosSheet = XLSX.utils.aoa_to_sheet(catalogRows);
   catalogosSheet["!cols"] = [{ wch: 30 }, { wch: 30 }, { wch: 36 }, { wch: 24 }, { wch: 18 }];
+
   XLSX.utils.book_append_sheet(workbook, trabajadores, "Trabajadores");
   XLSX.utils.book_append_sheet(workbook, instrucciones, "Instrucciones");
   XLSX.utils.book_append_sheet(workbook, catalogosSheet, "Catalogos");
-  return { nombre: "plantilla-carga-trabajadores.xlsx", base64: XLSX.write(workbook, { type: "base64", bookType: "xlsx" }) as string };
+  return {
+    nombre: "plantilla-carga-trabajadores.xlsx",
+    base64: XLSX.write(workbook, { type: "base64", bookType: "xlsx" }) as string,
+  };
 }
 
 const estadoDb = (estado: FilaNormalizada["estado"]) => estado.toLowerCase();
@@ -195,7 +228,9 @@ const estadoDb = (estado: FilaNormalizada["estado"]) => estado.toLowerCase();
 export async function importarArchivoTrabajadores(formData: FormData): Promise<ResultadoImportacionCarga> {
   const { empresaId, usuarioId, email } = await requirePermission("canCreateTrabajador");
   const analisis = await analizar(archivoDesdeFormData(formData), empresaId);
-  if (!analisis.resumen.puedeImportar) throw new Error("El archivo cambió o contiene errores. Vuelve a validarlo antes de importar.");
+  if (!analisis.resumen.puedeImportar) {
+    throw new Error("El archivo cambió o contiene errores. Vuelve a validarlo antes de importar.");
+  }
 
   const cargos = new Map(analisis.catalogos.cargos.map((item) => [normalizarClave(item.nombre), item]));
   const areas = new Map(analisis.catalogos.areas.map((item) => [normalizarClave(item.nombre), item]));
@@ -224,9 +259,7 @@ export async function importarArchivoTrabajadores(formData: FormData): Promise<R
   const posicionPorCombinacion = new Map<string, string>();
   for (const posicion of posicionesActivas) {
     const key = `${posicion.cargoId}::${posicion.centroTrabajoId}`;
-    if (combinaciones.has(key) && !posicionPorCombinacion.has(key)) {
-      posicionPorCombinacion.set(key, posicion.id);
-    }
+    if (combinaciones.has(key) && !posicionPorCombinacion.has(key)) posicionPorCombinacion.set(key, posicion.id);
   }
 
   const data = analisis.filas.map((fila) => {
@@ -234,7 +267,6 @@ export async function importarArchivoTrabajadores(formData: FormData): Promise<R
     const area = areas.get(normalizarClave(fila.area))!;
     const centro = centros.get(normalizarClave(fila.centroTrabajo))!;
     const posicionKey = `${cargo.id}::${centro.id}`;
-
     return {
       empresaId,
       rut: fila.rut,
@@ -270,7 +302,13 @@ export async function importarArchivoTrabajadores(formData: FormData): Promise<R
   const trabajadoresParaEvaluar = creados.slice(0, LIMITE_EVALUACION_DOCUMENTAL);
   for (const trabajador of trabajadoresParaEvaluar) {
     try {
-      await evaluarDocumentosPendientesPorEvento({ empresaId, evento: "trabajador_creado", trabajadorId: trabajador.id, usuarioId, email });
+      await evaluarDocumentosPendientesPorEvento({
+        empresaId,
+        evento: "trabajador_creado",
+        trabajadorId: trabajador.id,
+        usuarioId,
+        email,
+      });
       documentosEvaluados += 1;
     } catch (error) {
       console.error("No se pudo evaluar documentación del trabajador importado:", error);
