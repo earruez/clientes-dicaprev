@@ -1,4 +1,4 @@
-CREATE TABLE "AuthRateLimit" (
+CREATE TABLE IF NOT EXISTS "AuthRateLimit" (
     "key" TEXT NOT NULL,
     "count" INTEGER NOT NULL DEFAULT 0,
     "windowStart" TIMESTAMP(3) NOT NULL,
@@ -8,5 +8,5 @@ CREATE TABLE "AuthRateLimit" (
     CONSTRAINT "AuthRateLimit_pkey" PRIMARY KEY ("key")
 );
 
-CREATE INDEX "AuthRateLimit_blockedUntil_idx" ON "AuthRateLimit"("blockedUntil");
-CREATE INDEX "AuthRateLimit_updatedAt_idx" ON "AuthRateLimit"("updatedAt");
+CREATE INDEX IF NOT EXISTS "AuthRateLimit_blockedUntil_idx" ON "AuthRateLimit"("blockedUntil");
+CREATE INDEX IF NOT EXISTS "AuthRateLimit_updatedAt_idx" ON "AuthRateLimit"("updatedAt");
