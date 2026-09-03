@@ -170,9 +170,9 @@ export default function LoginPage() {
                   />
                   Recordarme
                 </label>
-                <button type="button" className="text-slate-400 transition hover:text-emerald-400">
+                <a href="/recuperar-contrasena" className="text-slate-400 transition hover:text-emerald-400">
                   ¿Olvidaste tu contraseña?
-                </button>
+                </a>
               </div>
 
               {/* Error */}
