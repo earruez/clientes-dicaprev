@@ -2,22 +2,16 @@ function envolverCorreo(titulo: string, contenido: string): string {
   return `
 <!DOCTYPE html>
 <html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
 <body style="margin:0;background:#f1f5f9;color:#172033;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:32px 16px;background:#f1f5f9;">
     <tr><td align="center">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#ffffff;border:1px solid #dbe3ee;border-radius:12px;overflow:hidden;">
         <tr><td style="padding:28px 32px;background:#0f2747;">
-          <div style="color:#ffffff;font-size:22px;font-weight:800;letter-spacing:0;">NEXTPREV</div>
-          <div style="margin-top:5px;color:#bfdbfe;font-size:12px;font-weight:600;letter-spacing:0;">SEGURIDAD Y CUMPLIMIENTO</div>
+          <div style="color:#ffffff;font-size:22px;font-weight:800;">NEXTPREV</div>
+          <div style="margin-top:5px;color:#bfdbfe;font-size:12px;font-weight:600;">SEGURIDAD Y CUMPLIMIENTO</div>
         </td></tr>
-        <tr><td style="padding:32px;">
-          <h1 style="margin:0 0 16px;color:#172033;font-size:22px;line-height:1.3;">${titulo}</h1>
-          ${contenido}
-        </td></tr>
+        <tr><td style="padding:32px;"><h1 style="margin:0 0 16px;color:#172033;font-size:22px;line-height:1.3;">${titulo}</h1>${contenido}</td></tr>
         <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;color:#64748b;font-size:12px;text-align:center;">Generado por NextPrev</td></tr>
       </table>
     </td></tr>

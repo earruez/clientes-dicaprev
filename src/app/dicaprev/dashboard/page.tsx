@@ -4,11 +4,10 @@ import DashboardClient from "./_client";
 import { getDashboardEjecutivo } from "./actions";
 
 export const metadata = {
-  title: "Dashboard - DICAPREV",
-  description: "Panel de control de DICAPREV",
+  title: "Dashboard - NextPrev",
+  description: "Panel de control de NextPrev",
 };
 
-// Loading skeleton while fetching data
 function DashboardLoading() {
   return (
     <div className="space-y-6">

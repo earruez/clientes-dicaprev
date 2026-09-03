@@ -22,12 +22,10 @@ export default function RecuperarContraseñaPage() {
         body: JSON.stringify({ email }),
       });
       const data = await response.json() as { error?: string };
-
       if (!response.ok) {
         setError(data.error || "No fue posible procesar la solicitud.");
         return;
       }
-
       setEnviado(true);
     } catch {
       setError("No fue posible procesar la solicitud. Intenta nuevamente.");
@@ -46,18 +44,14 @@ export default function RecuperarContraseñaPage() {
           <h1 className="text-2xl font-bold text-white">NEXTPREV</h1>
           <p className="mt-1 text-sm text-blue-100">Recuperar contraseña</p>
         </div>
-
         <div className="p-7">
           {enviado ? (
             <div className="text-center">
               <CheckCircle2 className="mx-auto h-11 w-11 text-emerald-600" />
               <h2 className="mt-4 text-xl font-bold text-slate-900">Revisa tu correo</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
-                Si existe una cuenta activa con ese correo, recibirás un enlace para restablecer tu contraseña.
-              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Si existe una cuenta activa con ese correo, recibirás un enlace para restablecer tu contraseña.</p>
               <Link href="/login" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline">
-                <ArrowLeft className="h-4 w-4" />
-                Volver al inicio de sesión
+                <ArrowLeft className="h-4 w-4" /> Volver al inicio de sesión
               </Link>
             </div>
           ) : (
@@ -67,15 +61,7 @@ export default function RecuperarContraseñaPage() {
               <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="Correo electrónico"
-                    required
-                    autoComplete="email"
-                    className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                  />
+                  <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Correo electrónico" required autoComplete="email" className="w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100" />
                 </div>
                 {error && <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
                 <button type="submit" disabled={loading} className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60">
@@ -84,8 +70,7 @@ export default function RecuperarContraseñaPage() {
                 </button>
               </form>
               <Link href="/login" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:underline">
-                <ArrowLeft className="h-4 w-4" />
-                Volver al inicio de sesión
+                <ArrowLeft className="h-4 w-4" /> Volver al inicio de sesión
               </Link>
             </>
           )}
