@@ -15,6 +15,38 @@ type RateLimitRow = {
   blockedUntil: Date | null;
 };
 
+let authRateLimitSchemaReady: Promise<void> | null = null;
+
+async function ensureAuthRateLimitSchema(): Promise<void> {
+  if (!authRateLimitSchemaReady) {
+    authRateLimitSchemaReady = (async () => {
+      await prisma.$executeRaw(Prisma.sql`
+        CREATE TABLE IF NOT EXISTS "AuthRateLimit" (
+          "key" TEXT NOT NULL,
+          "count" INTEGER NOT NULL DEFAULT 0,
+          "windowStart" TIMESTAMP(3) NOT NULL,
+          "blockedUntil" TIMESTAMP(3),
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "AuthRateLimit_pkey" PRIMARY KEY ("key")
+        )
+      `);
+      await prisma.$executeRaw(Prisma.sql`
+        CREATE INDEX IF NOT EXISTS "AuthRateLimit_blockedUntil_idx"
+        ON "AuthRateLimit"("blockedUntil")
+      `);
+      await prisma.$executeRaw(Prisma.sql`
+        CREATE INDEX IF NOT EXISTS "AuthRateLimit_updatedAt_idx"
+        ON "AuthRateLimit"("updatedAt")
+      `);
+    })().catch((error) => {
+      authRateLimitSchemaReady = null;
+      throw error;
+    });
+  }
+
+  await authRateLimitSchemaReady;
+}
+
 export function authRateLimitKey(scope: string, identifier: string): string {
   return createHash("sha256")
     .update(`${scope}:${identifier.trim().toLowerCase()}`)
@@ -22,6 +54,7 @@ export function authRateLimitKey(scope: string, identifier: string): string {
 }
 
 export async function consumeAuthRateLimit(key: string, config: RateLimitConfig): Promise<{ limited: boolean; retryAfterSeconds: number }> {
+  await ensureAuthRateLimitSchema();
   const now = new Date();
 
   return prisma.$transaction(async (tx) => {
@@ -76,5 +109,6 @@ export async function consumeAuthRateLimit(key: string, config: RateLimitConfig)
 }
 
 export async function clearAuthRateLimit(key: string): Promise<void> {
+  await ensureAuthRateLimitSchema();
   await prisma.$executeRaw(Prisma.sql`DELETE FROM "AuthRateLimit" WHERE "key" = ${key}`);
 }
