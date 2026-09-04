@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Pencil, X } from "lucide-react";
 import {
   createEmpresaAction,
   eliminarEmpresaDefinitivamenteAction,
@@ -15,6 +15,7 @@ import {
   toggleUsuarioActivoAction,
   toggleUsuarioEmpresaActivoAction,
   updateEmpresaAction,
+  updateUsuarioAction,
   upsertUsuarioEmpresaAction,
   type SuperadminData,
 } from "./actions";
@@ -68,6 +69,9 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteTargetEmpresaId, setDeleteTargetEmpresaId] = useState<string>("");
+  const [editingUsuarioId, setEditingUsuarioId] = useState<string | null>(null);
+  const [editingUsuarioNombre, setEditingUsuarioNombre] = useState("");
+  const [editingUsuarioEmail, setEditingUsuarioEmail] = useState("");
 
   // Form refs para limpiar después de Submit
   const createEmpresaFormRef = useRef<HTMLFormElement>(null);
@@ -357,6 +361,39 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
       },
       true
     );
+  };
+
+  const startEditingUsuario = (usuario: SuperadminData["usuarios"][0]) => {
+    setEditingUsuarioId(usuario.id);
+    setEditingUsuarioNombre(usuario.nombre);
+    setEditingUsuarioEmail(usuario.email);
+  };
+
+  const cancelEditingUsuario = () => {
+    setEditingUsuarioId(null);
+    setEditingUsuarioNombre("");
+    setEditingUsuarioEmail("");
+  };
+
+  const handleUpdateUsuario = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingUsuarioId) return;
+
+    const formData = new FormData();
+    formData.set("usuarioId", editingUsuarioId);
+    formData.set("nombre", editingUsuarioNombre);
+    formData.set("email", editingUsuarioEmail);
+
+    startTransition(async () => {
+      const result = await updateUsuarioAction(formData);
+      if (!result.ok) {
+        addMessage("error", result.error);
+        return;
+      }
+      addMessage("success", "Usuario actualizado correctamente");
+      cancelEditingUsuario();
+      router.refresh();
+    });
   };
 
   // ==================== USUARIO-EMPRESA ====================
@@ -736,20 +773,30 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
               const resetLink = `${appUrl}/login?mode=reset&email=${encodeURIComponent(usuario.email)}`;
               return (
                 <div key={usuario.id} className="rounded-lg border border-slate-200 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{usuario.nombre}</p>
-                      <p className="text-xs text-slate-500">{usuario.email}</p>
-                      <p className="text-xs text-slate-500">Rol global: {usuario.rol}</p>
+                  {editingUsuarioId === usuario.id ? (
+                    <form onSubmit={handleUpdateUsuario} className="grid gap-2 md:grid-cols-[1fr_1fr_auto_auto]">
+                      <input value={editingUsuarioNombre} onChange={(event) => setEditingUsuarioNombre(event.target.value)} disabled={isLoading} className="rounded-md border border-slate-300 px-3 py-2 text-sm" aria-label="Nombre del usuario" />
+                      <input type="email" value={editingUsuarioEmail} onChange={(event) => setEditingUsuarioEmail(event.target.value)} disabled={isLoading} className="rounded-md border border-slate-300 px-3 py-2 text-sm" aria-label="Correo del usuario" />
+                      <button type="submit" disabled={isLoading} className="rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Guardar</button>
+                      <button type="button" onClick={cancelEditingUsuario} disabled={isLoading} className="rounded-md border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700">Cancelar</button>
+                    </form>
+                  ) : (
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{usuario.nombre}</p>
+                        <p className="text-xs text-slate-500">{usuario.email}</p>
+                        <p className="text-xs text-slate-500">Rol global: {usuario.rol}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => startEditingUsuario(usuario)} disabled={isLoading} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                          <Pencil className="h-3 w-3" /> Editar
+                        </button>
+                        <button onClick={() => handleToggleUsuarioActivo(usuario)} disabled={isLoading} className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                          {usuario.activo ? "Desactivar" : "Activar"}
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      onClick={() => handleToggleUsuarioActivo(usuario)}
-                      disabled={isLoading}
-                      className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                    >
-                      {usuario.activo ? "Desactivar" : "Activar"}
-                    </button>
-                  </div>
+                  )}
                   <div className="mt-2 grid gap-1 text-xs text-slate-500">
                     <p>Invitación: {inviteLink}</p>
                     <p>Reset: {resetLink}</p>

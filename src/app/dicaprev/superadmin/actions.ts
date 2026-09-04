@@ -777,6 +777,36 @@ export async function toggleUsuarioActivoAction(formData: FormData): Promise<{ o
   }
 }
 
+export async function updateUsuarioAction(formData: FormData): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireRole("SUPERADMIN");
+
+    const usuarioId = parseString(formData, "usuarioId");
+    const nombre = parseString(formData, "nombre");
+    const email = parseString(formData, "email").toLowerCase();
+
+    if (!usuarioId) return { ok: false, error: "Usuario es requerido" };
+    if (nombre.length < 2) return { ok: false, error: "El nombre debe tener al menos 2 caracteres" };
+    if (!email || !email.includes("@")) return { ok: false, error: "Email válido es requerido" };
+
+    const usuario = await prisma.usuario.findUnique({ where: { id: usuarioId }, select: { id: true } });
+    if (!usuario) return { ok: false, error: "Usuario no encontrado" };
+
+    const duplicado = await prisma.usuario.findFirst({
+      where: { email: { equals: email, mode: "insensitive" }, NOT: { id: usuarioId } },
+      select: { id: true },
+    });
+    if (duplicado) return { ok: false, error: "Ya existe otro usuario con ese correo" };
+
+    await prisma.usuario.update({ where: { id: usuarioId }, data: { nombre, email } });
+    revalidatePath("/dicaprev/superadmin");
+    return { ok: true };
+  } catch (error) {
+    console.error("Error al editar usuario:", error);
+    return { ok: false, error: "No fue posible editar el usuario" };
+  }
+}
+
 export async function upsertUsuarioEmpresaAction(formData: FormData) {
   await requireRole("SUPERADMIN");
 
