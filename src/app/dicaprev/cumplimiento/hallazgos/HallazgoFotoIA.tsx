@@ -116,7 +116,18 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     if (!open || loadedDraftKey === draftKey || typeof window === "undefined") return;
 
     // Al cambiar de empresa no se reutiliza estado de la empresa anterior.
-    resetFlow(false);
+    setArchivos([]);
+    setCentroTrabajoId("");
+    setAreaId("");
+    setObservacion("");
+    setSugerencias([]);
+    setSugerenciasSeleccionadas(new Set());
+    setError(null);
+    setConfirmingKey(null);
+    setConfirmingBatch(false);
+    setProcesandoIndex(-1);
+    setFotoPreview(null);
+    setDraftRecovered(false);
 
     try {
       const raw = window.sessionStorage.getItem(draftKey);
