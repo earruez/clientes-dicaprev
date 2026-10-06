@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertTriangle,
+  ArrowLeft,
+  Building2,
   CalendarDays,
   CheckCircle2,
   ChevronRight,
@@ -30,11 +32,16 @@ import {
   Download,
   Eye,
   File,
+  ImageIcon,
+  Layers3,
   Plus,
   Search,
   Sparkles,
   User,
   FileText,
+  Save,
+  Upload,
+  X,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
@@ -1502,265 +1509,434 @@ export default function HallazgosClient({
           setCierreError(null);
         }
       }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle>Detalle del hallazgo</DialogTitle>
-              <div className="flex items-center gap-2">
-                {selected && selected.estado !== "cerrado" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={descargarPDFHallazgo}
-                    className="gap-2"
-                  >
-                    <Download className="h-4 w-4" />
-                    Descargar PDF
-                  </Button>
-                )}
-                {selected && opciones.puedeEditar ? (
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => void onEliminar(selected)}
-                    disabled={saving}
-                  >
-                    Eliminar hallazgo
-                  </Button>
-                ) : null}
+        <DialogContent
+          withClose={false}
+          className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-auto sm:max-h-[92vh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
+        >
+          <div className="flex h-full min-h-0 flex-col">
+            <header className="shrink-0 border-b border-slate-800/90 bg-[#071225]/95 px-4 pb-3 pt-[max(0.9rem,env(safe-area-inset-top))] backdrop-blur sm:px-6 sm:pt-5">
+              <div className="grid grid-cols-[44px_1fr_44px] items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700"
+                  aria-label="Volver"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                </button>
+                <p className="truncate text-center text-[17px] font-semibold tracking-tight text-white">Hallazgo</p>
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700"
+                  aria-label="Cerrar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-            </div>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto">
-            {selected ? (
-              <div className="space-y-3 text-sm px-6 pr-4">
-              <p className="font-medium text-slate-900">{selected.descripcion}</p>
-              <div className="grid grid-cols-2 gap-2 text-slate-600">
-                <div className="flex items-center gap-1"><User className="h-3.5 w-3.5" /> {selected.trabajadorNombre ?? "No asociado"}</div>
-                <div className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> {fmtFecha(selected.fechaCompromiso)}</div>
-                <div>Centro: {selected.centroNombre}</div>
-                <div>Obligación: {selected.obligacionClave ? (obligacionesMap.get(selected.obligacionClave) ?? selected.obligacionClave) : "Sin asociar"}</div>
-                <div className="col-span-2">Responsable actual: {selected.responsableNombre ?? detalle?.responsable?.nombre ?? "Por asignar"}</div>
-              </div>
+            </header>
 
-              {opciones.puedeEditar && selected.estado !== "cerrado" ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Responsable del hallazgo</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div className="space-y-1">
-                      <Label>Área de referencia</Label>
-                      <Select value={detalleAreaId || "todas"} onValueChange={(value) => setDetalleAreaId(value === "todas" ? "" : value)}>
-                        <SelectTrigger><SelectValue placeholder="Todas las áreas" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="todas">Todas las áreas</SelectItem>
-                          {opciones.areas.map((area) => (
-                            <SelectItem key={area.id} value={area.id}>{area.nombre}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Responsable</Label>
-                      <Select value={detalleResponsableId} onValueChange={setDetalleResponsableId}>
-                        <SelectTrigger><SelectValue placeholder="Seleccionar responsable" /></SelectTrigger>
-                        <SelectContent>
-                          {responsablesDetalle.length === 0 ? (
-                            <SelectItem value="none">Sin personal disponible</SelectItem>
-                          ) : (
-                            responsablesDetalle.map((trabajador) => (
-                              <SelectItem key={trabajador.id} value={trabajador.id}>
-                                {trabajador.nombreCompleto}{trabajador.cargoNombre ? ` · ${trabajador.cargoNombre}` : ""}
-                              </SelectItem>
-                            ))
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void onActualizarResponsable(selected)}
-                    disabled={saving || detalleResponsableId === "none"}
-                  >
-                    Guardar responsable
-                  </Button>
-                </div>
-              ) : null}
-
-              {detalleLoading ? (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600">
-                  Cargando evidencias y medida correctiva...
-                </div>
-              ) : null}
-
-              {detalleError ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-rose-700">
-                  {detalleError}
-                </div>
-              ) : null}
-
-              {detalle?.medidasCorrectivas?.length ? (
-                <div className="rounded-lg border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Medidas correctivas</p>
-                  <div className="mt-2 space-y-2">
-                    {detalle.medidasCorrectivas.map((medida) => (
-                      <div key={medida.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <p className="text-slate-700">{medida.descripcion}</p>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-600">
-                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Responsable: {medida.responsable}</span>
-                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Compromiso: {fmtFecha(medida.fechaCompromiso)}</span>
-                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Estado: {medida.estado}</span>
-                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">Evidencia cierre: {medida.evidenciaCierre ? "Sí" : "No"}</span>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+              {selected ? (
+                <div className="mx-auto max-w-xl space-y-4">
+                  <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl",
+                          selected.prioridad === "critica" || selected.prioridad === "alta"
+                            ? "bg-rose-400/10 text-rose-300"
+                            : selected.prioridad === "media"
+                              ? "bg-amber-400/10 text-amber-300"
+                              : "bg-sky-400/10 text-sky-300",
+                        )}
+                      >
+                        <AlertTriangle className="h-6 w-6" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h2 className="text-lg font-semibold leading-6 text-white">
+                          {selected.descripcion.split(".")[0] || "Detalle del hallazgo"}
+                        </h2>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/10 px-2.5 py-1 text-xs font-medium text-amber-200">
+                            <Clock className="h-3.5 w-3.5" />
+                            {ESTADO_CFG[selected.estado]?.label ?? selected.estado}
+                          </span>
+                          <span
+                            className={cn(
+                              "rounded-full px-2.5 py-1 text-xs font-medium",
+                              selected.prioridad === "critica" || selected.prioridad === "alta"
+                                ? "bg-rose-400/10 text-rose-200"
+                                : selected.prioridad === "media"
+                                  ? "bg-amber-400/10 text-amber-200"
+                                  : "bg-sky-400/10 text-sky-200",
+                            )}
+                          >
+                            {PRIORIDAD_CFG[selected.prioridad]?.label ?? selected.prioridad}
+                          </span>
                         </div>
-                        {opciones.puedeEditar && selected?.estado !== "cerrado" ? (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            <Select
-                              value={medida.estado}
-                              onValueChange={(v) => void onActualizarEstadoMedida(selected.id, medida.id, v as "pendiente" | "en_proceso" | "completada" | "descartada")}
-                            >
-                              <SelectTrigger className="h-8 w-40 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pendiente">pendiente</SelectItem>
-                                <SelectItem value="en_proceso">en_proceso</SelectItem>
-                                <SelectItem value="completada">completada</SelectItem>
-                                <SelectItem value="descartada">descartada</SelectItem>
-                              </SelectContent>
-                            </Select>
+                        <p className="mt-3 text-sm leading-5 text-slate-400">{selected.descripcion}</p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h3 className="text-base font-semibold text-white">Información general</h3>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={descargarPDFHallazgo}
+                        className="h-9 gap-2 px-2 text-slate-300 hover:bg-slate-800 hover:text-white"
+                      >
+                        <Download className="h-4 w-4" />
+                        PDF
+                      </Button>
+                    </div>
+                    <div className="divide-y divide-slate-800">
+                      <div className="flex items-center justify-between gap-4 py-2.5">
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <Building2 className="h-4 w-4" />
+                          Centro de trabajo
+                        </div>
+                        <span className="text-right text-sm font-medium text-slate-100">{selected.centroNombre}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 py-2.5">
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <Layers3 className="h-4 w-4" />
+                          Área
+                        </div>
+                        <span className="text-right text-sm font-medium text-slate-100">
+                          {opciones.areas.find((area) => area.id === detalleAreaId)?.nombre ?? "Sin área"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 py-2.5">
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <User className="h-4 w-4" />
+                          Responsable
+                        </div>
+                        <span className="max-w-[55%] text-right text-sm font-medium text-slate-100">
+                          {selected.responsableNombre ?? detalle?.responsable?.nombre ?? "Por asignar"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 py-2.5">
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <CalendarDays className="h-4 w-4" />
+                          Compromiso
+                        </div>
+                        <span className="text-right text-sm font-medium text-slate-100">{fmtFecha(selected.fechaCompromiso)}</span>
+                      </div>
+                    </div>
+                  </section>
+
+                  {opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                    <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
+                      <h3 className="mb-3 text-base font-semibold text-white">Responsable del hallazgo</h3>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-sm text-slate-300">Área de referencia</Label>
+                          <Select value={detalleAreaId || "todas"} onValueChange={(value) => setDetalleAreaId(value === "todas" ? "" : value)}>
+                            <SelectTrigger className="h-11 border-slate-600 bg-slate-950/50 text-white">
+                              <SelectValue placeholder="Todas las áreas" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todas">Todas las áreas</SelectItem>
+                              {opciones.areas.map((area) => (
+                                <SelectItem key={area.id} value={area.id}>{area.nombre}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-sm text-slate-300">Responsable</Label>
+                          <Select value={detalleResponsableId} onValueChange={setDetalleResponsableId}>
+                            <SelectTrigger className="h-11 border-slate-600 bg-slate-950/50 text-white">
+                              <SelectValue placeholder="Seleccionar responsable" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {responsablesDetalle.length === 0 ? (
+                                <SelectItem value="none">Sin personal disponible</SelectItem>
+                              ) : (
+                                responsablesDetalle.map((trabajador) => (
+                                  <SelectItem key={trabajador.id} value={trabajador.id}>
+                                    {trabajador.nombreCompleto}{trabajador.cargoNombre ? ` · ${trabajador.cargoNombre}` : ""}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void onActualizarResponsable(selected)}
+                        disabled={saving || detalleResponsableId === "none"}
+                        className="mt-3 border-slate-600 bg-transparent text-slate-100 hover:bg-slate-800 hover:text-white"
+                      >
+                        Guardar responsable
+                      </Button>
+                    </section>
+                  ) : null}
+
+                  {detalleLoading ? (
+                    <div className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-3 text-sm text-sky-200">
+                      Cargando evidencias y medidas correctivas...
+                    </div>
+                  ) : null}
+
+                  {detalleError ? (
+                    <div className="rounded-xl border border-rose-400/20 bg-rose-400/10 p-3 text-sm text-rose-200">
+                      {detalleError}
+                    </div>
+                  ) : null}
+
+                  <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
+                    <h3 className="mb-3 text-base font-semibold text-white">Medidas correctivas</h3>
+                    {detalle?.medidasCorrectivas?.length ? (
+                      <div className="space-y-3">
+                        {detalle.medidasCorrectivas.map((medida) => (
+                          <div key={medida.id} className="rounded-xl border border-slate-700 bg-slate-950/35 p-3">
+                            <p className="text-sm leading-5 text-slate-200">{medida.descripcion}</p>
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              <span className="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-300">
+                                {medida.estado}
+                              </span>
+                              <span className="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-300">
+                                {fmtFecha(medida.fechaCompromiso)}
+                              </span>
+                            </div>
+                            {opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                                <Select
+                                  value={medida.estado}
+                                  onValueChange={(v) => void onActualizarEstadoMedida(selected.id, medida.id, v as "pendiente" | "en_proceso" | "completada" | "descartada")}
+                                >
+                                  <SelectTrigger className="h-10 border-slate-600 bg-slate-900 text-xs text-white">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="pendiente">Pendiente</SelectItem>
+                                    <SelectItem value="en_proceso">En proceso</SelectItem>
+                                    <SelectItem value="completada">Completada</SelectItem>
+                                    <SelectItem value="descartada">Descartada</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void onMarcarMedidaCompletada(selected.id, medida.id)}
+                                  disabled={saving || medida.estado === "completada"}
+                                  className="h-10 border-slate-600 bg-transparent text-xs text-slate-100 hover:bg-slate-800 hover:text-white"
+                                >
+                                  Marcar completada
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-700 bg-slate-950/35 p-3">
+                        <p className="text-sm text-slate-400">Sin medida correctiva registrada.</p>
+                        {opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                          <div className="mt-3 space-y-2">
+                            <Textarea
+                              rows={3}
+                              value={medidaCorrectivaTexto}
+                              onChange={(e) => setMedidaCorrectivaTexto(e.target.value)}
+                              placeholder="Describe la medida correctiva"
+                              className="resize-none border-slate-600 bg-slate-900 text-white placeholder:text-slate-500"
+                            />
                             <Button
                               size="sm"
-                              variant="outline"
-                              onClick={() => void onMarcarMedidaCompletada(selected.id, medida.id)}
-                              disabled={saving || medida.estado === "completada"}
+                              onClick={() => void onRegistrarMedidaCorrectiva(selected.id)}
+                              disabled={saving || !medidaCorrectivaTexto.trim()}
+                              className="bg-emerald-500 text-white hover:bg-emerald-600"
                             >
-                              Marcar medida como completada
+                              Registrar medida
                             </Button>
                           </div>
                         ) : null}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600 space-y-2">
-                  <p>Sin medida correctiva registrada. Pendiente de definir.</p>
-                  {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
-                    <>
-                      <Textarea
-                        rows={3}
-                        value={medidaCorrectivaTexto}
-                        onChange={(e) => setMedidaCorrectivaTexto(e.target.value)}
-                        placeholder="Describe la medida correctiva para gestionar el cierre del hallazgo"
-                      />
+                    )}
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
+                    <h3 className="mb-3 text-base font-semibold text-white">Evidencias asociadas</h3>
+                    {detalle?.evidencias.length ? (
+                      <div className="space-y-3">
+                        {detalle.evidencias.map((ev) => (
+                          <div key={ev.id} className="flex gap-3 rounded-xl border border-slate-700 bg-slate-950/35 p-3">
+                            {ev.archivoUrl ? (
+                              <a
+                                href={ev.archivoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-slate-700 bg-slate-800"
+                              >
+                                <img
+                                  src={ev.archivoUrl}
+                                  alt={ev.archivoNombre ?? ev.titulo}
+                                  className="h-full w-full object-cover"
+                                  onError={(event) => {
+                                    event.currentTarget.style.display = "none";
+                                  }}
+                                />
+                              </a>
+                            ) : (
+                              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-slate-400">
+                                <FileText className="h-5 w-5" />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold leading-5 text-white">{ev.titulo}</p>
+                              <p className="mt-1 text-xs leading-4 text-slate-400">
+                                Tipo: {ev.tipo} · Estado: {ev.estado}
+                              </p>
+                              <p className="text-xs text-slate-500">Fecha: {fmtFecha(ev.fechaEvidencia)}</p>
+                              {ev.archivoUrl ? (
+                                <a
+                                  href={ev.archivoUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300"
+                                >
+                                  <ImageIcon className="h-4 w-4" />
+                                  Ver imagen
+                                </a>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-700 bg-slate-950/35 p-3 text-sm text-slate-400">
+                        Sin evidencias asociadas.
+                      </div>
+                    )}
+                  </section>
+
+                  {opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                    <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
+                      <h3 className="mb-3 text-base font-semibold text-white">Evidencia de cierre</h3>
+                      <div className="space-y-3">
+                        <Textarea
+                          rows={4}
+                          maxLength={500}
+                          value={evidenciaCierreTexto}
+                          onChange={(e) => setEvidenciaCierreTexto(e.target.value)}
+                          placeholder="Describe la evidencia de cierre asociada a la medida correctiva..."
+                          className="min-h-[110px] resize-none border-slate-600 bg-slate-950/50 text-white placeholder:text-slate-500"
+                        />
+
+                        <label
+                          htmlFor="cierre-archivo"
+                          className="flex min-h-20 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-600 bg-slate-950/35 px-4 py-3 transition hover:border-emerald-400/60"
+                        >
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
+                            <Upload className="h-5 w-5" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-slate-100">
+                              {evidenciaCierreArchivo ? evidenciaCierreArchivo.name : "Seleccionar archivo"}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500">PDF, DOC, DOCX, JPG, PNG o XLSX · máx. 10 MB</p>
+                          </div>
+                        </label>
+                        <input
+                          id="cierre-archivo"
+                          type="file"
+                          onChange={(e) => setEvidenciaCierreArchivo(e.target.files?.[0] ?? null)}
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx"
+                        />
+
+                        <div className="space-y-1.5">
+                          <Label className="text-sm text-slate-300">Comentario de cierre</Label>
+                          <Textarea
+                            rows={3}
+                            value={comentarioCierre}
+                            onChange={(e) => setComentarioCierre(e.target.value)}
+                            placeholder="Describe la gestión realizada para cerrar el hallazgo"
+                            className="resize-none border-slate-600 bg-slate-950/50 text-white placeholder:text-slate-500"
+                          />
+                        </div>
+                      </div>
+
+                      {cierreError ? (
+                        <div className="mt-3 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm text-rose-200">
+                          {cierreError}
+                        </div>
+                      ) : null}
+                    </section>
+                  ) : null}
+
+                  {opciones.puedeEditar ? (
+                    <div className="flex items-center justify-between gap-3 px-1 pb-2">
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => void onRegistrarMedidaCorrectiva(selected.id)}
-                        disabled={saving || !medidaCorrectivaTexto.trim()}
+                        variant="ghost"
+                        onClick={() => openEdit(selected)}
+                        className="text-slate-300 hover:bg-slate-800 hover:text-white"
                       >
-                        Registrar medida correctiva
+                        Editar hallazgo
                       </Button>
-                    </>
-                  ) : null}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Evidencias asociadas</p>
-                {detalle?.evidencias.length ? (
-                  <div className="space-y-2">
-                    {detalle.evidencias.map((ev) => (
-                      <div key={ev.id} className="rounded-lg border border-slate-200 bg-white p-2">
-                        <p className="text-sm font-medium text-slate-900">{ev.titulo}</p>
-                        <p className="text-xs text-slate-500">Tipo: {ev.tipo} · Estado: {ev.estado} · Fecha: {fmtFecha(ev.fechaEvidencia)}</p>
-                        {ev.observacion ? <p className="mt-1 text-sm text-slate-700">{ev.observacion}</p> : null}
-                        {ev.archivoUrl ? (
-                          <div className="mt-2 flex items-center gap-2">
-                            <img src={ev.archivoUrl} alt={ev.archivoNombre ?? ev.titulo} className="h-14 w-14 rounded border object-cover" />
-                            <a href={ev.archivoUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-emerald-700 hover:text-emerald-800">
-                              Ver imagen
-                            </a>
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-600">
-                    Sin evidencias asociadas.
-                  </div>
-                )}
-              </div>
-
-              {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
-                <div className="space-y-2">
-                  <Label>Evidencia de cierre</Label>
-                  <Textarea
-                    rows={2}
-                    value={evidenciaCierreTexto}
-                    onChange={(e) => setEvidenciaCierreTexto(e.target.value)}
-                    placeholder="Describe la evidencia de cierre asociada a la medida correctiva"
-                  />
-                  
-                  <div className="mt-2 space-y-1">
-                    <Label htmlFor="cierre-archivo" className="text-sm">Adjuntar archivo (opcional)</Label>
-                    <div className="flex gap-2 items-center">
-                      <input
-                        id="cierre-archivo"
-                        type="file"
-                        onChange={(e) => setEvidenciaCierreArchivo(e.target.files?.[0] ?? null)}
-                        className="block w-full text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
-                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.xlsx"
-                      />
-                      {evidenciaCierreArchivo && (
-                        <div className="text-xs text-emerald-700 flex items-center gap-1">
-                          <File className="h-3 w-3" />
-                          {evidenciaCierreArchivo.name}
-                        </div>
-                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void onEliminar(selected)}
+                        disabled={saving}
+                        className="text-rose-300 hover:bg-rose-400/10 hover:text-rose-200"
+                      >
+                        Eliminar
+                      </Button>
                     </div>
-                    <p className="text-xs text-slate-400">
-                      Permitidos: PDF, DOC, DOCX, JPG, PNG, XLSX. Máx. 10 MB.
-                    </p>
-                  </div>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => void onAgregarEvidenciaCierre(selected.id)}
-                    disabled={saving || uploadingEvidencia || !evidenciaCierreTexto.trim()}
-                  >
-                    {uploadingEvidencia ? "Cargando archivo..." : "Agregar evidencia de cierre"}
-                  </Button>
-
-                  <Label>Comentario de cierre (complementario)</Label>
-                  <Textarea
-                    rows={3}
-                    value={comentarioCierre}
-                    onChange={(e) => setComentarioCierre(e.target.value)}
-                    placeholder="Describe la gestión realizada para cerrar el hallazgo"
-                  />
-                  {cierreError ? (
-                    <p className="text-xs text-rose-700">{cierreError}</p>
                   ) : null}
                 </div>
               ) : null}
             </div>
-            ) : null}
+
+            <footer className="shrink-0 border-t border-slate-800 bg-[#071225]/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur sm:px-6 sm:pb-4">
+              <div className="mx-auto max-w-xl">
+                {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                  <div className="grid grid-cols-[0.85fr_1.15fr] gap-2.5">
+                    <Button
+                      variant="outline"
+                      onClick={() => selected && void onAgregarEvidenciaCierre(selected.id)}
+                      disabled={saving || uploadingEvidencia || !evidenciaCierreTexto.trim()}
+                      className="h-12 border-slate-500 bg-transparent px-3 text-sm font-semibold text-white hover:bg-slate-800 hover:text-white disabled:border-slate-700 disabled:text-slate-500"
+                    >
+                      {uploadingEvidencia ? (
+                        "Guardando..."
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4 shrink-0" />
+                          <span className="truncate">Guardar evidencia</span>
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={() => selected && void onCerrar(selected)}
+                      disabled={saving}
+                      className="h-12 bg-emerald-500 px-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400"
+                    >
+                      <CheckCircle2 className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="truncate">Cerrar hallazgo</span>
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelected(null)}
+                    className="h-12 w-full border-slate-500 bg-transparent text-sm font-semibold text-white hover:bg-slate-800 hover:text-white"
+                  >
+                    Cerrar
+                  </Button>
+                )}
+              </div>
+            </footer>
           </div>
-          <DialogFooter className="border-t pt-4">
-            {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
-              <>
-                <Button variant="outline" onClick={() => selected && openEdit(selected)}>Editar</Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => selected && void onCerrar(selected)}>
-                  Cerrar hallazgo
-                </Button>
-              </>
-            ) : null}
-            <Button variant="outline" onClick={() => setSelected(null)}>Cerrar</Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
