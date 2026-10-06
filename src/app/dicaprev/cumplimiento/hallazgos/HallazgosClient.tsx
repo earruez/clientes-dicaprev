@@ -1159,7 +1159,7 @@ export default function HallazgosClient({
         <HallazgoFotoIA
           open={modalIAOpen}
           onOpenChange={setModalIAOpen}
-          opciones={{ centros: opciones.centros, areas: opciones.areas }}
+          opciones={{ empresaId: opciones.empresaId, centros: opciones.centros, areas: opciones.areas }}
           iaConfigurada={iaConfigurada}
           onConfirmed={async () => {
             await reloadHallazgos();
