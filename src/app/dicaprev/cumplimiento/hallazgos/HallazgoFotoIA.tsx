@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useMemo, useRef, useState, useTransition } from "react";
-import { AlertCircle, CheckCircle2, Camera, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Building2, CheckCircle2, Camera, FileText, ImageIcon, Layers3, Loader2, Sparkles, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -38,6 +39,7 @@ type SugerenciaAnalizada = {
     url: string;
     nombre: string;
     tipo: string;
+    previewUrl?: string;
   };
 };
 
@@ -93,6 +95,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   const [fotoPreview, setFotoPreview] = useState<{ url: string; nombre: string } | null>(null);
   const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);
   const [draftRecovered, setDraftRecovered] = useState(false);
+  const [modoResultados, setModoResultados] = useState(false);
 
   const draftKey = useMemo(
     () => `nextprev:hallazgos-ia:draft:v1:${opciones.empresaId}`,
@@ -122,6 +125,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     setObservacion("");
     setSugerencias([]);
     setSugerenciasSeleccionadas(new Set());
+    setModoResultados(false);
     setError(null);
     setConfirmingKey(null);
     setConfirmingBatch(false);
@@ -144,6 +148,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
         setObservacion(typeof draft.observacion === "string" ? draft.observacion : "");
         setSugerencias(sugerenciasGuardadas);
         setSugerenciasSeleccionadas(new Set(seleccionadas));
+        setModoResultados(sugerenciasGuardadas.length > 0);
         setDraftRecovered(
           Boolean(
             sugerenciasGuardadas.length > 0 ||
@@ -206,6 +211,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     setProcesandoIndex(-1);
     setFotoPreview(null);
     setDraftRecovered(false);
+    setModoResultados(false);
     if (clearPersistedDraft && typeof window !== "undefined") {
       window.sessionStorage.removeItem(draftKey);
     }
@@ -254,6 +260,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
 
   function removerArchivo(index: number) {
     setArchivos((prev) => prev.filter((_, i) => i !== index));
+    setModoResultados(false);
     setSugerencias([]);
     setSugerenciasSeleccionadas(new Set());
   }
@@ -369,6 +376,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                 url: uploadJson.archivoUrl!,
                 nombre: uploadJson.archivoNombre ?? archivo.name,
                 tipo: uploadJson.archivoTipo ?? archivo.type,
+                previewUrl: URL.createObjectURL(archivo),
               },
             });
           });
@@ -381,6 +389,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
 
         setSugerencias(todasLasSugerencias);
         setSugerenciasSeleccionadas(new Set(todasLasSugerencias.map((item) => item.id)));
+        setModoResultados(todasLasSugerencias.length > 0);
         setProcesandoIndex(-1);
       } catch (err) {
         const message = err instanceof Error ? err.message : "No fue posible analizar las imágenes.";
@@ -492,11 +501,20 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     confirmingBatch ||
     confirmingKey !== null;
 
+  const fotosAnalizadas = new Set(sugerencias.map((item) => item.archivo.nombre)).size;
+  const todasSeleccionadas =
+    sugerencias.length > 0 && sugerencias.every((item) => sugerenciasSeleccionadas.has(item.id));
+
+  const inputClass =
+    "h-12 border-slate-600/80 bg-slate-900/70 text-white placeholder:text-slate-500 focus:ring-emerald-500/40";
+  const panelClass = "rounded-2xl border border-slate-700/80 bg-slate-900/55";
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="max-h-[88vh] overflow-y-auto"
+        withClose={false}
         size="lg"
+        className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-auto sm:max-h-[92vh] sm:w-[calc(100%-2rem)] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-700/70"
         onPointerDownOutside={(event) => {
           if (tieneTrabajoEnCurso) event.preventDefault();
         }}
@@ -504,293 +522,406 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
           if (tieneTrabajoEnCurso) event.preventDefault();
         }}
       >
-        <DialogHeader>
-          <DialogTitle>Analizar fotografías con IA (hasta 10)</DialogTitle>
-          <DialogDescription>
-            Sube o toma hasta 10 fotos. La IA sugerirá hallazgos visibles, pero debes confirmarlos manualmente.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-1">
-          {draftRecovered ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              Borrador recuperado automáticamente. Puedes continuar desde donde quedaste.
+        <div className="flex h-full min-h-0 flex-col">
+          <header className="shrink-0 border-b border-slate-800/90 bg-[#071225]/95 px-4 pb-3 pt-[max(0.9rem,env(safe-area-inset-top))] backdrop-blur sm:px-6 sm:pt-5">
+            <div className="grid grid-cols-[44px_1fr_44px] items-center gap-3">
+              <button
+                type="button"
+                onClick={() => (modoResultados ? setModoResultados(false) : handleOpenChange(false))}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700"
+                aria-label={modoResultados ? "Volver" : "Cerrar"}
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div className="min-w-0 text-center">
+                <p className="truncate text-[17px] font-semibold tracking-tight text-white">Hallazgos IA</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleOpenChange(false)}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700"
+                aria-label="Cerrar Hallazgos IA"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
-          ) : null}
+          </header>
 
-          <div className="grid gap-3 lg:grid-cols-3">
-            <div className="space-y-1.5">
-              <Label>Centro opcional</Label>
-              <Select value={centroTrabajoId || "todos"} onValueChange={(value) => setCentroTrabajoId(value === "todos" ? "" : value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin centro" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Sin centro</SelectItem>
-                  {opciones.centros.map((centro) => (
-                    <SelectItem key={centro.id} value={centro.id}>
-                      {centro.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Área opcional</Label>
-              <Select value={areaId || "todos"} onValueChange={(value) => setAreaId(value === "todos" ? "" : value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin área" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Sin área</SelectItem>
-                  {opciones.areas.map((area) => (
-                    <SelectItem key={area.id} value={area.id}>
-                      {area.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Observación breve</Label>
-              <Input
-                value={observacion}
-                onChange={(event) => setObservacion(event.target.value)}
-                placeholder="Ej. extintor en bodega, posible vencimiento"
-              />
-            </div>
-          </div>
-
-          <div
-            className={cn(
-              "rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4 transition-colors",
-              isDragActive && "border-emerald-500 bg-emerald-50",
-            )}
-            onDragEnter={onDragEnter}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={handleFileChange}
-              multiple
-            />
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                <Camera className="mr-2 h-4 w-4" />
-                {archivos.length === 0 ? "Seleccionar fotos" : "Agregar más fotos"}
-              </Button>
-              <p className="text-xs text-slate-500">
-                {archivos.length}/10 fotos. Puedes usar cámara móvil, subir archivos o arrastrar fotos aquí.
-              </p>
-            </div>
-
-            {archivos.length > 0 && (
-              <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-                {archivos.map((file, idx) => (
-                  <div key={idx} className="relative rounded-lg border border-slate-200 overflow-hidden bg-white">
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={`Foto ${idx + 1}`}
-                      className="h-20 w-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black/0 hover:bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition">
-                      <button
-                        onClick={() => removerArchivo(idx)}
-                        className="text-white font-bold text-sm bg-red-600 rounded-full px-2 py-1"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                    <div className="px-2 py-1 text-xs text-slate-600 truncate">{file.name}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+            {!modoResultados ? (
+              <div className="mx-auto max-w-2xl space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300 ring-1 ring-emerald-300/10">
+                    <Sparkles className="h-6 w-6" />
                   </div>
-                ))}
+                  <div>
+                    <h2 className="text-xl font-semibold text-white">Analizar fotos</h2>
+                    <p className="mt-1 text-sm leading-5 text-slate-400">
+                      La IA sugerirá hallazgos visibles en tus fotos, pero debes revisarlos y validar.
+                    </p>
+                  </div>
+                </div>
+
+                {draftRecovered ? (
+                  <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-200">
+                    Borrador recuperado automáticamente. Puedes continuar donde quedaste.
+                  </div>
+                ) : null}
+
+                <section className={cn(panelClass, "space-y-4 p-4")}>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold text-slate-100">Centro de trabajo</Label>
+                    <Select
+                      value={centroTrabajoId || "todos"}
+                      onValueChange={(value) => setCentroTrabajoId(value === "todos" ? "" : value)}
+                    >
+                      <SelectTrigger className={inputClass}>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Building2 className="h-4 w-4 shrink-0 text-slate-400" />
+                          <SelectValue placeholder="Sin centro" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Sin centro</SelectItem>
+                        {opciones.centros.map((centro) => (
+                          <SelectItem key={centro.id} value={centro.id}>
+                            {centro.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold text-slate-100">Área</Label>
+                    <Select value={areaId || "todos"} onValueChange={(value) => setAreaId(value === "todos" ? "" : value)}>
+                      <SelectTrigger className={inputClass}>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Layers3 className="h-4 w-4 shrink-0 text-slate-400" />
+                          <SelectValue placeholder="Sin área" />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Sin área</SelectItem>
+                        {opciones.areas.map((area) => (
+                          <SelectItem key={area.id} value={area.id}>
+                            {area.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label className="text-sm font-semibold text-slate-100">Observación inicial</Label>
+                      <span className="text-xs text-slate-500">{observacion.length}/500</span>
+                    </div>
+                    <Textarea
+                      value={observacion}
+                      maxLength={500}
+                      rows={3}
+                      onChange={(event) => setObservacion(event.target.value)}
+                      placeholder="Describe brevemente el contexto de las fotos o qué quieres que la IA analice..."
+                      className="min-h-[96px] resize-none border-slate-600/80 bg-slate-900/70 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500/40"
+                    />
+                  </div>
+                </section>
+
+                <section
+                  className={cn(
+                    panelClass,
+                    "p-4 transition-colors",
+                    isDragActive && "border-emerald-400/70 bg-emerald-400/5",
+                  )}
+                  onDragEnter={onDragEnter}
+                  onDragOver={onDragOver}
+                  onDragLeave={onDragLeave}
+                  onDrop={onDrop}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={handleFileChange}
+                    multiple
+                  />
+
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-base font-semibold text-white">Fotos para analizar</h3>
+                    <span className="text-sm text-slate-500">{archivos.length}/10</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+                    {archivos.map((file, idx) => (
+                      <div key={`${file.name}-${idx}`} className="relative aspect-square overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt={`Foto ${idx + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removerArchivo(idx)}
+                          className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-slate-950/85 text-white shadow"
+                          aria-label={`Eliminar foto ${idx + 1}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {archivos.length < 10 ? (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-600 bg-slate-900/50 px-2 text-center text-slate-300 transition hover:border-emerald-400/60 hover:text-emerald-200"
+                      >
+                        <Camera className="h-6 w-6" />
+                        <span className="text-xs font-medium">{archivos.length ? "Agregar fotos" : "Seleccionar fotos"}</span>
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <p className="mt-3 text-xs leading-5 text-slate-500">
+                    Puedes usar la cámara del móvil o seleccionar imágenes guardadas.
+                  </p>
+                </section>
+
+                {!iaConfigurada ? (
+                  <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">
+                    {IA_NO_CONFIGURADA}
+                  </div>
+                ) : null}
+
+                {isPending ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-sky-400/20 bg-sky-400/10 px-3 py-2 text-sm text-sky-200">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Analizando fotografías...
+                  </div>
+                ) : null}
+
+                {error ? (
+                  <div className="flex items-start gap-2 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm text-rose-200">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mx-auto max-w-2xl space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-400/10 text-emerald-300">
+                    <Sparkles className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-semibold text-white">Sugerencias detectadas</h2>
+                    <p className="mt-1 text-sm leading-5 text-slate-400">
+                      Revisa los posibles hallazgos y selecciona cuáles quieres crear.
+                    </p>
+                  </div>
+                </div>
+
+                <div className={cn(panelClass, "grid grid-cols-2 divide-x divide-slate-700 p-3")}>
+                  <div className="flex items-center gap-3 px-2">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
+                      <ImageIcon className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xl font-semibold text-white">{fotosAnalizadas}</p>
+                      <p className="text-xs text-slate-400">fotos analizadas</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 px-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-slate-300">
+                      <FileText className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xl font-semibold text-white">{sugerencias.length}</p>
+                      <p className="text-xs text-slate-400">sugerencias</p>
+                    </div>
+                  </div>
+                </div>
+
+                <label className={cn(panelClass, "flex cursor-pointer items-center gap-3 p-3")}>
+                  <Checkbox
+                    checked={todasSeleccionadas}
+                    onCheckedChange={(checked) => {
+                      setSugerenciasSeleccionadas(
+                        checked ? new Set(sugerencias.map((item) => item.id)) : new Set(),
+                      );
+                    }}
+                  />
+                  <span className="text-sm font-medium text-slate-200">Seleccionar todas</span>
+                </label>
+
+                <div className="space-y-3">
+                  {sugerencias.map((item, index) => {
+                    const selected = sugerenciasSeleccionadas.has(item.id);
+                    const bajaConfianza = item.sugerencia.confianza < 20;
+                    const preview = item.archivo.previewUrl || item.archivo.url;
+
+                    return (
+                      <article
+                        key={item.id}
+                        className={cn(
+                          "rounded-2xl border p-3 transition",
+                          selected
+                            ? "border-emerald-400/80 bg-emerald-400/[0.06] shadow-[0_0_0_1px_rgba(52,211,153,0.08)]"
+                            : "border-slate-700 bg-slate-900/55",
+                        )}
+                      >
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setFotoPreview({ url: preview, nombre: item.archivo.nombre })}
+                            className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-slate-700 bg-slate-800"
+                          >
+                            <img
+                              src={preview}
+                              alt={item.archivo.nombre}
+                              className="h-full w-full object-cover"
+                              onError={(event) => {
+                                event.currentTarget.style.display = "none";
+                              }}
+                            />
+                          </button>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="rounded-full bg-sky-400/10 px-2 py-1 text-[11px] font-medium text-sky-200">
+                                  {tipoLabel(item.sugerencia.tipo)}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "rounded-full px-2 py-1 text-[11px] font-medium",
+                                    item.sugerencia.prioridad === "critica" || item.sugerencia.prioridad === "alta"
+                                      ? "bg-rose-400/10 text-rose-200"
+                                      : item.sugerencia.prioridad === "media"
+                                        ? "bg-amber-400/10 text-amber-200"
+                                        : "bg-sky-400/10 text-sky-200",
+                                  )}
+                                >
+                                  {item.sugerencia.prioridad === "critica"
+                                    ? "Crítica"
+                                    : item.sugerencia.prioridad.charAt(0).toUpperCase() + item.sugerencia.prioridad.slice(1)}
+                                </span>
+                              </div>
+                              <Checkbox
+                                checked={selected}
+                                onCheckedChange={(checked) => toggleSeleccion(item.id, checked === true)}
+                                className="mt-0.5 h-6 w-6 border-slate-500 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500"
+                              />
+                            </div>
+
+                            <h3 className="mt-2 text-base font-semibold leading-5 text-white">{item.sugerencia.titulo}</h3>
+                            <p className="mt-1 line-clamp-3 text-sm leading-5 text-slate-400">{item.sugerencia.descripcion}</p>
+                            <p className="mt-2 text-[11px] text-slate-500">Confianza IA {item.sugerencia.confianza}%</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-xl bg-slate-950/35 p-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Evidencia visible</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-300">{item.sugerencia.evidenciaVisible}</p>
+                          </div>
+                          <div className="rounded-xl bg-slate-950/35 p-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Acción sugerida</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-300">{item.sugerencia.accionSugerida}</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-800 pt-3">
+                          <button
+                            type="button"
+                            onClick={() => handleDescartar(index)}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-300"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Descartar
+                          </button>
+                          {bajaConfianza ? (
+                            <span className="text-[11px] font-medium text-amber-300">Revisión manual recomendada</span>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                {error ? (
+                  <div className="flex items-start gap-2 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm text-rose-200">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
 
-          {!iaConfigurada ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              {IA_NO_CONFIGURADA}
-            </div>
-          ) : null}
-
-          {isPending ? (
-            <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-700">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Analizando fotografías...
-            </div>
-          ) : null}
-
-          {error ? (
-            <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          ) : null}
-
-          {sugerencias.length > 0 ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2">
-                <div className="flex items-center gap-2 text-sm text-slate-700">
-                  <Checkbox
-                    checked={sugerencias.length > 0 && sugerencias.every((item) => sugerenciasSeleccionadas.has(item.id))}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setSugerenciasSeleccionadas(new Set(sugerencias.map((item) => item.id)));
-                        return;
-                      }
-                      setSugerenciasSeleccionadas(new Set());
-                    }}
-                  />
-                  <span>Seleccionar todas ({sugerencias.length})</span>
-                </div>
+          <footer className="shrink-0 border-t border-slate-800 bg-[#071225]/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur sm:px-6 sm:pb-4">
+            {!modoResultados ? (
+              <div className="mx-auto grid max-w-2xl grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] gap-2.5">
                 <Button
-                  className="bg-emerald-600 text-white hover:bg-emerald-700"
-                  onClick={() => {
-                    void handleConfirmarSeleccionadas();
-                  }}
-                  disabled={confirmingBatch || confirmingKey !== null || sugerenciasSeleccionadas.size === 0}
+                  variant="outline"
+                  onClick={() => handleOpenChange(false)}
+                  className="h-12 border-slate-500 bg-transparent px-3 text-sm font-semibold text-white hover:bg-slate-800 hover:text-white"
                 >
-                  {confirmingBatch ? (
+                  <FileText className="mr-2 h-4 w-4 shrink-0" />
+                  <span className="truncate">Guardar borrador</span>
+                </Button>
+                <Button
+                  onClick={() => void analizarTodasLasFotos()}
+                  disabled={isPending || confirmingBatch || archivos.length === 0 || !iaConfigurada || procesandoIndex >= 0}
+                  className="h-12 bg-emerald-500 px-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400"
+                >
+                  {isPending || procesandoIndex >= 0 ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creando hallazgos...
+                      <span className="truncate">Analizando {Math.max(1, procesandoIndex + 1)}/{archivos.length}</span>
                     </>
                   ) : (
                     <>
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Crear seleccionados ({sugerenciasSeleccionadas.size})
+                      <Sparkles className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="truncate">Analizar {archivos.length} foto{archivos.length !== 1 ? "s" : ""}</span>
                     </>
                   )}
                 </Button>
               </div>
-
-              {sugerencias.map((sugerencia, index) => {
-                const confirmationKey = sugerencia.id;
-                const bajaConfianza = sugerencia.sugerencia.confianza < 20;
-                const disabledByPending = confirmingKey === confirmationKey;
-                const requiereConfirmacionManual = bajaConfianza;
-                return (
-                  <div key={confirmationKey} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Checkbox
-                            checked={sugerenciasSeleccionadas.has(sugerencia.id)}
-                            onCheckedChange={(checked) => toggleSeleccion(sugerencia.id, checked === true)}
-                          />
-                          <h4 className="text-sm font-semibold text-slate-900">{sugerencia.sugerencia.titulo}</h4>
-                          <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-medium", prioridadClass(sugerencia.sugerencia.confianza))}>
-                            Confianza {sugerencia.sugerencia.confianza}%
-                          </span>
-                          {bajaConfianza && (
-                            <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
-                              No concluyente
-                            </span>
-                          )}
-                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                            {tipoLabel(sugerencia.sugerencia.tipo)}
-                          </span>
-                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                            Prioridad {sugerencia.sugerencia.prioridad}
-                          </span>
-                          <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600">
-                            Foto: {sugerencia.archivo.nombre}
-                          </span>
-                        </div>
-                        <p className="text-sm text-slate-700">{sugerencia.sugerencia.descripcion}</p>
-                        {bajaConfianza && (
-                          <p className="text-xs text-amber-700">
-                            <strong>⚠️ La imagen no permite confirmar el hallazgo con suficiente claridad.</strong>
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" onClick={() => handleDescartar(index)}>
-                          Descartar sugerencia
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => setFotoPreview({ url: sugerencia.archivo.url, nombre: sugerencia.archivo.nombre })}
-                        >
-                          Ver foto
-                        </Button>
-                        <Button
-                          className="bg-emerald-600 text-white hover:bg-emerald-700"
-                          onClick={() => {
-                            if (requiereConfirmacionManual) {
-                              const ok = window.confirm(
-                                "La IA marcó esta sugerencia como no concluyente. ¿Deseas crear el hallazgo de todas formas bajo tu revisión manual?",
-                              );
-                              if (!ok) return;
-                            }
-                            void handleConfirmar(sugerencia);
-                          }}
-                          disabled={disabledByPending || confirmingBatch}
-                        >
-                          {confirmingKey === confirmationKey ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="mr-2 h-4 w-4" />
-                          )}
-                          {requiereConfirmacionManual ? "Crear de todas formas" : "Crear hallazgo con evidencia"}
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-xl bg-white p-3 text-sm text-slate-700">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Evidencia visible</p>
-                        <p className="mt-1">{sugerencia.sugerencia.evidenciaVisible}</p>
-                      </div>
-                      <div className="rounded-xl bg-white p-3 text-sm text-slate-700">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Acción sugerida</p>
-                        <p className="mt-1">{sugerencia.sugerencia.accionSugerida}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-
-        <DialogFooter>
-          {tieneTrabajoEnCurso ? (
-            <Button variant="outline" className="text-rose-700 hover:text-rose-800" onClick={descartarBorrador}>
-              Descartar borrador
-            </Button>
-          ) : null}
-          <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            Cerrar
-          </Button>
-          <Button
-            className="bg-emerald-600 text-white hover:bg-emerald-700"
-            onClick={() => {
-              void analizarTodasLasFotos();
-            }}
-            disabled={isPending || confirmingBatch || archivos.length === 0 || !iaConfigurada || procesandoIndex >= 0}
-          >
-            {isPending || procesandoIndex >= 0 ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Analizando {procesandoIndex + 1}/{archivos.length}...
-              </>
             ) : (
-              `Analizar ${archivos.length} foto${archivos.length !== 1 ? "s" : ""}`
+              <div className="mx-auto grid max-w-2xl grid-cols-[0.75fr_1.45fr] gap-2.5">
+                <Button
+                  variant="outline"
+                  onClick={() => setModoResultados(false)}
+                  className="h-12 border-slate-500 bg-transparent text-sm font-semibold text-white hover:bg-slate-800 hover:text-white"
+                >
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Volver
+                </Button>
+                <Button
+                  onClick={() => void handleConfirmarSeleccionadas()}
+                  disabled={confirmingBatch || confirmingKey !== null || sugerenciasSeleccionadas.size === 0}
+                  className="h-12 bg-emerald-500 px-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400"
+                >
+                  {confirmingBatch ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creando...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4 shrink-0" />
+                      <span className="truncate">Crear seleccionados ({sugerenciasSeleccionadas.size})</span>
+                    </>
+                  )}
+                </Button>
+              </div>
             )}
-          </Button>
-        </DialogFooter>
+          </footer>
+        </div>
       </DialogContent>
 
       <Dialog open={Boolean(fotoPreview)} onOpenChange={(nextOpen) => !nextOpen && setFotoPreview(null)}>
