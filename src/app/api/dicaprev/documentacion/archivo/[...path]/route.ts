@@ -5,6 +5,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/server/auth/permissions";
 
+function getBlobConfig() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  if (!token) return null;
+  const [, , , storeId = ""] = token.split("_");
+  if (!storeId) return null;
+  return { token, storeId };
+}
+
 async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre: string): Promise<boolean> {
   const [registroGenerado, documentoEmpresa, historialEmpresa, documentoTrabajador, historialTrabajador, documentoAcreditacion] =
     await Promise.all([
@@ -73,10 +81,6 @@ export async function GET(
 
   const filePath = path.join(process.cwd(), "public", "uploads", "documentos", safePath);
 
-  if (!existsSync(filePath)) {
-    return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
-  }
-
   const ext = path.extname(filePath).toLowerCase();
   const contentTypeMap: Record<string, string> = {
     ".pdf": "application/pdf",
@@ -90,12 +94,40 @@ export async function GET(
 
   const contentType = contentTypeMap[ext] ?? "application/octet-stream";
 
-  const fileBuffer = await readFile(filePath);
+  if (existsSync(filePath)) {
+    const fileBuffer = await readFile(filePath);
 
-  return new NextResponse(fileBuffer, {
+    return new NextResponse(fileBuffer, {
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "private, no-cache",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
+
+  const blob = getBlobConfig();
+  if (!blob) {
+    return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
+  }
+
+  const blobUrl =
+    `https://${blob.storeId}.private.blob.vercel-storage.com/empresas/${encodeURIComponent(context.empresaId)}/documentos/${encodeURIComponent(archivoNombre)}`;
+
+  const blobResponse = await fetch(blobUrl, {
+    headers: { authorization: `Bearer ${blob.token}` },
+    cache: "no-store",
+  });
+
+  if (!blobResponse.ok || !blobResponse.body) {
+    return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
+  }
+
+  return new NextResponse(blobResponse.body, {
     headers: {
-      "Content-Type": contentType,
+      "Content-Type": blobResponse.headers.get("content-type") ?? contentType,
       "Cache-Control": "private, no-cache",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 }
