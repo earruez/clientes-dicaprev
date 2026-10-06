@@ -533,6 +533,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     confirmingBatch ||
     confirmingKey !== null;
 
+  const bloqueandoResultados = confirmingBatch || confirmingKey !== null;
   const fotosAnalizadas = new Set(sugerencias.map((item) => item.archivo.nombre)).size;
   const todasSeleccionadas =
     sugerencias.length > 0 && sugerencias.every((item) => sugerenciasSeleccionadas.has(item.id));
@@ -559,6 +560,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
             <div className="grid grid-cols-[44px_1fr_44px] items-center gap-3">
               <button
                 type="button"
+                disabled={bloqueandoResultados}
                 onClick={() => {
                   if (modoResultados && archivos.length > 0) {
                     setModoResultados(false);
@@ -566,7 +568,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                   }
                   handleOpenChange(false);
                 }}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={modoResultados && archivos.length > 0 ? "Volver" : "Cerrar"}
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -576,8 +578,9 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
               </div>
               <button
                 type="button"
+                disabled={bloqueandoResultados}
                 onClick={() => handleOpenChange(false)}
-                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label="Cerrar Hallazgos IA"
               >
                 <X className="h-5 w-5" />
@@ -786,6 +789,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                 <label className={cn(panelClass, "flex cursor-pointer items-center gap-3 p-3")}>
                   <Checkbox
                     checked={todasSeleccionadas}
+                    disabled={bloqueandoResultados}
                     onCheckedChange={(checked) => {
                       setSugerenciasSeleccionadas(
                         checked ? new Set(sugerencias.map((item) => item.id)) : new Set(),
@@ -850,6 +854,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                               </div>
                               <Checkbox
                                 checked={selected}
+                                disabled={bloqueandoResultados}
                                 onCheckedChange={(checked) => toggleSeleccion(item.id, checked === true)}
                                 className="mt-0.5 h-6 w-6 border-slate-500 data-[state=checked]:border-emerald-500 data-[state=checked]:bg-emerald-500"
                               />
@@ -875,8 +880,9 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                         <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-800 pt-3">
                           <button
                             type="button"
+                            disabled={bloqueandoResultados}
                             onClick={() => handleDescartar(index)}
-                            className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-300"
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-300 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             Descartar
