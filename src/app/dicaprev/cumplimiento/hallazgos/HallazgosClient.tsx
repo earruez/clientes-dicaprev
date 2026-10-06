@@ -1324,7 +1324,10 @@ export default function HallazgosClient({
       </div>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-3rem)]">
+        <DialogContent
+          className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-3rem)]"
+          onPointerDownOutside={(event) => event.preventDefault()}
+        >
           <DialogHeader className="shrink-0 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
             <DialogTitle>{editId ? "Editar hallazgo" : "Nuevo hallazgo"}</DialogTitle>
           </DialogHeader>

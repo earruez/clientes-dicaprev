@@ -550,9 +550,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
         withClose={false}
         size="lg"
         className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-700/70"
-        onPointerDownOutside={(event) => {
-          if (tieneTrabajoEnCurso) event.preventDefault();
-        }}
+        onPointerDownOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
           if (tieneTrabajoEnCurso) event.preventDefault();
         }}
@@ -988,7 +986,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
       </DialogContent>
 
       <Dialog open={Boolean(fotoPreview)} onOpenChange={(nextOpen) => !nextOpen && setFotoPreview(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl" onPointerDownOutside={(event) => event.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Vista de fotografía</DialogTitle>
             <DialogDescription>{fotoPreview?.nombre ?? "Imagen de referencia"}</DialogDescription>
