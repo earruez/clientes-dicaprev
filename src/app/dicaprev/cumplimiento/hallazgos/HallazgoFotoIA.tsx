@@ -78,7 +78,8 @@ function tipoLabel(tipo: SugerenciaHallazgoIA["tipo"]) {
 }
 
 export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigurada, onConfirmed }: Props) {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const dragCounterRef = useRef(0);
   const [archivos, setArchivos] = useState<File[]>([]);
   const [centroTrabajoId, setCentroTrabajoId] = useState<string>("");
@@ -281,6 +282,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
 
   function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     agregarArchivos(event.target.files);
+    event.currentTarget.value = "";
   }
 
   function onDragEnter(event: React.DragEvent<HTMLDivElement>) {
@@ -681,10 +683,17 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                   onDrop={onDrop}
                 >
                   <input
-                    ref={fileInputRef}
+                    ref={cameraInputRef}
                     type="file"
                     accept="image/*"
                     capture="environment"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                  <input
+                    ref={galleryInputRef}
+                    type="file"
+                    accept="image/*"
                     className="hidden"
                     onChange={handleFileChange}
                     multiple
@@ -715,14 +724,24 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                     ))}
 
                     {archivos.length < 10 ? (
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-600 bg-slate-900/50 px-2 text-center text-slate-300 transition hover:border-emerald-400/60 hover:text-emerald-200"
-                      >
-                        <Camera className="h-6 w-6" />
-                        <span className="text-xs font-medium">{archivos.length ? "Agregar fotos" : "Seleccionar fotos"}</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => cameraInputRef.current?.click()}
+                          className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-600 bg-slate-900/50 px-2 text-center text-slate-300 transition hover:border-emerald-400/60 hover:text-emerald-200"
+                        >
+                          <Camera className="h-6 w-6" />
+                          <span className="text-xs font-medium">Tomar foto</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => galleryInputRef.current?.click()}
+                          className="flex aspect-square flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-600 bg-slate-900/50 px-2 text-center text-slate-300 transition hover:border-emerald-400/60 hover:text-emerald-200"
+                        >
+                          <ImageIcon className="h-6 w-6" />
+                          <span className="text-xs font-medium">Galería</span>
+                        </button>
+                      </>
                     ) : null}
                   </div>
 
