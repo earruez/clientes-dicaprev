@@ -102,6 +102,7 @@ const PLANTILLAS_HALLAZGO: PlantillaHallazgo[] = [
 ];
 
 export type OpcionesHallazgo = {
+  empresaId: string;
   puedeEditar: boolean;
   centros: Array<{ id: string; nombre: string }>;
   areas: Array<{ id: string; nombre: string }>;
@@ -463,6 +464,7 @@ export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
   ]);
 
   return {
+    empresaId: context.empresaId,
     puedeEditar: canManageCumplimiento(context.rol),
     centros,
     areas,
