@@ -137,7 +137,15 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
       const raw = window.sessionStorage.getItem(draftKey);
       if (raw) {
         const draft = JSON.parse(raw) as Partial<HallazgoIADraft>;
-        const sugerenciasGuardadas = Array.isArray(draft.sugerencias) ? draft.sugerencias : [];
+        const sugerenciasGuardadas = Array.isArray(draft.sugerencias)
+          ? draft.sugerencias.map((item) => ({
+              ...item,
+              archivo: {
+                ...item.archivo,
+                previewUrl: undefined,
+              },
+            }))
+          : [];
         const idsValidos = new Set(sugerenciasGuardadas.map((item) => item.id));
         const seleccionadas = Array.isArray(draft.sugerenciasSeleccionadas)
           ? draft.sugerenciasSeleccionadas.filter((id) => idsValidos.has(id))
@@ -181,7 +189,13 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
       centroTrabajoId,
       areaId,
       observacion,
-      sugerencias,
+      sugerencias: sugerencias.map((item) => ({
+        ...item,
+        archivo: {
+          ...item.archivo,
+          previewUrl: undefined,
+        },
+      })),
       sugerenciasSeleccionadas: Array.from(sugerenciasSeleccionadas),
       guardadoEn: new Date().toISOString(),
     };
@@ -415,7 +429,15 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
         observacion: observacion.trim() || null,
       });
       await onConfirmed();
-      setSugerencias((prev) => prev.filter((current) => current.id !== item.id));
+
+      const restantes = sugerencias.filter((current) => current.id !== item.id);
+      if (restantes.length === 0) {
+        resetFlow(true);
+        onOpenChange(false);
+        return;
+      }
+
+      setSugerencias(restantes);
       setSugerenciasSeleccionadas((prev) => {
         const next = new Set(prev);
         next.delete(item.id);
@@ -461,7 +483,17 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
       }
 
       await onConfirmed();
-      setSugerencias((prev) => prev.filter((item) => !sugerenciasSeleccionadas.has(item.id)));
+
+      const idsConfirmados = new Set(seleccionadas.map((item) => item.id));
+      const restantes = sugerencias.filter((item) => !idsConfirmados.has(item.id));
+
+      if (restantes.length === 0) {
+        resetFlow(true);
+        onOpenChange(false);
+        return;
+      }
+
+      setSugerencias(restantes);
       setSugerenciasSeleccionadas(new Set());
     } catch (err) {
       const message = err instanceof Error ? err.message : "No fue posible crear los hallazgos seleccionados.";
@@ -514,7 +546,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
       <DialogContent
         withClose={false}
         size="lg"
-        className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-auto sm:max-h-[92vh] sm:w-[calc(100%-2rem)] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-700/70"
+        className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-700/70"
         onPointerDownOutside={(event) => {
           if (tieneTrabajoEnCurso) event.preventDefault();
         }}
@@ -527,9 +559,15 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
             <div className="grid grid-cols-[44px_1fr_44px] items-center gap-3">
               <button
                 type="button"
-                onClick={() => (modoResultados ? setModoResultados(false) : handleOpenChange(false))}
+                onClick={() => {
+                  if (modoResultados && archivos.length > 0) {
+                    setModoResultados(false);
+                    return;
+                  }
+                  handleOpenChange(false);
+                }}
                 className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-800/80 text-slate-100 transition hover:bg-slate-700"
-                aria-label={modoResultados ? "Volver" : "Cerrar"}
+                aria-label={modoResultados && archivos.length > 0 ? "Volver" : "Cerrar"}
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
