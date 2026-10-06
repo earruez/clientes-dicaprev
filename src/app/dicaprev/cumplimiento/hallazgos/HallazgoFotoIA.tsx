@@ -91,7 +91,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   const [isDragActive, setIsDragActive] = useState(false);
   const [procesandoIndex, setProcesandoIndex] = useState(-1);
   const [fotoPreview, setFotoPreview] = useState<{ url: string; nombre: string } | null>(null);
-  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [loadedDraftKey, setLoadedDraftKey] = useState<string | null>(null);
   const [draftRecovered, setDraftRecovered] = useState(false);
 
   const draftKey = useMemo(
@@ -113,7 +113,10 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   }, [imagenPreview]);
 
   React.useEffect(() => {
-    if (!open || draftLoaded || typeof window === "undefined") return;
+    if (!open || loadedDraftKey === draftKey || typeof window === "undefined") return;
+
+    // Al cambiar de empresa no se reutiliza estado de la empresa anterior.
+    resetFlow(false);
 
     try {
       const raw = window.sessionStorage.getItem(draftKey);
@@ -142,12 +145,12 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     } catch {
       window.sessionStorage.removeItem(draftKey);
     } finally {
-      setDraftLoaded(true);
+      setLoadedDraftKey(draftKey);
     }
-  }, [draftKey, draftLoaded, open]);
+  }, [draftKey, loadedDraftKey, open]);
 
   React.useEffect(() => {
-    if (!open || !draftLoaded || typeof window === "undefined") return;
+    if (!open || loadedDraftKey !== draftKey || typeof window === "undefined") return;
 
     const tieneDatosPersistibles =
       Boolean(centroTrabajoId || areaId || observacion.trim()) || sugerencias.length > 0;
@@ -172,7 +175,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     areaId,
     centroTrabajoId,
     draftKey,
-    draftLoaded,
+    loadedDraftKey,
     observacion,
     open,
     sugerencias,
