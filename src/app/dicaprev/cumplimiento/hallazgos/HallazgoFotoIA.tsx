@@ -26,7 +26,7 @@ import {
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  opciones: Pick<OpcionesHallazgo, "centros" | "areas">;
+  opciones: Pick<OpcionesHallazgo, "empresaId" | "centros" | "areas">;
   iaConfigurada: boolean;
   onConfirmed: () => Promise<void>;
 };
@@ -42,6 +42,16 @@ type SugerenciaAnalizada = {
 };
 
 const IA_NO_CONFIGURADA = "IA no configurada en este entorno. Configura OPENAI_API_KEY para analizar fotografias.";
+
+type HallazgoIADraft = {
+  version: 1;
+  centroTrabajoId: string;
+  areaId: string;
+  observacion: string;
+  sugerencias: SugerenciaAnalizada[];
+  sugerenciasSeleccionadas: string[];
+  guardadoEn: string;
+};
 
 function prioridadClass(confianza: number) {
   if (confianza >= 85) return "bg-red-100 text-red-700 border-red-200";
@@ -81,6 +91,13 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   const [isDragActive, setIsDragActive] = useState(false);
   const [procesandoIndex, setProcesandoIndex] = useState(-1);
   const [fotoPreview, setFotoPreview] = useState<{ url: string; nombre: string } | null>(null);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftRecovered, setDraftRecovered] = useState(false);
+
+  const draftKey = useMemo(
+    () => `nextprev:hallazgos-ia:draft:v1:${opciones.empresaId}`,
+    [opciones.empresaId],
+  );
 
   const imagenPreview = useMemo(() => {
     if (archivos.length === 0) return null;
@@ -95,7 +112,74 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     };
   }, [imagenPreview]);
 
-  function resetFlow() {
+  React.useEffect(() => {
+    if (!open || draftLoaded || typeof window === "undefined") return;
+
+    try {
+      const raw = window.sessionStorage.getItem(draftKey);
+      if (raw) {
+        const draft = JSON.parse(raw) as Partial<HallazgoIADraft>;
+        const sugerenciasGuardadas = Array.isArray(draft.sugerencias) ? draft.sugerencias : [];
+        const idsValidos = new Set(sugerenciasGuardadas.map((item) => item.id));
+        const seleccionadas = Array.isArray(draft.sugerenciasSeleccionadas)
+          ? draft.sugerenciasSeleccionadas.filter((id) => idsValidos.has(id))
+          : [];
+
+        setCentroTrabajoId(typeof draft.centroTrabajoId === "string" ? draft.centroTrabajoId : "");
+        setAreaId(typeof draft.areaId === "string" ? draft.areaId : "");
+        setObservacion(typeof draft.observacion === "string" ? draft.observacion : "");
+        setSugerencias(sugerenciasGuardadas);
+        setSugerenciasSeleccionadas(new Set(seleccionadas));
+        setDraftRecovered(
+          Boolean(
+            sugerenciasGuardadas.length > 0 ||
+              draft.centroTrabajoId ||
+              draft.areaId ||
+              draft.observacion,
+          ),
+        );
+      }
+    } catch {
+      window.sessionStorage.removeItem(draftKey);
+    } finally {
+      setDraftLoaded(true);
+    }
+  }, [draftKey, draftLoaded, open]);
+
+  React.useEffect(() => {
+    if (!open || !draftLoaded || typeof window === "undefined") return;
+
+    const tieneDatosPersistibles =
+      Boolean(centroTrabajoId || areaId || observacion.trim()) || sugerencias.length > 0;
+
+    if (!tieneDatosPersistibles) {
+      window.sessionStorage.removeItem(draftKey);
+      return;
+    }
+
+    const draft: HallazgoIADraft = {
+      version: 1,
+      centroTrabajoId,
+      areaId,
+      observacion,
+      sugerencias,
+      sugerenciasSeleccionadas: Array.from(sugerenciasSeleccionadas),
+      guardadoEn: new Date().toISOString(),
+    };
+
+    window.sessionStorage.setItem(draftKey, JSON.stringify(draft));
+  }, [
+    areaId,
+    centroTrabajoId,
+    draftKey,
+    draftLoaded,
+    observacion,
+    open,
+    sugerencias,
+    sugerenciasSeleccionadas,
+  ]);
+
+  function resetFlow(clearPersistedDraft = true) {
     setArchivos([]);
     setCentroTrabajoId("");
     setAreaId("");
@@ -107,13 +191,31 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     setConfirmingBatch(false);
     setProcesandoIndex(-1);
     setFotoPreview(null);
+    setDraftRecovered(false);
+    if (clearPersistedDraft && typeof window !== "undefined") {
+      window.sessionStorage.removeItem(draftKey);
+    }
   }
 
   function handleOpenChange(nextOpen: boolean) {
-    if (!nextOpen) {
-      resetFlow();
-    }
     onOpenChange(nextOpen);
+  }
+
+  function descartarBorrador() {
+    const tieneTrabajo =
+      archivos.length > 0 ||
+      Boolean(centroTrabajoId || areaId || observacion.trim()) ||
+      sugerencias.length > 0;
+
+    if (tieneTrabajo) {
+      const confirmar = window.confirm(
+        "Se descartará el análisis de Hallazgos IA que está en curso. ¿Deseas continuar?",
+      );
+      if (!confirmar) return;
+    }
+
+    resetFlow(true);
+    onOpenChange(false);
   }
 
   function agregarArchivos(files: FileList | null) {
@@ -256,6 +358,11 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
               },
             });
           });
+
+          // Persistir el avance foto a foto para que un cambio de pestaña o recarga
+          // no borre los análisis ya completados.
+          setSugerencias([...todasLasSugerencias]);
+          setSugerenciasSeleccionadas(new Set(todasLasSugerencias.map((item) => item.id)));
         }
 
         setSugerencias(todasLasSugerencias);
@@ -363,9 +470,26 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     });
   }
 
+  const tieneTrabajoEnCurso =
+    archivos.length > 0 ||
+    Boolean(centroTrabajoId || areaId || observacion.trim()) ||
+    sugerencias.length > 0 ||
+    isPending ||
+    confirmingBatch ||
+    confirmingKey !== null;
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto" size="lg">
+      <DialogContent
+        className="max-h-[88vh] overflow-y-auto"
+        size="lg"
+        onPointerDownOutside={(event) => {
+          if (tieneTrabajoEnCurso) event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (tieneTrabajoEnCurso) event.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Analizar fotografías con IA (hasta 10)</DialogTitle>
           <DialogDescription>
@@ -374,6 +498,12 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
         </DialogHeader>
 
         <div className="space-y-4 py-1">
+          {draftRecovered ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              Borrador recuperado automáticamente. Puedes continuar desde donde quedaste.
+            </div>
+          ) : null}
+
           <div className="grid gap-3 lg:grid-cols-3">
             <div className="space-y-1.5">
               <Label>Centro opcional</Label>
@@ -622,8 +752,13 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
         </div>
 
         <DialogFooter>
+          {tieneTrabajoEnCurso ? (
+            <Button variant="outline" className="text-rose-700 hover:text-rose-800" onClick={descartarBorrador}>
+              Descartar borrador
+            </Button>
+          ) : null}
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
-            Cancelar
+            Cerrar
           </Button>
           <Button
             className="bg-emerald-600 text-white hover:bg-emerald-700"
