@@ -1511,7 +1511,7 @@ export default function HallazgosClient({
       }}>
         <DialogContent
           withClose={false}
-          className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-auto sm:max-h-[92vh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
+          className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
         >
           <div className="flex h-full min-h-0 flex-col">
             <header className="shrink-0 border-b border-slate-800/90 bg-[#071225]/95 px-4 pb-3 pt-[max(0.9rem,env(safe-area-inset-top))] backdrop-blur sm:px-6 sm:pt-5">
@@ -1791,6 +1791,9 @@ export default function HallazgosClient({
                             )}
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-semibold leading-5 text-white">{ev.titulo}</p>
+                              {ev.observacion ? (
+                                <p className="mt-1 text-sm leading-5 text-slate-300">{ev.observacion}</p>
+                              ) : null}
                               <p className="mt-1 text-xs leading-4 text-slate-400">
                                 Tipo: {ev.tipo} · Estado: {ev.estado}
                               </p>
@@ -1874,14 +1877,16 @@ export default function HallazgosClient({
 
                   {opciones.puedeEditar ? (
                     <div className="flex items-center justify-between gap-3 px-1 pb-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openEdit(selected)}
-                        className="text-slate-300 hover:bg-slate-800 hover:text-white"
-                      >
-                        Editar hallazgo
-                      </Button>
+                      {selected.estado !== "cerrado" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => openEdit(selected)}
+                          className="text-slate-300 hover:bg-slate-800 hover:text-white"
+                        >
+                          Editar hallazgo
+                        </Button>
+                      ) : <span />}
                       <Button
                         size="sm"
                         variant="ghost"
