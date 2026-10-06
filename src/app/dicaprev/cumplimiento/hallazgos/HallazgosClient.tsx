@@ -1324,12 +1324,12 @@ export default function HallazgosClient({
       </div>
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-3rem)]">
+          <DialogHeader className="shrink-0 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
             <DialogTitle>{editId ? "Editar hallazgo" : "Nuevo hallazgo"}</DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 py-2">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-4">
             <div className="space-y-1">
               <Label>Plantilla de hallazgo</Label>
               <Select
@@ -1480,7 +1480,7 @@ export default function HallazgosClient({
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
             <Button variant="outline" onClick={() => setModalOpen(false)}>
               Cancelar
             </Button>
