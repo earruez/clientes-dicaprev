@@ -14,8 +14,15 @@ function getBlobConfig() {
 }
 
 async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre: string): Promise<boolean> {
-  const [registroGenerado, documentoEmpresa, historialEmpresa, documentoTrabajador, historialTrabajador, documentoAcreditacion] =
-    await Promise.all([
+  const [
+    registroGenerado,
+    documentoEmpresa,
+    historialEmpresa,
+    documentoTrabajador,
+    historialTrabajador,
+    documentoAcreditacion,
+    evidenciaCumplimiento,
+  ] = await Promise.all([
       prisma.documentoGeneradoRegistro.findFirst({
         where: { empresaId, archivoNombre },
         select: { id: true },
@@ -40,6 +47,10 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
         where: { archivoNombre, acreditacion: { empresaId } },
         select: { id: true },
       }),
+      prisma.evidenciaCumplimiento.findFirst({
+        where: { empresaId, archivoNombre },
+        select: { id: true },
+      }),
     ]);
 
   return Boolean(
@@ -48,7 +59,8 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
       historialEmpresa ||
       documentoTrabajador ||
       historialTrabajador ||
-      documentoAcreditacion,
+      documentoAcreditacion ||
+      evidenciaCumplimiento,
   );
 }
 
