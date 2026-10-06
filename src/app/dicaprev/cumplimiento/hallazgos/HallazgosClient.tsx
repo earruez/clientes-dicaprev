@@ -1512,6 +1512,7 @@ export default function HallazgosClient({
         <DialogContent
           withClose={false}
           className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
+          onPointerDownOutside={(event) => event.preventDefault()}
         >
           <div className="flex h-full min-h-0 flex-col">
             <header className="shrink-0 border-b border-slate-800/90 bg-[#071225]/95 px-4 pb-3 pt-[max(0.9rem,env(safe-area-inset-top))] backdrop-blur sm:px-6 sm:pt-5">
