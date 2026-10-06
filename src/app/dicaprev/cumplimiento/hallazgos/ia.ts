@@ -258,11 +258,20 @@ function normalizarSugerenciasHallazgoIA(raw: unknown): SugerenciaHallazgoIA[] {
   return tieneConcluyente ? sugerencias : fallbackNoConcluyente();
 }
 
+function getBlobConfig() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  if (!token) return null;
+  const [, , , storeId = ""] = token.split("_");
+  if (!storeId) return null;
+  return { token, storeId };
+}
+
 async function cargarImagenComoDataUrl(params: {
+  empresaId: string;
   archivoUrl: string;
   archivoTipo?: string | null;
 }): Promise<string> {
-  const { archivoUrl, archivoTipo } = params;
+  const { empresaId, archivoUrl, archivoTipo } = params;
 
   if (archivoUrl.startsWith("data:")) {
     return archivoUrl;
@@ -276,6 +285,27 @@ async function cargarImagenComoDataUrl(params: {
     const buffer = Buffer.from(await response.arrayBuffer());
     const mimeType = inferImageMimeType(archivoUrl, archivoTipo || response.headers.get("content-type"));
     return `data:${mimeType};base64,${buffer.toString("base64")}`;
+  }
+
+  const archivoNombre = path.basename(archivoUrl);
+  const blob = getBlobConfig();
+
+  if (blob && archivoNombre) {
+    const blobUrl =
+      `https://${blob.storeId}.private.blob.vercel-storage.com/empresas/${encodeURIComponent(empresaId)}/documentos/${encodeURIComponent(archivoNombre)}`;
+    const response = await fetch(blobUrl, {
+      headers: { authorization: `Bearer ${blob.token}` },
+      cache: "no-store",
+    });
+
+    if (response.ok) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const mimeType = inferImageMimeType(
+        archivoUrl,
+        archivoTipo || response.headers.get("content-type"),
+      );
+      return `data:${mimeType};base64,${buffer.toString("base64")}`;
+    }
   }
 
   const normalizedPath = archivoUrl.startsWith("/") ? archivoUrl : `/${archivoUrl}`;
@@ -336,6 +366,7 @@ export async function analizarFotoHallazgoIA(
 
   try {
     const dataUrl = await cargarImagenComoDataUrl({
+      empresaId: context.empresaId,
       archivoUrl: input.archivoUrl,
       archivoTipo: input.archivoTipo,
     });
