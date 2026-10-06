@@ -19,8 +19,9 @@ function getBlobConfig() {
 }
 
 export async function POST(request: Request) {
+  let context;
   try {
-    await requireAuth();
+    context = await requireAuth();
   } catch {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
   }
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
 
   try {
     const { token, storeId } = getBlobConfig();
-    const pathname = `documentos/${archivoNombre}`;
+    const pathname = `empresas/${context.empresaId}/documentos/${archivoNombre}`;
     const blobResponse = await fetch(
       `https://vercel.com/api/blob/?pathname=${encodeURIComponent(pathname)}`,
       {
