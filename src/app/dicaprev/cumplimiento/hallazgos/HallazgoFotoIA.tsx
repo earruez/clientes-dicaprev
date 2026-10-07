@@ -313,6 +313,58 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     agregarArchivos(event.dataTransfer.files);
   }
 
+  async function optimizarFotoParaSubida(archivo: File): Promise<File> {
+    const LIMITE_DIRECTO = 2_400_000;
+    const MAX_LADO = 1600;
+
+    if (archivo.size <= LIMITE_DIRECTO) {
+      return archivo;
+    }
+
+    try {
+      const bitmap = await createImageBitmap(archivo);
+      const escala = Math.min(1, MAX_LADO / bitmap.width, MAX_LADO / bitmap.height);
+      const width = Math.max(1, Math.round(bitmap.width * escala));
+      const height = Math.max(1, Math.round(bitmap.height * escala));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        bitmap.close();
+        return archivo;
+      }
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close();
+
+      const convertir = (quality: number) =>
+        new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+
+      let blob: Blob | null = null;
+      for (const quality of [0.82, 0.72, 0.62, 0.52]) {
+        blob = await convertir(quality);
+        if (blob && blob.size <= LIMITE_DIRECTO) break;
+      }
+
+      if (!blob) {
+        return archivo;
+      }
+
+      const nombreBase = archivo.name.replace(/\.[^.]+$/, "") || "hallazgo";
+      return new File([blob], `${nombreBase}.jpg`, {
+        type: "image/jpeg",
+        lastModified: archivo.lastModified,
+      });
+    } catch {
+      return archivo;
+    }
+  }
+
   async function fetchConTimeout(
     input: RequestInfo | URL,
     init: RequestInit,
@@ -330,16 +382,17 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
 
   async function subirFotoConReintento(archivo: File, indice: number) {
     let ultimoError: unknown = null;
+    const archivoSubida = await optimizarFotoParaSubida(archivo);
 
     for (let intento = 0; intento < 2; intento++) {
       try {
         const formData = new FormData();
-        formData.append("file", archivo);
+        formData.append("file", archivoSubida);
 
         const response = await fetchConTimeout(
           "/api/dicaprev/documentacion/upload",
           { method: "POST", body: formData },
-          45_000,
+          60_000,
         );
 
         const data = (await response.json().catch(() => ({}))) as {
