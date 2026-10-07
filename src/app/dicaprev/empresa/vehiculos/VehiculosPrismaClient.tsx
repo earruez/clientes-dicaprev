@@ -383,8 +383,9 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
         </div>
 
         {/* Tabla */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="w-full overflow-x-auto overscroll-x-contain">
+            <table className="min-w-[1180px] w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
                 {(["", "Codigo / Patente", "Vehiculo / Equipo", "Centro", "Responsable", "Estado operativo", "Estado documental", "Faltantes", "Vencimientos", ""] as const).map((h, i) => (
@@ -465,7 +466,8 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
                 </tr>
               )}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       </div>
 
