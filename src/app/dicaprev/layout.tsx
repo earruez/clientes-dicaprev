@@ -84,7 +84,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <span className="text-sm font-semibold text-slate-700 tracking-wide">NEXTPREV</span>
+            <span className="hidden text-sm font-semibold tracking-wide text-slate-700 min-[380px]:inline">NEXTPREV</span>
+            <span className="text-sm font-semibold tracking-wide text-slate-700 min-[380px]:hidden">NP</span>
+            <div className="min-w-0 sm:hidden">
+              <ActiveCompanySelector variant="mobile" />
+            </div>
             <div className="hidden sm:block">
               <ActiveCompanySelector />
             </div>
@@ -114,6 +118,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <Button type="button" variant="ghost" size="sm" onClick={() => setMobileMenuOpen(false)}>
                   Cerrar
                 </Button>
+              </div>
+              <div className="border-b border-slate-200 px-4 py-3">
+                <ActiveCompanySelector variant="menu" />
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
                 <SidebarMobileNav onNavigate={() => setMobileMenuOpen(false)} />
