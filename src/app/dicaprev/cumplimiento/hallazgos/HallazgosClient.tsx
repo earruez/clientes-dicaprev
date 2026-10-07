@@ -1261,6 +1261,7 @@ export default function HallazgosClient({
                     <th className="py-3 text-left">Centro</th>
                     <th className="py-3 text-left">Trabajador</th>
                     <th className="py-3 text-left">Prioridad</th>
+                    <th className="py-3 text-left">Fecha hallazgo</th>
                     <th className="py-3 text-left">Compromiso</th>
                     <th className="py-3 text-right pr-2">Detalle</th>
                   </tr>
@@ -1301,7 +1302,8 @@ export default function HallazgosClient({
                           {PRIORIDAD_CFG[h.prioridad].label}
                         </span>
                       </td>
-                      <td className="py-3 text-slate-600">{fmtFecha(h.fechaCompromiso)}</td>
+                      <td className="py-3 text-slate-600 whitespace-nowrap">{fmtFecha(h.fechaCreacion)}</td>
+                      <td className="py-3 text-slate-600 whitespace-nowrap">{fmtFecha(h.fechaCompromiso)}</td>
                       <td className="py-3 pr-2 text-right">
                         <Button variant="ghost" size="sm" onClick={() => void openDetalle(h)}>
                           <ChevronRight className="h-4 w-4" />
@@ -1311,7 +1313,7 @@ export default function HallazgosClient({
                   ))}
                   {hallazgosFiltrados.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-16 text-center text-slate-500">
+                      <td colSpan={10} className="py-16 text-center text-slate-500">
                         Sin hallazgos que coincidan.
                       </td>
                     </tr>
