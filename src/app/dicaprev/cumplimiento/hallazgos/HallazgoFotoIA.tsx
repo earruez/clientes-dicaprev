@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState, useTransition } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, Building2, CheckCircle2, Camera, FileText, ImageIcon, Layers3, Loader2, Sparkles, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -88,7 +88,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   const [sugerencias, setSugerencias] = useState<SugerenciaAnalizada[]>([]);
   const [sugerenciasSeleccionadas, setSugerenciasSeleccionadas] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [analizando, setAnalizando] = useState(false);
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
   const [confirmingBatch, setConfirmingBatch] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
@@ -103,18 +103,16 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     [opciones.empresaId],
   );
 
-  const imagenPreview = useMemo(() => {
-    if (archivos.length === 0) return null;
-    return URL.createObjectURL(archivos[0]);
-  }, [archivos]);
+  const archivoPreviews = useMemo(
+    () => archivos.map((archivo) => URL.createObjectURL(archivo)),
+    [archivos],
+  );
 
   React.useEffect(() => {
     return () => {
-      if (imagenPreview) {
-        URL.revokeObjectURL(imagenPreview);
-      }
+      archivoPreviews.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [imagenPreview]);
+  }, [archivoPreviews]);
 
   React.useEffect(() => {
     if (!open || loadedDraftKey === draftKey || typeof window === "undefined") return;
@@ -315,6 +313,97 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     agregarArchivos(event.dataTransfer.files);
   }
 
+  async function fetchConTimeout(
+    input: RequestInfo | URL,
+    init: RequestInit,
+    timeoutMs: number,
+  ): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      return await fetch(input, { ...init, signal: controller.signal });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
+  }
+
+  async function subirFotoConReintento(archivo: File, indice: number) {
+    let ultimoError: unknown = null;
+
+    for (let intento = 0; intento < 2; intento++) {
+      try {
+        const formData = new FormData();
+        formData.append("file", archivo);
+
+        const response = await fetchConTimeout(
+          "/api/dicaprev/documentacion/upload",
+          { method: "POST", body: formData },
+          45_000,
+        );
+
+        const data = (await response.json().catch(() => ({}))) as {
+          archivoUrl?: string;
+          archivoNombre?: string;
+          archivoTipo?: string;
+          error?: string;
+        };
+
+        if (!response.ok || !data.archivoUrl) {
+          throw new Error(data.error ?? `No fue posible cargar la imagen ${indice + 1}.`);
+        }
+
+        return data;
+      } catch (error) {
+        ultimoError = error;
+
+        const esReintentable =
+          error instanceof DOMException
+            ? error.name === "AbortError"
+            : error instanceof TypeError;
+
+        if (!esReintentable || intento === 1) {
+          break;
+        }
+
+        await new Promise((resolve) => window.setTimeout(resolve, 800));
+      }
+    }
+
+    if (ultimoError instanceof DOMException && ultimoError.name === "AbortError") {
+      throw new Error(
+        `La foto ${indice + 1} tardó demasiado en subir. Tus fotos siguen guardadas; vuelve a intentar.`,
+      );
+    }
+
+    if (ultimoError instanceof TypeError) {
+      throw new Error(
+        "No pudimos conectar con el servidor. Revisa tu conexión y vuelve a intentar. Tus fotos no se perderán.",
+      );
+    }
+
+    throw ultimoError instanceof Error
+      ? ultimoError
+      : new Error(`No fue posible cargar la imagen ${indice + 1}.`);
+  }
+
+  async function conTimeout<T>(promesa: Promise<T>, timeoutMs: number, mensaje: string): Promise<T> {
+    let timeoutId: number | undefined;
+
+    try {
+      return await Promise.race([
+        promesa,
+        new Promise<T>((_, reject) => {
+          timeoutId = window.setTimeout(() => reject(new Error(mensaje)), timeoutMs);
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    }
+  }
+
   async function analizarTodasLasFotos() {
     if (archivos.length === 0) {
       setError("Debes seleccionar al menos una fotografía para analizar.");
@@ -329,90 +418,72 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     setError(null);
     setSugerencias([]);
     setSugerenciasSeleccionadas(new Set());
+    setAnalizando(true);
 
-    startTransition(async () => {
-      try {
-        const todasLasSugerencias: SugerenciaAnalizada[] = [];
-        const datosArchivos: Array<{ file: File; url: string; nombre: string; tipo: string }> = [];
+    try {
+      const todasLasSugerencias: SugerenciaAnalizada[] = [];
 
-        for (let i = 0; i < archivos.length; i++) {
-          setProcesandoIndex(i);
-          const archivo = archivos[i];
+      for (let i = 0; i < archivos.length; i++) {
+        setProcesandoIndex(i);
+        const archivo = archivos[i];
 
-          // Subir archivo
-          const formData = new FormData();
-          formData.append("file", archivo);
+        const uploadJson = await subirFotoConReintento(archivo, i);
 
-          const uploadResponse = await fetch("/api/dicaprev/documentacion/upload", {
-            method: "POST",
-            body: formData,
-          });
-
-          const uploadJson = (await uploadResponse.json()) as {
-            archivoUrl?: string;
-            archivoNombre?: string;
-            archivoTipo?: string;
-            error?: string;
-          };
-
-          if (!uploadResponse.ok || !uploadJson.archivoUrl) {
-            throw new Error(uploadJson.error ?? `No fue posible cargar la imagen ${i + 1}.`);
-          }
-
-          datosArchivos.push({
-            file: archivo,
-            url: uploadJson.archivoUrl,
-            nombre: uploadJson.archivoNombre ?? archivo.name,
-            tipo: uploadJson.archivoTipo ?? archivo.type,
-          });
-
-          // Analizar con IA
-          const analysis = await analizarFotoHallazgoIA({
-            archivoUrl: uploadJson.archivoUrl,
+        const analysis = await conTimeout(
+          analizarFotoHallazgoIA({
+            archivoUrl: uploadJson.archivoUrl!,
             archivoNombre: uploadJson.archivoNombre ?? archivo.name,
             archivoTipo: uploadJson.archivoTipo ?? archivo.type,
             centroTrabajoId: centroTrabajoId || null,
             areaId: areaId || null,
             observacion: observacion.trim() || null,
-          });
+          }),
+          75_000,
+          `El análisis de la foto ${i + 1} tardó demasiado. Puedes volver a intentar sin seleccionar las fotos nuevamente.`,
+        );
 
-          if (!analysis || typeof analysis !== "object" || !("ok" in analysis)) {
-            throw new Error("No fue posible procesar la respuesta del análisis IA.");
-          }
-
-          if (!analysis.ok) {
-            throw new Error(analysis.error === "IA no configurada" ? IA_NO_CONFIGURADA : analysis.error);
-          }
-
-          (analysis.sugerencias || []).forEach((sugerencia, suggestionIndex) => {
-            todasLasSugerencias.push({
-              id: `${i}-${suggestionIndex}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              sugerencia,
-              archivo: {
-                url: uploadJson.archivoUrl!,
-                nombre: uploadJson.archivoNombre ?? archivo.name,
-                tipo: uploadJson.archivoTipo ?? archivo.type,
-                previewUrl: URL.createObjectURL(archivo),
-              },
-            });
-          });
-
-          // Persistir el avance foto a foto para que un cambio de pestaña o recarga
-          // no borre los análisis ya completados.
-          setSugerencias([...todasLasSugerencias]);
-          setSugerenciasSeleccionadas(new Set(todasLasSugerencias.map((item) => item.id)));
+        if (!analysis || typeof analysis !== "object" || !("ok" in analysis)) {
+          throw new Error("No fue posible procesar la respuesta del análisis IA.");
         }
 
-        setSugerencias(todasLasSugerencias);
+        if (!analysis.ok) {
+          throw new Error(analysis.error === "IA no configurada" ? IA_NO_CONFIGURADA : analysis.error);
+        }
+
+        (analysis.sugerencias || []).forEach((sugerencia, suggestionIndex) => {
+          todasLasSugerencias.push({
+            id: `${i}-${suggestionIndex}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            sugerencia,
+            archivo: {
+              url: uploadJson.archivoUrl!,
+              nombre: uploadJson.archivoNombre ?? archivo.name,
+              tipo: uploadJson.archivoTipo ?? archivo.type,
+              previewUrl: archivoPreviews[i],
+            },
+          });
+        });
+
+        setSugerencias([...todasLasSugerencias]);
         setSugerenciasSeleccionadas(new Set(todasLasSugerencias.map((item) => item.id)));
-        setModoResultados(todasLasSugerencias.length > 0);
-        setProcesandoIndex(-1);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "No fue posible analizar las imágenes.";
-        setError(message);
-        setProcesandoIndex(-1);
       }
-    });
+
+      setSugerencias(todasLasSugerencias);
+      setSugerenciasSeleccionadas(new Set(todasLasSugerencias.map((item) => item.id)));
+      setModoResultados(todasLasSugerencias.length > 0);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "No fue posible analizar las imágenes. Tus fotos siguen disponibles para volver a intentar.";
+      setError(
+        message === "Failed to fetch"
+          ? "No pudimos conectar con el servidor. Revisa tu conexión y vuelve a intentar. Tus fotos no se perderán."
+          : message,
+      );
+    } finally {
+      setProcesandoIndex(-1);
+      setAnalizando(false);
+    }
   }
 
   async function handleConfirmar(item: SugerenciaAnalizada) {
@@ -531,7 +602,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     archivos.length > 0 ||
     Boolean(centroTrabajoId || areaId || observacion.trim()) ||
     sugerencias.length > 0 ||
-    isPending ||
+    analizando ||
     confirmingBatch ||
     confirmingKey !== null;
 
@@ -706,7 +777,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                     {archivos.map((file, idx) => (
                       <div key={`${file.name}-${idx}`} className="relative aspect-square overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
                         <img
-                          src={URL.createObjectURL(file)}
+                          src={archivoPreviews[idx]}
                           alt={`Foto ${idx + 1}`}
                           className="h-full w-full object-cover"
                         />
@@ -754,7 +825,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                   </div>
                 ) : null}
 
-                {isPending ? (
+                {analizando ? (
                   <div className="flex items-center gap-2 rounded-xl border border-sky-400/20 bg-sky-400/10 px-3 py-2 text-sm text-sky-200">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Analizando fotografías...
@@ -936,10 +1007,10 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                 </Button>
                 <Button
                   onClick={() => void analizarTodasLasFotos()}
-                  disabled={isPending || confirmingBatch || archivos.length === 0 || !iaConfigurada || procesandoIndex >= 0}
+                  disabled={analizando || confirmingBatch || archivos.length === 0 || !iaConfigurada || procesandoIndex >= 0}
                   className="h-12 bg-emerald-500 px-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400"
                 >
-                  {isPending || procesandoIndex >= 0 ? (
+                  {analizando || procesandoIndex >= 0 ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       <span className="truncate">Analizando {Math.max(1, procesandoIndex + 1)}/{archivos.length}</span>
