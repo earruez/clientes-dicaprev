@@ -522,7 +522,7 @@ export async function crearVehiculo(data: VehiculoInput): Promise<VehiculoDTO> {
       anio: data.anio,
       centroTrabajoId: data.centroTrabajoId || null,
       responsableTrabajadorId: responsable?.id ?? null,
-      responsable: responsable?.nombre ?? data.responsable || null,
+      responsable: (responsable?.nombre ?? data.responsable) || null,
       numeroChasis: data.numeroChasis?.trim() || null,
       gps: Boolean(data.gps),
       estado: data.estado,
@@ -564,7 +564,7 @@ export async function actualizarVehiculo(
       anio: data.anio,
       centroTrabajoId: data.centroTrabajoId || null,
       responsableTrabajadorId: responsable?.id ?? null,
-      responsable: responsable?.nombre ?? data.responsable || null,
+      responsable: (responsable?.nombre ?? data.responsable) || null,
       numeroChasis: data.numeroChasis?.trim() || null,
       gps: Boolean(data.gps),
       estado: data.estado,
@@ -906,12 +906,12 @@ export async function crearOActualizarDocumentoVehiculo(
   });
 
   // Buscar registro existente: primero por documentoId explícito, luego por tipo
-  let existing: { id: string; tipoDocumentoId: string | null } | null = null;
+  let existing: { id: string; tipoDocumentoId: string | null; fechaVencimiento: Date | null } | null = null;
 
   if (data.documentoId) {
     existing = await prisma.vehiculoDocumento.findFirst({
       where: { id: data.documentoId, empresaId, vehiculoId },
-      select: { id: true, tipoDocumentoId: true },
+      select: { id: true, tipoDocumentoId: true, fechaVencimiento: true },
     });
   }
 
@@ -927,7 +927,7 @@ export async function crearOActualizarDocumentoVehiculo(
     if (whereConditions.length > 0) {
       existing = await prisma.vehiculoDocumento.findFirst({
         where: { empresaId, vehiculoId, OR: whereConditions },
-        select: { id: true, tipoDocumentoId: true },
+        select: { id: true, tipoDocumentoId: true, fechaVencimiento: true },
       });
     }
   }
@@ -960,6 +960,9 @@ export async function crearOActualizarDocumentoVehiculo(
           archivoPeso: data.archivoPeso ?? null,
           observaciones: data.observaciones?.trim() || null,
           subidoPorId: subido ? usuarioId : null,
+          ...(existing.fechaVencimiento?.getTime() !== fechaVencimiento?.getTime()
+            ? { aviso20EnviadoAt: null, aviso15EnviadoAt: null }
+            : {}),
         },
       })
     : await prisma.vehiculoDocumento.create({
