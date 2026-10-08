@@ -451,13 +451,13 @@ export function VehiculoDetailDrawer({
 
       {/* Document edit mini-modal — z-[60] sits above the drawer */}
       {docEdit && vehiculo && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] sm:items-center">
           <div
             aria-hidden
             onClick={() => setDocEdit(null)}
             className="absolute inset-0 bg-slate-900/30"
           />
-          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl [-webkit-overflow-scrolling:touch]">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">
               Actualizar — {docEdit.tipoNombre}
             </h3>
@@ -522,13 +522,13 @@ export function VehiculoDetailDrawer({
       )}
 
       {mantencionModalOpen && vehiculo && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+        <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] sm:items-center">
           <div
             aria-hidden
             onClick={() => setMantencionModalOpen(false)}
             className="absolute inset-0 bg-slate-900/30"
           />
-          <div className="relative w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl [-webkit-overflow-scrolling:touch]">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">Nueva mantención</h3>
             <form onSubmit={submitMantencion} className="space-y-4">
               <div className="space-y-1.5">
@@ -632,7 +632,7 @@ export function VehiculoDetailDrawer({
         role="dialog"
         aria-modal
         className={cn(
-          "fixed right-0 top-0 z-50 flex h-full w-full max-w-[480px] flex-col bg-white shadow-2xl transition-transform duration-300 ease-out",
+          "fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-[480px] flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out",
           open && vehiculo ? "translate-x-0" : "translate-x-full",
         )}
       >
@@ -772,7 +772,7 @@ export function VehiculoDetailDrawer({
                   </div>
 
                   {/* Tab bar */}
-                  <div className="-mx-5 overflow-x-auto border-t border-slate-100">
+                  <div className="-mx-5 overflow-x-auto overscroll-x-contain border-t border-slate-100 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                     <div className="flex min-w-max">
                       {TABS.map((t) => (
                         <button
@@ -796,7 +796,7 @@ export function VehiculoDetailDrawer({
                 </div>
 
                 {/* ── Body (scrollable) ── */}
-                <div className="flex-1 overflow-y-auto">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
 
                   {/* Resumen */}
                   {activeTab === "resumen" && (
