@@ -1001,6 +1001,7 @@ model Trabajador {
   hallazgosResponsable     HallazgoCumplimiento[]   @relation("TrabajadorHallazgoCumplimientoResponsable")
   ds44PlanAccionesResponsable Ds44PlanAccion[]      @relation("TrabajadorDs44PlanAccionResponsable")
   evidenciasCumplimiento   EvidenciaCumplimiento[]
+  vehiculosResponsable     Vehiculo[]                @relation("TrabajadorVehiculoResponsable")
   capacitacionAsignaciones CapacitacionAsignacion[]
   capacitacionHistoriales  CapacitacionHistorial[]
   capacitacionEvaluaciones CapacitacionEvaluacion[]
@@ -1666,6 +1667,9 @@ model Vehiculo {
   anio            Int?
   estado          String               @default("operativo")
   responsable     String?
+  responsableTrabajadorId String?
+  numeroChasis     String?
+  gps              Boolean              @default(false)
   proximaRevision String?
   kilometraje     Int?
   observaciones   String?
@@ -1678,8 +1682,10 @@ model Vehiculo {
 
   empresa       Empresa        @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   centroTrabajo CentroTrabajo? @relation(fields: [centroTrabajoId], references: [id], onDelete: SetNull)
+  responsableTrabajador Trabajador? @relation("TrabajadorVehiculoResponsable", fields: [responsableTrabajadorId], references: [id], onDelete: SetNull)
 
   @@index([empresaId])
+  @@index([responsableTrabajadorId])
 }
 
 model VehiculoDocumento {
@@ -1700,6 +1706,8 @@ model VehiculoDocumento {
   fechaVencimiento      DateTime?
   observaciones         String?
   subidoPorId           String?
+  aviso20EnviadoAt      DateTime?
+  aviso15EnviadoAt      DateTime?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 

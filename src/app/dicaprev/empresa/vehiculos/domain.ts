@@ -71,6 +71,10 @@ export type Vehiculo = {
   tipo: TipoVehiculo;
   centro: string;
   responsable: string;
+  responsableId: string;
+  responsableEmail: string;
+  numeroChasis: string;
+  gps: boolean;
   estado: EstadoVehiculo;
   proximaRevision: string;
   kilometraje: number;

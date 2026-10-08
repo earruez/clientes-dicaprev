@@ -15,6 +15,10 @@ export type VehiculoDTO = {
   anio: number | null;
   estado: string;
   responsable: string | null;
+  responsableTrabajadorId: string | null;
+  responsableEmail: string | null;
+  numeroChasis: string | null;
+  gps: boolean;
   centroTrabajoId: string | null;
   centroNombre: string | null;
   proximaRevision: string | null;
@@ -82,6 +86,13 @@ export type CentroItem = {
   nombre: string;
 };
 
+export type ResponsableVehiculoItem = {
+  id: string;
+  nombre: string;
+  email: string | null;
+  centroTrabajoId: string | null;
+};
+
 export type VehiculoInput = {
   patente: string;
   codigoInterno: string;
@@ -91,6 +102,9 @@ export type VehiculoInput = {
   anio: number;
   centroTrabajoId: string;
   responsable: string;
+  responsableTrabajadorId: string;
+  numeroChasis: string;
+  gps: boolean;
   estado: string;
   proximaRevision: string;
   kilometraje: number;
@@ -136,6 +150,10 @@ function toDTO(v: {
   anio: number | null;
   estado: string;
   responsable: string | null;
+  responsableTrabajadorId: string | null;
+  responsableTrabajador: { id: string; nombres: string; apellidos: string; email: string | null } | null;
+  numeroChasis: string | null;
+  gps: boolean;
   centroTrabajoId: string | null;
   centroTrabajo: { nombre: string } | null;
   proximaRevision: string | null;
@@ -209,7 +227,13 @@ function toDTO(v: {
     modelo: v.modelo,
     anio: v.anio,
     estado: v.estado,
-    responsable: v.responsable,
+    responsable: v.responsableTrabajador
+      ? `${v.responsableTrabajador.nombres} ${v.responsableTrabajador.apellidos}`.trim()
+      : v.responsable,
+    responsableTrabajadorId: v.responsableTrabajadorId,
+    responsableEmail: v.responsableTrabajador?.email ?? null,
+    numeroChasis: v.numeroChasis,
+    gps: v.gps,
     centroTrabajoId: v.centroTrabajoId,
     centroNombre: v.centroTrabajo?.nombre ?? null,
     proximaRevision: v.proximaRevision,
@@ -344,6 +368,9 @@ async function ensureRequiredDocs(vehiculoId: string, empresaId: string): Promis
 
 const INCLUDE = {
   centroTrabajo: { select: { nombre: true } },
+  responsableTrabajador: {
+    select: { id: true, nombres: true, apellidos: true, email: true },
+  },
   documentos: {
     select: {
       id: true,
@@ -423,8 +450,66 @@ export async function getCentrosList(): Promise<CentroItem[]> {
   return centros;
 }
 
+export async function getResponsablesVehiculoList(): Promise<ResponsableVehiculoItem[]> {
+  const { empresaId } = await requirePermission("canReadEmpresa");
+
+  const trabajadores = await prisma.trabajador.findMany({
+    where: { empresaId, estado: "activo" },
+    select: {
+      id: true,
+      nombres: true,
+      apellidos: true,
+      email: true,
+      centroTrabajoId: true,
+    },
+    orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
+  });
+
+  return trabajadores.map((trabajador) => ({
+    id: trabajador.id,
+    nombre: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
+    email: trabajador.email,
+    centroTrabajoId: trabajador.centroTrabajoId,
+  }));
+}
+
+async function resolverResponsableVehiculo(
+  empresaId: string,
+  responsableTrabajadorId: string | null | undefined,
+) {
+  if (!responsableTrabajadorId) return null;
+
+  const trabajador = await prisma.trabajador.findFirst({
+    where: {
+      id: responsableTrabajadorId,
+      empresaId,
+      estado: "activo",
+    },
+    select: {
+      id: true,
+      nombres: true,
+      apellidos: true,
+      email: true,
+    },
+  });
+
+  if (!trabajador) {
+    throw new Error("Responsable no válido para la empresa activa.");
+  }
+
+  return {
+    id: trabajador.id,
+    nombre: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
+    email: trabajador.email,
+  };
+}
+
 export async function crearVehiculo(data: VehiculoInput): Promise<VehiculoDTO> {
   const { empresaId } = await requirePermission("canManageEmpresa");
+  const responsable = await resolverResponsableVehiculo(
+    empresaId,
+    data.responsableTrabajadorId || null,
+  );
 
   const v = await prisma.vehiculo.create({
     data: {
@@ -436,7 +521,10 @@ export async function crearVehiculo(data: VehiculoInput): Promise<VehiculoDTO> {
       modelo: data.modelo,
       anio: data.anio,
       centroTrabajoId: data.centroTrabajoId || null,
-      responsable: data.responsable || null,
+      responsableTrabajadorId: responsable?.id ?? null,
+      responsable: (responsable?.nombre ?? data.responsable) || null,
+      numeroChasis: data.numeroChasis?.trim() || null,
+      gps: Boolean(data.gps),
       estado: data.estado,
       proximaRevision: data.proximaRevision || null,
       kilometraje: data.kilometraje,
@@ -460,6 +548,20 @@ export async function actualizarVehiculo(
   data: VehiculoInput
 ): Promise<VehiculoDTO> {
   const { empresaId } = await requirePermission("canManageEmpresa");
+  const actual = await prisma.vehiculo.findFirst({
+    where: { id, empresaId },
+    select: { responsableTrabajadorId: true },
+  });
+  if (!actual) {
+    throw new Error("Vehículo no encontrado.");
+  }
+
+  const responsable = await resolverResponsableVehiculo(
+    empresaId,
+    data.responsableTrabajadorId || null,
+  );
+  const responsableCambio =
+    actual.responsableTrabajadorId !== (responsable?.id ?? null);
 
   const v = await prisma.vehiculo.update({
     where: { id, empresaId },
@@ -471,7 +573,10 @@ export async function actualizarVehiculo(
       modelo: data.modelo,
       anio: data.anio,
       centroTrabajoId: data.centroTrabajoId || null,
-      responsable: data.responsable || null,
+      responsableTrabajadorId: responsable?.id ?? null,
+      responsable: (responsable?.nombre ?? data.responsable) || null,
+      numeroChasis: data.numeroChasis?.trim() || null,
+      gps: Boolean(data.gps),
       estado: data.estado,
       proximaRevision: data.proximaRevision || null,
       kilometraje: data.kilometraje,
@@ -481,6 +586,16 @@ export async function actualizarVehiculo(
   });
 
   await ensureRequiredDocs(v.id, empresaId);
+
+  if (responsableCambio) {
+    await prisma.vehiculoDocumento.updateMany({
+      where: { empresaId, vehiculoId: v.id },
+      data: {
+        aviso20EnviadoAt: null,
+        aviso15EnviadoAt: null,
+      },
+    });
+  }
 
   const refreshed = await prisma.vehiculo.findUniqueOrThrow({
     where: { id: v.id },
@@ -811,12 +926,12 @@ export async function crearOActualizarDocumentoVehiculo(
   });
 
   // Buscar registro existente: primero por documentoId explícito, luego por tipo
-  let existing: { id: string; tipoDocumentoId: string | null } | null = null;
+  let existing: { id: string; tipoDocumentoId: string | null; fechaVencimiento: Date | null } | null = null;
 
   if (data.documentoId) {
     existing = await prisma.vehiculoDocumento.findFirst({
       where: { id: data.documentoId, empresaId, vehiculoId },
-      select: { id: true, tipoDocumentoId: true },
+      select: { id: true, tipoDocumentoId: true, fechaVencimiento: true },
     });
   }
 
@@ -832,7 +947,7 @@ export async function crearOActualizarDocumentoVehiculo(
     if (whereConditions.length > 0) {
       existing = await prisma.vehiculoDocumento.findFirst({
         where: { empresaId, vehiculoId, OR: whereConditions },
-        select: { id: true, tipoDocumentoId: true },
+        select: { id: true, tipoDocumentoId: true, fechaVencimiento: true },
       });
     }
   }
@@ -865,6 +980,9 @@ export async function crearOActualizarDocumentoVehiculo(
           archivoPeso: data.archivoPeso ?? null,
           observaciones: data.observaciones?.trim() || null,
           subidoPorId: subido ? usuarioId : null,
+          ...(existing.fechaVencimiento?.getTime() !== fechaVencimiento?.getTime()
+            ? { aviso20EnviadoAt: null, aviso15EnviadoAt: null }
+            : {}),
         },
       })
     : await prisma.vehiculoDocumento.create({

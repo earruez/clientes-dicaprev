@@ -223,7 +223,7 @@ export default function VehiculoDetailPage() {
     void loadDetalle();
   }, [loadDetalle]);
 
-  function handleChange(field: keyof VehiculoInput, value: string | number) {
+  function handleChange(field: keyof VehiculoInput, value: string | number | boolean) {
     setForm((prev) => (prev ? { ...prev, [field]: value } : prev));
   }
 
@@ -239,6 +239,9 @@ export default function VehiculoDetailPage() {
       tipo: vehiculo.tipo,
       centroTrabajoId: vehiculo.centroTrabajoId ?? NO_CENTRO_VALUE,
       responsable: vehiculo.responsable ?? "",
+      responsableTrabajadorId: vehiculo.responsableTrabajadorId ?? "",
+      numeroChasis: vehiculo.numeroChasis ?? "",
+      gps: vehiculo.gps ?? false,
       estado: vehiculo.estado,
       proximaRevision: vehiculo.proximaRevision ?? "",
       kilometraje: vehiculo.kilometraje ?? 0,

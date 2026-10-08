@@ -28,6 +28,7 @@ import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
   crearVehiculo, actualizarVehiculo,
   type VehiculoDTO, type VehiculoInput, type CentroItem, type VehiculoDocumentoDTO,
+  type ResponsableVehiculoItem,
 } from "./actions";
 
 type EstadoDocumentalVehiculo = "en_regla" | "por_vencer" | "fuera_de_regla" | "en_revision";
@@ -52,6 +53,10 @@ function dtoToVehiculo(dto: VehiculoDTO): Vehiculo {
     tipo: dto.tipo as TipoVehiculo,
     centro: dto.centroNombre ?? "",
     responsable: dto.responsable ?? "",
+    responsableId: dto.responsableTrabajadorId ?? "",
+    responsableEmail: dto.responsableEmail ?? "",
+    numeroChasis: dto.numeroChasis ?? "",
+    gps: dto.gps,
     estado: dto.estado as EstadoVehiculo,
     proximaRevision: dto.proximaRevision ?? "",
     kilometraje: dto.kilometraje ?? 0,
@@ -129,6 +134,9 @@ const EMPTY: VehiculoInput = {
   tipo: "camioneta",
   centroTrabajoId: "",
   responsable: "",
+  responsableTrabajadorId: "",
+  numeroChasis: "",
+  gps: false,
   estado: "operativo",
   proximaRevision: "",
   kilometraje: 0,
@@ -142,11 +150,16 @@ const NO_CENTRO_VALUE = "__sin_centro__";
 interface Props {
   initialVehiculos: VehiculoDTO[];
   initialCentros: CentroItem[];
+  initialResponsables: ResponsableVehiculoItem[];
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
 
-export default function VehiculosPrismaClient({ initialVehiculos, initialCentros }: Props) {
+export default function VehiculosPrismaClient({
+  initialVehiculos,
+  initialCentros,
+  initialResponsables,
+}: Props) {
   const [vehiculosDTO, setVehiculosDTO] = useState<VehiculoDTO[]>(initialVehiculos);
   const [search, setSearch] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<TipoVehiculo | "todos">("todos");
@@ -214,6 +227,9 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
       tipo: v.tipo,
       centroTrabajoId: dto?.centroTrabajoId ?? NO_CENTRO_VALUE,
       responsable: v.responsable,
+      responsableTrabajadorId: dto?.responsableTrabajadorId ?? "",
+      numeroChasis: dto?.numeroChasis ?? "",
+      gps: dto?.gps ?? false,
       estado: v.estado,
       proximaRevision: v.proximaRevision,
       kilometraje: v.kilometraje,
@@ -226,7 +242,7 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
     setModal((prev) => ({ ...prev, open: false }));
   }
 
-  function handleChange(field: keyof VehiculoInput, value: string | number) {
+  function handleChange(field: keyof VehiculoInput, value: string | number | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -514,7 +530,7 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Patente</Label>
                 <Input className="rounded-xl" placeholder="BBLF-45" value={form.patente} onChange={(e) => handleChange("patente", e.target.value)} required />
@@ -522,6 +538,10 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
               <div className="space-y-1.5">
                 <Label>Código interno</Label>
                 <Input className="rounded-xl" placeholder="FLT-001" value={form.codigoInterno} onChange={(e) => handleChange("codigoInterno", e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>N.º de chasis <span className="font-normal text-slate-400">(opcional)</span></Label>
+                <Input className="rounded-xl" placeholder="VIN / chasis" value={form.numeroChasis} onChange={(e) => handleChange("numeroChasis", e.target.value)} />
               </div>
             </div>
 
@@ -553,11 +573,27 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
               </div>
               <div className="space-y-1.5">
                 <Label>Responsable</Label>
-                <Input className="rounded-xl" placeholder="Nombre del responsable" value={form.responsable} onChange={(e) => handleChange("responsable", e.target.value)} />
+                <Select
+                  value={form.responsableTrabajadorId || "__sin_responsable__"}
+                  onValueChange={(v) => handleChange("responsableTrabajadorId", v === "__sin_responsable__" ? "" : v)}
+                >
+                  <SelectTrigger className="rounded-xl">
+                    <SelectValue placeholder="Seleccionar responsable" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__sin_responsable__">Sin responsable asignado</SelectItem>
+                    {initialResponsables.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.nombre}{r.email ? ` · ${r.email}` : " · sin correo"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-slate-400">El responsable recibirá avisos de documentos próximos a vencer.</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Próxima revisión</Label>
                 <Input className="rounded-xl" type="date" value={form.proximaRevision} onChange={(e) => handleChange("proximaRevision", e.target.value)} />
@@ -565,6 +601,16 @@ export default function VehiculosPrismaClient({ initialVehiculos, initialCentros
               <div className="space-y-1.5">
                 <Label>Kilometraje</Label>
                 <Input className="rounded-xl" type="number" min={0} value={form.kilometraje} onChange={(e) => handleChange("kilometraje", parseInt(e.target.value) || 0)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>GPS</Label>
+                <Select value={form.gps ? "si" : "no"} onValueChange={(v) => handleChange("gps", v === "si")}>
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="si">Sí</SelectItem>
+                    <SelectItem value="no">No</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
