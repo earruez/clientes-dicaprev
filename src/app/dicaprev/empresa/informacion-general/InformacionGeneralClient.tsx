@@ -417,7 +417,7 @@ export default function InformacionGeneralClient({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-4xl rounded-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl rounded-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
           <DialogHeader>
             <DialogTitle>Editar información de empresa</DialogTitle>
           </DialogHeader>
