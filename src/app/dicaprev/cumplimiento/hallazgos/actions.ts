@@ -104,6 +104,8 @@ const PLANTILLAS_HALLAZGO: PlantillaHallazgo[] = [
 export type OpcionesHallazgo = {
   empresaId: string;
   puedeEditar: boolean;
+  puedeMoverEmpresa: boolean;
+  empresasDestino: Array<{ id: string; nombre: string }>;
   centros: Array<{ id: string; nombre: string }>;
   areas: Array<{ id: string; nombre: string }>;
   trabajadores: Array<{
@@ -185,6 +187,82 @@ function canManageCumplimiento(rol: string): boolean {
   const manageCumplimiento = PERMISSIONS.canManageCumplimiento.some((r) => r === rol);
   const manageDocumentacion = PERMISSIONS.canManageDocumentacion.some((r) => r === rol);
   return manageCumplimiento || manageDocumentacion;
+}
+
+function getBlobConfig() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  if (!token) {
+    throw new Error("Almacenamiento de archivos no configurado.");
+  }
+
+  const [, , , storeId = ""] = token.split("_");
+  if (!storeId) {
+    throw new Error("No fue posible resolver el almacenamiento de archivos.");
+  }
+
+  return { token, storeId };
+}
+
+async function copiarArchivoEntreEmpresas(
+  archivoNombre: string,
+  empresaOrigenId: string,
+  empresaDestinoId: string,
+): Promise<"copiado" | "existente"> {
+  const { token, storeId } = getBlobConfig();
+  const destinoPath = `empresas/${empresaDestinoId}/documentos/${archivoNombre}`;
+  const destinoUrl =
+    `https://${storeId}.private.blob.vercel-storage.com/${destinoPath}`;
+
+  const existente = await fetch(destinoUrl, {
+    headers: { authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (existente.ok) return "existente";
+
+  const origenes = [
+    `https://${storeId}.private.blob.vercel-storage.com/empresas/${empresaOrigenId}/documentos/${archivoNombre}`,
+    `https://${storeId}.private.blob.vercel-storage.com/documentos/${archivoNombre}`,
+  ];
+
+  let origen: Response | null = null;
+  for (const url of origenes) {
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (response.ok) {
+      origen = response;
+      break;
+    }
+  }
+
+  if (!origen) {
+    throw new Error(`No fue posible encontrar el archivo ${archivoNombre} para moverlo.`);
+  }
+
+  const body = await origen.arrayBuffer();
+  const contentType = origen.headers.get("content-type") ?? "application/octet-stream";
+  const upload = await fetch(
+    `https://vercel.com/api/blob/?pathname=${encodeURIComponent(destinoPath)}`,
+    {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-vercel-blob-store-id": storeId,
+        "x-api-version": "12",
+        "x-vercel-blob-access": "private",
+        "x-add-random-suffix": "0",
+        "x-content-type": contentType,
+      },
+      body,
+    },
+  );
+
+  if (!upload.ok) {
+    throw new Error(`No fue posible copiar el archivo ${archivoNombre} a la empresa destino.`);
+  }
+
+  return "copiado";
 }
 
 function ensureEstado(estado: string): EstadoHallazgo {
@@ -437,7 +515,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
 export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
   const context = await requirePermission("canReadCumplimiento");
 
-  const [centros, areas, trabajadores, obligacionesPayload] = await Promise.all([
+  const [centros, areas, trabajadores, obligacionesPayload, empresasDestino] = await Promise.all([
     prisma.centroTrabajo.findMany({
       where: { empresaId: context.empresaId, estado: "activo" },
       select: { id: true, nombre: true },
@@ -461,11 +539,20 @@ export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
       orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
     }),
     getObligacionesCumplimientoEmpresa(),
+    context.rol === "SUPERADMIN"
+      ? prisma.empresa.findMany({
+          where: { activa: true, id: { not: context.empresaId } },
+          select: { id: true, nombre: true },
+          orderBy: { nombre: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   return {
     empresaId: context.empresaId,
     puedeEditar: canManageCumplimiento(context.rol),
+    puedeMoverEmpresa: context.rol === "SUPERADMIN",
+    empresasDestino,
     centros,
     areas,
     trabajadores: trabajadores.map((t) => ({
@@ -672,6 +759,147 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
       },
     });
   });
+}
+
+export async function moverHallazgosEmpresa(
+  ids: string[],
+  empresaDestinoId: string,
+): Promise<{
+  hallazgosMovidos: number;
+  evidenciasMovidas: number;
+  archivosCopiados: number;
+  archivosExistentes: number;
+}> {
+  const context = await requireAuth();
+  if (context.rol !== "SUPERADMIN") {
+    throw new Error("Solo SUPERADMIN puede mover hallazgos entre empresas.");
+  }
+
+  const idsValidos = Array.from(
+    new Set(ids.filter((id) => typeof id === "string" && id.trim().length > 0)),
+  );
+
+  if (idsValidos.length === 0) {
+    throw new Error("Selecciona al menos un hallazgo.");
+  }
+
+  if (!empresaDestinoId || empresaDestinoId === context.empresaId) {
+    throw new Error("Selecciona una empresa destino diferente.");
+  }
+
+  const empresaDestino = await prisma.empresa.findFirst({
+    where: { id: empresaDestinoId, activa: true },
+    select: { id: true, nombre: true },
+  });
+
+  if (!empresaDestino) {
+    throw new Error("La empresa destino no existe o está inactiva.");
+  }
+
+  const hallazgos = await prisma.hallazgoCumplimiento.findMany({
+    where: {
+      id: { in: idsValidos },
+      empresaId: context.empresaId,
+    },
+    select: {
+      id: true,
+      evidenciasCumplimiento: {
+        select: {
+          id: true,
+          archivoNombre: true,
+        },
+      },
+    },
+  });
+
+  if (hallazgos.length !== idsValidos.length) {
+    throw new Error("Uno o más hallazgos ya no pertenecen a la empresa activa.");
+  }
+
+  const archivos = Array.from(
+    new Set(
+      hallazgos
+        .flatMap((hallazgo) => hallazgo.evidenciasCumplimiento)
+        .map((evidencia) => evidencia.archivoNombre)
+        .filter((nombre): nombre is string => Boolean(nombre)),
+    ),
+  );
+
+  let archivosCopiados = 0;
+  let archivosExistentes = 0;
+
+  for (const archivoNombre of archivos) {
+    const resultado = await copiarArchivoEntreEmpresas(
+      archivoNombre,
+      context.empresaId,
+      empresaDestino.id,
+    );
+    if (resultado === "copiado") archivosCopiados += 1;
+    else archivosExistentes += 1;
+  }
+
+  const evidenciaIds = hallazgos.flatMap((hallazgo) =>
+    hallazgo.evidenciasCumplimiento.map((evidencia) => evidencia.id),
+  );
+
+  const resultado = await prisma.$transaction(async (tx) => {
+    if (evidenciaIds.length > 0) {
+      await tx.evidenciaCumplimiento.updateMany({
+        where: {
+          id: { in: evidenciaIds },
+          empresaId: context.empresaId,
+        },
+        data: {
+          empresaId: empresaDestino.id,
+          centroTrabajoId: null,
+          trabajadorId: null,
+          obligacionClave: null,
+          documentoTrabajadorId: null,
+          documentoEmpresaId: null,
+          checklistEjecucionId: null,
+          entregaEppId: null,
+          accionPlanId: null,
+          ds44PlanAccionId: null,
+        },
+      });
+    }
+
+    const hallazgosActualizados = await tx.hallazgoCumplimiento.updateMany({
+      where: {
+        id: { in: idsValidos },
+        empresaId: context.empresaId,
+      },
+      data: {
+        empresaId: empresaDestino.id,
+        centroTrabajoId: null,
+        trabajadorId: null,
+        checklistRespuestaId: null,
+        responsableId: null,
+      },
+    });
+
+    if (evidenciaIds.length > 0) {
+      await tx.evidenciaCumplimientoHistorial.createMany({
+        data: evidenciaIds.map((evidenciaId) => ({
+          evidenciaId,
+          usuarioId: context.usuarioId,
+          accion: "movida_empresa",
+          detalle: `Evidencia movida a ${empresaDestino.nombre} por corrección administrativa.`,
+        })),
+      });
+    }
+
+    return {
+      hallazgosMovidos: hallazgosActualizados.count,
+      evidenciasMovidas: evidenciaIds.length,
+    };
+  });
+
+  return {
+    ...resultado,
+    archivosCopiados,
+    archivosExistentes,
+  };
 }
 
 export async function eliminarHallazgo(id: string): Promise<void> {
