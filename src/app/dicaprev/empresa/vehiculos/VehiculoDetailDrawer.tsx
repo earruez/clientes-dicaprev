@@ -836,7 +836,21 @@ export function VehiculoDetailDrawer({
                         <InfoRow
                           icon={<User className="h-4 w-4" />}
                           label="Responsable"
-                          value={vehiculo.responsable}
+                          value={
+                            vehiculo.responsableEmail
+                              ? `${vehiculo.responsable} · ${vehiculo.responsableEmail}`
+                              : vehiculo.responsable
+                          }
+                        />
+                        <InfoRow
+                          icon={<FileText className="h-4 w-4" />}
+                          label="N.º de chasis"
+                          value={vehiculo.numeroChasis || "No informado"}
+                        />
+                        <InfoRow
+                          icon={<CheckCircle2 className="h-4 w-4" />}
+                          label="GPS"
+                          value={vehiculo.gps ? "Sí" : "No"}
                         />
                         <InfoRow
                           icon={<CheckCircle2 className="h-4 w-4" />}
