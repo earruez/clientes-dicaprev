@@ -1,5 +1,11 @@
 {
   "buildCommand": "npx prisma generate && npm run build",
   "installCommand": "npm install",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/vehiculos-vencimientos",
+      "schedule": "0 12 * * *"
+    }
+  ]
 }
