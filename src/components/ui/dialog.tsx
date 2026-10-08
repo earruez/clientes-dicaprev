@@ -60,7 +60,7 @@ export const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed z-50 grid w-full gap-4 rounded-2xl border border-slate-200/60 bg-white p-6",
+        "fixed z-50 grid w-[calc(100%-1rem)] max-h-[calc(100dvh-1rem)] gap-4 overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 sm:w-full sm:max-h-[calc(100dvh-2rem)] [-webkit-overflow-scrolling:touch]",
         "shadow-2xl outline-none",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
