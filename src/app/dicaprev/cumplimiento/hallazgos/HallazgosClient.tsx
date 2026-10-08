@@ -24,6 +24,7 @@ import {
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRightLeft,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -58,6 +59,7 @@ import {
   cerrarHallazgo,
   eliminarHallazgo,
   eliminarHallazgos,
+  moverHallazgosEmpresa,
   crearHallazgo,
   getHallazgoDetalle,
   getHallazgos,
@@ -290,6 +292,10 @@ export default function HallazgosClient({
   const [hallazgosSeleccionados, setHallazgosSeleccionados] = useState<Set<string>>(new Set());
   const [generandoInforme, setGenerandoInforme] = useState(false);
   const [eliminandoMasivo, setEliminandoMasivo] = useState(false);
+  const [moviendoEmpresa, setMoviendoEmpresa] = useState(false);
+  const [modalMoverEmpresaOpen, setModalMoverEmpresaOpen] = useState(false);
+  const [empresaDestinoId, setEmpresaDestinoId] = useState("");
+  const [moverEmpresaError, setMoverEmpresaError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [search, setSearch] = useState("");
@@ -603,6 +609,56 @@ export default function HallazgosClient({
       setCierreError(error instanceof Error ? error.message : "No fue posible eliminar los hallazgos seleccionados.");
     } finally {
       setEliminandoMasivo(false);
+    }
+  }
+
+  async function onMoverSeleccionadosEmpresa() {
+    if (
+      !opciones.puedeMoverEmpresa ||
+      hallazgosSeleccionados.size === 0 ||
+      !empresaDestinoId
+    ) {
+      return;
+    }
+
+    const empresaDestino = opciones.empresasDestino.find(
+      (empresa) => empresa.id === empresaDestinoId,
+    );
+
+    if (!empresaDestino) {
+      setMoverEmpresaError("Selecciona una empresa destino válida.");
+      return;
+    }
+
+    const total = hallazgosSeleccionados.size;
+    const ok = window.confirm(
+      `Vas a mover ${total} hallazgo${total === 1 ? "" : "s"} a ${empresaDestino.nombre}. Se copiarán sus archivos y se limpiarán centro, trabajador y vínculos internos que pertenezcan a la empresa actual. ¿Continuar?`,
+    );
+    if (!ok) return;
+
+    try {
+      setMoviendoEmpresa(true);
+      setMoverEmpresaError(null);
+
+      const resultado = await moverHallazgosEmpresa(
+        Array.from(hallazgosSeleccionados),
+        empresaDestinoId,
+      );
+
+      await reloadHallazgos();
+      setHallazgosSeleccionados(new Set());
+      setEmpresaDestinoId("");
+      setModalMoverEmpresaOpen(false);
+
+      window.alert(
+        `Movimiento completado: ${resultado.hallazgosMovidos} hallazgos, ${resultado.evidenciasMovidas} evidencias y ${resultado.archivosCopiados + resultado.archivosExistentes} archivos verificados.`,
+      );
+    } catch (error) {
+      setMoverEmpresaError(
+        error instanceof Error ? error.message : "No fue posible mover los hallazgos.",
+      );
+    } finally {
+      setMoviendoEmpresa(false);
     }
   }
 
@@ -1123,10 +1179,24 @@ export default function HallazgosClient({
                   Nuevo hallazgo
                 </Button>
               ) : null}
+              {hallazgosSeleccionados.size > 0 && opciones.puedeMoverEmpresa ? (
+                <Button
+                  onClick={() => {
+                    setMoverEmpresaError(null);
+                    setModalMoverEmpresaOpen(true);
+                  }}
+                  disabled={moviendoEmpresa || eliminandoMasivo || generandoInforme}
+                  variant="outline"
+                  className="rounded-full px-5 py-2.5 text-sm font-medium"
+                >
+                  <ArrowRightLeft className="mr-2 h-4 w-4" />
+                  Mover a empresa ({hallazgosSeleccionados.size})
+                </Button>
+              ) : null}
               {hallazgosSeleccionados.size > 0 ? (
                 <Button
                   onClick={() => void onEliminarSeleccionados()}
-                  disabled={eliminandoMasivo || generandoInforme}
+                  disabled={eliminandoMasivo || generandoInforme || moviendoEmpresa}
                   variant="destructive"
                   className="rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
                 >
@@ -1136,7 +1206,7 @@ export default function HallazgosClient({
               {hallazgosSeleccionados.size > 0 ? (
                 <Button
                   onClick={() => void descargarInformeMasivo()}
-                  disabled={generandoInforme || eliminandoMasivo}
+                  disabled={generandoInforme || eliminandoMasivo || moviendoEmpresa}
                   className="bg-sky-600 hover:bg-sky-700 text-white rounded-full px-5 py-2.5 text-sm font-medium shadow-sm"
                 >
                   <FileText className="mr-2 h-4 w-4" />
@@ -1162,6 +1232,75 @@ export default function HallazgosClient({
             </Card>
           ))}
         </div>
+
+        <Dialog
+          open={modalMoverEmpresaOpen}
+          onOpenChange={(open) => {
+            if (moviendoEmpresa) return;
+            setModalMoverEmpresaOpen(open);
+            if (!open) {
+              setEmpresaDestinoId("");
+              setMoverEmpresaError(null);
+            }
+          }}
+        >
+          <DialogContent
+            className="max-w-md"
+            onPointerDownOutside={(event) => event.preventDefault()}
+          >
+            <DialogHeader>
+              <DialogTitle>Mover hallazgos a otra empresa</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-800">
+                Se moverán {hallazgosSeleccionados.size} hallazgo
+                {hallazgosSeleccionados.size === 1 ? "" : "s"} y sus evidencias. Los archivos
+                se copiarán a la empresa destino. Centro, trabajador y vínculos internos de la
+                empresa actual se limpiarán para evitar referencias cruzadas.
+              </div>
+
+              <div className="space-y-2">
+                <Label>Empresa destino</Label>
+                <Select value={empresaDestinoId} onValueChange={setEmpresaDestinoId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {opciones.empresasDestino.map((empresa) => (
+                      <SelectItem key={empresa.id} value={empresa.id}>
+                        {empresa.nombre}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {moverEmpresaError ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                  {moverEmpresaError}
+                </div>
+              ) : null}
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setModalMoverEmpresaOpen(false)}
+                disabled={moviendoEmpresa}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => void onMoverSeleccionadosEmpresa()}
+                disabled={moviendoEmpresa || !empresaDestinoId}
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                {moviendoEmpresa ? "Moviendo..." : "Mover hallazgos"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <HallazgoFotoIA
           open={modalIAOpen}
