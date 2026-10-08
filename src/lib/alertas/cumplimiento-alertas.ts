@@ -28,6 +28,7 @@ export type AlertaCumplimiento = {
   mensaje: string;
   prioridad: PrioridadAlerta;
   fecha: string;
+  href?: string;
 };
 
 function isAplicable(requerido: DocumentoRequeridoAlertaInput, totalTrabajadores: number) {
