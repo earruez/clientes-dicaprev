@@ -82,8 +82,8 @@ export function TiposDocPanel({ tipos }: TiposDocPanelProps) {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto overscroll-x-contain rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 [-webkit-overflow-scrolling:touch]">
+        <table className="min-w-[820px] w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50/70">
               <th className={colTh}>Nombre</th>
