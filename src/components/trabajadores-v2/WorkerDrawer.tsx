@@ -86,7 +86,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
   return (
     <>
       <div aria-hidden onClick={onClose} className={`fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px] transition-opacity duration-300 ${isOpen && worker ? "opacity-100" : "pointer-events-none opacity-0"}`} />
-      <div role="dialog" aria-modal className={`fixed right-0 top-0 z-50 flex h-full w-full max-w-[500px] flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${isOpen && worker ? "translate-x-0" : "translate-x-full"}`}>
+      <div role="dialog" aria-modal className={`fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-[500px] flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out ${isOpen && worker ? "translate-x-0" : "translate-x-full"}`}>
         {worker && (() => {
           const est = ESTADO_CONFIG[worker.estado];
           return (
@@ -123,7 +123,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-5 py-5">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
                 {activeTab === "resumen" && (
                   <div className="space-y-7">
                     <section>
