@@ -317,8 +317,8 @@ export default function EppPageClient() {
 
                   {/* Tabla de ítems seleccionados */}
                   {detalles.length > 0 && (
-                    <div className="overflow-hidden rounded-xl border border-slate-200">
-                      <table className="w-full text-sm">
+                    <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-slate-200 [-webkit-overflow-scrolling:touch]">
+                      <table className="min-w-[720px] w-full text-sm">
                         <thead>
                           <tr className="border-b border-slate-100 bg-slate-50">
                             <th className="px-3 py-2 text-left text-xs font-semibold text-slate-500">Ítem</th>
@@ -435,7 +435,7 @@ export default function EppPageClient() {
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm [-webkit-overflow-scrolling:touch]">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-left">
