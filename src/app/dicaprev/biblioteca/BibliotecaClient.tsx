@@ -129,8 +129,8 @@ export default function BibliotecaClient({
         </Select>
       </div>
 
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto overscroll-x-contain rounded-xl border bg-white [-webkit-overflow-scrolling:touch]">
+        <table className="min-w-[760px] w-full text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wide">
             <tr>
               <th className="px-4 py-3 text-left">Documento</th>
