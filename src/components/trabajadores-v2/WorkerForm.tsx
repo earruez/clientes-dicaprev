@@ -195,12 +195,12 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
       <div
         role="dialog"
         aria-modal
-        className={`fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 overflow-hidden rounded-3xl bg-white shadow-2xl transition-all duration-300 ${
+        className={`fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl transition-all duration-300 sm:w-full ${
           isOpen
             ? "-translate-y-1/2 scale-100 opacity-100"
             : "-translate-y-[48%] scale-95 opacity-0 pointer-events-none"
         }`}
-        style={{ maxHeight: "90vh" }}
+        style={{ maxHeight: "calc(100dvh - 1rem)" }}
       >
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
@@ -222,7 +222,7 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
         </div>
 
         {/* Scrollable body */}
-        <div className="overflow-y-auto" style={{ maxHeight: "calc(90vh - 140px)" }}>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[env(safe-area-inset-bottom)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
           <form id="worker-form" onSubmit={handleSubmit} noValidate>
             <div className="space-y-8 px-6 py-6">
               {/* ── Datos personales ── */}

@@ -1079,7 +1079,7 @@ export default function AreasCargosPage() {
       <div aria-hidden onClick={() => setSelectedAreaId(null)}
         className={cn("fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px] transition-opacity duration-300",
           selectedArea ? "opacity-100" : "pointer-events-none opacity-0")} />
-      <aside className={cn("fixed right-0 top-0 z-50 flex h-full w-full max-w-[520px] flex-col bg-white shadow-2xl transition-transform duration-300",
+      <aside className={cn("fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-[520px] flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300",
         selectedArea ? "translate-x-0" : "translate-x-full")}>
         {selectedArea && (
           <>
@@ -1104,7 +1104,7 @@ export default function AreasCargosPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   { label: "Cargos",      value: selectedArea.cargosNombres.length,  color: "text-violet-700" },
@@ -1219,7 +1219,7 @@ export default function AreasCargosPage() {
       {/* ═══════════════════════════════════════════
           CARGO DRAWER
       ═══════════════════════════════════════════ */}
-      <div className={cn("fixed inset-y-0 right-0 z-40 flex flex-col w-full max-w-md bg-white shadow-2xl border-l border-slate-200 transition-transform duration-300",
+      <div className={cn("fixed inset-y-0 right-0 z-40 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-md flex-col overflow-hidden bg-white shadow-2xl border-l border-slate-200 transition-transform duration-300",
         drawerCargo ? "translate-x-0" : "translate-x-full")}>
         {drawerCargo && (
           <>
@@ -1247,7 +1247,7 @@ export default function AreasCargosPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
               <div className="grid grid-cols-3 gap-3">
                 <DrawerStat icon={<Users className="h-4 w-4 text-sky-500" />}             label="Trabajadores" value={drawerCargo.trabajadores} />
                 <DrawerStat icon={<FileText className="h-4 w-4 text-amber-500" />}        label="Docs base"    value={drawerCargo.documentosBase.length} />
@@ -1405,7 +1405,7 @@ export default function AreasCargosPage() {
           MODAL: CREAR/EDITAR CARGO
       ═══════════════════════════════════════════ */}
       <Dialog open={cModalOpen} onOpenChange={setCModalOpen}>
-        <DialogContent className="max-w-2xl rounded-3xl border border-slate-200 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl rounded-3xl border border-slate-200 shadow-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
           <DialogHeader>
             <DialogTitle className="text-xl font-semibold text-slate-900">
               {editingCargoId ? "Editar cargo" : "Nuevo cargo"}

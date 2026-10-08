@@ -90,7 +90,7 @@ export function EditSSTIndicatorsModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent size="xl" className="max-h-[90vh] overflow-y-auto">
+      <DialogContent size="xl" className="max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <BarChart3 className="h-6 w-6 text-emerald-600" />

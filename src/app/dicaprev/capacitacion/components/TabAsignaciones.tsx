@@ -267,7 +267,7 @@ function DetalleDrawer({
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       <div className="absolute inset-0 bg-black/20" onClick={onClose} />
-      <div className="relative z-50 w-full max-w-md bg-white shadow-xl flex flex-col h-full overflow-y-auto">
+      <div className="relative z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-md flex-col overflow-hidden bg-white shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-base font-semibold text-slate-800">Detalle de asignación</h2>
@@ -277,7 +277,7 @@ function DetalleDrawer({
         </div>
 
         {/* Content */}
-        <div className="flex-1 p-6 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-5 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
           {/* Badge row */}
           <div className="flex items-center gap-3 flex-wrap">
             <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border", cfg.cls)}>

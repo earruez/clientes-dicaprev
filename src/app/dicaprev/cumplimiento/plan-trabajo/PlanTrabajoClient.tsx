@@ -92,7 +92,7 @@ function AccionDrawer({
         className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
         onClick={onClose}
       />
-      <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-lg flex-col border-l border-slate-200 bg-white shadow-2xl">
+      <aside className="fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-lg flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl">
         {/* header */}
         <div className="flex items-start justify-between gap-3 border-b px-6 py-4">
           <div className="space-y-1 flex-1 min-w-0">
@@ -136,7 +136,7 @@ function AccionDrawer({
         </div>
 
         {/* body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 text-sm">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 text-sm [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
           {accion.descripcion && (
             <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-slate-700 leading-relaxed">
               {accion.descripcion}

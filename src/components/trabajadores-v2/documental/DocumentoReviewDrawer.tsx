@@ -1177,7 +1177,7 @@ export function DocumentoReviewDrawer({
         role="dialog"
         aria-modal="true"
         aria-label={`Revisar documento: ${nombreDisplay}`}
-        className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-white shadow-2xl"
+        className="fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-2xl flex-col overflow-hidden bg-white shadow-2xl"
       >
         {/* ── Header ────────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
@@ -1200,7 +1200,7 @@ export function DocumentoReviewDrawer({
         </div>
 
         {/* ── Body ──────────────────────────────────────────────────────────── */}
-        <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-6 py-5">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
 
           {/* Meta info */}
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">

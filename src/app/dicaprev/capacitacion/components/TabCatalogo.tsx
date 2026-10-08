@@ -392,7 +392,7 @@ export default function TabCatalogo() {
 
       {/* Modal create/edit */}
       <Dialog open={!!modal} onOpenChange={() => setModal(null)}>
-        <DialogContent className="max-w-lg rounded-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-lg rounded-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">
               {modal === "crear" ? "Nueva capacitación" : "Editar capacitación"}

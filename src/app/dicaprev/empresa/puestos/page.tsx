@@ -649,7 +649,7 @@ export default function DotacionPage() {
       {/* ═══════════════════════════════════════════
           DRAWER LATERAL
       ═══════════════════════════════════════════ */}
-      <div className={`fixed inset-y-0 right-0 z-40 flex flex-col w-full max-w-md bg-white shadow-2xl border-l border-slate-200 transition-transform duration-300 ${drawerPos ? "translate-x-0" : "translate-x-full"}`}>
+      <div className={`fixed inset-y-0 right-0 z-40 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-md flex-col overflow-hidden bg-white shadow-2xl border-l border-slate-200 transition-transform duration-300 ${drawerPos ? "translate-x-0" : "translate-x-full"}`}>
         {drawerPos && (
           <>
             {/* Header */}
@@ -681,7 +681,7 @@ export default function DotacionPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
               {/* Cobertura stats */}
               <div className="grid grid-cols-3 gap-3">
                 <DrawerStat label="Requeridos" value={drawerPos.dotacionRequerida} color="text-slate-700" />

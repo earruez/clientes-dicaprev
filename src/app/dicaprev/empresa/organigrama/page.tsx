@@ -1201,7 +1201,7 @@ function NodeDrawer({
       <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} />
 
       {/* Drawer panel */}
-      <aside className="fixed right-0 top-0 h-full w-[420px] bg-white border-l border-slate-200 shadow-2xl z-50 flex flex-col">
+      <aside className="fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-[420px] flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl">
         {/* Header */}
         <div className="border-b border-slate-100 px-6 py-5 flex-shrink-0">
           <div className="flex items-start justify-between gap-3">
@@ -1234,7 +1234,7 @@ function NodeDrawer({
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
           {node.type === "empresa" && <EmpresaDetail node={node} workers={allWorkers} />}
           {node.type === "area" &&
             (node.areaData ? (

@@ -78,8 +78,8 @@ export default async function InduccionesPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto overscroll-x-contain rounded-2xl border border-slate-200 bg-white shadow-sm [-webkit-overflow-scrolling:touch]">
+            <table className="min-w-[760px] w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">

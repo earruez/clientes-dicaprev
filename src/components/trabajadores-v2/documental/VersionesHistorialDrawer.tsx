@@ -140,7 +140,7 @@ export function VersionesHistorialDrawer({
       <div className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm" onClick={onClose} />
 
       {/* Drawer */}
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-xl flex-col overflow-hidden bg-white shadow-2xl">
+      <aside className="fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-xl flex-col overflow-hidden bg-white shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between gap-3 bg-gradient-to-r from-violet-700 to-violet-600 px-6 py-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -166,7 +166,7 @@ export function VersionesHistorialDrawer({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-4 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-3 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
           {versiones.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <FileText className="h-10 w-10 mb-2 opacity-40" />

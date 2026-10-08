@@ -557,8 +557,8 @@ export function PendientesPanel({
 
       {/* ── Historial modal ── */}
       {historialModal && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setHistorialModal(null)}>
-          <div className="flex w-full max-w-lg flex-col rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/30 p-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center" onClick={() => setHistorialModal(null)}>
+          <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(e) => e.stopPropagation()}>
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
@@ -571,7 +571,7 @@ export function PendientesPanel({
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+20px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
               {historialLoading && (
                 <div className="flex items-center justify-center py-10">
                   <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
@@ -647,8 +647,8 @@ export function PendientesPanel({
 
       {/* ── Doc action modal ── */}
       {actionModal && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => !actionLoading && setActionModal(null)}>
-          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-black/30 p-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center" onClick={() => !actionLoading && setActionModal(null)}>
+          <div className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto overscroll-y-contain rounded-2xl bg-white shadow-2xl ring-1 ring-slate-200 [-webkit-overflow-scrolling:touch]" onClick={(e) => e.stopPropagation()}>
             <div className="p-6">
               <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
                 actionModal.accion === "validar"    ? "bg-indigo-100" :
@@ -751,11 +751,11 @@ export function PendientesPanel({
       {/* ── Bulk action modals ── */}
       {bulkModal && (
         <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-[2px] sm:items-center"
           onClick={() => setBulkModal(null)}
         >
           <div
-            className="w-full max-w-sm rounded-3xl bg-white shadow-2xl ring-1 ring-slate-100"
+            className="max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto overscroll-y-contain rounded-3xl bg-white shadow-2xl ring-1 ring-slate-100 [-webkit-overflow-scrolling:touch]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* PLANTILLA */}
@@ -1029,8 +1029,8 @@ export function PendientesPanel({
       )}
 
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-        <table className="w-full text-sm">
+      <div className="overflow-x-auto overscroll-x-contain rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 [-webkit-overflow-scrolling:touch]">
+        <table className="min-w-[1040px] w-full text-sm">
           <thead>
             <tr className="border-b border-slate-100 bg-slate-50">
               <th className="w-10 px-4 py-3">

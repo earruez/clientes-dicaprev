@@ -236,7 +236,7 @@ export function DocumentUploadDrawer({
         role="dialog"
         aria-modal
         aria-label={isReenviar ? "Reenviar documento" : "Subir documento"}
-        className={`fixed right-0 top-0 z-[70] flex h-full w-full max-w-[480px] flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${
+        className={`fixed inset-y-0 right-0 z-[70] flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-[480px] flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -281,7 +281,7 @@ export function DocumentUploadDrawer({
         </div>
 
         {/* ── Scrollable form body ── */}
-        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-5 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
 
           {/* Rejection alert */}
           {isReenviar && context?.rejectionObservation && (
