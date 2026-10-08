@@ -189,6 +189,39 @@ function canManageCumplimiento(rol: string): boolean {
   return manageCumplimiento || manageDocumentacion;
 }
 
+async function getEmpresasDestinoMovimiento(context: {
+  usuarioId: string;
+  empresaId: string;
+  rol: string;
+}): Promise<Array<{ id: string; nombre: string }>> {
+  if (context.rol === "SUPERADMIN") {
+    return prisma.empresa.findMany({
+      where: { activa: true, id: { not: context.empresaId } },
+      select: { id: true, nombre: true },
+      orderBy: { nombre: "asc" },
+    });
+  }
+
+  if (context.rol !== "ADMIN_EMPRESA") {
+    return [];
+  }
+
+  const accesos = await prisma.usuarioEmpresa.findMany({
+    where: {
+      usuarioId: context.usuarioId,
+      activo: true,
+      empresaId: { not: context.empresaId },
+      empresa: { activa: true },
+    },
+    select: {
+      empresa: { select: { id: true, nombre: true } },
+    },
+    orderBy: { empresa: { nombre: "asc" } },
+  });
+
+  return accesos.map((item) => item.empresa);
+}
+
 function getBlobConfig() {
   const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
   if (!token) {
@@ -539,19 +572,13 @@ export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
       orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
     }),
     getObligacionesCumplimientoEmpresa(),
-    context.rol === "SUPERADMIN"
-      ? prisma.empresa.findMany({
-          where: { activa: true, id: { not: context.empresaId } },
-          select: { id: true, nombre: true },
-          orderBy: { nombre: "asc" },
-        })
-      : Promise.resolve([]),
+    getEmpresasDestinoMovimiento(context),
   ]);
 
   return {
     empresaId: context.empresaId,
     puedeEditar: canManageCumplimiento(context.rol),
-    puedeMoverEmpresa: context.rol === "SUPERADMIN",
+    puedeMoverEmpresa: empresasDestino.length > 0,
     empresasDestino,
     centros,
     areas,
@@ -771,8 +798,13 @@ export async function moverHallazgosEmpresa(
   archivosExistentes: number;
 }> {
   const context = await requireAuth();
-  if (context.rol !== "SUPERADMIN") {
-    throw new Error("Solo SUPERADMIN puede mover hallazgos entre empresas.");
+  const empresasDestinoPermitidas = await getEmpresasDestinoMovimiento(context);
+  const destinoPermitido = empresasDestinoPermitidas.some(
+    (empresa) => empresa.id === empresaDestinoId,
+  );
+
+  if (!destinoPermitido) {
+    throw new Error("No autorizado para mover hallazgos a esa empresa.");
   }
 
   const idsValidos = Array.from(
