@@ -108,7 +108,7 @@ function ObligacionDrawer({
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm" onClick={onClose} />
-      <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl">
+      <aside className="fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-md flex-col overflow-hidden border-l border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b px-6 py-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">
@@ -126,7 +126,7 @@ function ObligacionDrawer({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
               Cumplimiento global
