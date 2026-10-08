@@ -54,7 +54,7 @@ export default function NotificationBell() {
             id: alerta.id,
             documento: alerta.documento,
             mensaje: alerta.mensaje,
-            href: "/dicaprev/cumplimiento/resumen",
+            href: alerta.href ?? "/dicaprev/cumplimiento/resumen",
             prioridad: alerta.prioridad,
             leida: false,
           })),
