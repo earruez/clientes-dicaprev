@@ -216,7 +216,7 @@ export function BulkUploadDrawer({ isOpen, onClose, workers, tipos }: BulkUpload
         role="dialog"
         aria-modal
         aria-label="Carga masiva de documentos"
-        className={`fixed right-0 top-0 z-[80] flex h-full w-full max-w-[520px] flex-col bg-white shadow-2xl transition-transform duration-300 ease-out ${
+        className={`fixed inset-y-0 right-0 z-[80] flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-[520px] flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -273,7 +273,7 @@ export function BulkUploadDrawer({ isOpen, onClose, workers, tipos }: BulkUpload
         </div>
 
         {/* ── Scrollable body ── */}
-        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-5 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
 
           {/* ────────── STEP 1: Files ────────── */}
           {step === 1 && (
