@@ -63,8 +63,8 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-3xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-sm sm:items-center">
+      <div className="flex max-h-[calc(100dvh-2rem)] min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-100 px-7 py-5">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Nueva acreditación</h2>
@@ -85,7 +85,7 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
           </div>
         </div>
 
-        <div className="min-h-[260px] flex-1 overflow-y-auto px-7 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+20px)] sm:min-h-[260px] sm:px-7 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
           {paso === 0 && (
             <section>
               <p className="mb-3 text-sm font-semibold text-slate-700">Selecciona mandante</p>
