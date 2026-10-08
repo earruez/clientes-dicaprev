@@ -559,11 +559,11 @@ export default function ChecklistsPageClient() {
             <CardHeader className="border-b border-slate-100 px-6 py-4">
               <h2 className="text-base font-semibold text-slate-800">Plantillas</h2>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="overflow-x-auto overscroll-x-contain p-0 [-webkit-overflow-scrolling:touch]">
               {templates.length === 0 ? (
                 <p className="px-6 py-6 text-sm text-slate-500">No hay plantillas registradas.</p>
               ) : (
-                <table className="w-full text-sm">
+                <table className="min-w-[620px] w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left">
                       <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Nombre</th>
@@ -596,11 +596,11 @@ export default function ChecklistsPageClient() {
             <CardHeader className="border-b border-slate-100 px-6 py-4">
               <h2 className="text-base font-semibold text-slate-800">Ejecuciones</h2>
             </CardHeader>
-            <CardContent className="p-0">
+            <CardContent className="overflow-x-auto overscroll-x-contain p-0 [-webkit-overflow-scrolling:touch]">
               {ejecuciones.length === 0 ? (
                 <p className="px-6 py-6 text-sm text-slate-500">No hay ejecuciones registradas.</p>
               ) : (
-                <table className="w-full text-sm">
+                <table className="min-w-[620px] w-full text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 bg-slate-50 text-left">
                       <th className="px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Checklist</th>
