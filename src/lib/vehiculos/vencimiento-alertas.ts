@@ -44,6 +44,7 @@ export async function procesarAvisosVencimientoVehiculos(): Promise<ResultadoAvi
         lte: hasta,
       },
       estado: { not: "no_aplica" },
+      subido: true,
     },
     select: {
       id: true,
