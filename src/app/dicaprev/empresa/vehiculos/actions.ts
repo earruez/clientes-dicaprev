@@ -548,10 +548,20 @@ export async function actualizarVehiculo(
   data: VehiculoInput
 ): Promise<VehiculoDTO> {
   const { empresaId } = await requirePermission("canManageEmpresa");
+  const actual = await prisma.vehiculo.findFirst({
+    where: { id, empresaId },
+    select: { responsableTrabajadorId: true },
+  });
+  if (!actual) {
+    throw new Error("Vehículo no encontrado.");
+  }
+
   const responsable = await resolverResponsableVehiculo(
     empresaId,
     data.responsableTrabajadorId || null,
   );
+  const responsableCambio =
+    actual.responsableTrabajadorId !== (responsable?.id ?? null);
 
   const v = await prisma.vehiculo.update({
     where: { id, empresaId },
@@ -576,6 +586,16 @@ export async function actualizarVehiculo(
   });
 
   await ensureRequiredDocs(v.id, empresaId);
+
+  if (responsableCambio) {
+    await prisma.vehiculoDocumento.updateMany({
+      where: { empresaId, vehiculoId: v.id },
+      data: {
+        aviso20EnviadoAt: null,
+        aviso15EnviadoAt: null,
+      },
+    });
+  }
 
   const refreshed = await prisma.vehiculo.findUniqueOrThrow({
     where: { id: v.id },
