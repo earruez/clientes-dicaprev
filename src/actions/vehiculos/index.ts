@@ -7,6 +7,7 @@ export {
   getVehiculoDetalle,
   getTiposDocumentoVehiculo,
   getCentrosList,
+  getResponsablesVehiculoList,
   crearVehiculo,
   actualizarVehiculo,
   eliminarVehiculo,
@@ -27,5 +28,6 @@ export type {
   DocumentoVehiculoInput,
   MantencionVehiculoInput,
   CentroItem,
+  ResponsableVehiculoItem,
   MantencionEstado,
 } from "@/app/dicaprev/empresa/vehiculos/actions";
