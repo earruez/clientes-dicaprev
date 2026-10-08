@@ -150,11 +150,16 @@ const NO_CENTRO_VALUE = "__sin_centro__";
 interface Props {
   initialVehiculos: VehiculoDTO[];
   initialCentros: CentroItem[];
+  initialResponsables: ResponsableVehiculoItem[];
 }
 
 // ── Component ─────────────────────────────────────────────────────────────
 
-export default function VehiculosPrismaClient({ initialVehiculos, initialCentros }: Props) {
+export default function VehiculosPrismaClient({
+  initialVehiculos,
+  initialCentros,
+  initialResponsables,
+}: Props) {
   const [vehiculosDTO, setVehiculosDTO] = useState<VehiculoDTO[]>(initialVehiculos);
   const [search, setSearch] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<TipoVehiculo | "todos">("todos");
