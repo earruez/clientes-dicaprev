@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Building2, CheckCircle2, FileText, Plus, Send, ShieldCheck, Trash2, UploadCloud } from "lucide-react";
+import { AlertCircle, ArrowRight, ArrowUpRight, Building2, CarFront, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, CloudUpload, ExternalLink, FileCheck2, FileText, FolderOpen, HardHat, Info, Layers3, LockKeyhole, Plus, Send, ShieldCheck, Sparkles, Trash2, UploadCloud, Users2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,9 @@ function isoFecha(d: Date | string | null) {
 
 export default function PortalContratistaClient({ token, inicial }: { token: string; inicial: DatosPortal }) {
   const [portal, setPortal] = useState(inicial);
+  const [paso, setPaso] = useState<"inicio" | "empresa" | "recursos" | "documentos">("inicio");
+  const [categoria, setCategoria] = useState<"empresa" | "trabajador" | "vehiculo" | "equipo">("empresa");
+  const [expandido, setExpandido] = useState<string | null>(null);
   const [empresaDatos, setEmpresaDatos] = useState({
     razonSocial: inicial.contratista.razonSocial || "",
     rut: inicial.contratista.rut || "",
@@ -52,6 +55,12 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   const total = useMemo(() => portal.requisitos.filter((r) => r.obligatorio).length, [portal.requisitos]);
   const entregados = useMemo(() => portal.requisitos.filter((r) => r.obligatorio && r.archivoNombre && r.estadoEfectivo !== "vencido").length, [portal.requisitos]);
   const faltantes = total - entregados;
+  const porcentaje = total ? Math.round((entregados / total) * 100) : 0;
+  const observados = portal.requisitos.filter((r) => ["observado", "rechazado", "vencido"].includes(r.estadoEfectivo)).length;
+  const datosCompletos = Boolean(portal.contratista.rut && portal.contratista.razonSocial);
+  const tieneCambios = portal.requisitos.some((r) => r.archivoNombre && r.estado !== "aprobado" && r.estado !== "en_revision");
+  const puedeEnviar = !enProceso && faltantes === 0 && total > 0 && datosCompletos && tieneCambios;
+  const documentosCategoria = portal.requisitos.filter((r) => r.categoria === categoria);
 
   async function recargar() {
     const datos = await obtenerPortalContratista(token);
@@ -73,6 +82,17 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
     }
   }
 
+  function irA(destino: typeof paso, grupo?: typeof categoria) {
+    setPaso(destino);
+    if (grupo) setCategoria(grupo);
+    setError("");
+    setSuccessMessages();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function setSuccessMessages() {
+    setExito("");
+  }
+
   function subir(r: RequisitoPortal) {
     const file = archivo[r.id];
     if (!file) { setError("Selecciona un archivo antes de guardarlo"); return; }
@@ -81,12 +101,13 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       const form = new FormData();
       form.set("requisitoId", r.id);
       form.set("file", file);
-      form.set("fechaEmision", fechas[r.id]?.emision || "");
-      form.set("fechaVencimiento", fechas[r.id]?.vencimiento || "");
+      form.set("fechaEmision", fechas[r.id]?.emision ?? isoFecha(r.fechaEmision));
+      form.set("fechaVencimiento", fechas[r.id]?.vencimiento ?? isoFecha(r.fechaVencimiento));
       const response = await fetch(`/api/contratistas/portal/${token}/archivo`, { method: "POST", body: form });
       const json = await response.json() as { error?: string };
       if (!response.ok) throw new Error(json.error || "Error al cargar documento");
       setArchivo((prev) => ({ ...prev, [r.id]: null }));
+      setExpandido(null);
     }, "Documento cargado correctamente. Debes enviarlo a revisión.");
   }
 
