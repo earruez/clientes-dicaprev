@@ -1079,7 +1079,7 @@ export function VehiculoDetailDrawer({
                                   onClick={() => {
                                     setDocFile(null);
                                     setDocModalError(null);
-                        setDocEdit({
+                                    setDocEdit({
                                       id: doc.id,
                                       tipo: doc.tipo,
                                       tipoNombre: doc.tipoNombre ?? doc.tipo,
