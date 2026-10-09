@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import {
   Building2,
   Plus,
@@ -208,11 +209,14 @@ export default function ContratistasPageClient() {
         <StandardPageHeader
           moduleLabel="Módulo Contratistas"
           title="Contratistas"
-          description={`Carpeta documental y estado de acreditación — ${rows.length} contratista${rows.length !== 1 ? "s" : ""} · ${totalDocs} documentos`}
+          description={`Empresas contratistas y expedientes documentales — ${rows.length} contratista${rows.length !== 1 ? "s" : ""} · ${totalDocs} documentos`}
           icon={<Building2 className="h-6 w-6" />}
           iconWrapClassName="bg-sky-700"
           actions={
             <>
+              <Button asChild className="rounded-2xl bg-emerald-700 text-white hover:bg-emerald-800">
+                <Link href="/dicaprev/contratistas/solicitudes"><FileText className="mr-2 h-4 w-4" />Solicitudes documentales</Link>
+              </Button>
               <Button
                 onClick={() => {
                   setShowContratistaForm((v) => !v);
