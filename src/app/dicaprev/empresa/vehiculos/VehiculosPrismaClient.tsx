@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useTransition, FormEvent } from "react";
+import React, { useState, FormEvent } from "react";
 import {
   Car, Truck, Wrench, CheckCircle2, AlertTriangle, XCircle,
   Search, Plus, Pencil, Eye,
@@ -148,7 +148,8 @@ export default function VehiculosPrismaClient({
     open: false, modo: "crear",
   });
   const [form, setForm] = useState<VehiculoInput>(EMPTY);
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [drawer, setDrawer] = useState<{ open: boolean; vehiculo: Vehiculo | null }>({
     open: false, vehiculo: null,
   });
@@ -190,11 +191,13 @@ export default function VehiculosPrismaClient({
   const docsProximos = totalDocs.filter((d) => isDocumentoProximoVencer(d)).length;
 
   function abrirCrear() {
+    setFormError(null);
     setForm({ ...EMPTY, centroTrabajoId: initialCentros[0]?.id ?? NO_CENTRO_VALUE });
     setModal({ open: true, modo: "crear" });
   }
 
   function abrirEditar(v: Vehiculo) {
+    setFormError(null);
     const dto = vehiculosDTO.find((d) => d.id === v.id);
     setForm({
       patente: v.patente,
@@ -232,9 +235,12 @@ export default function VehiculosPrismaClient({
     setDrawer((prev) => ({ ...prev, open: false }));
   }
 
-  function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    startTransition(async () => {
+    if (isPending) return;
+    setIsPending(true);
+    setFormError(null);
+    try {
       const payload: VehiculoInput = {
         ...form,
         centroTrabajoId: form.centroTrabajoId === NO_CENTRO_VALUE ? "" : form.centroTrabajoId,
@@ -265,7 +271,11 @@ export default function VehiculosPrismaClient({
         }
       }
       cerrarModal();
-    });
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "No fue posible guardar el vehículo. Revisa los datos e intenta nuevamente.");
+    } finally {
+      setIsPending(false);
+    }
   }
 
   return (
@@ -477,13 +487,17 @@ export default function VehiculosPrismaClient({
       />
 
       {/* Modal Crear / Editar */}
-      <Dialog open={modal.open} onOpenChange={(o) => !o && cerrarModal()}>
+      <Dialog open={modal.open} onOpenChange={(o) => !o && !isPending && cerrarModal()}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>
               {modal.modo === "crear" ? "Nuevo vehículo / equipo" : "Editar vehículo"}
             </DialogTitle>
           </DialogHeader>
+
+          {formError ? (
+            <p role="alert" className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{formError}</p>
+          ) : null}
 
           <form onSubmit={handleSubmit} className="space-y-5 pt-1">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -601,7 +615,7 @@ export default function VehiculosPrismaClient({
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" className="rounded-xl" onClick={cerrarModal}>
+              <Button type="button" variant="outline" className="rounded-xl" onClick={cerrarModal} disabled={isPending}>
                 Cancelar
               </Button>
               <Button type="submit" disabled={isPending} className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white">
