@@ -46,10 +46,11 @@ export async function agregarRecursoPortal(token: string, input: {
   if (existe) throw new Error("Este recurso ya existe en el expediente");
   const r = await prisma.contratistaRecurso.create({
     data: {
-      empresaId: s.empresaId, solicitudId: s.id, tipo: input.tipo, nombre,
+      empresaId: s.empresaId, solicitud: { connect: { id: s.id } }, tipo: input.tipo, nombre,
       identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
       requisitos: { create: REQUISITOS_RECURSO[input.tipo].map((d) => ({
         empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
+        solicitud: { connect: { id: s.id } },
       })) },
     },
     select: { id: true },
