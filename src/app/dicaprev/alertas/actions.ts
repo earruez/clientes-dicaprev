@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
-import { estadoEfectivo } from "@/lib/contratistas/requisitos";
+import { estadoEfectivo, faltaMigracionContratistas } from "@/lib/contratistas/requisitos";
 import {
   getAlertasCumplimiento,
   type AlertaCumplimiento,
@@ -76,6 +76,9 @@ export async function getAlertasEmpresa(): Promise<AlertasEmpresaResponse> {
         fechaVencimiento: true, archivoNombre: true,
         solicitud: { select: { nombre: true, contratista: { select: { nombre: true } } } },
       },
+    }).catch((error: unknown) => {
+      if (faltaMigracionContratistas(error)) return [];
+      throw error;
     }),
   ]);
 
