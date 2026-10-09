@@ -308,15 +308,25 @@ export function VehiculoDetailDrawer({
     if (open) setActiveTab("resumen");
   }, [open, vehiculoProp?.id]);
 
-  // Esc to close
+  // Escape cierra primero el modal interno, sin descartar operaciones en curso.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      if (docEdit) {
+        if (!guardandoEdicionDocumento) {
+          setDocFile(null);
+          setDocEdit(null);
+        }
+      } else if (mantencionModalOpen) {
+        if (!guardandoMantencion) setMantencionModalOpen(false);
+      } else {
+        onClose();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, docEdit, mantencionModalOpen, guardandoEdicionDocumento, guardandoMantencion]);
 
   async function subirArchivo(file: File): Promise<ArchivoSubido> {
     const formData = new FormData();
