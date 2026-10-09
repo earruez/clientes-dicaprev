@@ -174,6 +174,7 @@ export async function revisarRequisitoContratista(input: {
     include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
+  if (requisito.estado !== "en_revision") throw new Error("El contratista aún no ha enviado este documento a revisión");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   await prisma.contratistaRequisito.update({
