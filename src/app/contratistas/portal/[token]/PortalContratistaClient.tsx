@@ -149,7 +149,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
             <p className="mt-1 text-sm text-slate-600">Documentos obligatorios entregados: {entregados} de {total}. Aprobados por mandante: {aprobados}.</p>
             <p className="mt-1 text-xs text-slate-500">Estado del expediente: {portal.estado.replaceAll("_", " ")}. La entrega no equivale a autorización para ingresar a faena.</p>
           </div>
-          <Button disabled={!!enProceso || faltantes > 0 || total === 0} onClick={() => void ejecutar("enviar", () => enviarCarpetaContratista(token), "Carpeta enviada a revisión de la empresa mandante.")} className="bg-emerald-700 text-white hover:bg-emerald-800"><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : "Enviar a revisión"}</Button>
+          <Button disabled={!!enProceso || faltantes > 0 || total === 0 || !portal.requisitos.some((r) => r.archivoNombre && r.estado !== "aprobado" && r.estado !== "en_revision")} onClick={() => void ejecutar("enviar", () => enviarCarpetaContratista(token), "Carpeta enviada a revisión de la empresa mandante.")} className="bg-emerald-700 text-white hover:bg-emerald-800"><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : "Enviar a revisión"}</Button>
         </div>
         <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-sky-600 transition-all" style={{ width: `${total ? Math.round((entregados / total) * 100) : 0}%` }}/></div>
         {faltantes > 0 && <p className="mt-2 text-xs text-amber-700">Faltan {faltantes} documentos obligatorios por entregar o actualizar.</p>}
