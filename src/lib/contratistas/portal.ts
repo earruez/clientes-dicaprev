@@ -19,7 +19,7 @@ export async function resolverPortalContratista(token: string) {
       contratista: { activo: true },
     },
     include: {
-      contratista: { select: { nombre: true, razonSocial: true, rut: true } },
+      contratista: { select: { nombre: true, razonSocial: true, rut: true, email: true, telefono: true, representanteLegal: true, rutRepresentante: true, giro: true, direccion: true } },
       recursos: { orderBy: { createdAt: "asc" } },
       requisitos: {
         orderBy: [{ categoria: "asc" }, { createdAt: "asc" }],
