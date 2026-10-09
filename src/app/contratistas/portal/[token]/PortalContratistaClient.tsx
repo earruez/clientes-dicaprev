@@ -137,85 +137,245 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
     </article>;
   }
 
-  return <main className="min-h-screen min-w-0 bg-slate-50 px-3 py-6 sm:px-6 sm:py-10">
-    <div className="mx-auto max-w-5xl space-y-5">
-      <header className="rounded-2xl bg-slate-900 px-5 py-6 text-white shadow-sm sm:px-8">
-        <p className="text-sm font-semibold tracking-wide text-sky-300">NextPrev · Portal de contratistas</p>
-        <h1 className="mt-2 break-words text-2xl font-bold sm:text-3xl">Carpeta documental</h1>
-        <p className="mt-2 text-sm text-slate-300">{portal.empresaMandante} solicita documentación para <strong className="text-white">{portal.nombre}</strong>.</p>
-        <p className="mt-1 text-xs text-slate-400">{portal.faena || "Contrato"} · {portal.contratista.nombre}</p>
-      </header>
-      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
-      {exito && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{exito}</p>}
-      <form className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={(e) => {
-        e.preventDefault();
-        void ejecutar("datos", () => guardarDatosEmpresaPortal(token, empresaDatos), "Datos de empresa actualizados.");
-      }}>
-        <div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-sky-700"/><h2 className="text-lg font-semibold text-slate-900">1. Antecedentes de la empresa</h2></div>
-        <p className="mt-1 text-xs text-slate-500">Confirma los datos legales de la empresa que realizará los trabajos. Los campos con * son obligatorios.</p>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="space-y-1"><Label>Razón social *</Label><Input required value={empresaDatos.razonSocial} onChange={(e) => setEmpresaDatos({ ...empresaDatos, razonSocial: e.target.value })}/></label>
-          <label className="space-y-1"><Label>RUT *</Label><Input required value={empresaDatos.rut} onChange={(e) => setEmpresaDatos({ ...empresaDatos, rut: e.target.value })}/></label>
-          <label className="space-y-1"><Label>Giro</Label><Input value={empresaDatos.giro} onChange={(e) => setEmpresaDatos({ ...empresaDatos, giro: e.target.value })}/></label>
-          <label className="space-y-1"><Label>Dirección</Label><Input value={empresaDatos.direccion} onChange={(e) => setEmpresaDatos({ ...empresaDatos, direccion: e.target.value })}/></label>
-          <label className="space-y-1"><Label>Representante legal</Label><Input value={empresaDatos.representanteLegal} onChange={(e) => setEmpresaDatos({ ...empresaDatos, representanteLegal: e.target.value })}/></label>
-          <label className="space-y-1"><Label>RUT del representante</Label><Input value={empresaDatos.rutRepresentante} onChange={(e) => setEmpresaDatos({ ...empresaDatos, rutRepresentante: e.target.value })}/></label>
-          <label className="space-y-1"><Label>Teléfono de contacto</Label><Input type="tel" value={empresaDatos.telefono} onChange={(e) => setEmpresaDatos({ ...empresaDatos, telefono: e.target.value })}/></label>
-        </div>
-        <div className="mt-4 flex justify-end"><Button disabled={!!enProceso} type="submit" className="bg-sky-700 text-white hover:bg-sky-800">{enProceso === "datos" ? "Guardando…" : "Guardar antecedentes"}</Button></div>
-      </form>
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div><div className="flex items-center gap-2 text-slate-900"><ShieldCheck className="h-5 w-5 text-sky-700"/><h2 className="font-semibold">Estado de la carpeta</h2></div>
-            <p className="mt-1 text-sm text-slate-600">Documentos obligatorios entregados: {entregados} de {total}. Aprobados por mandante: {aprobados}.</p>
-            <p className="mt-1 text-xs text-slate-500">Estado del expediente: {portal.estado.replaceAll("_", " ")}. La entrega no equivale a autorización para ingresar a faena.</p>
+
+  const pasos: { key: typeof paso; label: string; numero: string; icono: typeof Building2 }[] = [
+    { key: "inicio", label: "Resumen", numero: "01", icono: Layers3 },
+    { key: "empresa", label: "Mi empresa", numero: "02", icono: Building2 },
+    { key: "recursos", label: "Personal y equipos", numero: "03", icono: Users2 },
+    { key: "documentos", label: "Documentos", numero: "04", icono: FolderOpen },
+  ];
+  const grupos: { key: typeof categoria; label: string; icono: typeof Building2 }[] = [
+    { key: "empresa", label: "Empresa", icono: Building2 },
+    { key: "trabajador", label: "Trabajadores", icono: Users2 },
+    { key: "vehiculo", label: "Vehículos", icono: CarFront },
+    { key: "equipo", label: "Maquinaria", icono: HardHat },
+  ];
+  const botonPrincipal = "min-h-[44px] rounded-xl bg-gradient-to-r from-emerald-600 to-sky-600 px-5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/10 transition hover:from-emerald-700 hover:to-sky-700";
+  const tarjeta = "min-w-0 rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_10px_35px_-25px_rgba(15,23,42,0.3)] sm:p-7";
+  const textoInput = "h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10";
+
+  return (
+    <main className="relative min-h-[100dvh] min-w-0 overflow-x-hidden bg-[#f4f7fa] pb-28 text-slate-900 sm:pb-8">
+      <div className="border-b border-white/10 bg-[#080f20]">
+        <div className="mx-auto flex h-[76px] max-w-7xl items-center justify-between gap-3 px-4 sm:px-7 lg:px-10">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-lime-400 via-emerald-500 to-sky-500 shadow-lg shadow-emerald-500/20">
+              <svg viewBox="0 0 24 24" fill="none" className="h-6 w-6" aria-hidden="true">
+                <path d="M5 5l9 7-9 7V5z" fill="white" />
+                <path d="M13 5l6 7-6 7V5z" fill="rgba(255,255,255,0.5)" />
+              </svg>
+            </span>
+            <div>
+              <span className="block text-base font-extrabold tracking-[0.16em] text-white">NEXTPREV</span>
+              <span className="block text-[9px] font-semibold uppercase tracking-[0.2em] text-emerald-300">Safety &amp; compliance</span>
+            </div>
           </div>
-          <Button disabled={!!enProceso || faltantes > 0 || total === 0 || !portal.requisitos.some((r) => r.archivoNombre && r.estado !== "aprobado" && r.estado !== "en_revision")} onClick={() => void ejecutar("enviar", () => enviarCarpetaContratista(token), "Carpeta enviada a revisión de la empresa mandante.")} className="bg-emerald-700 text-white hover:bg-emerald-800"><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : "Enviar a revisión"}</Button>
+          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-semibold text-slate-300">
+            <LockKeyhole className="h-4 w-4 text-emerald-400" />
+            <span className="hidden sm:inline">Portal seguro de contratistas</span>
+            <span className="sm:hidden">Acceso seguro</span>
+          </span>
         </div>
-        <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-sky-600 transition-all" style={{ width: `${total ? Math.round((entregados / total) * 100) : 0}%` }}/></div>
-        {faltantes > 0 && <p className="mt-2 text-xs text-amber-700">Faltan {faltantes} documentos obligatorios por entregar o actualizar.</p>}
-      </section>
+      </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900"><Building2 className="h-5 w-5 text-sky-700"/>Personal, vehículos y equipos</h2>
-            <p className="mt-1 text-xs text-slate-500">Registra los recursos que participarán del contrato. Se abrirán sus requisitos documentales.</p></div>
-          <Button variant="outline" onClick={() => setFormVisible((x) => !x)}><Plus className="mr-2 h-4 w-4"/>Agregar recurso</Button>
+      <header className="relative isolate overflow-hidden bg-[#0b1428]">
+        <div className="pointer-events-none absolute -left-32 -top-40 h-[430px] w-[430px] rounded-full bg-emerald-500/10 blur-3xl" />
+        <div className="pointer-events-none absolute -right-20 -top-24 h-[380px] w-[380px] rounded-full bg-sky-500/10 blur-3xl" />
+        <div className="relative mx-auto grid max-w-7xl gap-8 px-4 pb-12 pt-9 sm:px-7 sm:pb-16 sm:pt-12 lg:grid-cols-[minmax(0,1fr)_310px] lg:items-center lg:px-10">
+          <div className="min-w-0">
+            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
+              <Sparkles className="h-3.5 w-3.5" /> Gestión documental
+            </span>
+            <h1 className="mt-5 text-[32px] font-extrabold leading-tight tracking-tight text-white sm:text-4xl lg:text-[43px]">
+              Tu documentación,<span className="block bg-gradient-to-r from-emerald-300 via-teal-300 to-sky-300 bg-clip-text text-transparent">siempre al día.</span>
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
+              Completa tu carpeta de forma fácil y segura. Todos tus documentos, trabajadores y equipos, en un solo lugar.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-300">
+              <span className="inline-flex items-center gap-2"><Building2 className="h-4 w-4 text-emerald-400" />{portal.contratista.nombre}</span>
+              <span className="inline-flex items-center gap-2"><ClipboardList className="h-4 w-4 text-sky-400" />{portal.nombre}</span>
+              {portal.faena && <span className="inline-flex items-center gap-2"><Layers3 className="h-4 w-4 text-sky-400" />{portal.faena}</span>}
+            </div>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-white/[0.06] p-5 shadow-2xl backdrop-blur-sm sm:p-6">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-slate-300">Tu progreso</p>
+              <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-300">{portal.estado.replaceAll("_", " ")}</span>
+            </div>
+            <div className="mt-5 flex items-center gap-5">
+              <div aria-label={porcentaje + " por ciento entregado"} role="img" className="flex h-[112px] w-[112px] shrink-0 items-center justify-center rounded-full p-[8px]" style={{ background: "conic-gradient(#34d399 " + porcentaje + "%,rgba(255,255,255,0.12) 0)" }}>
+                <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-[#101c32]">
+                  <span className="text-3xl font-extrabold text-white">{porcentaje}<span className="text-base text-emerald-300">%</span></span>
+                  <span className="text-[10px] font-medium text-slate-400">Entregado</span>
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div><p className="text-2xl font-bold text-white">{entregados}<span className="text-base font-normal text-slate-400"> / {total}</span></p><p className="text-xs text-slate-400">Documentos obligatorios</p></div>
+                <span className="inline-flex rounded-lg bg-emerald-400/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">{aprobados} aprobados</span>
+                {observados > 0 && <span className="ml-1 inline-flex rounded-lg bg-orange-400/10 px-2 py-1 text-[11px] font-semibold text-orange-300">{observados} observados</span>}
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2 border-t border-white/10 pt-4 text-[11px] leading-relaxed text-slate-400"><ShieldCheck className="h-4 w-4 shrink-0 text-emerald-400" /> Documentos privados para esta relación contractual.</div>
+          </div>
         </div>
-        {formVisible && <form className="mt-4 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2" onSubmit={(e) => {
-          e.preventDefault();
-          void ejecutar("recurso", async () => {
-            await agregarRecursoPortal(token, recurso);
-            setRecurso({ tipo: "trabajador", nombre: "", identificador: "", cargo: "", patente: "" });
-            setFormVisible(false);
-          }, "Recurso incorporado al expediente.");
-        }}>
-          <label className="space-y-1 text-sm"><Label>Tipo de recurso</Label><select className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm" value={recurso.tipo} onChange={(e) => setRecurso({ ...recurso, tipo: e.target.value as typeof recurso.tipo })}><option value="trabajador">Trabajador</option><option value="vehiculo">Vehículo</option><option value="equipo">Equipo o maquinaria</option></select></label>
-          <label className="space-y-1"><Label>Nombre *</Label><Input required placeholder={recurso.tipo === "trabajador" ? "Nombre y apellido" : "Descripción del recurso"} value={recurso.nombre} onChange={(e) => setRecurso({ ...recurso, nombre: e.target.value })}/></label>
-          {recurso.tipo === "trabajador" && <><label className="space-y-1"><Label>RUT *</Label><Input required value={recurso.identificador} onChange={(e) => setRecurso({ ...recurso, identificador: e.target.value })}/></label><label className="space-y-1"><Label>Cargo</Label><Input value={recurso.cargo} onChange={(e) => setRecurso({ ...recurso, cargo: e.target.value })}/></label></>}
-          {recurso.tipo === "vehiculo" && <label className="space-y-1"><Label>Patente *</Label><Input required value={recurso.patente} onChange={(e) => setRecurso({ ...recurso, patente: e.target.value })}/></label>}
-          {recurso.tipo === "equipo" && <label className="space-y-1"><Label>Identificación o serie</Label><Input value={recurso.identificador} onChange={(e) => setRecurso({ ...recurso, identificador: e.target.value })}/></label>}
-          <div className="flex flex-wrap items-end gap-2"><Button type="submit" disabled={!!enProceso} className="bg-sky-700 text-white">Guardar recurso</Button><Button type="button" variant="outline" onClick={() => setFormVisible(false)}>Cancelar</Button></div>
-        </form>}
-        {portal.recursos.length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{portal.recursos.map((r) => <div key={r.id} className="flex min-w-0 items-center justify-between gap-2 rounded-xl border border-slate-200 p-3">
-          <div className="min-w-0"><p className="break-words text-sm font-medium text-slate-800">{r.nombre}</p><p className="text-xs text-slate-500">{r.tipo} · {r.patente || r.identificador || r.cargo || "Sin identificador"}</p></div>
-          <button type="button" disabled={!!enProceso} title="Quitar recurso sin documentos cargados" aria-label={`Quitar ${r.nombre}`} className="rounded-md p-2 text-red-600 hover:bg-red-50 disabled:opacity-50" onClick={() => { if (window.confirm(`¿Quitar ${r.nombre}?`)) void ejecutar(r.id, () => eliminarRecursoPortal(token, r.id), "Recurso eliminado."); }}><Trash2 className="h-4 w-4"/></button>
-        </div>)}</div>}
-      </section>
+      </header>
 
-      {CATEGORIAS.map(({ key, label }) => {
-        const grupo = portal.requisitos.filter((r) => r.categoria === key);
-        if (!grupo.length && key !== "empresa") return null;
-        return <section key={key} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-100/40 p-3 sm:p-5">
-          <div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-sky-700"/><h2 className="text-lg font-semibold text-slate-900">{label}</h2><span className="text-xs text-slate-500">({grupo.length})</span></div>
-          {grupo.length === 0 && <p className="rounded-lg bg-white p-3 text-sm text-slate-500">Sin requisitos en esta categoría.</p>}
-          {grupo.map((r) => {
-            const recursoActual = portal.recursos.find((re) => re.id === r.recursoId);
-            return <div key={r.id}>{recursoActual && <p className="mb-1.5 ml-1 text-xs font-medium text-slate-600">{recursoActual.nombre} · {recursoActual.patente || recursoActual.identificador || recursoActual.cargo || ""}</p>}{bloqueRequisito(r)}</div>;
-          })}
-        </section>;
-      })}
-      <footer className="py-5 text-center text-xs text-slate-400">Generado por NextPrev · Documentación exclusiva de este contrato. No compartas el enlace de acceso.</footer>
-    </div>
-  </main>;
+      <div className="mx-auto max-w-7xl px-4 sm:px-7 lg:px-10">
+        <nav aria-label="Etapas del portal" className="relative z-10 -mt-6 overflow-x-auto rounded-[22px] border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 [-webkit-overflow-scrolling:touch]">
+          <div className="grid min-w-[590px] grid-cols-4 gap-1.5 sm:min-w-0">
+            {pasos.map((item) => {
+              const Icon = item.icono;
+              const activo = paso === item.key;
+              return <button key={item.key} type="button" aria-current={activo ? "step" : undefined} onClick={() => irA(item.key)} className={"group flex min-h-[68px] items-center gap-2.5 rounded-2xl px-3 text-left transition sm:px-4 " + (activo ? "bg-[#0f1e33] text-white shadow-md" : "text-slate-600 hover:bg-slate-50")}>
+                <span className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-xl " + (activo ? "bg-gradient-to-br from-emerald-500 to-sky-600 text-white" : "bg-slate-100 text-slate-500 group-hover:text-emerald-700")}><Icon className="h-[18px] w-[18px]" /></span>
+                <span><span className={"block text-[10px] font-bold " + (activo ? "text-emerald-300" : "text-slate-400")}>PASO {item.numero}</span><span className="block text-xs font-bold sm:text-sm">{item.label}</span></span>
+              </button>;
+            })}
+          </div>
+        </nav>
+
+        {(error || exito) && <div className="mt-5 space-y-2" aria-live="polite">
+          {error && <div role="alert" className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0"/><span className="flex-1">{error}</span><button onClick={() => setError("")} aria-label="Cerrar error"><X className="h-4 w-4"/></button></div>}
+          {exito && <div role="status" className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0"/><span className="flex-1">{exito}</span><button onClick={() => setExito("")} aria-label="Cerrar aviso"><X className="h-4 w-4"/></button></div>}
+        </div>}
+
+        {paso === "inicio" && <div className="mt-6 grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+          <section className={tarjeta}>
+            <div className="flex items-start gap-3"><span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><Sparkles className="h-6 w-6" /></span>
+              <div><p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Bienvenido a NextPrev</p><h2 className="mt-1 text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl">Tu carpeta documental, simplificada.</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600"><strong>{portal.empresaMandante}</strong> te invita a presentar los antecedentes del servicio <strong>{portal.nombre}</strong>. Completa estos pasos para que la mandante los revise.</p>
+              </div>
+            </div>
+            <div className="mt-7 space-y-3">
+              {[
+                { key: "empresa" as const, label: "Confirma los datos de tu empresa", info: "Razón social, RUT y representante legal.", icono: Building2, listo: datosCompletos },
+                { key: "recursos" as const, label: "Registra trabajadores y equipos", info: "Personal, vehículos y maquinaria que participarán.", icono: Users2, listo: portal.recursos.length > 0 },
+                { key: "documentos" as const, label: "Entrega los documentos", info: "Adjunta archivos y fechas de vencimiento.", icono: FolderOpen, listo: total > 0 && faltantes === 0 },
+              ].map((item) => {
+                const Icon = item.icono;
+                return <button key={item.key} type="button" onClick={() => irA(item.key)} className="group flex w-full items-center gap-3 rounded-2xl border border-slate-200 p-4 text-left transition hover:border-emerald-300 hover:bg-emerald-50/30">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 group-hover:bg-emerald-100 group-hover:text-emerald-700"><Icon className="h-5 w-5" /></span>
+                  <span className="min-w-0 flex-1"><strong className="block text-sm text-slate-900">{item.label}</strong><span className="mt-1 block text-xs text-slate-500">{item.info}</span></span>
+                  <span className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-full " + (item.listo ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500")}>{item.listo ? <Check className="h-4 w-4"/> : <ArrowUpRight className="h-4 w-4"/>}</span>
+                </button>;
+              })}
+            </div>
+            {observados > 0 && <button onClick={() => irA("documentos")} className="mt-5 flex w-full items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 p-4 text-left text-xs font-semibold text-orange-800"><AlertCircle className="h-5 w-5 shrink-0"/>{observados} documento(s) requieren corrección <ArrowRight className="ml-auto h-4 w-4"/></button>}
+          </section>
+          <aside className="space-y-5">
+            <section className={tarjeta}><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Tu carpeta en números</p>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                {[
+                  { label: "Entregados", value: entregados, color: "bg-sky-50 text-sky-700", icono: CloudUpload },
+                  { label: "Aprobados", value: aprobados, color: "bg-emerald-50 text-emerald-700", icono: CheckCircle2 },
+                  { label: "Pendientes", value: faltantes, color: "bg-amber-50 text-amber-700", icono: Clock3 },
+                  { label: "Observados", value: observados, color: "bg-orange-50 text-orange-700", icono: AlertCircle },
+                ].map((item) => { const Icon = item.icono; return <div key={item.label} className={"rounded-2xl p-4 " + item.color}><Icon className="h-5 w-5"/><p className="mt-4 text-3xl font-extrabold">{item.value}</p><p className="mt-1 text-xs font-semibold">{item.label}</p></div>; })}
+              </div>
+            </section>
+            <section className="rounded-3xl border border-sky-100 bg-sky-50/80 p-5"><p className="flex items-start gap-2 text-xs leading-relaxed text-slate-600"><Info className="h-5 w-5 shrink-0 text-sky-700"/> La aprobación documental no reemplaza la autorización de ingreso a faena. Esa decisión corresponde a la empresa mandante.</p></section>
+          </aside>
+        </div>}
+
+        {paso === "empresa" && <section className={"mt-6 " + tarjeta}>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Etapa 01 · Identificación</p>
+          <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">Antecedentes de tu empresa</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500">Confirma tus datos legales. Los campos marcados con * son obligatorios.</p>
+          <div className="my-6 h-px bg-slate-100"/>
+          <form onSubmit={(e) => { e.preventDefault(); void ejecutar("datos", () => guardarDatosEmpresaPortal(token, empresaDatos), "Datos de empresa actualizados correctamente."); }}>
+            <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+              {[
+                { key: "razonSocial", label: "Razón social *", placeholder: "Nombre legal de la empresa", required: true },
+                { key: "rut", label: "RUT de empresa *", placeholder: "76.123.456-7", required: true },
+                { key: "giro", label: "Giro", placeholder: "Actividad económica", required: false },
+                { key: "direccion", label: "Dirección", placeholder: "Calle, número y comuna", required: false },
+                { key: "representanteLegal", label: "Representante legal", placeholder: "Nombre completo", required: false },
+                { key: "rutRepresentante", label: "RUT del representante", placeholder: "12.345.678-9", required: false },
+                { key: "telefono", label: "Teléfono de contacto", placeholder: "+56 9 1234 5678", required: false },
+              ].map((campo) => {
+                const key = campo.key as keyof typeof empresaDatos;
+                return <label key={key} className="block min-w-0 space-y-2"><Label className="text-xs font-bold text-slate-700">{campo.label}</Label><Input required={campo.required} type={key === "telefono" ? "tel" : "text"} placeholder={campo.placeholder} className={textoInput} value={empresaDatos[key]} onChange={(e) => setEmpresaDatos((prev) => ({ ...prev, [key]: e.target.value }))}/></label>;
+              })}
+            </div>
+            <div className="mt-7 flex flex-col gap-4 rounded-2xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+              <p className="flex items-start gap-2 text-xs text-slate-500"><ShieldCheck className="h-4 w-4 shrink-0 text-emerald-700"/>Información utilizada exclusivamente para gestionar este servicio con la mandante.</p>
+              <Button disabled={!!enProceso} type="submit" className={botonPrincipal}>{enProceso === "datos" ? "Guardando…" : "Guardar antecedentes"} <Check className="ml-2 h-4 w-4"/></Button>
+            </div>
+          </form>
+        </section>}
+
+        {paso === "recursos" && <section className={"mt-6 " + tarjeta}>
+          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+            <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Etapa 02 · Recursos</p><h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">Personal, vehículos y equipos</h2><p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">Añade los recursos que participarán del contrato. Se habilitarán automáticamente sus documentos requeridos.</p></div>
+            <Button type="button" onClick={() => setFormVisible((v) => !v)} className={botonPrincipal}><Plus className="mr-2 h-4 w-4"/>Agregar recurso</Button>
+          </div>
+          {formVisible && <form className="mt-6 grid gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 sm:grid-cols-2 sm:p-5" onSubmit={(e) => {
+            e.preventDefault(); void ejecutar("recurso", async () => {
+              const grupo = recurso.tipo;
+              await agregarRecursoPortal(token, recurso);
+              setRecurso({ tipo: "trabajador", nombre: "", identificador: "", cargo: "", patente: "" });
+              setCategoria(grupo);
+              setFormVisible(false);
+            }, "Recurso agregado. Revisa sus documentos en la siguiente etapa.");
+          }}>
+            <label className="space-y-2"><Label className="text-xs font-semibold">Tipo de recurso</Label><select className={textoInput} value={recurso.tipo} onChange={(e) => setRecurso({ ...recurso, tipo: e.target.value as typeof recurso.tipo })}><option value="trabajador">Trabajador</option><option value="vehiculo">Vehículo</option><option value="equipo">Equipo / maquinaria</option></select></label>
+            <label className="space-y-2"><Label className="text-xs font-semibold">Nombre o descripción *</Label><Input required className={textoInput} value={recurso.nombre} placeholder="Nombre y apellidos o identificación" onChange={(e) => setRecurso({ ...recurso, nombre: e.target.value })}/></label>
+            {recurso.tipo === "trabajador" && <><label className="space-y-2"><Label className="text-xs font-semibold">RUT *</Label><Input required className={textoInput} value={recurso.identificador} onChange={(e) => setRecurso({ ...recurso, identificador: e.target.value })}/></label><label className="space-y-2"><Label className="text-xs font-semibold">Cargo</Label><Input className={textoInput} value={recurso.cargo} onChange={(e) => setRecurso({ ...recurso, cargo: e.target.value })}/></label></>}
+            {recurso.tipo === "vehiculo" && <label className="space-y-2"><Label className="text-xs font-semibold">Patente *</Label><Input required className={textoInput} value={recurso.patente} onChange={(e) => setRecurso({ ...recurso, patente: e.target.value })}/></label>}
+            {recurso.tipo === "equipo" && <label className="space-y-2"><Label className="text-xs font-semibold">N° serie o identificación</Label><Input className={textoInput} value={recurso.identificador} onChange={(e) => setRecurso({ ...recurso, identificador: e.target.value })}/></label>}
+            <div className="flex flex-wrap items-end gap-2 sm:col-span-2"><Button type="submit" disabled={!!enProceso} className={botonPrincipal}>{enProceso === "recurso" ? "Guardando…" : "Incorporar recurso"}</Button><Button type="button" variant="outline" onClick={() => setFormVisible(false)}>Cancelar</Button></div>
+          </form>}
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {portal.recursos.length === 0 && <div className="col-span-full flex flex-col items-center rounded-2xl border-2 border-dashed border-slate-200 px-6 py-12 text-center"><Users2 className="h-9 w-9 text-slate-300"/><p className="mt-3 font-semibold text-slate-700">Sin recursos registrados</p><p className="mt-1 text-xs text-slate-500">Puedes agregar personas, vehículos o maquinaria.</p></div>}
+            {portal.recursos.map((r) => {
+              const docs = portal.requisitos.filter((d) => d.recursoId === r.id && d.obligatorio);
+              const aprobadosRecurso = docs.filter((d) => d.estadoEfectivo === "aprobado").length;
+              const Icon = r.tipo === "trabajador" ? Users2 : r.tipo === "vehiculo" ? CarFront : HardHat;
+              return <div key={r.id} className="min-w-0 rounded-2xl border border-slate-200 p-4">
+                <div className="flex justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><Icon className="h-5 w-5"/></span><button type="button" aria-label={"Eliminar " + r.nombre} disabled={!!enProceso} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-red-600" onClick={() => { if (window.confirm("¿Eliminar " + r.nombre + "?")) void ejecutar(r.id, () => eliminarRecursoPortal(token, r.id), "Recurso eliminado."); }}><Trash2 className="h-4 w-4"/></button></div>
+                <p className="mt-3 break-words text-sm font-bold text-slate-900">{r.nombre}</p><p className="mt-1 break-all text-xs text-slate-500">{r.tipo} · {r.patente || r.identificador || r.cargo || "Sin identificador"}</p>
+                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3"><span className="text-xs text-slate-500">{aprobadosRecurso}/{docs.length} aprobados</span><button type="button" onClick={() => irA("documentos", r.tipo as typeof categoria)} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">Documentos <ArrowUpRight className="h-3.5 w-3.5"/></button></div>
+              </div>;
+            })}
+          </div>
+        </section>}
+
+        {paso === "documentos" && <div className="mt-6 grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_290px]">
+          <section className="min-w-0 space-y-5">
+            <div className={tarjeta}>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Etapa 03 · Documentación</p>
+              <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">Tu carpeta documental</h2>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">Elige una categoría y adjunta los archivos correspondientes. Si recibes una observación, puedes subir una nueva versión.</p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                {grupos.map((grupo) => { const Icon = grupo.icono; const docs = portal.requisitos.filter((d) => d.categoria === grupo.key); return <button key={grupo.key} type="button" aria-pressed={grupo.key === categoria} onClick={() => { setCategoria(grupo.key); setExpandido(null); }} className={"inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition " + (grupo.key === categoria ? "border-slate-900 bg-[#0f1e33] text-white shadow-md" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}><Icon className="h-4 w-4"/>{grupo.label}<span className={"rounded-md px-1.5 py-0.5 text-[10px] " + (grupo.key === categoria ? "bg-white/15" : "bg-slate-100")}>{docs.length}</span></button>; })}
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex justify-between gap-2"><h3 className="text-base font-extrabold text-slate-900">{grupos.find((g) => g.key === categoria)?.label}</h3><span className="text-xs text-slate-500">{documentosCategoria.length} documentos</span></div>
+              {documentosCategoria.length === 0 && <div className="flex flex-col items-center rounded-2xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"><FolderOpen className="h-10 w-10 text-slate-300"/><p className="mt-3 text-sm font-semibold text-slate-700">No hay documentos en esta categoría.</p>{categoria !== "empresa" && <button type="button" onClick={() => irA("recursos")} className="mt-2 text-xs font-semibold text-emerald-700">Agregar un recurso <ArrowRight className="inline h-3.5 w-3.5"/></button>}</div>}
+              {documentosCategoria.map((r) => bloqueRequisito(r))}
+            </div>
+          </section>
+          <aside className="space-y-4 lg:sticky lg:top-5 lg:self-start">
+            <section className={tarjeta}><h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><ShieldCheck className="h-5 w-5 text-emerald-600"/>Control de entrega</h3><div className="mt-5 flex justify-between gap-2"><strong className="text-3xl font-extrabold text-slate-900">{porcentaje}%</strong><span className="self-end text-xs text-slate-500">{entregados}/{total} obligatorios</span></div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: porcentaje + "%" }}/></div>
+              <p className="mt-4 text-xs leading-relaxed text-slate-500">{faltantes ? "Faltan " + faltantes + " documentos obligatorios por entregar o actualizar." : "Todos los documentos obligatorios están entregados."}</p>
+              {!datosCompletos && <button type="button" onClick={() => irA("empresa")} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-amber-700"><AlertCircle className="h-4 w-4"/>Completa primero tus datos de empresa</button>}
+              <Button disabled={!puedeEnviar} onClick={() => void ejecutar("enviar", () => enviarCarpetaContratista(token), "Carpeta enviada a revisión de la empresa mandante.")} className={"mt-5 w-full " + botonPrincipal}><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : "Enviar a revisión"}</Button>
+              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-400">La empresa mandante revisará tus documentos y te informará cualquier corrección.</p>
+            </section>
+            <section className="rounded-3xl border border-sky-100 bg-sky-50 p-5"><p className="flex gap-2 text-xs leading-relaxed text-slate-600"><LockKeyhole className="h-4 w-4 shrink-0 text-emerald-600"/> Tus archivos se guardan de manera privada. No compartas tu enlace de acceso.</p></section>
+          </aside>
+        </div>}
+
+        <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-slate-200 py-6 text-center text-xs text-slate-500 sm:flex-row sm:text-left"><strong className="font-extrabold tracking-[0.17em] text-slate-800">NEXTPREV</strong><p>Generado por NextPrev · Gestión documental segura</p><span className="inline-flex items-center gap-1.5"><LockKeyhole className="h-3.5 w-3.5"/>Acceso privado</span></footer>
+      </div>
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_35px_-25px_rgba(15,23,42,0.5)] backdrop-blur-xl [padding-bottom:max(12px,env(safe-area-inset-bottom))] sm:hidden">
+        <div className="mx-auto flex max-w-lg items-center justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Tu carpeta</p><p className="text-sm font-extrabold text-slate-900">{entregados}/{total} <span className="text-xs font-medium text-slate-500">entregados</span></p></div>
+          {paso === "documentos" ? <Button disabled={!puedeEnviar} onClick={() => void ejecutar("enviar", () => enviarCarpetaContratista(token), "Carpeta enviada a revisión.")} className={botonPrincipal}><Send className="mr-2 h-4 w-4"/>Enviar a revisión</Button> : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
+        </div>
+      </div>
+    </main>
+  );
 }
