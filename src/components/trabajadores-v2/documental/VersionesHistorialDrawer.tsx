@@ -166,7 +166,7 @@ export function VersionesHistorialDrawer({
         </div>
 
         {/* Content */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-4 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-3 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-4 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-3 [-webkit-overflow-scrolling:touch]">
           {versiones.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
               <FileText className="h-10 w-10 mb-2 opacity-40" />

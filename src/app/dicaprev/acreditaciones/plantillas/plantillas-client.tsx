@@ -457,7 +457,7 @@ function PlantillaModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain p-5 pb-[calc(env(safe-area-inset-bottom)+20px)] [-webkit-overflow-scrolling:touch]">
           <div className="grid gap-3 md:grid-cols-2">
             <input
               value={form.nombre}

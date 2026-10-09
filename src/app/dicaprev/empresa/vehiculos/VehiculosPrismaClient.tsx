@@ -486,7 +486,7 @@ export default function VehiculosPrismaClient({
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-5 pt-1">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Tipo</Label>
                 <Select value={form.tipo} onValueChange={(v) => handleChange("tipo", v as TipoVehiculo)}>
@@ -526,7 +526,7 @@ export default function VehiculosPrismaClient({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="space-y-1.5">
                 <Label>Marca</Label>
                 <Input className="rounded-xl" placeholder="Toyota" value={form.marca} onChange={(e) => handleChange("marca", e.target.value)} required />
@@ -541,7 +541,7 @@ export default function VehiculosPrismaClient({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>Centro de trabajo</Label>
                 <Select value={form.centroTrabajoId} onValueChange={(v) => handleChange("centroTrabajoId", v)}>

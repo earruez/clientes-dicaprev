@@ -1104,7 +1104,7 @@ export default function AreasCargosPage() {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch]">
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
                   { label: "Cargos",      value: selectedArea.cargosNombres.length,  color: "text-violet-700" },
@@ -1247,7 +1247,7 @@ export default function AreasCargosPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch]">
               <div className="grid grid-cols-3 gap-3">
                 <DrawerStat icon={<Users className="h-4 w-4 text-sky-500" />}             label="Trabajadores" value={drawerCargo.trabajadores} />
                 <DrawerStat icon={<FileText className="h-4 w-4 text-amber-500" />}        label="Docs base"    value={drawerCargo.documentosBase.length} />

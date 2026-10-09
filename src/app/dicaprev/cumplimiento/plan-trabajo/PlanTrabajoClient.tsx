@@ -136,7 +136,7 @@ function AccionDrawer({
         </div>
 
         {/* body */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 text-sm [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 text-sm [-webkit-overflow-scrolling:touch]">
           {accion.descripcion && (
             <div className="rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-slate-700 leading-relaxed">
               {accion.descripcion}

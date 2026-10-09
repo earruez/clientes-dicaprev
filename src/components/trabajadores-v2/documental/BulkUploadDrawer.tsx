@@ -200,6 +200,8 @@ export function BulkUploadDrawer({ isOpen, onClose, workers, tipos }: BulkUpload
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  if (!isOpen) return null;
+
   return (
     <>
       {/* Backdrop */}
@@ -273,7 +275,7 @@ export function BulkUploadDrawer({ isOpen, onClose, workers, tipos }: BulkUpload
         </div>
 
         {/* ── Scrollable body ── */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-5 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-y-contain px-5 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch]">
 
           {/* ────────── STEP 1: Files ────────── */}
           {step === 1 && (

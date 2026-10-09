@@ -277,7 +277,7 @@ function DetalleDrawer({
         </div>
 
         {/* Content */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-5 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-5 [-webkit-overflow-scrolling:touch]">
           {/* Badge row */}
           <div className="flex items-center gap-3 flex-wrap">
             <span className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold border", cfg.cls)}>

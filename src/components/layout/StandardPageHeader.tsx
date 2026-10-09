@@ -30,7 +30,7 @@ export default function StandardPageHeader({
   return (
     <div className={cn("rounded-2xl border border-slate-200 bg-white p-5 shadow-sm", className)}>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-3">
+        <div className="flex min-w-0 flex-1 basis-full items-start gap-3 sm:basis-auto">
           <div
             className={cn(
               "mt-0.5 flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white",
@@ -40,9 +40,9 @@ export default function StandardPageHeader({
             {iconContent}
           </div>
 
-          <div>
+          <div className="min-w-0 break-words">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{moduleLabel}</p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">{title}</h1>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 sm:text-3xl">{title}</h1>
             <p className="mt-1 text-sm text-slate-600">{description}</p>
           </div>
         </div>

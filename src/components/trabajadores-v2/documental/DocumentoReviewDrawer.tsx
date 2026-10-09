@@ -1200,7 +1200,7 @@ export function DocumentoReviewDrawer({
         </div>
 
         {/* ── Body ──────────────────────────────────────────────────────────── */}
-        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch]">
 
           {/* Meta info */}
           <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">

@@ -14,7 +14,7 @@ interface SectionTabsProps {
 export function SectionTabs({ tabs, activeTab, onChange }: SectionTabsProps) {
   return (
     <div className="rounded-3xl bg-slate-100 p-2 shadow-sm">
-      <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
         {tabs.map((tab) => {
           const isActive = tab.value === activeTab;
           return (

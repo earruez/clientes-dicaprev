@@ -436,6 +436,8 @@ export function VehiculoDetailDrawer({
     });
   }
 
+  if (!open || !vehiculo) return null;
+
   return (
     <>
       {/* Backdrop */}
@@ -461,7 +463,7 @@ export function VehiculoDetailDrawer({
               Actualizar — {docEdit.tipoNombre}
             </h3>
             <form onSubmit={handleDocSave} className="space-y-4">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <input
                   id="doc-subido"
                   type="checkbox"
@@ -543,7 +545,7 @@ export function VehiculoDetailDrawer({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Fecha</Label>
                   <Input
@@ -629,6 +631,7 @@ export function VehiculoDetailDrawer({
       {/* Drawer panel */}
       <div
         role="dialog"
+        aria-label="Detalle del vehículo"
         aria-modal
         className={cn(
           "fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-[480px] flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out",
@@ -660,13 +663,13 @@ export function VehiculoDetailDrawer({
               <>
                 {/* ── Header ── */}
                 <div className="shrink-0 border-b border-slate-200 px-5 pt-5 pb-0">
-                  <div className="flex items-start justify-between gap-3 pb-4">
-                    <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+                    <div className="flex min-w-0 items-center gap-3">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
                         {TIPO_ICON[vehiculo.tipo]}
                       </div>
                       <div>
-                        <h2 className="text-base font-bold leading-tight text-slate-900">
+                        <h2 className="break-words text-base font-bold leading-tight text-slate-900">
                           {vehiculo.marca} {vehiculo.modelo}
                         </h2>
                         <p className="mt-0.5 font-mono text-xs text-slate-400">
@@ -708,7 +711,8 @@ export function VehiculoDetailDrawer({
                       </button>
                       <button
                         onClick={onClose}
-                        className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                        aria-label="Cerrar detalle del vehículo"
+                        className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                       >
                         <X className="h-5 w-5" />
                       </button>
@@ -788,7 +792,7 @@ export function VehiculoDetailDrawer({
                 </div>
 
                 {/* ── Body (scrollable) ── */}
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch]">
 
                   {/* Resumen */}
                   {activeTab === "resumen" && (

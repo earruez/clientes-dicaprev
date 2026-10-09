@@ -1466,7 +1466,7 @@ export default function HallazgosClient({
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent
-          className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-3rem)]"
+          className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:p-0 sm:max-h-[calc(100dvh-3rem)]"
           onPointerDownOutside={(event) => event.preventDefault()}
         >
           <DialogHeader className="shrink-0 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
@@ -1655,10 +1655,10 @@ export default function HallazgosClient({
       }}>
         <DialogContent
           withClose={false}
-          className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
+          className="flex flex-col h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 sm:p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
           onPointerDownOutside={(event) => event.preventDefault()}
         >
-          <div className="flex h-full min-h-0 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">
             <header className="shrink-0 border-b border-slate-800/90 bg-[#071225]/95 px-4 pb-3 pt-[max(0.9rem,env(safe-area-inset-top))] backdrop-blur sm:px-6 sm:pt-5">
               <div className="grid grid-cols-[44px_1fr_44px] items-center gap-3">
                 <button
