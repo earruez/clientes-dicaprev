@@ -144,7 +144,7 @@ export default function SolicitudesContratistasClient() {
                 <select required className={CAMPO} value={form.contratistaId} onChange={(e) => {
                   const id = e.target.value;
                   const c = contratistas.find((item) => item.id === id);
-                  setForm((prev) => ({ ...prev, contratistaId: id, contactoEmail: c?.email || prev.contactoEmail }));
+                  setForm((prev) => ({ ...prev, contratistaId: id, contactoEmail: c?.email || "" }));
                 }}>
                   <option value="">Selecciona empresa</option>
                   {contratistas.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.rut ? ` · ${c.rut}` : ""}</option>)}
