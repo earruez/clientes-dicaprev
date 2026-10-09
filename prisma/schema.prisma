@@ -1760,6 +1760,7 @@ model Contratista {
   documentos    ContratistaDocumento[]
   trabajadores  ContratistaTrabajador[]
   acreditaciones Acreditacion[]
+  solicitudes ContratistaSolicitud[]
 
   @@index([empresaId])
   @@index([activo])
@@ -2615,4 +2616,105 @@ model PermisoNotificacion {
   @@index([permisoId])
   @@index([estado])
   @@index([createdAt])
+}
+
+ 
+// Solicitudes documentales de una empresa mandante a sus contratistas.
+// La autorización y la documentación son independientes de Acreditaciones.
+model ContratistaSolicitud {
+  id                 String    @id @default(cuid())
+  empresaId          String
+  contratistaId      String
+  nombre             String
+  faena              String?
+  servicio           String?
+  contactoEmail      String
+  responsable        String?
+  dotacionEstimada   Int?
+  fechaInicio        DateTime?
+  fechaTermino       DateTime?
+  estado             String    @default("borrador")
+  tokenHash          String?   @unique
+  tokenExpiraAt      DateTime?
+  invitadoAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  contratista        Contratista            @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
+  recursos           ContratistaRecurso[]
+  requisitos         ContratistaRequisito[]
+
+  @@index([empresaId, estado])
+  @@index([contratistaId])
+}
+
+model ContratistaRecurso {
+  id            String    @id @default(cuid())
+  empresaId     String
+  solicitudId   String
+  tipo          String
+  nombre        String
+  identificador String?
+  cargo         String?
+  patente       String?
+  createdAt     DateTime  @default(now())
+
+  solicitud     ContratistaSolicitud  @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  requisitos    ContratistaRequisito[]
+
+  @@index([solicitudId, tipo])
+  @@index([empresaId])
+}
+
+model ContratistaRequisito {
+  id                 String    @id @default(cuid())
+  empresaId          String
+  solicitudId        String
+  recursoId          String?
+  nombre             String
+  categoria          String
+  obligatorio        Boolean   @default(true)
+  estado             String    @default("pendiente")
+  archivoNombre      String?
+  archivoOriginal    String?
+  archivoTipo        String?
+  archivoPeso        Int?
+  fechaEmision       DateTime?
+  fechaVencimiento   DateTime?
+  observacionRevision String?
+  revisadoPorId      String?
+  revisadoAt         DateTime?
+  version            Int       @default(0)
+  aviso30At          DateTime?
+  aviso15At          DateTime?
+  aviso5At           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  solicitud          ContratistaSolicitud       @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  recurso            ContratistaRecurso?        @relation(fields: [recursoId], references: [id], onDelete: Cascade)
+  versiones          ContratistaDocumentoVersion[]
+
+  @@index([empresaId, estado])
+  @@index([solicitudId, categoria])
+  @@index([recursoId])
+  @@index([fechaVencimiento])
+}
+
+model ContratistaDocumentoVersion {
+  id               String    @id @default(cuid())
+  requisitoId      String
+  version          Int
+  archivoNombre    String
+  archivoOriginal  String
+  archivoTipo      String?
+  archivoPeso      Int
+  fechaEmision     DateTime?
+  fechaVencimiento DateTime?
+  subidoAt         DateTime  @default(now())
+
+  requisito        ContratistaRequisito @relation(fields: [requisitoId], references: [id], onDelete: Cascade)
+
+  @@unique([requisitoId, version])
+  @@index([archivoNombre])
 }
