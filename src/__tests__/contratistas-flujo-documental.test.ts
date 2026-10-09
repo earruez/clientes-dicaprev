@@ -10,6 +10,10 @@ describe("documentación de empresas contratistas", () => {
     expect(estadoEfectivo("aprobado", "2020-01-01T12:00:00.000Z")).toBe("vencido");
   });
 
+  it("no permite enviar documentos pendientes con vencimiento pasado", () => {
+    expect(estadoEfectivo("pendiente", "2020-01-01T12:00:00.000Z")).toBe("vencido");
+  });
+
   it("permite vigencia hasta el final de la fecha de vencimiento", () => {
     const hoy = new Date().toISOString().slice(0, 10);
     expect(estadoEfectivo("aprobado", `${hoy}T12:00:00.000Z`)).toBe("aprobado");
