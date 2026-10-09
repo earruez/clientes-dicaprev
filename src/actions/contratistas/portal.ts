@@ -102,7 +102,7 @@ export async function enviarCarpetaContratista(token: string) {
   const pendientes = s.requisitos.filter((r) => r.obligatorio && (!r.archivoNombre || estadoEfectivo(r.estado, r.fechaVencimiento) === "vencido"));
   if (!s.contratista.rut || !s.contratista.razonSocial) throw new Error("Completa los datos de la empresa contratista antes de enviar");
   if (pendientes.length) throw new Error(`Faltan ${pendientes.length} documentos obligatorios o hay documentos vencidos`);
-  if (!s.requisitos.some((r) => r.archivoNombre)) throw new Error("Carga al menos un documento para enviar");
+  if (!s.requisitos.some((r) => r.archivoNombre && r.estado !== "aprobado" && r.estado !== "en_revision")) throw new Error("No hay documentos nuevos pendientes de envío");
   await prisma.$transaction([
     prisma.contratistaRequisito.updateMany({
       where: { solicitudId: s.id, archivoNombre: { not: null }, estado: { not: "aprobado" } },
