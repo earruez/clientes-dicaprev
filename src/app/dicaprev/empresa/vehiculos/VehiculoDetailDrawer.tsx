@@ -477,7 +477,6 @@ export function VehiculoDetailDrawer({
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] sm:items-center">
           <div
             aria-hidden
-            onClick={() => { if (!guardandoEdicionDocumento) setDocEdit(null); }}
             className="absolute inset-0 bg-slate-900/30"
           />
           <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl [-webkit-overflow-scrolling:touch]">
@@ -551,7 +550,6 @@ export function VehiculoDetailDrawer({
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] sm:items-center">
           <div
             aria-hidden
-            onClick={() => { if (!guardandoMantencion) setMantencionModalOpen(false); }}
             className="absolute inset-0 bg-slate-900/30"
           />
           <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl [-webkit-overflow-scrolling:touch]">
