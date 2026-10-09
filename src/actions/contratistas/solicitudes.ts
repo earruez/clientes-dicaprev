@@ -105,7 +105,7 @@ export async function agregarRequisitoContratista(input: {
   await prisma.contratistaRequisito.create({
     data: { empresaId, solicitudId: solicitud.id, recursoId: input.recursoId || null, nombre: input.nombre.trim().slice(0, 220), categoria: input.categoria, obligatorio: input.obligatorio !== false },
   });
-  await prisma.contratistaSolicitud.update({ where: { id: solicitud.id }, data: { estado: "enviada" } });
+  await recalcularEstado(solicitud.id, empresaId);
   return { ok: true };
 }
 
