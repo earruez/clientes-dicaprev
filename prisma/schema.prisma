@@ -1751,6 +1751,10 @@ model Contratista {
   razonSocial   String?
   email         String?
   telefono      String?
+  representanteLegal String?
+  rutRepresentante   String?
+  giro               String?
+  direccion          String?
   observaciones String?
   activo        Boolean  @default(true)
   createdAt     DateTime @default(now())
