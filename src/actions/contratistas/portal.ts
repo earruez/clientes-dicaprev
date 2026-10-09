@@ -20,6 +20,33 @@ export async function obtenerPortalContratista(token: string) {
   };
 }
 
+export async function guardarDatosEmpresaPortal(token: string, input: {
+  razonSocial: string;
+  rut: string;
+  giro?: string;
+  direccion?: string;
+  representanteLegal?: string;
+  rutRepresentante?: string;
+  telefono?: string;
+}) {
+  const s = await resolverPortalContratista(token);
+  if (!s) throw new Error("Invitación inválida o vencida");
+  if (!input.razonSocial?.trim() || !input.rut?.trim()) throw new Error("Completa razón social y RUT");
+  await prisma.contratista.update({
+    where: { id: s.contratistaId },
+    data: {
+      razonSocial: input.razonSocial.trim().slice(0, 180),
+      rut: input.rut.trim().slice(0, 18),
+      giro: valido(input.giro || "") || null,
+      direccion: input.direccion?.trim().slice(0, 200) || null,
+      representanteLegal: valido(input.representanteLegal || "") || null,
+      rutRepresentante: valido(input.rutRepresentante || "") || null,
+      telefono: valido(input.telefono || "") || null,
+    },
+  });
+  return { ok: true };
+}
+
 export async function agregarRecursoPortal(token: string, input: {
   tipo: Exclude<CategoriaContratista, "empresa">;
   nombre: string;
@@ -73,6 +100,7 @@ export async function enviarCarpetaContratista(token: string) {
   const s = await resolverPortalContratista(token);
   if (!s) throw new Error("Invitación inválida o vencida");
   const pendientes = s.requisitos.filter((r) => r.obligatorio && (!r.archivoNombre || estadoEfectivo(r.estado, r.fechaVencimiento) === "vencido"));
+  if (!s.contratista.rut || !s.contratista.razonSocial) throw new Error("Completa los datos de la empresa contratista antes de enviar");
   if (pendientes.length) throw new Error(`Faltan ${pendientes.length} documentos obligatorios o hay documentos vencidos`);
   if (!s.requisitos.some((r) => r.archivoNombre)) throw new Error("Carga al menos un documento para enviar");
   await prisma.$transaction([
