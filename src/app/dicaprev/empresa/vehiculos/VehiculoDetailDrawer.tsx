@@ -221,6 +221,10 @@ export function VehiculoDetailDrawer({
   const [isPending, startTransition] = useTransition();
   const [docError, setDocError] = useState<string | null>(null);
   const [guardandoDocumento, setGuardandoDocumento] = useState(false);
+  const [guardandoEdicionDocumento, setGuardandoEdicionDocumento] = useState(false);
+  const [docModalError, setDocModalError] = useState<string | null>(null);
+  const [guardandoMantencion, setGuardandoMantencion] = useState(false);
+  const [mantencionError, setMantencionError] = useState<string | null>(null);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docEdit, setDocEdit] = useState<{
     id?: string;
@@ -348,29 +352,34 @@ export function VehiculoDetailDrawer({
     }
   }
 
-  function handleDocSave(e: FormEvent) {
+  async function handleDocSave(e: FormEvent) {
     e.preventDefault();
-    if (!vehiculo || !docEdit) return;
+    if (!vehiculo || !docEdit || guardandoEdicionDocumento) return;
+    setGuardandoEdicionDocumento(true);
+    setDocModalError(null);
 
-    startTransition(async () => {
+    try {
+      const archivoSubido = docFile ? await subirArchivo(docFile) : null;
+      await crearOActualizarDocumentoVehiculo({
+        vehiculoId: vehiculo.id,
+        documentoId: docEdit.id,
+        tipo: docEdit.tipo,
+        tipoDocumentoId: docEdit.tipoDocumentoId ?? undefined,
+        subido: docEdit.subido,
+        fechaVencimiento: docEdit.vencimiento,
+        vencimiento: docEdit.vencimiento,
+        archivoNombre: archivoSubido?.archivoNombre,
+        archivoNombreOriginal: archivoSubido?.archivoNombreOriginal,
+        archivoUrl: archivoSubido?.archivoUrl,
+      });
+
+      // El documento ya quedó guardado: no mantener el formulario disponible
+      // para un segundo envío si falla el refresco del detalle.
+      setDocFile(null);
+      setDocEdit(null);
       try {
-        const archivoSubido = docFile ? await subirArchivo(docFile) : null;
-        await crearOActualizarDocumentoVehiculo({
-          vehiculoId: vehiculo.id,
-          documentoId: docEdit.id,
-          tipo: docEdit.tipo,
-          tipoDocumentoId: docEdit.tipoDocumentoId ?? undefined,
-          subido: docEdit.subido,
-          fechaVencimiento: docEdit.vencimiento,
-          vencimiento: docEdit.vencimiento,
-          archivoNombre: archivoSubido?.archivoNombre,
-          archivoNombreOriginal: archivoSubido?.archivoNombreOriginal,
-          archivoUrl: archivoSubido?.archivoUrl,
-        });
-
         const evaluated = await evaluarDocumentosVehiculo(vehiculo.id);
         onDocumentosChange?.(vehiculo.id, evaluated);
-
         setDocumentos(
           evaluated.map((d) => ({
             id: d.id,
@@ -390,50 +399,53 @@ export function VehiculoDetailDrawer({
             tipoDocumentoId: d.tipoDocumentoId,
           }))
         );
-        setDocFile(null);
-        setDocEdit(null);
       } catch {
-        // keep modal open so user can retry
+        setDocError("El documento se guardó, pero no se pudo actualizar su estado. Cierra y vuelve a abrir el vehículo para ver el dato actualizado.");
       }
-    });
+    } catch (error) {
+      setDocModalError(error instanceof Error ? error.message : "No se pudo guardar el documento. Intenta nuevamente.");
+    } finally {
+      setGuardandoEdicionDocumento(false);
+    }
   }
 
-  function submitMantencion(e: FormEvent) {
+  async function submitMantencion(e: FormEvent) {
     e.preventDefault();
-    if (!vehiculo || !mantencionForm.tipo || !mantencionForm.fecha) return;
+    if (!vehiculo || !mantencionForm.tipo || !mantencionForm.fecha || guardandoMantencion) return;
+    setGuardandoMantencion(true);
+    setMantencionError(null);
+    try {
+      const created = await crearMantencionVehiculo(vehiculo.id, {
+        tipo: mantencionForm.tipo,
+        fecha: mantencionForm.fecha,
+        estado: mantencionForm.estado,
+        observaciones: mantencionForm.observaciones,
+        kilometraje: mantencionForm.kilometraje,
+      });
 
-    startTransition(async () => {
-      try {
-        const created = await crearMantencionVehiculo(vehiculo.id, {
-          tipo: mantencionForm.tipo,
-          fecha: mantencionForm.fecha,
-          estado: mantencionForm.estado,
-          observaciones: mantencionForm.observaciones,
-          kilometraje: mantencionForm.kilometraje,
-        });
-
-        setMantenciones((prev) => [created, ...prev]);
-        setVehiculo((prev) =>
-          prev
-            ? {
-                ...prev,
-                kilometraje:
-                  mantencionForm.kilometraje > 0 ? mantencionForm.kilometraje : prev.kilometraje,
-              }
-            : prev
-        );
-        setMantencionModalOpen(false);
-        setMantencionForm((prev) => ({
-          ...prev,
-          tipo: "",
-          fecha: "",
-          estado: "programada",
-          observaciones: "",
-        }));
-      } catch {
-        // keep form values to retry
-      }
-    });
+      setMantenciones((prev) => [created, ...prev]);
+      setVehiculo((prev) =>
+        prev
+          ? {
+              ...prev,
+              kilometraje:
+                mantencionForm.kilometraje > 0 ? mantencionForm.kilometraje : prev.kilometraje,
+            }
+          : prev
+      );
+      setMantencionModalOpen(false);
+      setMantencionForm((prev) => ({
+        ...prev,
+        tipo: "",
+        fecha: "",
+        estado: "programada",
+        observaciones: "",
+      }));
+    } catch (error) {
+      setMantencionError(error instanceof Error ? error.message : "No fue posible guardar la mantención.");
+    } finally {
+      setGuardandoMantencion(false);
+    }
   }
 
   if (!open || !vehiculo) return null;
@@ -455,13 +467,14 @@ export function VehiculoDetailDrawer({
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] sm:items-center">
           <div
             aria-hidden
-            onClick={() => setDocEdit(null)}
+            onClick={() => { if (!guardandoEdicionDocumento) setDocEdit(null); }}
             className="absolute inset-0 bg-slate-900/30"
           />
           <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl [-webkit-overflow-scrolling:touch]">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">
               Actualizar — {docEdit.tipoNombre}
             </h3>
+            {docModalError ? <p role="alert" className="mb-3 text-sm text-rose-700">{docModalError}</p> : null}
             <form onSubmit={handleDocSave} className="space-y-4">
               <div className="flex min-w-0 items-center gap-3">
                 <input
@@ -503,6 +516,7 @@ export function VehiculoDetailDrawer({
                   type="button"
                   variant="outline"
                   className="rounded-xl"
+                  disabled={guardandoEdicionDocumento}
                   onClick={() => {
                     setDocFile(null);
                     setDocEdit(null);
@@ -512,9 +526,10 @@ export function VehiculoDetailDrawer({
                 </Button>
                 <Button
                   type="submit"
+                  disabled={guardandoEdicionDocumento}
                   className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white"
                 >
-                  Guardar
+                  {guardandoEdicionDocumento ? "Guardando..." : "Guardar"}
                 </Button>
               </div>
             </form>
@@ -526,11 +541,12 @@ export function VehiculoDetailDrawer({
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] sm:items-center">
           <div
             aria-hidden
-            onClick={() => setMantencionModalOpen(false)}
+            onClick={() => { if (!guardandoMantencion) setMantencionModalOpen(false); }}
             className="absolute inset-0 bg-slate-900/30"
           />
           <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl [-webkit-overflow-scrolling:touch]">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">Nueva mantención</h3>
+            {mantencionError ? <p role="alert" className="mb-3 text-sm text-rose-700">{mantencionError}</p> : null}
             <form onSubmit={submitMantencion} className="space-y-4">
               <div className="space-y-1.5">
                 <Label>Tipo de mantención</Label>
@@ -612,15 +628,16 @@ export function VehiculoDetailDrawer({
                   variant="outline"
                   className="rounded-xl"
                   onClick={() => setMantencionModalOpen(false)}
+                  disabled={guardandoMantencion}
                 >
                   Cancelar
                 </Button>
                 <Button
                   type="submit"
                   className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white"
-                  disabled={isPending}
+                  disabled={guardandoMantencion}
                 >
-                  Guardar mantención
+                  {guardandoMantencion ? "Guardando..." : "Guardar mantención"}
                 </Button>
               </div>
             </form>
@@ -1061,7 +1078,8 @@ export function VehiculoDetailDrawer({
                                   aria-label={`Editar ${doc.tipoNombre ?? doc.tipo}`}
                                   onClick={() => {
                                     setDocFile(null);
-                                    setDocEdit({
+                                    setDocModalError(null);
+                        setDocEdit({
                                       id: doc.id,
                                       tipo: doc.tipo,
                                       tipoNombre: doc.tipoNombre ?? doc.tipo,
@@ -1106,7 +1124,7 @@ export function VehiculoDetailDrawer({
                           type="button"
                           variant="outline"
                           className="h-8 rounded-lg text-xs"
-                          onClick={() => setMantencionModalOpen(true)}
+                          onClick={() => { setMantencionError(null); setMantencionModalOpen(true); }}
                         >
                           Agregar mantención
                         </Button>
