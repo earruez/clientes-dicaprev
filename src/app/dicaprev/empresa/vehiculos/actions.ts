@@ -1,5 +1,6 @@
 "use server";
 
+import { esDocumentoBaseVehiculo } from "@/lib/vehiculos/documentos-estado";
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -912,6 +913,10 @@ export async function crearOActualizarDocumentoVehiculo(
     throw new Error("Debes indicar un tipo de documento vehicular");
   }
 
+  if (data.estado === "no_aplica" && esDocumentoBaseVehiculo(tipo)) {
+    throw new Error("Los documentos base del vehículo deben permanecer aplicables.");
+  }
+
   const fechaEmision = parseOptionalDate(data.fechaEmision);
   const fechaVencimiento = parseOptionalDate(data.fechaVencimiento ?? data.vencimiento);
   const subido = data.subido ?? Boolean(data.archivoUrl);
@@ -1055,16 +1060,28 @@ export async function cambiarEstadoDocumentoVehiculo(
 
   const doc = await prisma.vehiculoDocumento.findFirst({
     where: { id, empresaId },
-    select: { id: true, vehiculoId: true },
+    include: { tipoDocumento: true },
   });
 
   if (!doc) {
     throw new Error("Documento de vehiculo no encontrado");
   }
+  if (estado === "no_aplica" && esDocumentoBaseVehiculo(doc.tipoDocumento?.codigo ?? doc.tipo)) {
+    throw new Error("Los documentos base del vehículo deben permanecer aplicables.");
+  }
 
+  // Al volver a Aplica se evalúa el archivo y vencimiento conservados.
+  const nextEstado = evaluarEstadoDocumento({
+    estadoActual: estado,
+    subido: doc.subido,
+    fechaVencimiento: doc.fechaVencimiento,
+    requiereVencimiento: doc.tipoDocumento?.requiereVencimiento,
+    requiereArchivo: doc.tipoDocumento?.requiereArchivo,
+    archivoUrl: doc.archivoUrl,
+  });
   await prisma.vehiculoDocumento.update({
-    where: { id },
-    data: { estado },
+    where: { id, empresaId },
+    data: { estado: nextEstado },
   });
 
   const docs = await getDocumentosVehiculo(doc.vehiculoId);

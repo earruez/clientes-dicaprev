@@ -31,6 +31,8 @@ import {
   type ResponsableVehiculoItem,
 } from "./actions";
 
+import { isDocumentoVencido, isDocumentoProximoVencer, isDocumentoPendiente, estadoDocumentalFromDocumentos } from "@/lib/vehiculos/documentos-estado";
+
 type EstadoDocumentalVehiculo = "en_regla" | "por_vencer" | "fuera_de_regla" | "en_revision";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -66,36 +68,12 @@ function dtoToVehiculo(dto: VehiculoDTO): Vehiculo {
   };
 }
 
-function isDocumentoVencido(doc: VehiculoDocumentoDTO) {
-  if (!doc.fechaVencimiento) return false;
-  return new Date(doc.fechaVencimiento).getTime() < Date.now();
-}
-
-function isDocumentoProximoVencer(doc: VehiculoDocumentoDTO) {
-  if (!doc.fechaVencimiento) return false;
-  const diff = new Date(doc.fechaVencimiento).getTime() - Date.now();
-  return diff >= 0 && diff <= 30 * 24 * 60 * 60 * 1000;
-}
-
 function isDocumentoCompleto(doc: VehiculoDocumentoDTO) {
   return doc.estado === "completo" && doc.subido && !isDocumentoVencido(doc);
 }
 
-function isDocumentoPendiente(doc: VehiculoDocumentoDTO) {
-  return ["pendiente", "rechazado"].includes(doc.estado) || (!doc.subido && doc.estado !== "no_aplica");
-}
-
 function estadoDocumentalFromVehiculo(dto: VehiculoDTO): EstadoDocumentalVehiculo {
-  if (dto.documentos.some((d) => d.estado === "en_revision")) {
-    return "en_revision";
-  }
-  if (dto.documentos.some((d) => isDocumentoVencido(d) || d.estado === "vencido" || isDocumentoPendiente(d))) {
-    return "fuera_de_regla";
-  }
-  if (dto.documentos.some((d) => isDocumentoProximoVencer(d))) {
-    return "por_vencer";
-  }
-  return "en_regla";
+  return estadoDocumentalFromDocumentos(dto.documentos);
 }
 
 // ── Config visual ─────────────────────────────────────────────────────────
@@ -493,6 +471,9 @@ export default function VehiculosPrismaClient({
         onClose={cerrarDrawer}
         vehiculo={drawer.vehiculo}
         onEdit={(v) => abrirEditar(v)}
+        onDocumentosChange={(id, documentos) => {
+          setVehiculosDTO((prev) => prev.map((v) => v.id === id ? { ...v, documentos } : v));
+        }}
       />
 
       {/* Modal Crear / Editar */}

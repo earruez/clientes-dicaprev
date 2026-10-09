@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  cambiarEstadoDocumentoVehiculo,
   actualizarVehiculo,
   getCentrosList,
   getVehiculoById,
@@ -52,6 +53,8 @@ import {
   type VehiculoInput,
   type VehiculoMantencionDTO,
 } from "@/actions/vehiculos";
+
+import { esDocumentoBaseVehiculo, ordenarDocumentosVehiculo } from "@/lib/vehiculos/documentos-estado";
 
 type EstadoDocumental = "en_regla" | "por_vencer" | "fuera_de_regla";
 
@@ -76,15 +79,7 @@ const DOC_NOMBRE: Record<TipoDocumento, string> = {
   revision_vigente: "Revisión vigente",
 };
 
-const DOC_ORDER: TipoDocumento[] = [
-  "permiso_circulacion",
-  "soap",
-  "revision_tecnica",
-  "padron",
-  "mantencion",
-  "certificacion",
-  "revision_vigente",
-];
+
 
 const TIPO_ICON: Record<string, React.ReactNode> = {
   camioneta: <Car className="h-5 w-5" />,
@@ -157,6 +152,7 @@ function evaluarEstadoDocumental(documentos: VehiculoDocumentoDTO[]): EstadoDocu
 
   const now = Date.now();
   for (const doc of documentos) {
+    if (doc.estado === "no_aplica") continue;
     if (!doc.subido) return "fuera_de_regla";
     if (doc.vencimiento) {
       const ts = new Date(doc.vencimiento).getTime();
@@ -165,6 +161,7 @@ function evaluarEstadoDocumental(documentos: VehiculoDocumentoDTO[]): EstadoDocu
   }
 
   const porVencer = documentos.some((doc) => {
+    if (doc.estado === "no_aplica") return false;
     if (!doc.vencimiento) return false;
     const ts = new Date(doc.vencimiento).getTime();
     if (Number.isNaN(ts)) return false;
@@ -183,6 +180,21 @@ export default function VehiculoDetailPage() {
   const [centros, setCentros] = useState<CentroItem[]>([]);
   const [mantenciones, setMantenciones] = useState<VehiculoMantencionDTO[]>([]);
   const [loading, setLoading] = useState(true);
+  const [guardandoDocumento, setGuardandoDocumento] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
+
+  async function cambiarAplicabilidad(doc: VehiculoDocumentoDTO, aplica: boolean) {
+    setGuardandoDocumento(true);
+    setDocError(null);
+    try {
+      const updated = await cambiarEstadoDocumentoVehiculo(doc.id, aplica ? "pendiente" : "no_aplica");
+      setVehiculo((prev) => prev ? { ...prev, documentos: prev.documentos.map((item) => item.id === updated.id ? updated : item) } : prev);
+    } catch (error) {
+      setDocError(error instanceof Error ? error.message : "No se pudo actualizar el documento.");
+    } finally {
+      setGuardandoDocumento(false);
+    }
+  }
 
   const [editModal, setEditModal] = useState(false);
   const [form, setForm] = useState<VehiculoInput | null>(null);
@@ -316,11 +328,7 @@ export default function VehiculoDetailPage() {
   const estadoOpCfg = ESTADO_OP_CFG[vehiculo.estado] ?? ESTADO_OP_CFG.operativo;
   const estadoDocCfg = ESTADO_DOC_CFG[estadoDoc];
 
-  const docTypesRaw = vehiculo.documentos.map((d) => d.tipo as TipoDocumento);
-  const docReqs = [
-    ...DOC_ORDER.filter((t) => docTypesRaw.includes(t)),
-    ...docTypesRaw.filter((t) => !DOC_ORDER.includes(t)),
-  ];
+  const docReqs = ordenarDocumentosVehiculo(vehiculo.documentos).map((d) => d.tipo as TipoDocumento);
 
   const centroNombre = vehiculo.centroNombre ?? "Sin centro asignado";
 
@@ -438,6 +446,8 @@ export default function VehiculoDetailPage() {
                 <UploadCloud className="h-4 w-4 text-slate-400" />
                 <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">Documentación</h2>
               </div>
+              <p className="px-5 py-3 text-xs text-slate-500">Revisión técnica y gases se obtienen en conjunto. Los documentos adicionales marcados «No aplica» se excluyen de pendientes y alertas.</p>
+              {docError && <p role="alert" className="px-5 pb-3 text-sm text-rose-700">{docError}</p>}
               <div className="divide-y divide-slate-100">
                 {docReqs.length === 0 && (
                   <div className="px-5 py-5 text-sm text-slate-500">
@@ -453,7 +463,10 @@ export default function VehiculoDetailPage() {
                   let badgeLabel = "Sin cargar";
                   let badgeIcon = <XCircle className="h-3 w-3" />;
 
-                  if (doc?.subido) {
+                  if (doc?.estado === "no_aplica") {
+                    badgeLabel = "No aplica";
+                    badgeIcon = <CheckCircle2 className="h-3 w-3" />;
+                  } else if (doc?.subido) {
                     if (expired) {
                       badgeCls = "bg-rose-50 text-rose-700 border-rose-200";
                       badgeLabel = "Vencido";
@@ -470,20 +483,35 @@ export default function VehiculoDetailPage() {
                   }
 
                   return (
-                    <div key={tipo} className="px-5 py-3.5 flex items-center justify-between gap-3">
+                    <div key={tipo} className="px-5 py-3.5 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800 truncate">{DOC_NOMBRE[tipo] ?? tipo}</p>
-                        {doc?.vencimiento && (
+                        <p className="text-sm font-medium text-slate-800 truncate">{doc?.tipoNombre ?? DOC_NOMBRE[tipo] ?? tipo}</p>
+                        <p className="text-[11px] text-slate-500">{esDocumentoBaseVehiculo(tipo) ? "Documento base" : "Documento adicional"}</p>
+                        {doc?.estado === "no_aplica" && <p className="text-[11px] text-slate-400">Excluido de pendientes y alertas</p>}
+                        {doc?.estado !== "no_aplica" && doc?.vencimiento && (
                           <p className="text-[11px] text-slate-400 mt-0.5">Vence: {fmt(doc.vencimiento)}</p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {doc && !esDocumentoBaseVehiculo(tipo) && (
+                          <select
+                            aria-label={`Aplicabilidad de ${doc.tipoNombre}`}
+                            value={doc.estado === "no_aplica" ? "no_aplica" : "aplica"}
+                            disabled={guardandoDocumento}
+                            onChange={(event) => void cambiarAplicabilidad(doc, event.target.value === "aplica")}
+                            className="min-h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 disabled:opacity-50"
+                          >
+                            <option value="aplica">Aplica</option>
+                            <option value="no_aplica">No aplica</option>
+                          </select>
+                        )}
                         <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold whitespace-nowrap", badgeCls)}>
                           {badgeIcon}
                           {badgeLabel}
                         </span>
                         <button
                           type="button"
+                          disabled={doc?.estado === "no_aplica" || guardandoDocumento}
                           onClick={() => abrirDoc(tipo)}
                           className="text-slate-400 hover:text-slate-700 transition-colors"
                           title="Actualizar documento"

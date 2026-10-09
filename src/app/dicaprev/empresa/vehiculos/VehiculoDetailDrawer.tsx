@@ -26,11 +26,15 @@ import {
   crearOActualizarDocumentoVehiculo,
   evaluarDocumentosVehiculo,
   getVehiculoDetalle,
+  type EstadoDocumentoVehiculo,
+  type VehiculoDocumentoDTO,
   type MantencionEstado,
   type VehiculoMantencionDTO,
   type VehiculoAcreditacionRelacionDTO,
 } from "./actions";
 import { formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
+
+import { esDocumentoBaseVehiculo, ordenarDocumentosVehiculo, isDocumentoVencido, isDocumentoPendiente, estadoDocumentalFromDocumentos } from "@/lib/vehiculos/documentos-estado";
 
 type ArchivoSubido = {
   archivoNombre: string;
@@ -90,34 +94,6 @@ const MANTENCIÓN_ESTADO_CLS: Record<"completada" | "pendiente" | "programada", 
   pendiente:  "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
   programada: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
 };
-
-function isDocumentoVencido(doc: DocumentoVehiculoState) {
-  if (!doc.fechaVencimiento) return false;
-  return new Date(doc.fechaVencimiento).getTime() < Date.now();
-}
-
-function isDocumentoProximoVencer(doc: DocumentoVehiculoState) {
-  if (!doc.fechaVencimiento) return false;
-  const diff = new Date(doc.fechaVencimiento).getTime() - Date.now();
-  return diff >= 0 && diff <= 30 * 24 * 60 * 60 * 1000;
-}
-
-function estadoDocumentalFromDocumentos(docs: DocumentoVehiculoState[]): EstadoDocumentalVehiculo {
-  if (docs.some((d) => d.estado === "en_revision")) {
-    return "en_revision";
-  }
-  if (
-    docs.some(
-      (d) => d.estado === "pendiente" || d.estado === "rechazado" || d.estado === "vencido" || isDocumentoVencido(d)
-    )
-  ) {
-    return "fuera_de_regla";
-  }
-  if (docs.some((d) => isDocumentoProximoVencer(d))) {
-    return "por_vencer";
-  }
-  return "en_regla";
-}
 
 function diasParaVencerDocumento(iso: string | null | undefined): number | null {
   if (!iso) return null;
@@ -200,6 +176,7 @@ export interface VehiculoDetailDrawerProps {
   onClose: () => void;
   vehiculo: Vehiculo | null;
   onEdit: (v: Vehiculo) => void;
+  onDocumentosChange?: (id: string, documentos: VehiculoDocumentoDTO[]) => void;
 }
 
 // ── Main component ────────────────────────────────────────────────────────
@@ -209,6 +186,7 @@ export function VehiculoDetailDrawer({
   onClose,
   vehiculo: vehiculoProp,
   onEdit,
+  onDocumentosChange,
 }: VehiculoDetailDrawerProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<TabId>("resumen");
@@ -241,6 +219,8 @@ export function VehiculoDetailDrawer({
     kilometraje: vehiculoProp?.kilometraje ?? 0,
   });
   const [isPending, startTransition] = useTransition();
+  const [docError, setDocError] = useState<string | null>(null);
+  const [guardandoDocumento, setGuardandoDocumento] = useState(false);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docEdit, setDocEdit] = useState<{
     id?: string;
@@ -351,6 +331,23 @@ export function VehiculoDetailDrawer({
     return payload as ArchivoSubido;
   }
 
+  async function cambiarEstadoDocumento(doc: DocumentoVehiculoState, estado: EstadoDocumentoVehiculo) {
+    if (!doc.id || !vehiculo || guardandoDocumento) return;
+    setGuardandoDocumento(true);
+    setDocError(null);
+    try {
+      const updated = await cambiarEstadoDocumentoVehiculo(doc.id, estado);
+      setDocumentos((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      const detalle = await getVehiculoDetalle(vehiculo.id);
+      setDocumentos(detalle.documentos);
+      onDocumentosChange?.(vehiculo.id, detalle.documentos);
+    } catch (error) {
+      setDocError(error instanceof Error ? error.message : "No se pudo actualizar el documento.");
+    } finally {
+      setGuardandoDocumento(false);
+    }
+  }
+
   function handleDocSave(e: FormEvent) {
     e.preventDefault();
     if (!vehiculo || !docEdit) return;
@@ -372,6 +369,7 @@ export function VehiculoDetailDrawer({
         });
 
         const evaluated = await evaluarDocumentosVehiculo(vehiculo.id);
+        onDocumentosChange?.(vehiculo.id, evaluated);
 
         setDocumentos(
           evaluated.map((d) => ({
@@ -389,6 +387,7 @@ export function VehiculoDetailDrawer({
             archivoTipo: d.archivoTipo,
             archivoPeso: d.archivoPeso,
             observaciones: d.observaciones,
+            tipoDocumentoId: d.tipoDocumentoId,
           }))
         );
         setDocFile(null);
@@ -641,16 +640,9 @@ export function VehiculoDetailDrawer({
             const estadoOp  = ESTADO_OP_CFG[vehiculo.estado];
             const estDocStr = estadoDocumentalFromDocumentos(documentos);
             const estadoDoc = ESTADO_DOC_CFG[estDocStr];
-            const requeridos = [...documentos].sort((a, b) =>
-              (a.tipoNombre ?? a.tipo).localeCompare(b.tipoNombre ?? b.tipo, "es")
-            );
-            const aniosUso      = new Date().getFullYear() - vehiculo.anio;
-            const docsPendientes = documentos.filter((doc) => {
-              if (doc.estado === "pendiente" || doc.estado === "rechazado" || doc.estado === "vencido") return true;
-              if (!doc.subido) return true;
-              if (isDocumentoVencido(doc)) return true;
-              return false;
-            }).length;
+            const requeridos = ordenarDocumentosVehiculo(documentos);
+            const aniosUso = new Date().getFullYear() - vehiculo.anio;
+            const docsPendientes = documentos.filter((doc) => isDocumentoPendiente(doc) || isDocumentoVencido(doc)).length;
             const asignaciones = mockAsignaciones(vehiculo);
             const estadoAcreditacionLabel = (estado: string) => {
               if (estado === "en_preparacion") return "En preparación";
@@ -952,7 +944,13 @@ export function VehiculoDetailDrawer({
                           "Hay documentos vencidos o sin cargar. Acción requerida."}
                       </div>
 
-                      <SectionTitle label="Documentos requeridos" />
+                      <SectionTitle label="Documentación del vehículo" />
+                      <p className="text-xs text-slate-500">
+                        Padrón, SOAP, permiso de circulación, revisión técnica y gases son los documentos base.
+                        Revisión técnica y gases se obtienen en conjunto; registra ambos certificados.
+                        En los adicionales puedes elegir «No aplica» para excluirlos de pendientes y alertas.
+                      </p>
+                      {docError && <p role="alert" className="text-sm text-rose-700">{docError}</p>}
 
                       <div className="space-y-3">
                         {requeridos.map((doc) => {
@@ -963,7 +961,9 @@ export function VehiculoDetailDrawer({
                           let badgeLabel = "Sin cargar";
                           let badgeCls = "bg-slate-100 text-slate-500";
 
-                          if (doc.estado === "en_revision") {
+                          if (doc.estado === "no_aplica") {
+                            badgeLabel = "No aplica";
+                          } else if (doc.estado === "en_revision") {
                             badgeLabel = "En revisión";
                             badgeCls = "bg-blue-50 text-blue-700 ring-1 ring-blue-200";
                           } else if (doc.estado === "rechazado") {
@@ -988,14 +988,19 @@ export function VehiculoDetailDrawer({
                           return (
                             <div
                               key={doc.id ?? doc.tipo}
-                              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 gap-3"
+                              className="flex flex-wrap items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 gap-3"
                             >
                               <div className="min-w-0">
                                 <p className="text-sm font-semibold text-slate-800">
                                   {doc.tipoNombre ?? doc.tipo}
                                 </p>
+                                <p className="text-[11px] text-slate-500">
+                                  {esDocumentoBaseVehiculo(doc.tipo) ? "Documento base" : "Documento adicional"}
+                                </p>
                                 <p className="mt-0.5 text-xs text-slate-400">
-                                  {doc.fechaVencimiento
+                                  {doc.estado === "no_aplica"
+                                    ? "Excluido de pendientes y alertas"
+                                    : doc.fechaVencimiento
                                     ? `Vence: ${new Date(
                                         `${doc.fechaVencimiento}T00:00:00`,
                                       ).toLocaleDateString("es-CL")}${
@@ -1025,7 +1030,19 @@ export function VehiculoDetailDrawer({
                                   </p>
                                 )}
                               </div>
-                              <div className="flex shrink-0 items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {!esDocumentoBaseVehiculo(doc.tipo) && doc.id && (
+                                  <select
+                                    aria-label={`Aplicabilidad de ${doc.tipoNombre ?? doc.tipo}`}
+                                    value={doc.estado === "no_aplica" ? "no_aplica" : "aplica"}
+                                    disabled={guardandoDocumento || isPending}
+                                    onChange={(event) => void cambiarEstadoDocumento(doc, event.target.value === "no_aplica" ? "no_aplica" : "pendiente")}
+                                    className="min-h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 disabled:opacity-50"
+                                  >
+                                    <option value="aplica">Aplica</option>
+                                    <option value="no_aplica">No aplica</option>
+                                  </select>
+                                )}
                                 <span
                                   className={cn(
                                     "rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
@@ -1036,6 +1053,8 @@ export function VehiculoDetailDrawer({
                                 </span>
                                 <button
                                   type="button"
+                                  disabled={doc.estado === "no_aplica" || guardandoDocumento || isPending}
+                                  aria-label={`Editar ${doc.tipoNombre ?? doc.tipo}`}
                                   onClick={() => {
                                     setDocFile(null);
                                     setDocEdit({
@@ -1051,38 +1070,12 @@ export function VehiculoDetailDrawer({
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
                                 </button>
-                                {doc.id && (
+                                {doc.id && doc.subido && doc.estado !== "no_aplica" && (
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      startTransition(async () => {
-                                        try {
-                                          await cambiarEstadoDocumentoVehiculo(doc.id as string, "en_revision");
-                                          const evaluated = await evaluarDocumentosVehiculo(vehiculo.id);
-                                          setDocumentos(
-                                            evaluated.map((item) => ({
-                                              id: item.id,
-                                              tipo: item.tipo,
-                                              tipoNombre: item.tipoNombre,
-                                              subido: item.subido,
-                                              estado: item.estado,
-                                              vencimiento: item.vencimiento,
-                                              fechaEmision: item.fechaEmision,
-                                              fechaVencimiento: item.fechaVencimiento,
-                                              archivoNombre: item.archivoNombre,
-                                              archivoNombreOriginal: item.archivoNombreOriginal,
-                                              archivoUrl: item.archivoUrl,
-                                              archivoTipo: item.archivoTipo,
-                                              archivoPeso: item.archivoPeso,
-                                              observaciones: item.observaciones,
-                                            }))
-                                          );
-                                        } catch {
-                                          // keep current UI state
-                                        }
-                                      });
-                                    }}
-                                    className="rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-medium text-blue-700 transition-colors hover:bg-blue-50"
+                                    disabled={guardandoDocumento || isPending}
+                                    onClick={() => void cambiarEstadoDocumento(doc, "en_revision")}
+                                    className="rounded-lg border border-blue-200 px-2 py-1 text-[11px] font-medium text-blue-700 transition-colors hover:bg-blue-50 disabled:opacity-50"
                                   >
                                     En revisión
                                   </button>
