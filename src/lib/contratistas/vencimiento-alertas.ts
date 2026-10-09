@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { origenNextPrev } from "@/lib/contratistas/portal";
+import { faltaMigracionContratistas } from "@/lib/contratistas/requisitos";
 
 const MS_DIA = 86_400_000;
 
@@ -31,6 +32,9 @@ export async function procesarAvisosContratistas() {
         },
       },
     },
+  }).catch((error: unknown) => {
+    if (faltaMigracionContratistas(error)) return [];
+    throw error;
   });
   let enviados = 0;
   let errores = 0;
