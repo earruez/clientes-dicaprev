@@ -180,6 +180,8 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
 
   const hasErrors = Object.keys(errors).length > 0;
 
+  if (!isOpen) return null;
+
   return (
     <>
       {/* Overlay */}
@@ -222,7 +224,7 @@ export function WorkerForm({ worker, isOpen, onClose, onSave, opciones: opciones
         </div>
 
         {/* Scrollable body */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[env(safe-area-inset-bottom)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[env(safe-area-inset-bottom)] [-webkit-overflow-scrolling:touch]">
           <form id="worker-form" onSubmit={handleSubmit} noValidate>
             <div className="space-y-8 px-6 py-6">
               {/* ── Datos personales ── */}

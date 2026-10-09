@@ -72,8 +72,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 flex h-13 items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-5">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 py-2.5 shadow-sm sm:px-5">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <Button
               type="button"
               variant="ghost"
@@ -93,7 +93,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <ActiveCompanySelector />
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <NotificationBell />
             <div className="hidden lg:block h-4 w-px bg-slate-200" />
             <span className="hidden xl:block text-xs text-slate-500">{sessionEmail || "usuario@empresa.cl"}</span>
@@ -103,16 +103,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </Button>
           </div>
         </header>
-        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#f5f7ff] [-webkit-overflow-scrolling:touch] [touch-action:pan-y] px-4 py-5 sm:px-6 sm:py-6 md:py-8 [&>div]:mx-0 [&>div]:max-w-none [&>div]:px-0 [&>section]:mx-0 [&>section]:max-w-none [&>section]:px-0 [&_[class*='mx-auto'][class*='max-w-']]:mx-0 [&_[class*='mx-auto'][class*='max-w-']]:max-w-none [&_[class*='mx-auto'][class*='max-w-']]:px-0">
+        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain bg-[#f5f7ff] [-webkit-overflow-scrolling:touch] px-4 py-5 sm:px-6 sm:py-6 md:py-8 [&>div]:mx-0 [&>div]:max-w-none [&>div]:px-0 [&>section]:mx-0 [&>section]:max-w-none [&>section]:px-0 [&_[class*='mx-auto'][class*='max-w-']]:mx-0 [&_[class*='mx-auto'][class*='max-w-']]:max-w-none [&_[class*='mx-auto'][class*='max-w-']]:px-0">
           {children}
         </main>
 
         <Dialog open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
           <DialogContent
             withClose={false}
-            className="left-0 top-0 h-[100dvh] max-h-[100dvh] w-[92vw] max-w-[360px] translate-x-0 translate-y-0 rounded-none border-r border-slate-200 p-0 overflow-hidden"
+            className="flex flex-col left-0 top-0 h-[100dvh] max-h-[100dvh] w-[92vw] max-w-[360px] translate-x-0 translate-y-0 rounded-none border-r border-slate-200 p-0 sm:p-0 sm:max-h-[100dvh] sm:w-[92vw] overflow-hidden"
           >
-            <div className="flex h-full min-h-0 flex-col bg-white">
+            <div className="flex min-h-0 flex-1 flex-col bg-white">
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <span className="text-sm font-semibold tracking-wide text-slate-700">NEXTPREV</span>
                 <Button type="button" variant="ghost" size="sm" onClick={() => setMobileMenuOpen(false)}>

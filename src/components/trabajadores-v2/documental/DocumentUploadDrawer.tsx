@@ -216,6 +216,8 @@ export function DocumentUploadDrawer({
   }
 
   const Icon = isReenviar ? RefreshCcw : UploadCloud;
+
+  if (!isOpen) return null;
   const accentCls = isReenviar
     ? { bg: "bg-rose-100", text: "text-rose-600", btn: "bg-rose-600 hover:bg-rose-700" }
     : { bg: "bg-blue-100",  text: "text-blue-600",  btn: "bg-blue-600 hover:bg-blue-700" };
@@ -281,7 +283,7 @@ export function DocumentUploadDrawer({
         </div>
 
         {/* ── Scrollable form body ── */}
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-5 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-y-contain px-5 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch]">
 
           {/* Rejection alert */}
           {isReenviar && context?.rejectionObservation && (

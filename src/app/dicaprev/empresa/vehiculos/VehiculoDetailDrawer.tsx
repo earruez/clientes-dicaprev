@@ -221,6 +221,10 @@ export function VehiculoDetailDrawer({
   const [isPending, startTransition] = useTransition();
   const [docError, setDocError] = useState<string | null>(null);
   const [guardandoDocumento, setGuardandoDocumento] = useState(false);
+  const [guardandoEdicionDocumento, setGuardandoEdicionDocumento] = useState(false);
+  const [docModalError, setDocModalError] = useState<string | null>(null);
+  const [guardandoMantencion, setGuardandoMantencion] = useState(false);
+  const [mantencionError, setMantencionError] = useState<string | null>(null);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docEdit, setDocEdit] = useState<{
     id?: string;
@@ -304,15 +308,25 @@ export function VehiculoDetailDrawer({
     if (open) setActiveTab("resumen");
   }, [open, vehiculoProp?.id]);
 
-  // Esc to close
+  // Escape cierra primero el modal interno, sin descartar operaciones en curso.
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      if (docEdit) {
+        if (!guardandoEdicionDocumento) {
+          setDocFile(null);
+          setDocEdit(null);
+        }
+      } else if (mantencionModalOpen) {
+        if (!guardandoMantencion) setMantencionModalOpen(false);
+      } else {
+        onClose();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, onClose, docEdit, mantencionModalOpen, guardandoEdicionDocumento, guardandoMantencion]);
 
   async function subirArchivo(file: File): Promise<ArchivoSubido> {
     const formData = new FormData();
@@ -348,29 +362,34 @@ export function VehiculoDetailDrawer({
     }
   }
 
-  function handleDocSave(e: FormEvent) {
+  async function handleDocSave(e: FormEvent) {
     e.preventDefault();
-    if (!vehiculo || !docEdit) return;
+    if (!vehiculo || !docEdit || guardandoEdicionDocumento) return;
+    setGuardandoEdicionDocumento(true);
+    setDocModalError(null);
 
-    startTransition(async () => {
+    try {
+      const archivoSubido = docFile ? await subirArchivo(docFile) : null;
+      await crearOActualizarDocumentoVehiculo({
+        vehiculoId: vehiculo.id,
+        documentoId: docEdit.id,
+        tipo: docEdit.tipo,
+        tipoDocumentoId: docEdit.tipoDocumentoId ?? undefined,
+        subido: docEdit.subido,
+        fechaVencimiento: docEdit.vencimiento,
+        vencimiento: docEdit.vencimiento,
+        archivoNombre: archivoSubido?.archivoNombre,
+        archivoNombreOriginal: archivoSubido?.archivoNombreOriginal,
+        archivoUrl: archivoSubido?.archivoUrl,
+      });
+
+      // El documento ya quedó guardado: no mantener el formulario disponible
+      // para un segundo envío si falla el refresco del detalle.
+      setDocFile(null);
+      setDocEdit(null);
       try {
-        const archivoSubido = docFile ? await subirArchivo(docFile) : null;
-        await crearOActualizarDocumentoVehiculo({
-          vehiculoId: vehiculo.id,
-          documentoId: docEdit.id,
-          tipo: docEdit.tipo,
-          tipoDocumentoId: docEdit.tipoDocumentoId ?? undefined,
-          subido: docEdit.subido,
-          fechaVencimiento: docEdit.vencimiento,
-          vencimiento: docEdit.vencimiento,
-          archivoNombre: archivoSubido?.archivoNombre,
-          archivoNombreOriginal: archivoSubido?.archivoNombreOriginal,
-          archivoUrl: archivoSubido?.archivoUrl,
-        });
-
         const evaluated = await evaluarDocumentosVehiculo(vehiculo.id);
         onDocumentosChange?.(vehiculo.id, evaluated);
-
         setDocumentos(
           evaluated.map((d) => ({
             id: d.id,
@@ -390,51 +409,56 @@ export function VehiculoDetailDrawer({
             tipoDocumentoId: d.tipoDocumentoId,
           }))
         );
-        setDocFile(null);
-        setDocEdit(null);
       } catch {
-        // keep modal open so user can retry
+        setDocError("El documento se guardó, pero no se pudo actualizar su estado. Cierra y vuelve a abrir el vehículo para ver el dato actualizado.");
       }
-    });
+    } catch (error) {
+      setDocModalError(error instanceof Error ? error.message : "No se pudo guardar el documento. Intenta nuevamente.");
+    } finally {
+      setGuardandoEdicionDocumento(false);
+    }
   }
 
-  function submitMantencion(e: FormEvent) {
+  async function submitMantencion(e: FormEvent) {
     e.preventDefault();
-    if (!vehiculo || !mantencionForm.tipo || !mantencionForm.fecha) return;
+    if (!vehiculo || !mantencionForm.tipo || !mantencionForm.fecha || guardandoMantencion) return;
+    setGuardandoMantencion(true);
+    setMantencionError(null);
+    try {
+      const created = await crearMantencionVehiculo(vehiculo.id, {
+        tipo: mantencionForm.tipo,
+        fecha: mantencionForm.fecha,
+        estado: mantencionForm.estado,
+        observaciones: mantencionForm.observaciones,
+        kilometraje: mantencionForm.kilometraje,
+      });
 
-    startTransition(async () => {
-      try {
-        const created = await crearMantencionVehiculo(vehiculo.id, {
-          tipo: mantencionForm.tipo,
-          fecha: mantencionForm.fecha,
-          estado: mantencionForm.estado,
-          observaciones: mantencionForm.observaciones,
-          kilometraje: mantencionForm.kilometraje,
-        });
-
-        setMantenciones((prev) => [created, ...prev]);
-        setVehiculo((prev) =>
-          prev
-            ? {
-                ...prev,
-                kilometraje:
-                  mantencionForm.kilometraje > 0 ? mantencionForm.kilometraje : prev.kilometraje,
-              }
-            : prev
-        );
-        setMantencionModalOpen(false);
-        setMantencionForm((prev) => ({
-          ...prev,
-          tipo: "",
-          fecha: "",
-          estado: "programada",
-          observaciones: "",
-        }));
-      } catch {
-        // keep form values to retry
-      }
-    });
+      setMantenciones((prev) => [created, ...prev]);
+      setVehiculo((prev) =>
+        prev
+          ? {
+              ...prev,
+              kilometraje:
+                mantencionForm.kilometraje > 0 ? mantencionForm.kilometraje : prev.kilometraje,
+            }
+          : prev
+      );
+      setMantencionModalOpen(false);
+      setMantencionForm((prev) => ({
+        ...prev,
+        tipo: "",
+        fecha: "",
+        estado: "programada",
+        observaciones: "",
+      }));
+    } catch (error) {
+      setMantencionError(error instanceof Error ? error.message : "No fue posible guardar la mantención.");
+    } finally {
+      setGuardandoMantencion(false);
+    }
   }
+
+  if (!open || !vehiculo) return null;
 
   return (
     <>
@@ -453,15 +477,15 @@ export function VehiculoDetailDrawer({
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] sm:items-center">
           <div
             aria-hidden
-            onClick={() => setDocEdit(null)}
             className="absolute inset-0 bg-slate-900/30"
           />
           <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl [-webkit-overflow-scrolling:touch]">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">
               Actualizar — {docEdit.tipoNombre}
             </h3>
+            {docModalError ? <p role="alert" className="mb-3 text-sm text-rose-700">{docModalError}</p> : null}
             <form onSubmit={handleDocSave} className="space-y-4">
-              <div className="flex items-center gap-3">
+              <div className="flex min-w-0 items-center gap-3">
                 <input
                   id="doc-subido"
                   type="checkbox"
@@ -501,6 +525,7 @@ export function VehiculoDetailDrawer({
                   type="button"
                   variant="outline"
                   className="rounded-xl"
+                  disabled={guardandoEdicionDocumento}
                   onClick={() => {
                     setDocFile(null);
                     setDocEdit(null);
@@ -510,9 +535,10 @@ export function VehiculoDetailDrawer({
                 </Button>
                 <Button
                   type="submit"
+                  disabled={guardandoEdicionDocumento}
                   className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white"
                 >
-                  Guardar
+                  {guardandoEdicionDocumento ? "Guardando..." : "Guardar"}
                 </Button>
               </div>
             </form>
@@ -524,11 +550,11 @@ export function VehiculoDetailDrawer({
         <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] sm:items-center">
           <div
             aria-hidden
-            onClick={() => setMantencionModalOpen(false)}
             className="absolute inset-0 bg-slate-900/30"
           />
           <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl [-webkit-overflow-scrolling:touch]">
             <h3 className="mb-4 text-sm font-semibold text-slate-900">Nueva mantención</h3>
+            {mantencionError ? <p role="alert" className="mb-3 text-sm text-rose-700">{mantencionError}</p> : null}
             <form onSubmit={submitMantencion} className="space-y-4">
               <div className="space-y-1.5">
                 <Label>Tipo de mantención</Label>
@@ -543,7 +569,7 @@ export function VehiculoDetailDrawer({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Fecha</Label>
                   <Input
@@ -610,15 +636,16 @@ export function VehiculoDetailDrawer({
                   variant="outline"
                   className="rounded-xl"
                   onClick={() => setMantencionModalOpen(false)}
+                  disabled={guardandoMantencion}
                 >
                   Cancelar
                 </Button>
                 <Button
                   type="submit"
                   className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white"
-                  disabled={isPending}
+                  disabled={guardandoMantencion}
                 >
-                  Guardar mantención
+                  {guardandoMantencion ? "Guardando..." : "Guardar mantención"}
                 </Button>
               </div>
             </form>
@@ -629,6 +656,7 @@ export function VehiculoDetailDrawer({
       {/* Drawer panel */}
       <div
         role="dialog"
+        aria-label="Detalle del vehículo"
         aria-modal
         className={cn(
           "fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-[480px] flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out",
@@ -660,13 +688,13 @@ export function VehiculoDetailDrawer({
               <>
                 {/* ── Header ── */}
                 <div className="shrink-0 border-b border-slate-200 px-5 pt-5 pb-0">
-                  <div className="flex items-start justify-between gap-3 pb-4">
-                    <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3 pb-4">
+                    <div className="flex min-w-0 items-center gap-3">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-white">
                         {TIPO_ICON[vehiculo.tipo]}
                       </div>
                       <div>
-                        <h2 className="text-base font-bold leading-tight text-slate-900">
+                        <h2 className="break-words text-base font-bold leading-tight text-slate-900">
                           {vehiculo.marca} {vehiculo.modelo}
                         </h2>
                         <p className="mt-0.5 font-mono text-xs text-slate-400">
@@ -708,7 +736,8 @@ export function VehiculoDetailDrawer({
                       </button>
                       <button
                         onClick={onClose}
-                        className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                        aria-label="Cerrar detalle del vehículo"
+                        className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
                       >
                         <X className="h-5 w-5" />
                       </button>
@@ -716,7 +745,7 @@ export function VehiculoDetailDrawer({
                   </div>
 
                   {/* Quick stats bar */}
-                  <div className="grid grid-cols-4 border-t border-slate-100 -mx-5">
+                  <div className="grid grid-cols-2 border-t border-slate-100 -mx-5 sm:grid-cols-4">
                     {[
                       {
                         val: `${aniosUso} año${aniosUso !== 1 ? "s" : ""}`,
@@ -788,7 +817,7 @@ export function VehiculoDetailDrawer({
                 </div>
 
                 {/* ── Body (scrollable) ── */}
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch]">
 
                   {/* Resumen */}
                   {activeTab === "resumen" && (
@@ -1057,6 +1086,7 @@ export function VehiculoDetailDrawer({
                                   aria-label={`Editar ${doc.tipoNombre ?? doc.tipo}`}
                                   onClick={() => {
                                     setDocFile(null);
+                                    setDocModalError(null);
                                     setDocEdit({
                                       id: doc.id,
                                       tipo: doc.tipo,
@@ -1102,7 +1132,7 @@ export function VehiculoDetailDrawer({
                           type="button"
                           variant="outline"
                           className="h-8 rounded-lg text-xs"
-                          onClick={() => setMantencionModalOpen(true)}
+                          onClick={() => { setMantencionError(null); setMantencionModalOpen(true); }}
                         >
                           Agregar mantención
                         </Button>

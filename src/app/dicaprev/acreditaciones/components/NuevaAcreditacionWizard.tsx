@@ -76,7 +76,7 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
         </div>
 
         <div className="px-7 pt-4">
-          <div className="grid grid-cols-5 gap-2 text-[11px]">
+          <div className="flex flex-wrap gap-2 text-[11px] sm:grid sm:grid-cols-5">
             {PASOS.map((nombre, i) => (
               <div key={nombre} className={cn("rounded-full px-2 py-1 text-center", i === paso ? "bg-slate-900 text-white" : i < paso ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500")}>
                 {nombre}
@@ -85,7 +85,7 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+20px)] sm:min-h-[260px] sm:px-7 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+20px)] sm:min-h-[260px] sm:px-7 [-webkit-overflow-scrolling:touch]">
           {paso === 0 && (
             <section>
               <p className="mb-3 text-sm font-semibold text-slate-700">Selecciona mandante</p>

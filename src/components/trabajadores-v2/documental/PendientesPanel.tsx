@@ -571,7 +571,7 @@ export function PendientesPanel({
             </div>
 
             {/* Body */}
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+20px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4 pb-[calc(env(safe-area-inset-bottom)+20px)] [-webkit-overflow-scrolling:touch]">
               {historialLoading && (
                 <div className="flex items-center justify-center py-10">
                   <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />

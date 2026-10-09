@@ -554,21 +554,25 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
         areaId: areaId || null,
         observacion: observacion.trim() || null,
       });
-      await onConfirmed();
-
+      // Quitar la sugerencia guardada antes de actualizar la lista.
+      // Si falla la recarga, no debe ofrecerse otra vez para crearla.
       const restantes = sugerencias.filter((current) => current.id !== item.id);
       if (restantes.length === 0) {
         resetFlow(true);
         onOpenChange(false);
-        return;
+      } else {
+        setSugerencias(restantes);
+        setSugerenciasSeleccionadas((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
       }
-
-      setSugerencias(restantes);
-      setSugerenciasSeleccionadas((prev) => {
-        const next = new Set(prev);
-        next.delete(item.id);
-        return next;
-      });
+      try {
+        await onConfirmed();
+      } catch {
+        setError("El hallazgo se creó, pero no se pudo refrescar el listado. Recarga la página para verlo.");
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "No fue posible confirmar el hallazgo.";
       setError(message);
@@ -594,6 +598,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
 
     setConfirmingBatch(true);
     setError(null);
+    const idsConfirmados = new Set<string>();
 
     try {
       for (const item of seleccionadas) {
@@ -606,25 +611,30 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
           areaId: areaId || null,
           observacion: observacion.trim() || null,
         });
+        idsConfirmados.add(item.id);
       }
-
-      await onConfirmed();
-
-      const idsConfirmados = new Set(seleccionadas.map((item) => item.id));
-      const restantes = sugerencias.filter((item) => !idsConfirmados.has(item.id));
-
-      if (restantes.length === 0) {
-        resetFlow(true);
-        onOpenChange(false);
-        return;
-      }
-
-      setSugerencias(restantes);
-      setSugerenciasSeleccionadas(new Set());
     } catch (err) {
-      const message = err instanceof Error ? err.message : "No fue posible crear los hallazgos seleccionados.";
-      setError(message);
+      const message = err instanceof Error ? err.message : "No fue posible crear todos los hallazgos seleccionados.";
+      setError(idsConfirmados.size > 0
+        ? `${idsConfirmados.size} hallazgo(s) guardado(s). Los restantes siguen pendientes: ${message}`
+        : message);
     } finally {
+      if (idsConfirmados.size > 0) {
+        // Mantener sólo los registros pendientes si la creación se interrumpe.
+        const restantes = sugerencias.filter((item) => !idsConfirmados.has(item.id));
+        if (restantes.length === 0) {
+          resetFlow(true);
+          onOpenChange(false);
+        } else {
+          setSugerencias(restantes);
+          setSugerenciasSeleccionadas(new Set());
+        }
+        try {
+          await onConfirmed();
+        } catch {
+          setError("Los hallazgos confirmados se crearon, pero no se pudo actualizar el listado. Recarga la página.");
+        }
+      }
       setConfirmingBatch(false);
     }
   }
@@ -673,13 +683,13 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
       <DialogContent
         withClose={false}
         size="lg"
-        className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-700/70"
+        className="flex flex-col h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 sm:p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-3xl sm:rounded-2xl sm:border sm:border-slate-700/70"
         onPointerDownOutside={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
           if (tieneTrabajoEnCurso) event.preventDefault();
         }}
       >
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
           <header className="shrink-0 border-b border-slate-800/90 bg-[#071225]/95 px-4 pb-3 pt-[max(0.9rem,env(safe-area-inset-top))] backdrop-blur sm:px-6 sm:pt-5">
             <div className="grid grid-cols-[44px_1fr_44px] items-center gap-3">
               <button

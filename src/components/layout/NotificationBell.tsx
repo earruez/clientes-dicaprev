@@ -102,6 +102,7 @@ export default function NotificationBell() {
             : "border-transparent bg-white text-slate-500 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-700"
         )}
         aria-label="Notificaciones"
+        aria-expanded={open}
       >
         <Bell className="h-5 w-5" />
         {unread > 0 && (
@@ -113,9 +114,9 @@ export default function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 top-11 z-50 w-[360px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
+        <div className="absolute right-0 top-11 z-50 flex max-h-[calc(100dvh-5rem)] w-[min(360px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3">
             <div className="flex items-center gap-2">
               <Bell className="h-4 w-4 text-slate-600" />
               <span className="text-sm font-semibold text-slate-800">Notificaciones</span>
@@ -137,7 +138,7 @@ export default function NotificationBell() {
           </div>
 
           {/* List */}
-          <ul className="max-h-[400px] overflow-y-auto divide-y divide-slate-50">
+          <ul className="min-h-0 max-h-[400px] overflow-y-auto overscroll-contain divide-y divide-slate-50">
             {notifs.map((n) => {
               const cfg = prioridadCfg[n.prioridad];
               return (
@@ -175,7 +176,7 @@ export default function NotificationBell() {
           </ul>
 
           {/* Footer */}
-          <div className="border-t border-slate-100 px-4 py-2.5">
+          <div className="shrink-0 border-t border-slate-100 px-4 py-2.5">
             <Link
               href="/dicaprev/dashboard"
               onClick={() => setOpen(false)}

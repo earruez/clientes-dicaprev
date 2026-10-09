@@ -297,6 +297,8 @@ export default function HallazgosClient({
   const [empresaDestinoId, setEmpresaDestinoId] = useState("");
   const [moverEmpresaError, setMoverEmpresaError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [actualizacionError, setActualizacionError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoHallazgo | "todos">("todos");
@@ -429,12 +431,14 @@ export default function HallazgosClient({
   }
 
   function openCreate() {
+    setFormError(null);
     setEditId(null);
     setForm(FORM_EMPTY());
     setModalOpen(true);
   }
 
   function openEdit(h: Hallazgo) {
+    setFormError(null);
     setEditId(h.id);
     setForm({
       plantillaClave: "manual",
@@ -452,9 +456,11 @@ export default function HallazgosClient({
   }
 
   async function onSubmit() {
-    if (!form.descripcion.trim() || !form.centroTrabajoId || !form.fechaCompromiso) return;
+    if (saving || !form.descripcion.trim() || !form.centroTrabajoId || !form.fechaCompromiso) return;
+    setSaving(true);
+    setFormError(null);
+    setActualizacionError(null);
     try {
-      setSaving(true);
       if (!editId) {
         await crearHallazgo({
           centroTrabajoId: form.centroTrabajoId,
@@ -479,8 +485,16 @@ export default function HallazgosClient({
           fechaCompromiso: form.fechaCompromiso,
         });
       }
-      await reloadHallazgos();
+
+      // El guardado ya se confirmó: cerrar antes de recargar evita reintentos duplicados.
       setModalOpen(false);
+      try {
+        await reloadHallazgos();
+      } catch {
+        setActualizacionError("El hallazgo se guardó, pero no se pudo actualizar la lista. Recarga la página para verlo.");
+      }
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "No se pudo guardar el hallazgo. Revisa los datos e intenta nuevamente.");
     } finally {
       setSaving(false);
     }
@@ -1217,6 +1231,12 @@ export default function HallazgosClient({
           }
         />
 
+        {actualizacionError ? (
+          <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            {actualizacionError}
+          </div>
+        ) : null}
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
             { label: "Abiertos", value: abiertos, cls: "from-amber-50 to-amber-100 text-amber-700" },
@@ -1308,7 +1328,12 @@ export default function HallazgosClient({
           opciones={{ empresaId: opciones.empresaId, centros: opciones.centros, areas: opciones.areas }}
           iaConfigurada={iaConfigurada}
           onConfirmed={async () => {
-            await reloadHallazgos();
+            try {
+              await reloadHallazgos();
+              setActualizacionError(null);
+            } catch {
+              setActualizacionError("Los hallazgos se guardaron, pero no se pudo actualizar la lista. Recarga la página para verlos.");
+            }
           }}
         />
 
@@ -1464,14 +1489,18 @@ export default function HallazgosClient({
         </Card>
       </div>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+      <Dialog open={modalOpen} onOpenChange={(open) => { if (!saving) setModalOpen(open); }}>
         <DialogContent
-          className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-3rem)]"
+          className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:p-0 sm:max-h-[calc(100dvh-3rem)]"
           onPointerDownOutside={(event) => event.preventDefault()}
         >
           <DialogHeader className="shrink-0 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
             <DialogTitle>{editId ? "Editar hallazgo" : "Nuevo hallazgo"}</DialogTitle>
           </DialogHeader>
+
+          {formError ? (
+            <p role="alert" className="mx-4 mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700 sm:mx-6">{formError}</p>
+          ) : null}
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-6 py-4">
             <div className="space-y-1">
@@ -1655,10 +1684,10 @@ export default function HallazgosClient({
       }}>
         <DialogContent
           withClose={false}
-          className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
+          className="flex flex-col h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 sm:p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
           onPointerDownOutside={(event) => event.preventDefault()}
         >
-          <div className="flex h-full min-h-0 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">
             <header className="shrink-0 border-b border-slate-800/90 bg-[#071225]/95 px-4 pb-3 pt-[max(0.9rem,env(safe-area-inset-top))] backdrop-blur sm:px-6 sm:pt-5">
               <div className="grid grid-cols-[44px_1fr_44px] items-center gap-3">
                 <button

@@ -140,7 +140,7 @@ export default function ImportarClient() {
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm">
-      <main className="ml-auto h-[100dvh] max-h-[100dvh] w-full max-w-6xl overflow-y-auto overscroll-y-contain bg-slate-50 pb-[env(safe-area-inset-bottom)] shadow-2xl [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+      <main className="ml-auto h-[100dvh] max-h-[100dvh] w-full max-w-6xl overflow-y-auto overscroll-y-contain bg-slate-50 pb-[env(safe-area-inset-bottom)] shadow-2xl [-webkit-overflow-scrolling:touch]">
       <div className="space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <StandardPageHeader
           moduleLabel="Módulo Personas"
