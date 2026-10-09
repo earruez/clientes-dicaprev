@@ -67,7 +67,7 @@ export async function crearSolicitudContratista(input: {
   const solicitud = await prisma.contratistaSolicitud.create({
     data: {
       empresaId,
-      contratistaId: contratista.id,
+      contratista: { connect: { id: contratista.id } },
       nombre: input.nombre.trim().slice(0, 180),
       faena: input.faena?.trim().slice(0, 180) || null,
       servicio: input.servicio?.trim().slice(0, 300) || null,
