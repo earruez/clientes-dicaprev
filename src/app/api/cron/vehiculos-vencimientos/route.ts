@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { procesarAvisosContratistas } from "@/lib/contratistas/vencimiento-alertas";
 import {
   enviarPruebaVencimientoVehiculo,
   procesarAvisosVencimientoVehiculos,
@@ -29,6 +30,8 @@ export async function GET(request: Request) {
     });
   }
 
-  const result = await procesarAvisosVencimientoVehiculos();
-  return NextResponse.json({ ok: true, mode: "cron", ...result });
+  const [vehiculos, contratistas] = await Promise.allSettled([procesarAvisosVencimientoVehiculos(), procesarAvisosContratistas()]);
+  const errores = [vehiculos, contratistas].filter((r) => r.status === "rejected");
+  if (errores.length) console.error("[cron-vencimientos] Proceso fallido", errores.map((r) => r.status === "rejected" ? String(r.reason) : ""));
+  return NextResponse.json({ ok: errores.length === 0, mode: "cron", vehiculos: vehiculos.status === "fulfilled" ? vehiculos.value : null, contratistas: contratistas.status === "fulfilled" ? contratistas.value : null }, { status: errores.length ? 500 : 200 });
 }
