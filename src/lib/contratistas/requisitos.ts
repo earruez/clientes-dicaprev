@@ -47,3 +47,10 @@ export function estadoEfectivo(estado: string, fechaVencimiento: Date | string |
   }
   return estado;
 }
+
+/** Permite desplegar el código antes de activar la migración en la base objetivo. */
+export function faltaMigracionContratistas(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "P2021" || code === "P2022";
+}
