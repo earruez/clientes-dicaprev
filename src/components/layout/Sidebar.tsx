@@ -131,7 +131,10 @@ const MODULES: ModuleItem[] = [
     icon: Briefcase,
     defaultHref: "/dicaprev/contratistas",
     permission: "canReadCumplimiento",
-    items: [{ href: "/dicaprev/contratistas", label: "Gestión contratistas" }],
+    items: [
+      { href: "/dicaprev/contratistas", label: "Gestión contratistas" },
+      { href: "/dicaprev/contratistas/solicitudes", label: "Solicitudes documentales", permission: "canReadDocumentacion" },
+    ],
   },
   {
     id: "acreditaciones",
