@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
+import { estadoEfectivo } from "@/lib/contratistas/requisitos";
 import {
   getAlertasCumplimiento,
   type AlertaCumplimiento,
@@ -18,7 +19,7 @@ export type AlertasEmpresaResponse = {
 export async function getAlertasEmpresa(): Promise<AlertasEmpresaResponse> {
   const { empresaId } = await requirePermission("canReadAlertas");
 
-  const [totalTrabajadores, requeridos, documentos, documentosVehiculo] = await Promise.all([
+  const [totalTrabajadores, requeridos, documentos, documentosVehiculo, documentosContratistas] = await Promise.all([
     prisma.trabajador.count({ where: { empresaId, estado: "activo" } }),
     prisma.documentoRequeridoEmpresa.findMany({
       where: { activo: true },
@@ -68,6 +69,14 @@ export async function getAlertasEmpresa(): Promise<AlertasEmpresaResponse> {
         },
       },
     }),
+    prisma.contratistaRequisito.findMany({
+      where: { empresaId, solicitud: { estado: { not: "cerrada" } } },
+      select: {
+        id: true, nombre: true, estado: true, obligatorio: true,
+        fechaVencimiento: true, archivoNombre: true,
+        solicitud: { select: { nombre: true, contratista: { select: { nombre: true } } } },
+      },
+    }),
   ]);
 
   const alertas = getAlertasCumplimiento(requeridos, documentos, totalTrabajadores);
@@ -98,6 +107,31 @@ export async function getAlertasEmpresa(): Promise<AlertasEmpresaResponse> {
       prioridad: dias < 0 || dias <= 15 ? "alta" : "media",
       fecha: documento.fechaVencimiento.toISOString().slice(0, 10),
       href: `/dicaprev/empresa/vehiculos`,
+    });
+  }
+
+  for (const documento of documentosContratistas) {
+    const estado = estadoEfectivo(documento.estado, documento.fechaVencimiento);
+    const vence = documento.fechaVencimiento ? new Date(documento.fechaVencimiento) : null;
+    if (vence) vence.setHours(0, 0, 0, 0);
+    const dias = vence ? Math.ceil((vence.getTime() - hoy.getTime()) / 86_400_000) : null;
+    const requiereRevision = documento.estado === "en_revision";
+    const requiereCorreccion = ["observado", "rechazado", "vencido"].includes(estado);
+    const proximo = dias !== null && dias >= 0 && dias <= 30;
+    if (!requiereRevision && !requiereCorreccion && !proximo) continue;
+    const titulo = `${documento.nombre} · ${documento.solicitud.contratista.nombre}`;
+    const mensaje = requiereRevision ? `Documento listo para revisión en ${documento.solicitud.nombre}.`
+      : estado === "vencido" ? `Documento vencido en ${documento.solicitud.nombre}.`
+      : requiereCorreccion ? `Documento ${estado} en ${documento.solicitud.nombre}.`
+      : `Documento vence en ${dias} días (${documento.solicitud.nombre}).`;
+    alertas.push({
+      id: `contratista-${documento.id}`,
+      tipo: requiereRevision ? "pendiente" : requiereCorreccion || (dias !== null && dias < 0) ? "vencido" : "por_vencer",
+      documento: titulo,
+      mensaje,
+      prioridad: requiereCorreccion || requiereRevision || (dias !== null && dias <= 15) ? "alta" : "media",
+      fecha: (documento.fechaVencimiento || new Date()).toISOString().slice(0, 10),
+      href: "/dicaprev/contratistas/solicitudes",
     });
   }
 
