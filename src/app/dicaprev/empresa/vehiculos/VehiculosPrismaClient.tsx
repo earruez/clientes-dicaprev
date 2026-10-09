@@ -488,7 +488,7 @@ export default function VehiculosPrismaClient({
 
       {/* Modal Crear / Editar */}
       <Dialog open={modal.open} onOpenChange={(o) => !o && !isPending && cerrarModal()}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl" onPointerDownOutside={(event) => event.preventDefault()}>
           <DialogHeader>
             <DialogTitle>
               {modal.modo === "crear" ? "Nuevo vehículo / equipo" : "Editar vehículo"}
