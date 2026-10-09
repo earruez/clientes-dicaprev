@@ -720,7 +720,7 @@ export function VehiculoDetailDrawer({
                   </div>
 
                   {/* Quick stats bar */}
-                  <div className="grid grid-cols-4 border-t border-slate-100 -mx-5">
+                  <div className="grid grid-cols-2 border-t border-slate-100 -mx-5 sm:grid-cols-4">
                     {[
                       {
                         val: `${aniosUso} año${aniosUso !== 1 ? "s" : ""}`,
