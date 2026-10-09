@@ -111,32 +111,59 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
     }, "Documento cargado correctamente. Debes enviarlo a revisión.");
   }
 
+
   function bloqueRequisito(r: RequisitoPortal) {
-    const fechasDoc = fechas[r.id] || { emision: isoFecha(r.fechaEmision), vencimiento: isoFecha(r.fechaVencimiento) };
-    return <article key={r.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <h4 className="break-words text-sm font-semibold text-slate-900">{r.nombre} {r.obligatorio ? <span className="text-red-500">*</span> : <span className="text-xs font-normal text-slate-400">(opcional)</span>}</h4>
-          <p className="mt-1 break-all text-xs text-slate-500">{r.archivoOriginal || "Sin documento cargado"} · Versión {r.version}</p>
+    const actual = fechas[r.id] || { emision: isoFecha(r.fechaEmision), vencimiento: isoFecha(r.fechaVencimiento) };
+    const abierto = expandido === r.id;
+    const requiereCorreccion = ["observado", "rechazado", "vencido"].includes(r.estadoEfectivo);
+    const recursoRelacionado = portal.recursos.find((item) => item.id === r.recursoId);
+    return <article key={r.id} className={"min-w-0 overflow-hidden rounded-2xl border bg-white transition-all " + (requiereCorreccion ? "border-orange-200 shadow-sm" : abierto ? "border-emerald-300 shadow-md shadow-emerald-100/50" : "border-slate-200 hover:border-slate-300")}>
+      <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:gap-4 sm:p-5">
+        <div className={"flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl " + (r.estadoEfectivo === "aprobado" ? "bg-emerald-50 text-emerald-700" : requiereCorreccion ? "bg-orange-50 text-orange-700" : "bg-slate-100 text-slate-600")}>
+          {r.estadoEfectivo === "aprobado" ? <FileCheck2 className="h-5 w-5"/> : <FileText className="h-5 w-5"/>}
         </div>
-        <span className={`rounded-full px-2 py-1 text-xs font-medium ${COLORES[r.estadoEfectivo] || COLORES.pendiente}`}>{ESTADOS[r.estadoEfectivo] || r.estadoEfectivo}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start gap-2">
+            <h4 className="min-w-0 flex-1 break-words text-sm font-bold leading-relaxed text-slate-900 sm:text-[15px]">{r.nombre}</h4>
+            <span className={"inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold " + (COLORES[r.estadoEfectivo] || COLORES.pendiente)}>
+              {r.estadoEfectivo === "aprobado" ? <CheckCircle2 className="h-3.5 w-3.5"/> : requiereCorreccion ? <AlertCircle className="h-3.5 w-3.5"/> : <Clock3 className="h-3.5 w-3.5"/>}{ESTADOS[r.estadoEfectivo] || r.estadoEfectivo}
+            </span>
+          </div>
+          {recursoRelacionado && <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-slate-500"><Users2 className="h-3.5 w-3.5"/>{recursoRelacionado.nombre}{recursoRelacionado.patente ? " · " + recursoRelacionado.patente : ""}</p>}
+          <p className="mt-1.5 break-all text-xs text-slate-500">{r.archivoOriginal || "Todavía no se ha adjuntado un archivo."}{r.version ? " · Versión " + r.version : ""}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <span className={"text-[11px] font-semibold " + (r.obligatorio ? "text-slate-700" : "text-slate-400")}>{r.obligatorio ? "● Obligatorio" : "○ Opcional"}</span>
+            {r.fechaVencimiento && <span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><Clock3 className="h-3.5 w-3.5"/>Vence {new Date(r.fechaVencimiento).toLocaleDateString("es-CL", {timeZone:"UTC"})}</span>}
+            {r.archivoNombre && <a href={"/api/contratistas/portal/" + token + "/archivo?requisitoId=" + r.id} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline">Ver archivo <ExternalLink className="h-3.5 w-3.5"/></a>}
+          </div>
+        </div>
+        <button type="button" aria-expanded={abierto} disabled={!!enProceso} onClick={() => setExpandido(abierto ? null : r.id)}
+          className={"flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition " + (abierto ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100")}>
+          <UploadCloud className="h-4 w-4"/>{abierto ? "Cerrar" : r.archivoNombre ? "Actualizar" : "Adjuntar"} <ChevronDown className={"h-3.5 w-3.5 transition-transform " + (abierto ? "rotate-180" : "")}/>
+        </button>
       </div>
-      {r.observacionRevision && <p className="mt-3 rounded-lg bg-orange-50 p-3 text-xs text-orange-800">Observación de la mandante: {r.observacionRevision}</p>}
-      {r.archivoNombre && <a className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-sky-700 underline" href={`/api/contratistas/portal/${token}/archivo?requisitoId=${r.id}`} target="_blank" rel="noopener noreferrer"><FileText className="h-4 w-4"/>Ver archivo entregado</a>}
-      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_140px_140px]">
-        <label className="space-y-1 text-xs text-slate-600">
-          <span className="font-medium">Archivo (máx. 4 MB)</span>
-          <Input aria-label={`Archivo para ${r.nombre}`} className="h-auto min-w-0 py-2 text-xs file:mr-2 file:max-w-[94px] file:truncate" type="file" accept={DOCUMENTO_ACCEPT} onChange={(e) => setArchivo((prev) => ({ ...prev, [r.id]: e.target.files?.[0] || null }))}/>
+      {r.observacionRevision && <div className="mx-4 mb-4 flex gap-2 rounded-xl border border-orange-200 bg-orange-50 p-3 sm:mx-5"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-orange-600"/><p className="text-xs leading-relaxed text-orange-900"><strong>Observación de la mandante:</strong> {r.observacionRevision}</p></div>}
+      {abierto && <div className="space-y-4 border-t border-slate-100 bg-gradient-to-b from-emerald-50/40 to-white p-4 sm:p-5">
+        <div><h5 className="text-sm font-bold text-slate-900">{r.archivoNombre ? "Cargar una nueva versión" : "Adjuntar documento"}</h5><p className="mt-1 text-xs text-slate-500">PDF, Word, Excel o imagen. Tamaño máximo: 4 MB.</p></div>
+        <label className={"group flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition " + (archivo[r.id] ? "border-emerald-400 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/30")}>
+          <span className={"flex h-10 w-10 items-center justify-center rounded-xl " + (archivo[r.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600")}>{archivo[r.id] ? <Check className="h-5 w-5"/> : <CloudUpload className="h-5 w-5"/>}</span>
+          <span className="max-w-full break-all text-sm font-bold text-slate-800">{archivo[r.id]?.name || "Elegir archivo"}</span>
+          <span className="text-xs text-slate-500">{archivo[r.id] ? "Toca para cambiar el archivo" : "Toca aquí para seleccionar desde tu dispositivo"}</span>
+          <input type="file" className="sr-only" accept={DOCUMENTO_ACCEPT} aria-label={"Archivo para " + r.nombre} onChange={(e) => setArchivo((prev) => ({ ...prev, [r.id]: e.target.files?.[0] || null }))}/>
         </label>
-        <label className="space-y-1 text-xs text-slate-600"><span>Emisión</span><Input type="date" value={fechasDoc.emision} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...fechasDoc, emision: e.target.value } }))}/></label>
-        <label className="space-y-1 text-xs text-slate-600"><span>Vencimiento</span><Input type="date" value={fechasDoc.vencimiento} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...fechasDoc, vencimiento: e.target.value } }))}/></label>
-      </div>
-      <div className="mt-3 flex justify-end">
-        <Button disabled={!!enProceso || !archivo[r.id]} size="sm" onClick={() => subir(r)} className="bg-sky-700 text-white hover:bg-sky-800"><UploadCloud className="mr-2 h-4 w-4"/>{enProceso === r.id ? "Guardando…" : r.archivoNombre ? "Reemplazar documento" : "Subir documento"}</Button>
-      </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de emisión <span className="font-normal text-slate-400">(si aplica)</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.emision} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, emision: e.target.value } }))}/></label>
+          <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de vencimiento <span className="font-normal text-slate-400">(si aplica)</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.vencimiento} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, vencimiento: e.target.value } }))}/></label>
+        </div>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="outline" className="min-h-11 rounded-xl" disabled={!!enProceso} onClick={() => setExpandido(null)}>Cancelar</Button>
+          <Button type="button" disabled={!!enProceso || !archivo[r.id]} onClick={() => subir(r)} className="min-h-11 rounded-xl bg-gradient-to-r from-emerald-600 to-sky-600 px-5 font-semibold text-white hover:from-emerald-700 hover:to-sky-700">
+            <CloudUpload className="mr-2 h-4 w-4"/>{enProceso === r.id ? "Guardando…" : r.archivoNombre ? "Guardar nueva versión" : "Guardar documento"}
+          </Button>
+        </div>
+      </div>}
     </article>;
   }
-
 
   const pasos: { key: typeof paso; label: string; numero: string; icono: typeof Building2 }[] = [
     { key: "inicio", label: "Resumen", numero: "01", icono: Layers3 },
@@ -223,7 +250,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
 
       <div className="mx-auto max-w-7xl px-4 sm:px-7 lg:px-10">
         <nav aria-label="Etapas del portal" className="relative z-10 -mt-6 overflow-x-auto rounded-[22px] border border-slate-200 bg-white p-2 shadow-xl shadow-slate-900/10 [-webkit-overflow-scrolling:touch]">
-          <div className="grid min-w-[590px] grid-cols-4 gap-1.5 sm:min-w-0">
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             {pasos.map((item) => {
               const Icon = item.icono;
               const activo = paso === item.key;
