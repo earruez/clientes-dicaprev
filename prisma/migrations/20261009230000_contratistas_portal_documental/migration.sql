@@ -1,4 +1,8 @@
 -- Expedientes documentales independientes de Acreditaciones.
+ALTER TABLE "Contratista" ADD COLUMN "representanteLegal" TEXT;
+ALTER TABLE "Contratista" ADD COLUMN "rutRepresentante" TEXT;
+ALTER TABLE "Contratista" ADD COLUMN "giro" TEXT;
+ALTER TABLE "Contratista" ADD COLUMN "direccion" TEXT;
 CREATE TABLE "ContratistaSolicitud" (
   "id" TEXT NOT NULL,
   "empresaId" TEXT NOT NULL,
