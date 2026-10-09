@@ -171,7 +171,7 @@ export async function revisarRequisitoContratista(input: {
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
   const requisito = await prisma.contratistaRequisito.findFirst({
     where: { id: input.requisitoId, empresaId, solicitud: { estado: { not: "cerrada" } } },
-    include: { solicitud: { select: { contactoEmail: true, nombre: true } } },
+    include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento) === "vencido") throw new Error("No se puede aprobar un documento vencido");
@@ -186,6 +186,24 @@ export async function revisarRequisitoContratista(input: {
     },
   });
   await recalcularEstado(requisito.solicitudId, empresaId);
+  if (input.estado === "aprobado" && requisito.solicitud.estado !== "aprobada") {
+    const final = await prisma.contratistaSolicitud.findFirst({
+      where: { id: requisito.solicitudId, empresaId },
+      select: { estado: true },
+    });
+    if (final?.estado === "aprobada") {
+      try {
+        await sendEmail({
+          to: requisito.solicitud.contactoEmail,
+          subject: `NextPrev · Carpeta documental aprobada: ${requisito.solicitud.nombre}`,
+          html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden"><header style="padding:22px;background:#0f172a;color:#fff"><strong style="font-size:22px">NextPrev</strong></header><main style="padding:24px"><h2 style="color:#065f46">Carpeta documental aprobada</h2><p>La empresa mandante ha aprobado los requisitos documentales obligatorios de <b>${escapar(requisito.solicitud.nombre)}</b>.</p><p>La aprobación documental no reemplaza la autorización de ingreso a faena.</p></main><footer style="padding:16px;background:#f8fafc;color:#64748b;font-size:12px">Generado por NextPrev</footer></div>`,
+          text: `Carpeta documental aprobada: ${requisito.solicitud.nombre}. La autorización de ingreso a faena es independiente.`,
+        });
+      } catch (error) {
+        console.error("[contratistas] aprobación guardada, error de correo", error instanceof Error ? error.message : "Error");
+      }
+    }
+  }
   if (input.estado !== "aprobado") {
     try {
       await sendEmail({
