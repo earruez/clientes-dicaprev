@@ -40,6 +40,10 @@ export const REQUISITOS_RECURSO: Record<Exclude<CategoriaContratista, "empresa">
 };
 
 export function estadoEfectivo(estado: string, fechaVencimiento: Date | string | null): string {
-  if (fechaVencimiento && new Date(fechaVencimiento).getTime() < Date.now() && estado === "aprobado") return "vencido";
+  if (fechaVencimiento && estado === "aprobado") {
+    const vence = new Date(fechaVencimiento).toISOString().slice(0, 10);
+    const hoy = new Date().toISOString().slice(0, 10);
+    if (vence < hoy) return "vencido";
+  }
   return estado;
 }
