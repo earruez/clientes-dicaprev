@@ -5,7 +5,7 @@ import { Building2, CheckCircle2, FileText, Plus, Send, ShieldCheck, Trash2, Upl
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { agregarRecursoPortal, eliminarRecursoPortal, enviarCarpetaContratista, obtenerPortalContratista } from "@/actions/contratistas/portal";
+import { agregarRecursoPortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 
 type DatosPortal = NonNullable<Awaited<ReturnType<typeof obtenerPortalContratista>>>;
@@ -31,6 +31,15 @@ function isoFecha(d: Date | string | null) {
 
 export default function PortalContratistaClient({ token, inicial }: { token: string; inicial: DatosPortal }) {
   const [portal, setPortal] = useState(inicial);
+  const [empresaDatos, setEmpresaDatos] = useState({
+    razonSocial: inicial.contratista.razonSocial || "",
+    rut: inicial.contratista.rut || "",
+    giro: inicial.contratista.giro || "",
+    direccion: inicial.contratista.direccion || "",
+    representanteLegal: inicial.contratista.representanteLegal || "",
+    rutRepresentante: inicial.contratista.rutRepresentante || "",
+    telefono: inicial.contratista.telefono || "",
+  });
   const [archivo, setArchivo] = useState<Record<string, File | null>>({});
   const [fechas, setFechas] = useState<Record<string, { emision: string; vencimiento: string }>>({});
   const [enProceso, setEnProceso] = useState("");
@@ -117,6 +126,23 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       </header>
       {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
       {exito && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{exito}</p>}
+      <form className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6" onSubmit={(e) => {
+        e.preventDefault();
+        void ejecutar("datos", () => guardarDatosEmpresaPortal(token, empresaDatos), "Datos de empresa actualizados.");
+      }}>
+        <div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-sky-700"/><h2 className="text-lg font-semibold text-slate-900">1. Antecedentes de la empresa</h2></div>
+        <p className="mt-1 text-xs text-slate-500">Confirma los datos legales de la empresa que realizará los trabajos. Los campos con * son obligatorios.</p>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="space-y-1"><Label>Razón social *</Label><Input required value={empresaDatos.razonSocial} onChange={(e) => setEmpresaDatos({ ...empresaDatos, razonSocial: e.target.value })}/></label>
+          <label className="space-y-1"><Label>RUT *</Label><Input required value={empresaDatos.rut} onChange={(e) => setEmpresaDatos({ ...empresaDatos, rut: e.target.value })}/></label>
+          <label className="space-y-1"><Label>Giro</Label><Input value={empresaDatos.giro} onChange={(e) => setEmpresaDatos({ ...empresaDatos, giro: e.target.value })}/></label>
+          <label className="space-y-1"><Label>Dirección</Label><Input value={empresaDatos.direccion} onChange={(e) => setEmpresaDatos({ ...empresaDatos, direccion: e.target.value })}/></label>
+          <label className="space-y-1"><Label>Representante legal</Label><Input value={empresaDatos.representanteLegal} onChange={(e) => setEmpresaDatos({ ...empresaDatos, representanteLegal: e.target.value })}/></label>
+          <label className="space-y-1"><Label>RUT del representante</Label><Input value={empresaDatos.rutRepresentante} onChange={(e) => setEmpresaDatos({ ...empresaDatos, rutRepresentante: e.target.value })}/></label>
+          <label className="space-y-1"><Label>Teléfono de contacto</Label><Input type="tel" value={empresaDatos.telefono} onChange={(e) => setEmpresaDatos({ ...empresaDatos, telefono: e.target.value })}/></label>
+        </div>
+        <div className="mt-4 flex justify-end"><Button disabled={!!enProceso} type="submit" className="bg-sky-700 text-white hover:bg-sky-800">{enProceso === "datos" ? "Guardando…" : "Guardar antecedentes"}</Button></div>
+      </form>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div><div className="flex items-center gap-2 text-slate-900"><ShieldCheck className="h-5 w-5 text-sky-700"/><h2 className="font-semibold">Estado de la carpeta</h2></div>
