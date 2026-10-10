@@ -110,7 +110,7 @@ export async function reutilizarDocumentoContratista(input: { requisitoId: strin
     if (!updated.count) throw new Error("El requisito cambió; vuelve a intentarlo");
     await tx.contratistaDocumentoVersion.create({
       data: {
-        requisitoId: req.id, version: req.version + 1, archivoNombre: doc.archivoNombre,
+        requisitoId: req.id, version: req.version + 1, archivoNombre,
         archivoOriginal: doc.nombre, archivoTipo: doc.archivoTipo, archivoPeso: doc.archivoPeso ?? 0,
         fechaEmision: doc.fechaEmision, fechaVencimiento: doc.fechaVencimiento,
       },
