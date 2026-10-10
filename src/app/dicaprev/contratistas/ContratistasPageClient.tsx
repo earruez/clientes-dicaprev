@@ -229,7 +229,13 @@ export default function ContratistasPageClient() {
               </div>
             </section>}
             {verDetalle === "obras" && <section className={panel}><h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><HardHat className="h-5 w-5 text-emerald-700"/>Contratos y faenas</h3><p className="mt-2 text-sm text-slate-500">Cada expediente agrupa requisitos específicos, trabajadores y equipos de una obra. No duplica la documentación permanente.</p>
-              <div className="mt-4 rounded-xl bg-slate-50 p-5 text-center"><p className="text-2xl font-extrabold text-slate-900">{contratista.faenasActivas}</p><p className="text-xs text-slate-500">Expedientes activos</p></div>
+              <div className="mt-4 space-y-2">
+                {contratista.faenas.length === 0 && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">Todavía no tiene contratos o faenas registrados.</p>}
+                {contratista.faenas.map((faena) => <div key={faena.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-3">
+                  <div className="min-w-0"><p className="break-words text-sm font-semibold text-slate-900">{faena.nombre}</p><p className="mt-1 text-xs text-slate-500">{faena.faena || "Sin centro especificado"} · {faena.estado.replaceAll("_", " ")}</p></div>
+                  <Link href={"/dicaprev/contratistas/solicitudes?expediente=" + faena.id} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">Abrir <ArrowRight className="h-3.5 w-3.5"/></Link>
+                </div>)}
+              </div>
               <Button asChild className={"mt-4 " + principal}><Link href="/dicaprev/contratistas/solicitudes">Abrir solicitudes por faena <ArrowRight className="ml-2 h-4 w-4"/></Link></Button>
             </section>}
             {verDetalle === "acreditaciones" && <section className={panel}>
