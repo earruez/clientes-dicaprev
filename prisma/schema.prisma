@@ -318,6 +318,7 @@ model Empresa {
   ds44MiperItems             Ds44MiperItem[]
   ds44MiperControles         Ds44MiperControl[]
   ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
+  solicitudesContratistas    ContratistaSolicitud[] @relation("ContratistaCentroTrabajo")
   ds44MiperTareas            Ds44MiperTarea[]
   ds44MiperExposiciones      Ds44MiperExposicionRespuesta[]
   // Permisos
@@ -1791,6 +1792,7 @@ model ContratistaDocumento {
   contratista Contratista @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
   empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   revisadoPor Usuario?    @relation("UsuarioContratistaDocumentoRevisado", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  requisitos ContratistaRequisito[] @relation("RequisitoDocumentoBase")
 
   @@index([contratistaId])
   @@index([empresaId])
@@ -2631,6 +2633,7 @@ model ContratistaSolicitud {
   contratistaId      String
   nombre             String
   faena              String?
+  centroTrabajoId    String?
   servicio           String?
   contactoEmail      String
   responsable        String?
@@ -2645,11 +2648,13 @@ model ContratistaSolicitud {
   updatedAt          DateTime  @updatedAt
 
   contratista        Contratista            @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
+  centroTrabajo      CentroTrabajo?         @relation("ContratistaCentroTrabajo", fields: [centroTrabajoId], references: [id], onDelete: SetNull)
   recursos           ContratistaRecurso[]
   requisitos         ContratistaRequisito[]
 
   @@index([empresaId, estado])
   @@index([contratistaId])
+  @@index([centroTrabajoId])
 }
 
 model ContratistaRecurso {
@@ -2677,6 +2682,8 @@ model ContratistaRequisito {
   recursoId          String?
   nombre             String
   categoria          String
+  alcance            String    @default("faena")
+  documentoBaseId    String?
   obligatorio        Boolean   @default(true)
   estado             String    @default("pendiente")
   archivoNombre      String?
@@ -2697,12 +2704,33 @@ model ContratistaRequisito {
 
   solicitud          ContratistaSolicitud       @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
   recurso            ContratistaRecurso?        @relation(fields: [recursoId], references: [id], onDelete: Cascade)
+  documentoBase      ContratistaDocumento?      @relation("RequisitoDocumentoBase", fields: [documentoBaseId], references: [id], onDelete: SetNull)
   versiones          ContratistaDocumentoVersion[]
 
   @@index([empresaId, estado])
   @@index([solicitudId, categoria])
+  @@index([documentoBaseId])
   @@index([recursoId])
   @@index([fechaVencimiento])
+}
+
+/** Requisitos personalizados por empresa mandante, reutilizables entre contratos. */
+model ContratistaCatalogoRequisito {
+  id                    String   @id @default(cuid())
+  empresaId             String
+  nombre                String
+  clave                 String
+  alcance               String   @default("faena") // empresa | faena
+  categoria             String   @default("empresa") // empresa | trabajador | vehiculo | equipo
+  grupo                 String   @default("Otros")
+  obligatorio           Boolean  @default(false)
+  requiereVencimiento   Boolean  @default(false)
+  activo                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([empresaId, clave, alcance])
+  @@index([empresaId, activo])
 }
 
 model ContratistaDocumentoVersion {
