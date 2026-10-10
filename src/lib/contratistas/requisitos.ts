@@ -42,7 +42,7 @@ export const REQUISITOS_RECURSO: Record<Exclude<CategoriaContratista, "empresa">
 export function estadoEfectivo(estado: string, fechaVencimiento: Date | string | null): string {
   if (fechaVencimiento && !["observado", "rechazado"].includes(estado)) {
     const vence = new Date(fechaVencimiento).toISOString().slice(0, 10);
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     if (vence < hoy) return "vencido";
   }
   return estado;
