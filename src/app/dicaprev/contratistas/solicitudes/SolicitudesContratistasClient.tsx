@@ -85,7 +85,8 @@ export default function SolicitudesContratistasClient() {
       setCentros(centrosMandante);
       setContratistas(c);
       setExpedientes(solicitudes);
-      setActualId((prev) => prev && solicitudes.some((s) => s.id === prev) ? prev : solicitudes[0]?.id || "");
+      const expedId = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("expediente") || "";
+      setActualId((prev) => prev && solicitudes.some((s) => s.id === prev) ? prev : solicitudes.some((s) => s.id === expedId) ? expedId : solicitudes[0]?.id || "");
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudieron cargar los expedientes");
