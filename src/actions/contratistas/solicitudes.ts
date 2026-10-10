@@ -189,20 +189,54 @@ export async function revisarRequisitoContratista(input: {
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
   const requisito = await prisma.contratistaRequisito.findFirst({
     where: { id: input.requisitoId, empresaId, solicitud: { estado: { not: "cerrada" } } },
-    include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true } } },
+    include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true, contratistaId: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
   if (requisito.estado !== "en_revision") throw new Error("El contratista aún no ha enviado este documento a revisión");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
-  await prisma.contratistaRequisito.update({
-    where: { id: requisito.id },
-    data: {
-      estado: input.estado,
-      observacionRevision: input.estado === "aprobado" ? null : input.observacion?.trim().slice(0, 1200),
-      revisadoPorId: usuarioId,
-      revisadoAt: new Date(),
-    },
+  // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
+  // maestra: no es necesario volver a subirlos para una obra futura.
+  await prisma.$transaction(async (tx) => {
+    let documentoBaseId = requisito.documentoBaseId;
+    if (input.estado === "aprobado" && requisito.alcance === "empresa" && !documentoBaseId) {
+      const where = { empresaId, contratistaId: requisito.solicitud.contratistaId };
+      const anterior = await tx.contratistaDocumento.findFirst({
+        where: { ...where, nombre: { equals: requisito.nombre, mode: "insensitive" } },
+        orderBy: { createdAt: "desc" },
+      });
+      const datos = {
+        archivoNombre: requisito.archivoNombre,
+        archivoOriginal: requisito.archivoOriginal,
+        archivoTipo: requisito.archivoTipo,
+        archivoPeso: requisito.archivoPeso,
+        fechaEmision: requisito.fechaEmision,
+        fechaVencimiento: requisito.fechaVencimiento,
+      };
+      const base = anterior ? await tx.contratistaDocumento.update({
+        where: { id: anterior.id },
+        data: { ...datos, archivoUrl: null, estado: "aprobado", version: { increment: 1 }, revisadoPorId: usuarioId, revisadoAt: new Date() },
+      }) : await tx.contratistaDocumento.create({
+        data: { ...where, nombre: requisito.nombre, ...datos, estado: "aprobado", version: 1, revisadoPorId: usuarioId, revisadoAt: new Date() },
+      });
+      await tx.contratistaDocumentoBaseVersion.create({
+        data: {
+          documentoId: base.id, version: base.version, archivoNombre: requisito.archivoNombre as string,
+          archivoOriginal: requisito.archivoOriginal, archivoTipo: requisito.archivoTipo, archivoPeso: requisito.archivoPeso,
+          fechaEmision: requisito.fechaEmision, fechaVencimiento: requisito.fechaVencimiento,
+        },
+      });
+      documentoBaseId = base.id;
+    }
+    await tx.contratistaRequisito.update({
+      where: { id: requisito.id },
+      data: {
+        estado: input.estado,
+        ...(documentoBaseId ? { documentoBaseId } : {}),
+        observacionRevision: input.estado === "aprobado" ? null : input.observacion?.trim().slice(0, 1200),
+        revisadoPorId: usuarioId, revisadoAt: new Date(),
+      },
+    });
   });
   await recalcularEstado(requisito.solicitudId, empresaId);
   if (input.estado === "aprobado" && requisito.solicitud.estado !== "aprobada") {
