@@ -80,7 +80,8 @@ function normalizeEstadoDocumento(
   fechaVencimiento: Date | null,
 ): EstadoContratistaDocumentoInput {
   if (!fechaVencimiento) return estado;
-  if (fechaVencimiento.getTime() < Date.now() && estado !== "rechazado") return "vencido";
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  if (fechaVencimiento.toISOString().slice(0, 10) < hoy && estado !== "rechazado") return "vencido";
   return estado;
 }
 
