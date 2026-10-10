@@ -113,10 +113,11 @@ export default function ContratistasPageClient() {
     if (!file) return setError("Selecciona el archivo que deseas adjuntar.");
     if (file.size > 4 * 1024 * 1024) return setError("El archivo no puede superar 4 MB.");
     await ejecutar("subir:" + id, async () => {
+      const actual = contratista?.documentos.find((d) => d.id === id);
       const form = new FormData();
       form.set("documentoId", id); form.set("file", file);
-      form.set("fechaEmision", fechas[id]?.emision || "");
-      form.set("fechaVencimiento", fechas[id]?.vencimiento || "");
+      form.set("fechaEmision", fechas[id]?.emision ?? actual?.fechaEmision?.slice(0, 10) ?? "");
+      form.set("fechaVencimiento", fechas[id]?.vencimiento ?? actual?.fechaVencimiento?.slice(0, 10) ?? "");
       const response = await fetch("/api/dicaprev/contratistas/documento-base", { method: "POST", body: form });
       const data = await response.json() as { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo cargar el documento");
