@@ -1764,6 +1764,7 @@ model Contratista {
   empresa       Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   documentos    ContratistaDocumento[]
   trabajadores  ContratistaTrabajador[]
+  recursosBase  ContratistaRecursoBase[]
   acreditaciones Acreditacion[]
   solicitudes ContratistaSolicitud[]
 
@@ -2680,10 +2681,32 @@ model ContratistaSolicitud {
   @@index([centroTrabajoId])
 }
 
+/** Identidad de personas, vehículos y equipos reutilizables por el mismo contratista. */
+model ContratistaRecursoBase {
+  id            String   @id @default(cuid())
+  empresaId     String
+  contratistaId String
+  tipo          String
+  clave         String
+  nombre        String
+  identificador String?
+  patente       String?
+  cargo         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contratista    Contratista         @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
+  expedientes    ContratistaRecurso[]
+
+  @@unique([contratistaId, tipo, clave])
+  @@index([empresaId, contratistaId])
+}
+
 model ContratistaRecurso {
   id            String    @id @default(cuid())
   empresaId     String
   solicitudId   String
+  recursoBaseId String?
   tipo          String
   nombre        String
   identificador String?
@@ -2692,10 +2715,12 @@ model ContratistaRecurso {
   createdAt     DateTime  @default(now())
 
   solicitud     ContratistaSolicitud  @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  recursoBase   ContratistaRecursoBase? @relation(fields: [recursoBaseId], references: [id], onDelete: SetNull)
   requisitos    ContratistaRequisito[]
 
   @@index([solicitudId, tipo])
   @@index([empresaId])
+  @@index([recursoBaseId])
 }
 
 model ContratistaRequisito {
