@@ -1,5 +1,9 @@
 -- Separación de documentos permanentes de empresa y documentación por faena.
 -- Migración no destructiva: no elimina ni reubica datos existentes.
+ALTER TABLE "ContratistaDocumento" ADD COLUMN "archivoOriginal" TEXT;
+ALTER TABLE "ContratistaDocumento" ADD COLUMN "archivoTipo" TEXT;
+ALTER TABLE "ContratistaDocumento" ADD COLUMN "archivoPeso" INTEGER;
+ALTER TABLE "ContratistaDocumento" ADD COLUMN "version" INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE "ContratistaSolicitud" ADD COLUMN "centroTrabajoId" TEXT;
 ALTER TABLE "ContratistaRequisito" ADD COLUMN "alcance" TEXT NOT NULL DEFAULT 'faena';
 ALTER TABLE "ContratistaRequisito" ADD COLUMN "documentoBaseId" TEXT;
@@ -25,3 +29,20 @@ CREATE INDEX "ContratistaSolicitud_centroTrabajoId_idx" ON "ContratistaSolicitud
 CREATE INDEX "ContratistaRequisito_documentoBaseId_idx" ON "ContratistaRequisito"("documentoBaseId");
 ALTER TABLE "ContratistaSolicitud" ADD CONSTRAINT "ContratistaSolicitud_centroTrabajoId_fkey" FOREIGN KEY ("centroTrabajoId") REFERENCES "CentroTrabajo"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "ContratistaRequisito" ADD CONSTRAINT "ContratistaRequisito_documentoBaseId_fkey" FOREIGN KEY ("documentoBaseId") REFERENCES "ContratistaDocumento"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+CREATE TABLE "ContratistaDocumentoBaseVersion" (
+  "id" TEXT NOT NULL,
+  "documentoId" TEXT NOT NULL,
+  "version" INTEGER NOT NULL,
+  "archivoNombre" TEXT NOT NULL,
+  "archivoOriginal" TEXT,
+  "archivoTipo" TEXT,
+  "archivoPeso" INTEGER,
+  "fechaEmision" TIMESTAMP(3),
+  "fechaVencimiento" TIMESTAMP(3),
+  "subidoAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "ContratistaDocumentoBaseVersion_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "ContratistaDocumentoBaseVersion_documentoId_version_key" ON "ContratistaDocumentoBaseVersion"("documentoId","version");
+CREATE INDEX "ContratistaDocumentoBaseVersion_documentoId_idx" ON "ContratistaDocumentoBaseVersion"("documentoId");
+ALTER TABLE "ContratistaDocumentoBaseVersion" ADD CONSTRAINT "ContratistaDocumentoBaseVersion_documentoId_fkey" FOREIGN KEY ("documentoId") REFERENCES "ContratistaDocumento"("id") ON DELETE CASCADE ON UPDATE CASCADE;
