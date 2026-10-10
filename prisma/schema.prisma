@@ -1781,6 +1781,10 @@ model ContratistaDocumento {
   estado        EstadoContratistaDocumento @default(pendiente)
   archivoUrl    String?
   archivoNombre String?
+  archivoOriginal String?
+  archivoTipo String?
+  archivoPeso Int?
+  version Int @default(0)
   fechaEmision  DateTime?
   fechaVencimiento DateTime?
   observaciones String?
@@ -1793,11 +1797,30 @@ model ContratistaDocumento {
   empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   revisadoPor Usuario?    @relation("UsuarioContratistaDocumentoRevisado", fields: [revisadoPorId], references: [id], onDelete: SetNull)
   requisitos ContratistaRequisito[] @relation("RequisitoDocumentoBase")
+  versiones ContratistaDocumentoBaseVersion[]
 
   @@index([contratistaId])
   @@index([empresaId])
   @@index([estado])
   @@index([fechaVencimiento])
+}
+
+model ContratistaDocumentoBaseVersion {
+  id               String @id @default(cuid())
+  documentoId      String
+  version          Int
+  archivoNombre    String
+  archivoOriginal  String?
+  archivoTipo      String?
+  archivoPeso      Int?
+  fechaEmision     DateTime?
+  fechaVencimiento DateTime?
+  subidoAt         DateTime @default(now())
+
+  documento ContratistaDocumento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  @@unique([documentoId, version])
+  @@index([documentoId])
 }
 
 model ContratistaTrabajador {
