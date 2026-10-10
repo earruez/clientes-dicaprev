@@ -96,11 +96,12 @@ export async function reutilizarDocumentoContratista(input: { requisitoId: strin
       || !doc.archivoNombre || !/^[a-f0-9-]{36}\.(pdf|doc|docx|xlsx|jpg|jpeg|png)$/i.test(doc.archivoNombre)) {
     throw new Error("Solo se pueden reutilizar documentos aprobados, vigentes y almacenados en forma privada");
   }
+  const archivoNombre = doc.archivoNombre;
   await prisma.$transaction(async (tx) => {
     const updated = await tx.contratistaRequisito.updateMany({
       where: { id: req.id, empresaId, version: req.version },
       data: {
-        documentoBaseId: doc.id, archivoNombre: doc.archivoNombre, archivoOriginal: doc.nombre,
+        documentoBaseId: doc.id, archivoNombre, archivoOriginal: doc.nombre,
         archivoTipo: null, archivoPeso: null, fechaEmision: doc.fechaEmision, fechaVencimiento: doc.fechaVencimiento,
         version: { increment: 1 }, estado: "pendiente", revisadoAt: null, revisadoPorId: null,
         observacionRevision: null, aviso30At: null, aviso15At: null, aviso5At: null,
@@ -110,7 +111,7 @@ export async function reutilizarDocumentoContratista(input: { requisitoId: strin
     await tx.contratistaDocumentoVersion.create({
       data: {
         requisitoId: req.id, version: req.version + 1, archivoNombre: doc.archivoNombre,
-        archivoOriginal: doc.nombre, archivoTipo: null, archivoPeso: null,
+        archivoOriginal: doc.nombre, archivoTipo: doc.archivoTipo, archivoPeso: doc.archivoPeso ?? 0,
         fechaEmision: doc.fechaEmision, fechaVencimiento: doc.fechaVencimiento,
       },
     });
