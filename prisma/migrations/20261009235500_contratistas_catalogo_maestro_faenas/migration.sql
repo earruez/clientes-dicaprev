@@ -46,3 +46,25 @@ CREATE TABLE "ContratistaDocumentoBaseVersion" (
 CREATE UNIQUE INDEX "ContratistaDocumentoBaseVersion_documentoId_version_key" ON "ContratistaDocumentoBaseVersion"("documentoId","version");
 CREATE INDEX "ContratistaDocumentoBaseVersion_documentoId_idx" ON "ContratistaDocumentoBaseVersion"("documentoId");
 ALTER TABLE "ContratistaDocumentoBaseVersion" ADD CONSTRAINT "ContratistaDocumentoBaseVersion_documentoId_fkey" FOREIGN KEY ("documentoId") REFERENCES "ContratistaDocumento"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Registro maestro de recursos del contratista, sin alterar recursos ya asociados a expedientes.
+CREATE TABLE "ContratistaRecursoBase" (
+  "id" TEXT NOT NULL,
+  "empresaId" TEXT NOT NULL,
+  "contratistaId" TEXT NOT NULL,
+  "tipo" TEXT NOT NULL,
+  "clave" TEXT NOT NULL,
+  "nombre" TEXT NOT NULL,
+  "identificador" TEXT,
+  "patente" TEXT,
+  "cargo" TEXT,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+  CONSTRAINT "ContratistaRecursoBase_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "ContratistaRecursoBase_contratistaId_tipo_clave_key" ON "ContratistaRecursoBase"("contratistaId", "tipo", "clave");
+CREATE INDEX "ContratistaRecursoBase_empresaId_contratistaId_idx" ON "ContratistaRecursoBase"("empresaId", "contratistaId");
+ALTER TABLE "ContratistaRecursoBase" ADD CONSTRAINT "ContratistaRecursoBase_contratistaId_fkey" FOREIGN KEY ("contratistaId") REFERENCES "Contratista"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "ContratistaRecurso" ADD COLUMN "recursoBaseId" TEXT;
+CREATE INDEX "ContratistaRecurso_recursoBaseId_idx" ON "ContratistaRecurso"("recursoBaseId");
+ALTER TABLE "ContratistaRecurso" ADD CONSTRAINT "ContratistaRecurso_recursoBaseId_fkey" FOREIGN KEY ("recursoBaseId") REFERENCES "ContratistaRecursoBase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
