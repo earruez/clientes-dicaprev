@@ -12,10 +12,11 @@ export async function obtenerPortalContratista(token: string) {
   const s = await resolverPortalContratista(token);
   if (!s) return null;
   const empresa = await prisma.empresa.findUnique({ where: { id: s.empresaId }, select: { nombre: true } });
+  const recursosBase = await prisma.contratistaRecursoBase.findMany({ where: { empresaId: s.empresaId, contratistaId: s.contratistaId }, orderBy: { nombre: "asc" }, select: { id: true, tipo: true, nombre: true, identificador: true, patente: true, cargo: true } });
   return {
     nombre: s.nombre, faena: s.faena, servicio: s.servicio,
     estado: s.estado, contactoEmail: s.contactoEmail, empresaMandante: empresa?.nombre || "Empresa mandante",
-    contratista: s.contratista, recursos: s.recursos,
+    contratista: s.contratista, recursos: s.recursos, recursosBase,
     requisitos: s.requisitos.map((r) => ({ ...r, estadoEfectivo: estadoEfectivo(r.estado, r.fechaVencimiento) })),
   };
 }
@@ -71,19 +72,61 @@ export async function agregarRecursoPortal(token: string, input: {
     select: { id: true },
   });
   if (existe) throw new Error("Este recurso ya existe en el expediente");
-  const r = await prisma.contratistaRecurso.create({
+  // El mismo recurso se conserva en la ficha permanente y se asocia a cada obra.
+  // Su documentación y revisión, en cambio, continúan siendo independientes.
+  const claveOriginal = input.tipo === "vehiculo" ? patente : identificador || nombre;
+  const clave = claveOriginal.toUpperCase().normalize("NFD").replace(/[^A-Z0-9]/g, "");
+  if (!clave) throw new Error("El recurso requiere una identificación válida");
+  const r = await prisma.$transaction(async (tx) => {
+    const base = await tx.contratistaRecursoBase.upsert({
+      where: { contratistaId_tipo_clave: { contratistaId: s.contratistaId, tipo: input.tipo, clave } },
+      update: { nombre, identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null },
+      create: {
+        empresaId: s.empresaId, contratistaId: s.contratistaId, tipo: input.tipo, clave, nombre,
+        identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
+      },
+    });
+    return tx.contratistaRecurso.create({
+      data: {
+        empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
+        recursoBase: { connect: { id: base.id } }, tipo: input.tipo, nombre,
+        identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
+        requisitos: { create: REQUISITOS_RECURSO[input.tipo].map((d) => ({
+          empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
+          solicitud: { connect: { id: s.id } },
+        })) },
+      },
+      select: { id: true },
+    });
+  });
+  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "enviada" } });
+  return r;
+}
+
+
+export async function incorporarRecursoBasePortal(token: string, recursoBaseId: string) {
+  const s = await resolverPortalContratista(token);
+  if (!s) throw new Error("Invitación inválida o vencida");
+  const base = await prisma.contratistaRecursoBase.findFirst({
+    where: { id: recursoBaseId, empresaId: s.empresaId, contratistaId: s.contratistaId },
+  });
+  if (!base) throw new Error("Recurso no encontrado en esta empresa");
+  if (s.recursos.some((r) => r.recursoBaseId === base.id)) throw new Error("El recurso ya está incorporado en esta obra");
+  const tipo = base.tipo as Exclude<CategoriaContratista, "empresa">;
+  if (!(tipo in REQUISITOS_RECURSO)) throw new Error("Tipo de recurso no válido");
+  await prisma.contratistaRecurso.create({
     data: {
-      empresaId: s.empresaId, solicitud: { connect: { id: s.id } }, tipo: input.tipo, nombre,
-      identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
-      requisitos: { create: REQUISITOS_RECURSO[input.tipo].map((d) => ({
+      empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
+      recursoBase: { connect: { id: base.id } }, tipo, nombre: base.nombre,
+      identificador: base.identificador, cargo: base.cargo, patente: base.patente,
+      requisitos: { create: REQUISITOS_RECURSO[tipo].map((d) => ({
         empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
         solicitud: { connect: { id: s.id } },
       })) },
     },
-    select: { id: true },
   });
   await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "enviada" } });
-  return r;
+  return { ok: true };
 }
 
 export async function eliminarRecursoPortal(token: string, recursoId: string) {
