@@ -72,7 +72,7 @@ export default function SolicitudesContratistasClient() {
     CATALOGO_FAENA.filter((r) => r.obligatorio).map((r) => r.clave),
   );
   const [agregando, setAgregando] = useState(false);
-  const [extra, setExtra] = useState({ nombre: "", categoria: "empresa", recursoId: "", obligatorio: true });
+  const [extra, setExtra] = useState({ nombre: "", alcance: "faena" as "empresa" | "faena", categoria: "empresa", recursoId: "", obligatorio: true });
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const actual = useMemo(() => expedientes.find((s) => s.id === actualId) || null, [expedientes, actualId]);
   const puedeEditar = !!actual && actual.estado !== "cerrada";
@@ -299,15 +299,25 @@ export default function SolicitudesContratistasClient() {
                   e.preventDefault();
                   void ejecutar(async () => {
                     await agregarRequisitoContratista({
-                      solicitudId: actual.id, nombre: extra.nombre, alcance: "faena",
+                      solicitudId: actual.id, nombre: extra.nombre, alcance: extra.alcance,
                       categoria: extra.categoria as "empresa" | "trabajador" | "vehiculo" | "equipo",
                       recursoId: extra.recursoId || undefined, obligatorio: extra.obligatorio,
                     });
-                    setExtra({ nombre: "", categoria: "empresa", recursoId: "", obligatorio: true });
+                    setExtra({ nombre: "", alcance: "faena", categoria: "empresa", recursoId: "", obligatorio: true });
                     setAgregando(false);
                   }, "Requisito agregado.");
                 }}>
+                  <label className="space-y-1"><Label>Elegir del catálogo</Label>
+                    <select className={CAMPO} value="" onChange={(e) => {
+                      const elegido = catalogo.find((doc) => doc.id === e.target.value);
+                      if (elegido) setExtra({ ...extra, nombre: elegido.nombre, alcance: elegido.alcance, categoria: elegido.categoria, recursoId: elegido.categoria === "empresa" ? "" : extra.recursoId });
+                    }}>
+                      <option value="">Documento personalizado...</option>
+                      {catalogo.filter((c) => c.categoria === "empresa" || actual.recursos.some((r) => r.tipo === c.categoria)).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </label>
                   <label className="space-y-1"><Label>Documento *</Label><Input required value={extra.nombre} onChange={(e) => setExtra({ ...extra, nombre: e.target.value })}/></label>
+                  {extra.categoria === "empresa" && <label className="space-y-1"><Label>Ámbito</Label><select className={CAMPO} value={extra.alcance} onChange={(e) => setExtra({ ...extra, alcance: e.target.value as "empresa" | "faena" })}><option value="faena">Específico de esta faena</option><option value="empresa">Corporativo reutilizable</option></select></label>}
                   <label className="space-y-1"><Label>Categoría</Label><select className={CAMPO} value={extra.categoria} onChange={(e) => setExtra({ ...extra, categoria: e.target.value, recursoId: "" })}>{Object.entries(CATEGORIAS).map(([key,val]) => <option key={key} value={key}>{val}</option>)}</select></label>
                   {extra.categoria !== "empresa" && <label className="space-y-1"><Label>Recurso</Label><select className={CAMPO} required value={extra.recursoId} onChange={(e) => setExtra({ ...extra, recursoId: e.target.value })}><option value="">Selecciona un recurso</option>{actual.recursos.filter((r) => r.tipo === extra.categoria).map((r) => <option key={r.id} value={r.id}>{r.nombre} {r.patente || r.identificador || ""}</option>)}</select></label>}
                   <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={extra.obligatorio} onChange={(e) => setExtra({ ...extra, obligatorio: e.target.checked })}/>Obligatorio</label>
