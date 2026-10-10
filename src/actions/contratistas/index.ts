@@ -40,6 +40,9 @@ export type ContratistaDocumentoRow = {
   observaciones: string | null;
   archivoUrl: string | null;
   archivoNombre: string | null;
+  archivoOriginal: string | null;
+  version: number;
+  versiones: Array<{ id: string; version: number; subidoAt: string }>;
 };
 
 export type ContratistaRow = {
@@ -55,6 +58,8 @@ export type ContratistaRow = {
   proximoVencimiento: string | null;
   acreditacionesActivas: number;
   trabajadoresVinculados: number;
+  faenasActivas: number;
+  acreditaciones: Array<{ id: string; proyecto: string; estado: string }>;
   documentos: ContratistaDocumentoRow[];
 };
 
@@ -138,8 +143,9 @@ export async function crearContratistaDocumento(input: CrearContratistaDocumento
       nombre,
       tipo: input.tipo?.trim() || null,
       estado,
-      archivoUrl: input.archivoUrl?.trim() || null,
-      archivoNombre: input.archivoNombre?.trim() || null,
+      // Los archivos se cargan después usando la ruta privada con validación de tipo y tamaño.
+      archivoUrl: null,
+      archivoNombre: null,
       fechaEmision,
       fechaVencimiento,
       observaciones: input.observaciones?.trim() || null,
@@ -161,10 +167,12 @@ export async function actualizarEstadoContratistaDocumento(
     select: {
       id: true,
       fechaVencimiento: true,
+      archivoNombre: true,
     },
   });
 
   if (!doc) throw new Error("Documento de contratista no encontrado");
+  if (estado === "aprobado" && !doc.archivoNombre) throw new Error("Debes cargar un archivo antes de aprobarlo");
 
   const estadoFinal = normalizeEstadoDocumento(estado, doc.fechaVencimiento);
 
@@ -299,17 +307,21 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
           observaciones: true,
           archivoUrl: true,
           archivoNombre: true,
+          archivoOriginal: true,
+          version: true,
+          versiones: { orderBy: { version: "desc" }, select: { id: true, version: true, subidoAt: true } },
         },
         orderBy: { createdAt: "desc" },
       },
       trabajadores: { select: { id: true } },
+      solicitudes: { select: { id: true, estado: true } },
       acreditaciones: {
         where: {
           estado: {
             in: ["en_preparacion", "listo_para_enviar", "enviado", "observada", "aprobado"],
           },
         },
-        select: { id: true },
+        select: { id: true, nombreProyecto: true, obraFaena: true, estado: true },
       },
     },
   });
@@ -325,6 +337,9 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
       observaciones: d.observaciones,
       archivoUrl: d.archivoUrl,
       archivoNombre: d.archivoNombre,
+      archivoOriginal: d.archivoOriginal,
+      version: d.version,
+      versiones: d.versiones.map((v) => ({ ...v, subidoAt: v.subidoAt.toISOString() })),
     }));
 
     const vencidos = docs.filter((d) => d.estado === "vencido").length;
@@ -346,6 +361,8 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
       documentosVencidos: vencidos,
       proximoVencimiento: proximos[0] ? proximos[0].toISOString() : null,
       acreditacionesActivas: c.acreditaciones.length,
+      acreditaciones: c.acreditaciones.map((a) => ({ id: a.id, proyecto: a.nombreProyecto || a.obraFaena || "Sin obra", estado: a.estado })),
+      faenasActivas: c.solicitudes.filter((s) => s.estado !== "cerrada").length,
       trabajadoresVinculados: c.trabajadores.length,
       documentos: docs,
     };
