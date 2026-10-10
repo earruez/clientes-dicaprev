@@ -59,6 +59,7 @@ export type ContratistaRow = {
   acreditacionesActivas: number;
   trabajadoresVinculados: number;
   faenasActivas: number;
+  faenas: Array<{ id: string; nombre: string; faena: string | null; estado: string }>;
   acreditaciones: Array<{ id: string; proyecto: string; estado: string }>;
   documentos: ContratistaDocumentoRow[];
 };
@@ -314,7 +315,7 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
         orderBy: { createdAt: "desc" },
       },
       trabajadores: { select: { id: true } },
-      solicitudes: { select: { id: true, estado: true } },
+      solicitudes: { select: { id: true, nombre: true, faena: true, estado: true } },
       acreditaciones: {
         where: {
           estado: {
@@ -363,6 +364,7 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
       acreditacionesActivas: c.acreditaciones.length,
       acreditaciones: c.acreditaciones.map((a) => ({ id: a.id, proyecto: a.nombreProyecto || a.obraFaena || "Sin obra", estado: a.estado })),
       faenasActivas: c.solicitudes.filter((s) => s.estado !== "cerrada").length,
+      faenas: c.solicitudes.map((s) => ({ id: s.id, nombre: s.nombre, faena: s.faena, estado: s.estado })),
       trabajadoresVinculados: c.trabajadores.length,
       documentos: docs,
     };
