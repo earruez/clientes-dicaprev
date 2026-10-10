@@ -318,7 +318,6 @@ model Empresa {
   ds44MiperItems             Ds44MiperItem[]
   ds44MiperControles         Ds44MiperControl[]
   ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
-  solicitudesContratistas    ContratistaSolicitud[] @relation("ContratistaCentroTrabajo")
   ds44MiperTareas            Ds44MiperTarea[]
   ds44MiperExposiciones      Ds44MiperExposicionRespuesta[]
   // Permisos
@@ -915,6 +914,7 @@ model CentroTrabajo {
   plantillaItemsCapacitacion PlantillaPlanCapacitacionItem[]
   ds44MiperItems             Ds44MiperItem[]
   ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
+  solicitudesContratistas    ContratistaSolicitud[] @relation("ContratistaCentroTrabajo")
 
   @@index([empresaId])
 }
