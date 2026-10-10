@@ -914,6 +914,7 @@ model CentroTrabajo {
   plantillaItemsCapacitacion PlantillaPlanCapacitacionItem[]
   ds44MiperItems             Ds44MiperItem[]
   ds44MiperAsistenteCargos   Ds44MiperAsistenteCargo[]
+  solicitudesContratistas    ContratistaSolicitud[] @relation("ContratistaCentroTrabajo")
 
   @@index([empresaId])
 }
@@ -1763,6 +1764,7 @@ model Contratista {
   empresa       Empresa                 @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   documentos    ContratistaDocumento[]
   trabajadores  ContratistaTrabajador[]
+  recursosBase  ContratistaRecursoBase[]
   acreditaciones Acreditacion[]
   solicitudes ContratistaSolicitud[]
 
@@ -1780,6 +1782,10 @@ model ContratistaDocumento {
   estado        EstadoContratistaDocumento @default(pendiente)
   archivoUrl    String?
   archivoNombre String?
+  archivoOriginal String?
+  archivoTipo String?
+  archivoPeso Int?
+  version Int @default(0)
   fechaEmision  DateTime?
   fechaVencimiento DateTime?
   observaciones String?
@@ -1791,11 +1797,31 @@ model ContratistaDocumento {
   contratista Contratista @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
   empresa     Empresa     @relation(fields: [empresaId], references: [id], onDelete: Cascade)
   revisadoPor Usuario?    @relation("UsuarioContratistaDocumentoRevisado", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  requisitos ContratistaRequisito[] @relation("RequisitoDocumentoBase")
+  versiones ContratistaDocumentoBaseVersion[]
 
   @@index([contratistaId])
   @@index([empresaId])
   @@index([estado])
   @@index([fechaVencimiento])
+}
+
+model ContratistaDocumentoBaseVersion {
+  id               String @id @default(cuid())
+  documentoId      String
+  version          Int
+  archivoNombre    String
+  archivoOriginal  String?
+  archivoTipo      String?
+  archivoPeso      Int?
+  fechaEmision     DateTime?
+  fechaVencimiento DateTime?
+  subidoAt         DateTime @default(now())
+
+  documento ContratistaDocumento @relation(fields: [documentoId], references: [id], onDelete: Cascade)
+
+  @@unique([documentoId, version])
+  @@index([documentoId])
 }
 
 model ContratistaTrabajador {
@@ -2631,6 +2657,7 @@ model ContratistaSolicitud {
   contratistaId      String
   nombre             String
   faena              String?
+  centroTrabajoId    String?
   servicio           String?
   contactoEmail      String
   responsable        String?
@@ -2645,17 +2672,41 @@ model ContratistaSolicitud {
   updatedAt          DateTime  @updatedAt
 
   contratista        Contratista            @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
+  centroTrabajo      CentroTrabajo?         @relation("ContratistaCentroTrabajo", fields: [centroTrabajoId], references: [id], onDelete: SetNull)
   recursos           ContratistaRecurso[]
   requisitos         ContratistaRequisito[]
 
   @@index([empresaId, estado])
   @@index([contratistaId])
+  @@index([centroTrabajoId])
+}
+
+/** Identidad de personas, vehículos y equipos reutilizables por el mismo contratista. */
+model ContratistaRecursoBase {
+  id            String   @id @default(cuid())
+  empresaId     String
+  contratistaId String
+  tipo          String
+  clave         String
+  nombre        String
+  identificador String?
+  patente       String?
+  cargo         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  contratista    Contratista         @relation(fields: [contratistaId], references: [id], onDelete: Cascade)
+  expedientes    ContratistaRecurso[]
+
+  @@unique([contratistaId, tipo, clave])
+  @@index([empresaId, contratistaId])
 }
 
 model ContratistaRecurso {
   id            String    @id @default(cuid())
   empresaId     String
   solicitudId   String
+  recursoBaseId String?
   tipo          String
   nombre        String
   identificador String?
@@ -2664,10 +2715,12 @@ model ContratistaRecurso {
   createdAt     DateTime  @default(now())
 
   solicitud     ContratistaSolicitud  @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  recursoBase   ContratistaRecursoBase? @relation(fields: [recursoBaseId], references: [id], onDelete: SetNull)
   requisitos    ContratistaRequisito[]
 
   @@index([solicitudId, tipo])
   @@index([empresaId])
+  @@index([recursoBaseId])
 }
 
 model ContratistaRequisito {
@@ -2677,6 +2730,8 @@ model ContratistaRequisito {
   recursoId          String?
   nombre             String
   categoria          String
+  alcance            String    @default("faena")
+  documentoBaseId    String?
   obligatorio        Boolean   @default(true)
   estado             String    @default("pendiente")
   archivoNombre      String?
@@ -2697,12 +2752,33 @@ model ContratistaRequisito {
 
   solicitud          ContratistaSolicitud       @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
   recurso            ContratistaRecurso?        @relation(fields: [recursoId], references: [id], onDelete: Cascade)
+  documentoBase      ContratistaDocumento?      @relation("RequisitoDocumentoBase", fields: [documentoBaseId], references: [id], onDelete: SetNull)
   versiones          ContratistaDocumentoVersion[]
 
   @@index([empresaId, estado])
   @@index([solicitudId, categoria])
+  @@index([documentoBaseId])
   @@index([recursoId])
   @@index([fechaVencimiento])
+}
+
+/** Requisitos personalizados por empresa mandante, reutilizables entre contratos. */
+model ContratistaCatalogoRequisito {
+  id                    String   @id @default(cuid())
+  empresaId             String
+  nombre                String
+  clave                 String
+  alcance               String   @default("faena") // empresa | faena
+  categoria             String   @default("empresa") // empresa | trabajador | vehiculo | equipo
+  grupo                 String   @default("Otros")
+  obligatorio           Boolean  @default(false)
+  requiereVencimiento   Boolean  @default(false)
+  activo                Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([empresaId, clave, alcance])
+  @@index([empresaId, activo])
 }
 
 model ContratistaDocumentoVersion {

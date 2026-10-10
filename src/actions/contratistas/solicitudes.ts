@@ -3,7 +3,8 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
-import { REQUISITOS_EMPRESA, estadoEfectivo } from "@/lib/contratistas/requisitos";
+import { estadoEfectivo } from "@/lib/contratistas/requisitos";
+import { CATALOGO_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { requirePermission } from "@/server/auth/permissions";
 
 const DIAS_ENLACE = 60;
@@ -26,10 +27,11 @@ export async function listarSolicitudesContratistas() {
     orderBy: { createdAt: "desc" },
     include: {
       contratista: { select: { nombre: true, rut: true, razonSocial: true } },
+      centroTrabajo: { select: { id: true, nombre: true } },
       recursos: { orderBy: { createdAt: "asc" } },
       requisitos: {
         orderBy: [{ categoria: "asc" }, { createdAt: "asc" }],
-        include: { recurso: { select: { nombre: true, identificador: true, patente: true } }, versiones: { orderBy: { version: "desc" }, select: { id: true, version: true, subidoAt: true, archivoNombre: true, archivoOriginal: true } } },
+        include: { documentoBase: { select: { id: true, nombre: true, estado: true } }, recurso: { select: { nombre: true, identificador: true, patente: true } }, versiones: { orderBy: { version: "desc" }, select: { id: true, version: true, subidoAt: true, archivoNombre: true, archivoOriginal: true } } },
       },
     },
   });
@@ -44,6 +46,7 @@ export async function crearSolicitudContratista(input: {
   contratistaId: string;
   nombre: string;
   faena?: string;
+  centroTrabajoId?: string;
   servicio?: string;
   contactoEmail: string;
   responsable?: string;
@@ -61,15 +64,29 @@ export async function crearSolicitudContratista(input: {
   if (!input.nombre?.trim()) throw new Error("Indica el nombre del contrato o servicio");
   const email = input.contactoEmail?.trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Correo de contacto inválido");
-  const selected = input.requisitos === undefined
-    ? REQUISITOS_EMPRESA.filter((r) => r.obligatorio)
-    : REQUISITOS_EMPRESA.filter((r) => input.requisitos?.includes(r.clave));
+  const personalizados = await prisma.contratistaCatalogoRequisito.findMany({ where: { empresaId, activo: true, categoria: "empresa" } });
+  const catalogo = [
+    ...CATALOGO_CONTRATISTAS.filter((r) => r.categoria === "empresa"),
+    ...personalizados.map((r) => ({
+      clave: r.clave, nombre: r.nombre, alcance: r.alcance,
+      categoria: "empresa" as const, grupo: r.grupo, obligatorio: r.obligatorio,
+      requiereVencimiento: r.requiereVencimiento,
+    })),
+  ];
+  const selected = catalogo.filter((r) => input.requisitos === undefined
+    ? r.alcance === "faena" && r.obligatorio
+    : input.requisitos.includes(r.clave));
+  const centro = input.centroTrabajoId
+    ? await prisma.centroTrabajo.findFirst({ where: { id: input.centroTrabajoId, empresaId }, select: { id: true, nombre: true } })
+    : null;
+  if (input.centroTrabajoId && !centro) throw new Error("Centro de trabajo no válido para esta empresa");
   const solicitud = await prisma.contratistaSolicitud.create({
     data: {
       empresaId,
       contratista: { connect: { id: contratista.id } },
       nombre: input.nombre.trim().slice(0, 180),
-      faena: input.faena?.trim().slice(0, 180) || null,
+      faena: input.faena?.trim().slice(0, 180) || centro?.nombre || null,
+      ...(centro ? { centroTrabajo: { connect: { id: centro.id } } } : {}),
       servicio: input.servicio?.trim().slice(0, 300) || null,
       contactoEmail: email,
       responsable: input.responsable?.trim().slice(0, 160) || null,
@@ -77,7 +94,7 @@ export async function crearSolicitudContratista(input: {
       fechaInicio: fecha(input.fechaInicio),
       fechaTermino: fecha(input.fechaTermino),
       requisitos: { create: selected.map((r) => ({
-        empresaId, nombre: r.nombre, categoria: r.categoria, obligatorio: r.obligatorio,
+        empresaId, nombre: r.nombre, categoria: r.categoria, alcance: r.alcance, obligatorio: r.obligatorio,
       })) },
     },
     select: { id: true },
@@ -89,6 +106,7 @@ export async function agregarRequisitoContratista(input: {
   solicitudId: string;
   nombre: string;
   categoria: "empresa" | "trabajador" | "vehiculo" | "equipo";
+  alcance?: "empresa" | "faena";
   recursoId?: string;
   obligatorio?: boolean;
 }) {
@@ -103,7 +121,7 @@ export async function agregarRequisitoContratista(input: {
     throw new Error("Selecciona un trabajador, vehículo o equipo para este requisito");
   }
   await prisma.contratistaRequisito.create({
-    data: { empresaId, solicitudId: solicitud.id, recursoId: input.recursoId || null, nombre: input.nombre.trim().slice(0, 220), categoria: input.categoria, obligatorio: input.obligatorio !== false },
+    data: { empresaId, solicitudId: solicitud.id, recursoId: input.recursoId || null, nombre: input.nombre.trim().slice(0, 220), categoria: input.categoria, alcance: input.categoria === "empresa" && input.alcance === "empresa" ? "empresa" : "faena", obligatorio: input.obligatorio !== false },
   });
   await recalcularEstado(solicitud.id, empresaId);
   return { ok: true };
@@ -171,20 +189,54 @@ export async function revisarRequisitoContratista(input: {
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
   const requisito = await prisma.contratistaRequisito.findFirst({
     where: { id: input.requisitoId, empresaId, solicitud: { estado: { not: "cerrada" } } },
-    include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true } } },
+    include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true, contratistaId: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
   if (requisito.estado !== "en_revision") throw new Error("El contratista aún no ha enviado este documento a revisión");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
-  await prisma.contratistaRequisito.update({
-    where: { id: requisito.id },
-    data: {
-      estado: input.estado,
-      observacionRevision: input.estado === "aprobado" ? null : input.observacion?.trim().slice(0, 1200),
-      revisadoPorId: usuarioId,
-      revisadoAt: new Date(),
-    },
+  // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
+  // maestra: no es necesario volver a subirlos para una obra futura.
+  await prisma.$transaction(async (tx) => {
+    let documentoBaseId = requisito.documentoBaseId;
+    if (input.estado === "aprobado" && requisito.alcance === "empresa" && !documentoBaseId) {
+      const where = { empresaId, contratistaId: requisito.solicitud.contratistaId };
+      const anterior = await tx.contratistaDocumento.findFirst({
+        where: { ...where, nombre: { equals: requisito.nombre, mode: "insensitive" } },
+        orderBy: { createdAt: "desc" },
+      });
+      const datos = {
+        archivoNombre: requisito.archivoNombre,
+        archivoOriginal: requisito.archivoOriginal,
+        archivoTipo: requisito.archivoTipo,
+        archivoPeso: requisito.archivoPeso,
+        fechaEmision: requisito.fechaEmision,
+        fechaVencimiento: requisito.fechaVencimiento,
+      };
+      const base = anterior ? await tx.contratistaDocumento.update({
+        where: { id: anterior.id },
+        data: { ...datos, archivoUrl: null, estado: "aprobado", version: { increment: 1 }, revisadoPorId: usuarioId, revisadoAt: new Date() },
+      }) : await tx.contratistaDocumento.create({
+        data: { ...where, nombre: requisito.nombre, ...datos, estado: "aprobado", version: 1, revisadoPorId: usuarioId, revisadoAt: new Date() },
+      });
+      await tx.contratistaDocumentoBaseVersion.create({
+        data: {
+          documentoId: base.id, version: base.version, archivoNombre: requisito.archivoNombre as string,
+          archivoOriginal: requisito.archivoOriginal, archivoTipo: requisito.archivoTipo, archivoPeso: requisito.archivoPeso,
+          fechaEmision: requisito.fechaEmision, fechaVencimiento: requisito.fechaVencimiento,
+        },
+      });
+      documentoBaseId = base.id;
+    }
+    await tx.contratistaRequisito.update({
+      where: { id: requisito.id },
+      data: {
+        estado: input.estado,
+        ...(documentoBaseId ? { documentoBaseId } : {}),
+        observacionRevision: input.estado === "aprobado" ? null : input.observacion?.trim().slice(0, 1200),
+        revisadoPorId: usuarioId, revisadoAt: new Date(),
+      },
+    });
   });
   await recalcularEstado(requisito.solicitudId, empresaId);
   if (input.estado === "aprobado" && requisito.solicitud.estado !== "aprobada") {

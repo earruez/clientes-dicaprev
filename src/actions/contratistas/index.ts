@@ -40,6 +40,9 @@ export type ContratistaDocumentoRow = {
   observaciones: string | null;
   archivoUrl: string | null;
   archivoNombre: string | null;
+  archivoOriginal: string | null;
+  version: number;
+  versiones: Array<{ id: string; version: number; subidoAt: string }>;
 };
 
 export type ContratistaRow = {
@@ -55,6 +58,9 @@ export type ContratistaRow = {
   proximoVencimiento: string | null;
   acreditacionesActivas: number;
   trabajadoresVinculados: number;
+  faenasActivas: number;
+  faenas: Array<{ id: string; nombre: string; faena: string | null; estado: string }>;
+  acreditaciones: Array<{ id: string; proyecto: string; estado: string }>;
   documentos: ContratistaDocumentoRow[];
 };
 
@@ -74,7 +80,8 @@ function normalizeEstadoDocumento(
   fechaVencimiento: Date | null,
 ): EstadoContratistaDocumentoInput {
   if (!fechaVencimiento) return estado;
-  if (fechaVencimiento.getTime() < Date.now() && estado !== "rechazado") return "vencido";
+  const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  if (fechaVencimiento.toISOString().slice(0, 10) < hoy && estado !== "rechazado") return "vencido";
   return estado;
 }
 
@@ -138,8 +145,9 @@ export async function crearContratistaDocumento(input: CrearContratistaDocumento
       nombre,
       tipo: input.tipo?.trim() || null,
       estado,
-      archivoUrl: input.archivoUrl?.trim() || null,
-      archivoNombre: input.archivoNombre?.trim() || null,
+      // Los archivos se cargan después usando la ruta privada con validación de tipo y tamaño.
+      archivoUrl: null,
+      archivoNombre: null,
       fechaEmision,
       fechaVencimiento,
       observaciones: input.observaciones?.trim() || null,
@@ -161,10 +169,12 @@ export async function actualizarEstadoContratistaDocumento(
     select: {
       id: true,
       fechaVencimiento: true,
+      archivoNombre: true,
     },
   });
 
   if (!doc) throw new Error("Documento de contratista no encontrado");
+  if (estado === "aprobado" && !doc.archivoNombre) throw new Error("Debes cargar un archivo antes de aprobarlo");
 
   const estadoFinal = normalizeEstadoDocumento(estado, doc.fechaVencimiento);
 
@@ -299,17 +309,21 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
           observaciones: true,
           archivoUrl: true,
           archivoNombre: true,
+          archivoOriginal: true,
+          version: true,
+          versiones: { orderBy: { version: "desc" }, select: { id: true, version: true, subidoAt: true } },
         },
         orderBy: { createdAt: "desc" },
       },
       trabajadores: { select: { id: true } },
+      solicitudes: { select: { id: true, nombre: true, faena: true, estado: true } },
       acreditaciones: {
         where: {
           estado: {
             in: ["en_preparacion", "listo_para_enviar", "enviado", "observada", "aprobado"],
           },
         },
-        select: { id: true },
+        select: { id: true, nombreProyecto: true, obraFaena: true, estado: true },
       },
     },
   });
@@ -325,6 +339,9 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
       observaciones: d.observaciones,
       archivoUrl: d.archivoUrl,
       archivoNombre: d.archivoNombre,
+      archivoOriginal: d.archivoOriginal,
+      version: d.version,
+      versiones: d.versiones.map((v) => ({ ...v, subidoAt: v.subidoAt.toISOString() })),
     }));
 
     const vencidos = docs.filter((d) => d.estado === "vencido").length;
@@ -346,6 +363,9 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
       documentosVencidos: vencidos,
       proximoVencimiento: proximos[0] ? proximos[0].toISOString() : null,
       acreditacionesActivas: c.acreditaciones.length,
+      acreditaciones: c.acreditaciones.map((a) => ({ id: a.id, proyecto: a.nombreProyecto || a.obraFaena || "Sin obra", estado: a.estado })),
+      faenasActivas: c.solicitudes.filter((s) => s.estado !== "cerrada").length,
+      faenas: c.solicitudes.map((s) => ({ id: s.id, nombre: s.nombre, faena: s.faena, estado: s.estado })),
       trabajadoresVinculados: c.trabajadores.length,
       documentos: docs,
     };

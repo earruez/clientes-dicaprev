@@ -5,7 +5,7 @@ import { AlertCircle, ArrowRight, ArrowUpRight, Building2, CarFront, Check, Chec
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { agregarRecursoPortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
+import { agregarRecursoPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 
 type DatosPortal = NonNullable<Awaited<ReturnType<typeof obtenerPortalContratista>>>;
@@ -49,6 +49,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   const [error, setError] = useState("");
   const [exito, setExito] = useState("");
   const [formVisible, setFormVisible] = useState(false);
+  const [recursoExistenteId, setRecursoExistenteId] = useState("");
   const [recurso, setRecurso] = useState({ tipo: "trabajador" as "trabajador" | "vehiculo" | "equipo", nombre: "", identificador: "", cargo: "", patente: "" });
 
   const aprobados = useMemo(() => portal.requisitos.filter((r) => r.obligatorio && r.estadoEfectivo === "aprobado").length, [portal.requisitos]);
@@ -337,6 +338,20 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
             <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Etapa 02 · Recursos</p><h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">Personal, vehículos y equipos</h2><p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">Añade los recursos que participarán del contrato. Se habilitarán automáticamente sus documentos requeridos.</p></div>
             <Button type="button" onClick={() => setFormVisible((v) => !v)} className={botonPrincipal}><Plus className="mr-2 h-4 w-4"/>Agregar recurso</Button>
           </div>
+          {portal.recursosBase.filter((r) => !portal.recursos.some((actual) => actual.recursoBaseId === r.id)).length > 0 && <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 sm:p-5">
+            <div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-700"/><h3 className="text-sm font-bold text-slate-900">Reutiliza tus recursos registrados</h3></div>
+            <p className="mt-1 text-xs text-slate-600">Los trabajadores, vehículos y equipos de otras obras se pueden asociar aquí sin volver a ingresarlos. Sus documentos se revisarán para este nuevo contrato.</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <select aria-label="Seleccionar recurso existente" className={textoInput + " min-w-0 flex-1"} value={recursoExistenteId} onChange={(e) => setRecursoExistenteId(e.target.value)}>
+                <option value="">Selecciona un recurso existente...</option>
+                {portal.recursosBase.filter((r) => !portal.recursos.some((actual) => actual.recursoBaseId === r.id)).map((r) => <option key={r.id} value={r.id}>{r.nombre} · {r.tipo} {r.patente || r.identificador || ""}</option>)}
+              </select>
+              <Button disabled={!!enProceso || !recursoExistenteId} type="button" className={botonPrincipal} onClick={() => void ejecutar("base", async () => {
+                await incorporarRecursoBasePortal(token, recursoExistenteId);
+                setRecursoExistenteId("");
+              }, "Recurso existente agregado a esta obra; requisitos listos para completar.")}><Plus className="mr-2 h-4 w-4"/>Incorporar a obra</Button>
+            </div>
+          </div>}
           {formVisible && <form className="mt-6 grid gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-4 sm:grid-cols-2 sm:p-5" onSubmit={(e) => {
             e.preventDefault(); void ejecutar("recurso", async () => {
               const grupo = recurso.tipo;

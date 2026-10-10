@@ -41,7 +41,7 @@ export async function POST(request: Request, { params }: Context) {
       const nuevo = await tx.contratistaRequisito.updateMany({
         where: { id: requisito.id, version: requisito.version },
         data: {
-          ...file, version: { increment: 1 }, estado: "pendiente",
+          ...file, documentoBaseId: null, version: { increment: 1 }, estado: "pendiente",
           observacionRevision: null, revisadoAt: null, revisadoPorId: null,
           fechaEmision: emision, fechaVencimiento: vencimiento,
           aviso30At: null, aviso15At: null, aviso5At: null,
