@@ -294,7 +294,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
       )}
 
       {estadoActual === "APROBADO" && (
-        <div className="bg-white rounded-lg border border-slate-200 p-6">
+        <div id="permiso-aprobado" className="scroll-mt-24 bg-white rounded-lg border border-slate-200 p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Permiso aprobado</h2>
