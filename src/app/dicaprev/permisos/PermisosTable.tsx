@@ -285,10 +285,18 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                         </span>
                       </td>
                       <td className="px-6 py-3 text-sm">
-                        {permiso.nivelRiesgo === "EN_RIESGO" && "🔴"}
-                        {permiso.nivelRiesgo === "ATENCION" && "🟡"}
-                        {permiso.nivelRiesgo === "EN_PLAZO" && "🟢"}
-                        {permiso.nivelRiesgo === "SIN_DATOS" && "⚪"}
+                        {["APROBADO", "CANCELADO"].includes(permiso.estado) ? (
+                          <span className="text-slate-400" title="El riesgo ya no aplica porque el permiso está finalizado">
+                            —
+                          </span>
+                        ) : (
+                          <>
+                            {permiso.nivelRiesgo === "EN_RIESGO" && "🔴"}
+                            {permiso.nivelRiesgo === "ATENCION" && "🟡"}
+                            {permiso.nivelRiesgo === "EN_PLAZO" && "🟢"}
+                            {permiso.nivelRiesgo === "SIN_DATOS" && "⚪"}
+                          </>
+                        )}
                       </td>
                       <td className="px-6 py-3 text-sm text-slate-900">{permiso.cliente?.nombre || "—"}</td>
                       <td className="px-6 py-3 text-sm max-w-[220px]">
