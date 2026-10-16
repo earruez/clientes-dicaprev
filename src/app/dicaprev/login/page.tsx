@@ -82,10 +82,10 @@ export default function LoginPage() {
 
           <div className="space-y-4">
             <h1 className="text-5xl font-black leading-tight text-white">
-              Control total.
+              Gestión preventiva
               <br />
               <span className="bg-gradient-to-r from-emerald-400 to-blue-400 bg-clip-text text-transparent">
-                Riesgo cero.
+                inteligente.
               </span>
             </h1>
             <p className="max-w-sm text-base leading-relaxed text-slate-400">
