@@ -22,6 +22,7 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
     historialTrabajador,
     documentoAcreditacion,
     evidenciaCumplimiento,
+    permisoAprobado,
   ] = await Promise.all([
       prisma.documentoGeneradoRegistro.findFirst({
         where: { empresaId, archivoNombre },
@@ -51,6 +52,10 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
         where: { empresaId, archivoNombre },
         select: { id: true },
       }),
+      prisma.permisoInstalacion.findFirst({
+        where: { empresaId, permisoAprobadoArchivoNombre: archivoNombre },
+        select: { id: true },
+      }),
     ]);
 
   return Boolean(
@@ -60,7 +65,8 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
       documentoTrabajador ||
       historialTrabajador ||
       documentoAcreditacion ||
-      evidenciaCumplimiento,
+      evidenciaCumplimiento ||
+      permisoAprobado,
   );
 }
 

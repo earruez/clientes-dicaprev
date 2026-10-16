@@ -3,7 +3,7 @@
 import { useMemo, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, FileCheck2, Upload, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { PermisoCliente, PermisoInstalacion, PermisoOrganismo, PermisoResponsable } from "@prisma/client";
@@ -285,10 +285,18 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                         </span>
                       </td>
                       <td className="px-6 py-3 text-sm">
-                        {permiso.nivelRiesgo === "EN_RIESGO" && "🔴"}
-                        {permiso.nivelRiesgo === "ATENCION" && "🟡"}
-                        {permiso.nivelRiesgo === "EN_PLAZO" && "🟢"}
-                        {permiso.nivelRiesgo === "SIN_DATOS" && "⚪"}
+                        {["APROBADO", "CANCELADO"].includes(permiso.estado) ? (
+                          <span className="text-slate-400" title="El riesgo ya no aplica porque el permiso está finalizado">
+                            —
+                          </span>
+                        ) : (
+                          <>
+                            {permiso.nivelRiesgo === "EN_RIESGO" && "🔴"}
+                            {permiso.nivelRiesgo === "ATENCION" && "🟡"}
+                            {permiso.nivelRiesgo === "EN_PLAZO" && "🟢"}
+                            {permiso.nivelRiesgo === "SIN_DATOS" && "⚪"}
+                          </>
+                        )}
                       </td>
                       <td className="px-6 py-3 text-sm text-slate-900">{permiso.cliente?.nombre || "—"}</td>
                       <td className="px-6 py-3 text-sm max-w-[220px]">
@@ -307,7 +315,26 @@ export function PermisosTable({ permisos }: PermisosTableProps) {
                       <td className="px-6 py-3 text-sm" onClick={(event) => event.stopPropagation()}>
                         <div className="flex flex-wrap items-center gap-2">
                           {permiso.estado === "APROBADO" ? (
-                            <span className="text-xs text-slate-400">Estado final</span>
+                            <Link
+                              href={`/dicaprev/permisos/${permiso.id}#permiso-aprobado`}
+                              className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold transition-colors ${
+                                permiso.permisoAprobadoArchivoNombre
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                  : "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                              }`}
+                            >
+                              {permiso.permisoAprobadoArchivoNombre ? (
+                                <>
+                                  <FileCheck2 className="h-4 w-4" />
+                                  Ver permiso aprobado
+                                </>
+                              ) : (
+                                <>
+                                  <Upload className="h-4 w-4" />
+                                  Adjuntar permiso aprobado
+                                </>
+                              )}
+                            </Link>
                           ) : (
                             <Button
                               type="button"

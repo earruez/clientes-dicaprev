@@ -4,10 +4,19 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileText, Upload } from "lucide-react";
 import type { PermisoInstalacion, PermisoOrganismo, PermisoResponsable, PermisoCliente, PermisoHistorial } from "@prisma/client";
-import { actualizarFechaPresentacion, cambiarEstadoPermiso } from "../actions/permisos";
+import { actualizarFechaPresentacion, cambiarEstadoPermiso, guardarPermisoAprobado } from "../actions/permisos";
 import { ESTADO_COLORS, PERMISO_ESTADOS, ESTADOS_REQUIEREN_COMENTARIO, PermisoEstado } from "../types";
+import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE } from "@/lib/documentacion/archivo-documento";
+
+type ArchivoSubido = {
+  archivoNombre: string;
+  archivoNombreOriginal: string;
+  archivoUrl: string;
+  archivoTipo: string | null;
+  archivoPeso: number;
+};
 
 interface PermisoDetailProps {
   permiso: PermisoInstalacion & {
@@ -33,6 +42,12 @@ function formatearFechaHora(value: Date | string): string {
   return `${dd}-${mm}-${date.getFullYear()} ${hh}:${min}`;
 }
 
+function formatearPesoArchivo(bytes: number | null): string {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) {
   const router = useRouter();
 
@@ -46,6 +61,11 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
   const [comentario, setComentario] = useState("");
   const [savingEstado, setSavingEstado] = useState(false);
   const [estadoError, setEstadoError] = useState<string | null>(null);
+
+  const [archivoAprobado, setArchivoAprobado] = useState<File | null>(null);
+  const [savingArchivo, setSavingArchivo] = useState(false);
+  const [archivoError, setArchivoError] = useState<string | null>(null);
+  const [archivoMensaje, setArchivoMensaje] = useState<string | null>(null);
 
   const requiereComentario = ESTADOS_REQUIEREN_COMENTARIO.includes(nuevoEstado as (typeof ESTADOS_REQUIEREN_COMENTARIO)[number]);
 
@@ -84,6 +104,51 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
     }
   };
 
+  const handleAdjuntarPermisoAprobado = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setArchivoError(null);
+    setArchivoMensaje(null);
+
+    if (!archivoAprobado) {
+      setArchivoError("Selecciona el permiso aprobado que deseas adjuntar.");
+      return;
+    }
+    if (archivoAprobado.size > MAX_DOCUMENTO_FILE_SIZE) {
+      setArchivoError("El archivo supera el máximo permitido de 10 MB.");
+      return;
+    }
+
+    setSavingArchivo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", archivoAprobado);
+      const response = await fetch("/api/dicaprev/documentacion/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as ArchivoSubido | { error?: string };
+      if (!response.ok) {
+        throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el archivo.");
+      }
+
+      const subido = payload as ArchivoSubido;
+      await guardarPermisoAprobado(permiso.id, {
+        archivoNombre: subido.archivoNombre,
+        archivoNombreOriginal: subido.archivoNombreOriginal,
+        archivoTipo: subido.archivoTipo,
+        archivoPeso: subido.archivoPeso,
+      });
+
+      setArchivoAprobado(null);
+      setArchivoMensaje(permiso.permisoAprobadoArchivoNombre ? "Permiso aprobado reemplazado correctamente." : "Permiso aprobado adjuntado correctamente.");
+      router.refresh();
+    } catch (err) {
+      setArchivoError(err instanceof Error ? err.message : "No se pudo adjuntar el permiso aprobado.");
+    } finally {
+      setSavingArchivo(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -107,7 +172,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Datos generales */}
         <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-3">
           <h2 className="text-lg font-semibold text-slate-900 mb-2">Datos del permiso</h2>
@@ -222,6 +287,85 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             <div className="flex justify-end">
               <Button type="submit" disabled={savingEstado}>
                 {savingEstado ? "Actualizando..." : "Actualizar estado"}
+              </Button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {estadoActual === "APROBADO" && (
+        <div id="permiso-aprobado" className="scroll-mt-24 bg-white rounded-lg border border-slate-200 p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Permiso aprobado</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Adjunta el documento final emitido por la municipalidad. Quedará asociado a este permiso y protegido por empresa.
+              </p>
+            </div>
+            {permiso.permisoAprobadoArchivoNombre && (
+              <span className="inline-flex self-start rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">
+                Documento adjunto
+              </span>
+            )}
+          </div>
+
+          {permiso.permisoAprobadoArchivoNombre && permiso.permisoAprobadoArchivoUrl && (
+            <div className="mt-4 flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <FileText className="h-5 w-5 shrink-0 text-slate-500" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    {permiso.permisoAprobadoArchivoNombreOriginal || "Permiso aprobado"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {formatearPesoArchivo(permiso.permisoAprobadoArchivoPeso)}
+                    {permiso.permisoAprobadoAdjuntadoAt
+                      ? ` · Adjuntado ${formatearFechaHora(permiso.permisoAprobadoAdjuntadoAt)}`
+                      : ""}
+                  </p>
+                </div>
+              </div>
+              <a
+                href={permiso.permisoAprobadoArchivoUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Ver archivo
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </div>
+          )}
+
+          <form onSubmit={handleAdjuntarPermisoAprobado} className="mt-4 space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700">
+                {permiso.permisoAprobadoArchivoNombre ? "Reemplazar permiso aprobado" : "Adjuntar permiso aprobado"}
+              </label>
+              <input
+                type="file"
+                accept={DOCUMENTO_ACCEPT}
+                onChange={(e) => {
+                  setArchivoAprobado(e.target.files?.[0] || null);
+                  setArchivoError(null);
+                  setArchivoMensaje(null);
+                }}
+                className="mt-1 block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                {DOCUMENTO_TIPOS_LABEL}. Máximo 10 MB.
+              </p>
+            </div>
+            {archivoError && <p className="text-sm text-red-600">{archivoError}</p>}
+            {archivoMensaje && <p className="text-sm text-emerald-700">{archivoMensaje}</p>}
+            <div className="flex justify-end">
+              <Button type="submit" disabled={savingArchivo || !archivoAprobado} className="gap-2">
+                <Upload className="h-4 w-4" />
+                {savingArchivo
+                  ? "Guardando..."
+                  : permiso.permisoAprobadoArchivoNombre
+                    ? "Reemplazar archivo"
+                    : "Adjuntar permiso aprobado"}
               </Button>
             </div>
           </form>

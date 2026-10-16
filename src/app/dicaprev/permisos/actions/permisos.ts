@@ -13,6 +13,7 @@ import {
 import { calcularFechaEstimadaResolucion, calcularNivelRiesgo } from "../utils/calculos";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarAsuntoEmailPermiso, generarEmailPermiso } from "../utils/email-templates";
+import { construirArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 
 type DestinatarioNotificacion = { email: string };
 
@@ -367,6 +368,62 @@ export async function cambiarEstadoPermiso(permisoId: string, nuevoEstado: strin
       generarEmailPermiso(permisoActualizado, permiso.responsable, "CAMBIO_ESTADO", { estadoAnterior, comentario, tokenRespuestaObservacion }),
     );
   }
+  return permisoActualizado;
+}
+
+type PermisoAprobadoArchivoInput = {
+  archivoNombre: string;
+  archivoNombreOriginal: string;
+  archivoTipo: string | null;
+  archivoPeso: number;
+};
+
+export async function guardarPermisoAprobado(permisoId: string, archivo: PermisoAprobadoArchivoInput) {
+  const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId },
+    select: { id: true, estado: true, permisoAprobadoArchivoNombre: true },
+  });
+
+  if (!permiso) throw new Error("Permiso no encontrado");
+  if (permiso.estado !== "APROBADO") {
+    throw new Error("El permiso aprobado solo se puede adjuntar una vez finalizado el proceso.");
+  }
+
+  const archivoNombre = archivo.archivoNombre.trim();
+  const archivoNombreOriginal = archivo.archivoNombreOriginal.trim();
+  if (!/^[a-f0-9-]{36}\.(pdf|doc|docx|xlsx|jpg|jpeg|png)$/i.test(archivoNombre)) {
+    throw new Error("El archivo adjunto no es válido.");
+  }
+  if (!archivoNombreOriginal) throw new Error("El archivo debe tener un nombre válido.");
+  if (!Number.isInteger(archivo.archivoPeso) || archivo.archivoPeso <= 0 || archivo.archivoPeso > 10 * 1024 * 1024) {
+    throw new Error("El archivo adjunto supera el tamaño permitido o no es válido.");
+  }
+
+  const reemplazaArchivo = Boolean(permiso.permisoAprobadoArchivoNombre);
+  const permisoActualizado = await prisma.permisoInstalacion.update({
+    where: { id: permiso.id },
+    data: {
+      permisoAprobadoArchivoNombre: archivoNombre,
+      permisoAprobadoArchivoNombreOriginal: archivoNombreOriginal,
+      permisoAprobadoArchivoUrl: construirArchivoSeguroUrl(archivoNombre),
+      permisoAprobadoArchivoTipo: archivo.archivoTipo || null,
+      permisoAprobadoArchivoPeso: archivo.archivoPeso,
+      permisoAprobadoAdjuntadoAt: new Date(),
+      updatedAt: new Date(),
+    },
+  });
+
+  await prisma.permisoHistorial.create({
+    data: {
+      permisoId: permiso.id,
+      estadoAnterior: permiso.estado,
+      estadoNuevo: permiso.estado,
+      comentario: `${reemplazaArchivo ? "Permiso aprobado reemplazado" : "Permiso aprobado adjuntado"}: ${archivoNombreOriginal}`,
+      usuarioId,
+    },
+  });
+
   return permisoActualizado;
 }
 
