@@ -2574,6 +2574,15 @@ model PermisoInstalacion {
   
   // Datos
   observaciones             String?
+
+  // Documento final del permiso aprobado
+  permisoAprobadoArchivoNombre         String?
+  permisoAprobadoArchivoNombreOriginal String?
+  permisoAprobadoArchivoUrl            String?
+  permisoAprobadoArchivoTipo           String?
+  permisoAprobadoArchivoPeso           Int?
+  permisoAprobadoAdjuntadoAt           DateTime?
+
   createdBy                 String
   createdAt                 DateTime @default(now())
   updatedAt                 DateTime @updatedAt
