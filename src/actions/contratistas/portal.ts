@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
 import { REQUISITOS_RECURSO, estadoEfectivo, type CategoriaContratista } from "@/lib/contratistas/requisitos";
+import { formatRutChile } from "@/lib/rut";
 
 function valido(input: string) {
   return input.trim().slice(0, 160);
