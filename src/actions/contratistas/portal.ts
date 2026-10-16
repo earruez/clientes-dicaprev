@@ -37,11 +37,13 @@ export async function guardarDatosEmpresaPortal(token: string, input: {
     where: { id: s.contratistaId },
     data: {
       razonSocial: input.razonSocial.trim().slice(0, 180),
-      rut: input.rut.trim().slice(0, 18),
+      rut: formatRutChile(input.rut).slice(0, 18),
       giro: valido(input.giro || "") || null,
       direccion: input.direccion?.trim().slice(0, 200) || null,
       representanteLegal: valido(input.representanteLegal || "") || null,
-      rutRepresentante: valido(input.rutRepresentante || "") || null,
+      rutRepresentante: input.rutRepresentante
+        ? formatRutChile(input.rutRepresentante)
+        : null,
       telefono: valido(input.telefono || "") || null,
     },
   });
@@ -60,7 +62,11 @@ export async function agregarRecursoPortal(token: string, input: {
   if (!(input.tipo in REQUISITOS_RECURSO)) throw new Error("Tipo de recurso inválido");
   const nombre = valido(input.nombre || "");
   if (!nombre) throw new Error("Indica el nombre del trabajador, vehículo o equipo");
-  const identificador = valido(input.identificador || "");
+  const identificadorBase = valido(input.identificador || "");
+  const identificador =
+    input.tipo === "trabajador" && identificadorBase
+      ? formatRutChile(identificadorBase)
+      : identificadorBase;
   const patente = valido(input.patente || "");
   if (input.tipo === "trabajador" && !identificador) throw new Error("Indica el RUT del trabajador");
   if (input.tipo === "vehiculo" && !patente) throw new Error("Indica la patente del vehículo");
