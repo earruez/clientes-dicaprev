@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { agregarRecursoPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
+import { formatRutChile } from "@/lib/rut";
 
 type DatosPortal = NonNullable<Awaited<ReturnType<typeof obtenerPortalContratista>>>;
 type RequisitoPortal = DatosPortal["requisitos"][number];
@@ -36,11 +37,11 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   const [expandido, setExpandido] = useState<string | null>(null);
   const [empresaDatos, setEmpresaDatos] = useState({
     razonSocial: inicial.contratista.razonSocial || "",
-    rut: inicial.contratista.rut || "",
+    rut: formatRutChile(inicial.contratista.rut || ""),
     giro: inicial.contratista.giro || "",
     direccion: inicial.contratista.direccion || "",
     representanteLegal: inicial.contratista.representanteLegal || "",
-    rutRepresentante: inicial.contratista.rutRepresentante || "",
+    rutRepresentante: formatRutChile(inicial.contratista.rutRepresentante || ""),
     telefono: inicial.contratista.telefono || "",
   });
   const [archivo, setArchivo] = useState<Record<string, File | null>>({});
@@ -323,7 +324,22 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
                 { key: "telefono", label: "Teléfono de contacto", placeholder: "+56 9 1234 5678", required: false },
               ].map((campo) => {
                 const key = campo.key as keyof typeof empresaDatos;
-                return <label key={key} className="block min-w-0 space-y-2"><Label className="text-xs font-bold text-slate-700">{campo.label}</Label><Input required={campo.required} type={key === "telefono" ? "tel" : "text"} placeholder={campo.placeholder} className={textoInput} value={empresaDatos[key]} onChange={(e) => setEmpresaDatos((prev) => ({ ...prev, [key]: e.target.value }))}/></label>;
+                return <label key={key} className="block min-w-0 space-y-2"><Label className="text-xs font-bold text-slate-700">{campo.label}</Label><Input
+                  required={campo.required}
+                  type={key === "telefono" ? "tel" : "text"}
+                  inputMode={key === "rut" || key === "rutRepresentante" ? "text" : undefined}
+                  autoCapitalize={key === "rut" || key === "rutRepresentante" ? "characters" : undefined}
+                  placeholder={campo.placeholder}
+                  className={textoInput}
+                  value={empresaDatos[key]}
+                  onChange={(e) => {
+                    const value =
+                      key === "rut" || key === "rutRepresentante"
+                        ? formatRutChile(e.target.value)
+                        : e.target.value;
+                    setEmpresaDatos((prev) => ({ ...prev, [key]: value }));
+                  }}
+                /></label>;
               })}
             </div>
             <div className="mt-7 flex flex-col gap-4 rounded-2xl bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
@@ -363,7 +379,17 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
           }}>
             <label className="space-y-2"><Label className="text-xs font-semibold">Tipo de recurso</Label><select className={textoInput} value={recurso.tipo} onChange={(e) => setRecurso({ ...recurso, tipo: e.target.value as typeof recurso.tipo })}><option value="trabajador">Trabajador</option><option value="vehiculo">Vehículo</option><option value="equipo">Equipo / maquinaria</option></select></label>
             <label className="space-y-2"><Label className="text-xs font-semibold">Nombre o descripción *</Label><Input required className={textoInput} value={recurso.nombre} placeholder="Nombre y apellidos o identificación" onChange={(e) => setRecurso({ ...recurso, nombre: e.target.value })}/></label>
-            {recurso.tipo === "trabajador" && <><label className="space-y-2"><Label className="text-xs font-semibold">RUT *</Label><Input required className={textoInput} value={recurso.identificador} onChange={(e) => setRecurso({ ...recurso, identificador: e.target.value })}/></label><label className="space-y-2"><Label className="text-xs font-semibold">Cargo</Label><Input className={textoInput} value={recurso.cargo} onChange={(e) => setRecurso({ ...recurso, cargo: e.target.value })}/></label></>}
+            {recurso.tipo === "trabajador" && <><label className="space-y-2"><Label className="text-xs font-semibold">RUT *</Label><Input
+                  required
+                  className={textoInput}
+                  placeholder="12.345.678-9"
+                  inputMode="text"
+                  autoCapitalize="characters"
+                  value={recurso.identificador}
+                  onChange={(e) =>
+                    setRecurso({ ...recurso, identificador: formatRutChile(e.target.value) })
+                  }
+                /></label><label className="space-y-2"><Label className="text-xs font-semibold">Cargo</Label><Input className={textoInput} value={recurso.cargo} onChange={(e) => setRecurso({ ...recurso, cargo: e.target.value })}/></label></>}
             {recurso.tipo === "vehiculo" && <label className="space-y-2"><Label className="text-xs font-semibold">Patente *</Label><Input required className={textoInput} value={recurso.patente} onChange={(e) => setRecurso({ ...recurso, patente: e.target.value })}/></label>}
             {recurso.tipo === "equipo" && <label className="space-y-2"><Label className="text-xs font-semibold">N° serie o identificación</Label><Input className={textoInput} value={recurso.identificador} onChange={(e) => setRecurso({ ...recurso, identificador: e.target.value })}/></label>}
             <div className="flex flex-wrap items-end gap-2 sm:col-span-2"><Button type="submit" disabled={!!enProceso} className={botonPrincipal}>{enProceso === "recurso" ? "Guardando…" : "Incorporar recurso"}</Button><Button type="button" variant="outline" onClick={() => setFormVisible(false)}>Cancelar</Button></div>
