@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npx prisma generate && DATABASE_URL=\"$DATABASE_URL_UNPOOLED\" npx prisma migrate resolve --applied 20261008025000_vehiculo_responsable_alertas && DATABASE_URL=\"$DATABASE_URL_UNPOOLED\" npx prisma migrate deploy && npm run build",
+  "buildCommand": "DATABASE_URL=\"$DATABASE_URL_UNPOOLED\" node scripts/diagnostico-lock-prisma-produccion.mjs && npm run build",
   "installCommand": "npm install",
   "framework": "nextjs",
   "crons": [
