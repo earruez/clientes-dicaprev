@@ -203,34 +203,30 @@ export async function aplicarPlantillaAcreditacionTrabajadores(solicitudId: stri
         reglas.push(regla);
         creadas++;
       }
-      for (const trabajador of trabajadores) {
-        const existente = existentes.find((r) =>
-          r.recursoId === trabajador.id && normalizar(r.nombre) === normalizar(item.nombre));
-        if (existente) {
-          // Reutilizar especialmente los documentos estándar IRL y EPP, sin perder sus versiones.
-          if (!existente.reglaTrabajadorId) {
-            await tx.contratistaRequisito.update({
-              where: { id: existente.id },
-              data: { reglaTrabajadorId: regla.id, vigenciaMeses: item.vigenciaMeses,
-                condicional: item.condicional, obligatorio: item.obligatorio },
-            });
-            existente.reglaTrabajadorId = regla.id;
-            asignados++;
-          }
-          continue;
-        }
-        const creado = await tx.contratistaRequisito.create({
-          data: {
-            empresaId, solicitudId, recursoId: trabajador.id, nombre: item.nombre,
-            categoria: "trabajador", reglaTrabajadorId: regla.id,
-            obligatorio: regla.obligatorio, vigenciaMeses: regla.vigenciaMeses,
-            condicional: regla.condicional,
-          },
-          select: { id: true },
+      const encontrados = existentes.filter((r) => normalizar(r.nombre) === normalizar(item.nombre));
+      const asignadosPrevios = new Set(encontrados.map((r) => r.recursoId));
+      const sinRegla = encontrados.filter((r) => !r.reglaTrabajadorId).map((r) => r.id);
+      if (sinRegla.length) {
+        // Enlazar documentos estándar sin reemplazar archivos ni versiones.
+        const actualizados = await tx.contratistaRequisito.updateMany({
+          where: { id: { in: sinRegla }, reglaTrabajadorId: null },
+          data: { reglaTrabajadorId: regla.id, vigenciaMeses: item.vigenciaMeses,
+            condicional: item.condicional, obligatorio: item.obligatorio },
         });
-        existentes.push({ id: creado.id, recursoId: trabajador.id,
-          nombre: item.nombre, reglaTrabajadorId: regla.id, obligatorio: regla.obligatorio });
-        asignados++;
+        asignados += actualizados.count;
+        for (const existente of encontrados) {
+          if (sinRegla.includes(existente.id)) existente.reglaTrabajadorId = regla.id;
+        }
+      }
+      const nuevos = trabajadores.filter((r) => !asignadosPrevios.has(r.id)).map((r) => ({
+        empresaId, solicitudId, recursoId: r.id, nombre: item.nombre,
+        categoria: "trabajador", reglaTrabajadorId: regla.id,
+        obligatorio: regla.obligatorio, vigenciaMeses: regla.vigenciaMeses,
+        condicional: regla.condicional,
+      }));
+      if (nuevos.length) {
+        const creados = await tx.contratistaRequisito.createMany({ data: nuevos, skipDuplicates: true });
+        asignados += creados.count;
       }
     }
     return { creadas, asignados };
