@@ -2,17 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Building2, ClipboardCheck, FileText, Mail, Plus, RefreshCcw, XCircle } from "lucide-react";
+import { ArrowLeft, Building2, ClipboardCheck, FileText, Mail, Plus, RefreshCcw, Trash2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import {
-  agregarRequisitoContratista, cambiarObligatoriedadContratista, cerrarExpedienteContratista,
-  crearSolicitudContratista, invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
+  agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, cerrarExpedienteContratista,
+  crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
+  invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
 } from "@/actions/contratistas/solicitudes";
-import { estadoEfectivo } from "@/lib/contratistas/requisitos";
+import { estadoEfectivo, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
+import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CATALOGO_FAENA } from "@/lib/contratistas/catalogo";
 import { crearCatalogoContratista, listarCentrosMandante, listarDocumentosBaseContratista, obtenerCatalogoContratistas, reutilizarDocumentoContratista } from "@/actions/contratistas/catalogo";
 
@@ -20,6 +22,7 @@ type Expediente = Awaited<ReturnType<typeof listarSolicitudesContratistas>>[numb
 type Catalogo = Awaited<ReturnType<typeof obtenerCatalogoContratistas>>;
 type Centro = Awaited<ReturnType<typeof listarCentrosMandante>>[number];
 type DocumentoBase = Awaited<ReturnType<typeof listarDocumentosBaseContratista>>[number];
+const nombreExpediente = (faena: string) => faena.trim() ? `Requerimiento documental ${faena.trim()}` : "";
 const CAMPO = "block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-sky-600 focus:outline-none";
 const ESTADOS: Record<string, string> = {
   borrador: "Borrador", enviada: "Invitación enviada", en_revision: "En revisión",
@@ -64,6 +67,7 @@ export default function SolicitudesContratistasClient() {
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
   const [nuevo, setNuevo] = useState(false);
+  const [nombrePersonalizado, setNombrePersonalizado] = useState(false);
   const [form, setForm] = useState({
     contratistaId: "", nombre: "", faena: "", centroTrabajoId: "", servicio: "", contactoEmail: "",
     responsable: "", dotacionEstimada: "", fechaInicio: "", fechaTermino: "",
@@ -72,7 +76,7 @@ export default function SolicitudesContratistasClient() {
     CATALOGO_FAENA.filter((r) => r.obligatorio).map((r) => r.clave),
   );
   const [agregando, setAgregando] = useState(false);
-  const [extra, setExtra] = useState({ nombre: "", alcance: "faena" as "empresa" | "faena", categoria: "empresa", recursoId: "", obligatorio: true });
+  const [extra, setExtra] = useState({ nombre: "", alcance: "faena" as "empresa" | "faena", categoria: "empresa", recursoId: "", aplicaATodosTrabajadores: false, obligatorio: true });
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const actual = useMemo(() => expedientes.find((s) => s.id === actualId) || null, [expedientes, actualId]);
   const puedeEditar = !!actual && actual.estado !== "cerrada";
@@ -130,6 +134,7 @@ export default function SolicitudesContratistasClient() {
         requisitos: seleccionados,
       });
       setNuevo(false);
+      setNombrePersonalizado(false);
       setForm({ contratistaId: "", nombre: "", faena: "", centroTrabajoId: "", servicio: "", contactoEmail: "", responsable: "", dotacionEstimada: "", fechaInicio: "", fechaTermino: "" });
       await cargar();
       setActualId(creado.id);
@@ -195,18 +200,30 @@ export default function SolicitudesContratistasClient() {
                 </select>
                 <span className="text-xs text-slate-500">Si no aparece, crea la empresa en Gestión contratistas.</span>
               </label>
-              <label className="space-y-1.5"><Label>Nombre del expediente *</Label><Input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Instalaciones edificio A" /></label>
+              <label className="space-y-1.5"><Label>Nombre del expediente *</Label><Input required value={form.nombre} onChange={(e) => {
+                const nombre = e.target.value;
+                setNombrePersonalizado(nombre !== nombreExpediente(form.faena));
+                setForm((prev) => ({ ...prev, nombre }));
+              }} placeholder="Requerimiento documental BCI - VITACURA" />
+                <span className="text-xs text-slate-500">Se propone desde la obra o faena; puedes personalizarlo.</span>
+              </label>
               <label className="space-y-1.5"><Label>Centro de trabajo de la mandante</Label>
                 <select className={CAMPO} value={form.centroTrabajoId} onChange={(e) => {
                   const c = centros.find((item) => item.id === e.target.value);
-                  setForm((prev) => ({ ...prev, centroTrabajoId: e.target.value, faena: c?.nombre || prev.faena }));
+                  setForm((prev) => {
+                    const faena = c?.nombre || prev.faena;
+                    return { ...prev, centroTrabajoId: e.target.value, faena, nombre: nombrePersonalizado ? prev.nombre : nombreExpediente(faena) };
+                  });
                 }}>
                   <option value="">Otro / sin centro registrado</option>
                   {centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </label>
-              <label className="space-y-1.5"><Label>Obra o faena *</Label><Input required value={form.faena} onChange={(e) => setForm({ ...form, faena: e.target.value })} placeholder="Obra, contrato o ubicación específica"/></label>
-              <label className="space-y-1.5"><Label>Servicio contratado</Label><Input value={form.servicio} onChange={(e) => setForm({ ...form, servicio: e.target.value })} /></label>
+              <label className="space-y-1.5"><Label>Obra o faena *</Label><Input required value={form.faena} onChange={(e) => {
+                const faena = e.target.value;
+                setForm((prev) => ({ ...prev, faena, nombre: nombrePersonalizado ? prev.nombre : nombreExpediente(faena) }));
+              }} placeholder="Ej. BCI - VITACURA"/></label>
+              <label className="space-y-1.5"><Label>Servicio contratado</Label><Input value={form.servicio} onChange={(e) => setForm({ ...form, servicio: e.target.value })} placeholder="Ej. Electricidad, climatización, cristales" /></label>
               <label className="space-y-1.5"><Label>Correo del contratista *</Label><Input type="email" required value={form.contactoEmail} onChange={(e) => setForm({ ...form, contactoEmail: e.target.value })} /></label>
               <label className="space-y-1.5"><Label>Responsable en faena</Label><Input value={form.responsable} onChange={(e) => setForm({ ...form, responsable: e.target.value })} /></label>
               <label className="space-y-1.5"><Label>Dotación estimada</Label><Input type="number" min="0" value={form.dotacionEstimada} onChange={(e) => setForm({ ...form, dotacionEstimada: e.target.value })} /></label>
@@ -278,7 +295,7 @@ export default function SolicitudesContratistasClient() {
                     const docsRecurso = actual.requisitos.filter((r) => r.recursoId === recurso.id && r.obligatorio);
                     const docsEmpresa = actual.requisitos.filter((r) => r.categoria === "empresa" && r.obligatorio);
                     const todos = [...docsEmpresa, ...docsRecurso];
-                    const correctos = todos.filter((r) => estadoEfectivo(r.estado, r.fechaVencimiento) === "aprobado").length;
+                    const correctos = todos.filter((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "aprobado").length;
                     const listo = todos.length > 0 && correctos === todos.length;
                     return <div key={recurso.id} className="flex min-w-0 items-start justify-between gap-2 rounded-xl border border-slate-200 p-3">
                       <div className="min-w-0">
@@ -294,8 +311,24 @@ export default function SolicitudesContratistasClient() {
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>
-                  {puedeEditar && <Button variant="outline" size="sm" onClick={() => setAgregando((x) => !x)}><Plus className="mr-1 h-4 w-4"/>Agregar requisito</Button>}
+                  {puedeEditar && <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setAgregando((x) => !x)}><Plus className="mr-1 h-4 w-4"/>Agregar requisito</Button>
+                    <Button variant="outline" size="sm" disabled={procesando} className="border-sky-200 text-sky-800" onClick={() => {
+                      if (window.confirm("¿Aplicar la plantilla de Acreditación de trabajadores (9 documentos) a esta obra? Se asignará al personal actual y futuro. IRL y EPP existentes se reutilizan; no se borrarán archivos ni historiales. Esta exigencia no se aplicará a otras faenas.")) {
+                        void ejecutar(async () => {
+                          await aplicarPlantillaAcreditacionTrabajadores(actual.id);
+                        }, "Plantilla de acreditación aplicada a los trabajadores de este expediente.");
+                      }
+                    }}><ClipboardCheck className="mr-1 h-4 w-4"/>Plantilla acreditación (9)</Button>
+                  </div>}
                 </div>
+                {puedeEditar && <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 text-xs text-slate-600">
+                  <summary className="cursor-pointer font-semibold text-sky-900">Ver documentos de la plantilla de acreditación</summary>
+                  <ol className="mt-2 list-decimal space-y-1 pl-5">
+                    {PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => <li key={r.clave}><span className="font-semibold text-slate-800">{describeRequisitoTrabajador(r)}</span><p className="mt-0.5 text-slate-500">{r.detalle}</p></li>)}
+                  </ol>
+                  <p className="mt-2 text-slate-500">Condicionales: EPP, examen OAL y certificaciones según cargo; la mandante marca cada caso aplicable.</p>
+                </details>
                 {agregando && puedeEditar && <form className="mt-4 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2" onSubmit={(e) => {
                   e.preventDefault();
                   void ejecutar(async () => {
@@ -303,46 +336,64 @@ export default function SolicitudesContratistasClient() {
                       solicitudId: actual.id, nombre: extra.nombre, alcance: extra.alcance,
                       categoria: extra.categoria as "empresa" | "trabajador" | "vehiculo" | "equipo",
                       recursoId: extra.recursoId || undefined, obligatorio: extra.obligatorio,
+                      aplicaATodosTrabajadores: extra.aplicaATodosTrabajadores,
                     });
-                    setExtra({ nombre: "", alcance: "faena", categoria: "empresa", recursoId: "", obligatorio: true });
+                    setExtra({ nombre: "", alcance: "faena", categoria: "empresa", recursoId: "", aplicaATodosTrabajadores: false, obligatorio: true });
                     setAgregando(false);
                   }, "Requisito agregado.");
                 }}>
                   <label className="space-y-1"><Label>Elegir del catálogo</Label>
                     <select className={CAMPO} value="" onChange={(e) => {
                       const elegido = catalogo.find((doc) => doc.id === e.target.value);
-                      if (elegido) setExtra({ ...extra, nombre: elegido.nombre, alcance: elegido.alcance, categoria: elegido.categoria, recursoId: elegido.categoria === "empresa" ? "" : extra.recursoId });
+                      if (elegido) setExtra({ ...extra, nombre: elegido.nombre, alcance: elegido.alcance, categoria: elegido.categoria, recursoId: "", aplicaATodosTrabajadores: elegido.categoria === "trabajador" });
                     }}>
                       <option value="">Documento personalizado...</option>
-                      {catalogo.filter((c) => c.categoria === "empresa" || actual.recursos.some((r) => r.tipo === c.categoria)).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      {catalogo.filter((c) => c.categoria === "empresa" || c.categoria === "trabajador" || actual.recursos.some((r) => r.tipo === c.categoria)).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </label>
                   <label className="space-y-1"><Label>Documento *</Label><Input required value={extra.nombre} onChange={(e) => setExtra({ ...extra, nombre: e.target.value })}/></label>
                   {extra.categoria === "empresa" && <label className="space-y-1"><Label>Ámbito</Label><select className={CAMPO} value={extra.alcance} onChange={(e) => setExtra({ ...extra, alcance: e.target.value as "empresa" | "faena" })}><option value="faena">Específico de esta faena</option><option value="empresa">Corporativo reutilizable</option></select></label>}
-                  <label className="space-y-1"><Label>Categoría</Label><select className={CAMPO} value={extra.categoria} onChange={(e) => setExtra({ ...extra, categoria: e.target.value, recursoId: "" })}>{Object.entries(CATEGORIAS).map(([key,val]) => <option key={key} value={key}>{val}</option>)}</select></label>
-                  {extra.categoria !== "empresa" && <label className="space-y-1"><Label>Recurso</Label><select className={CAMPO} required value={extra.recursoId} onChange={(e) => setExtra({ ...extra, recursoId: e.target.value })}><option value="">Selecciona un recurso</option>{actual.recursos.filter((r) => r.tipo === extra.categoria).map((r) => <option key={r.id} value={r.id}>{r.nombre} {r.patente || r.identificador || ""}</option>)}</select></label>}
+                  <label className="space-y-1"><Label>Categoría</Label><select className={CAMPO} value={extra.categoria} onChange={(e) => setExtra({ ...extra, categoria: e.target.value, recursoId: "", aplicaATodosTrabajadores: e.target.value === "trabajador" })}>{Object.entries(CATEGORIAS).map(([key,val]) => <option key={key} value={key}>{val}</option>)}</select></label>
+                  {extra.categoria !== "empresa" && <label className="space-y-1"><Label>{extra.categoria === "trabajador" ? "Aplicar a" : "Recurso"}</Label><select className={CAMPO} required value={extra.aplicaATodosTrabajadores ? "__todos__" : extra.recursoId} onChange={(e) => setExtra({ ...extra, aplicaATodosTrabajadores: extra.categoria === "trabajador" && e.target.value === "__todos__", recursoId: e.target.value === "__todos__" ? "" : e.target.value })}><option value="">Selecciona un recurso</option>{extra.categoria === "trabajador" && <option value="__todos__">Todos los trabajadores actuales y futuros</option>}{actual.recursos.filter((r) => r.tipo === extra.categoria).map((r) => <option key={r.id} value={r.id}>{r.nombre} {r.patente || r.identificador || ""}</option>)}</select></label>}
                   <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={extra.obligatorio} onChange={(e) => setExtra({ ...extra, obligatorio: e.target.checked })}/>Obligatorio</label>
                   <Button type="submit" disabled={procesando} className="bg-sky-700 text-white">Guardar requisito</Button>
                 </form>}
+                {actual.reglasTrabajadores.length > 0 && <div className="mt-5 space-y-2">
+                  <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">Requisitos para todos los trabajadores actuales y futuros ({actual.reglasTrabajadores.length})</h4>
+                  {actual.reglasTrabajadores.map((regla) => <div key={regla.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3 sm:p-4">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-slate-900">{regla.nombre}</p>
+                      <p className="text-xs text-slate-600">{regla._count.requisitos} trabajador(es) con este requisito · {regla.condicional ? "Si aplica (configurar por trabajador)" : regla.obligatorio ? "Obligatorio" : "Opcional"}{regla.vigenciaMeses ? ` · máximo ${regla.vigenciaMeses} meses` : ""} · Se asignará automáticamente a los nuevos trabajadores</p>
+                    </div>
+                    {puedeEditar && <Button variant="outline" size="sm" disabled={procesando} className="text-red-700 hover:text-red-800" onClick={() => {
+                      if (window.confirm(`¿Eliminar la regla "${regla.nombre}" para trabajadores actuales y futuros? También se quitarán sus requisitos individuales SIN archivos ni revisión. Si alguno tiene historial, la operación se bloqueará.`))
+                        void ejecutar(() => eliminarReglaRequisitosTrabajadores(regla.id), "Regla general eliminada.");
+                    }}><Trash2 className="mr-1.5 h-3.5 w-3.5"/>Eliminar regla</Button>}
+                  </div>)}
+                </div>}
                 {Object.entries(CATEGORIAS).map(([key, label]) => {
                   const docs = actual.requisitos.filter((r) => r.categoria === key);
                   if (!docs.length) return null;
                   return <div key={key} className="mt-5 space-y-3">
                     <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">{label} ({docs.length})</h4>
                     {docs.map((d) => {
-                      const estado = estadoEfectivo(d.estado, d.fechaVencimiento);
+                      const estado = estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses);
                       return <div key={d.id} className="min-w-0 rounded-xl border border-slate-200 p-3 sm:p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <p className="break-words text-sm font-medium text-slate-900">{d.nombre}</p>
                             {d.recurso && <p className="text-xs text-slate-500">{d.recurso.nombre} · {d.recurso.patente || d.recurso.identificador || "Sin identificador"}</p>}
-                            <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(d.fechaVencimiento)} · Versión {d.version}</p>
+                            <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(vencimientoEfectivoRequisito(d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses))} · Versión {d.version}{d.vigenciaMeses ? ` · Vigencia máxima ${d.vigenciaMeses} meses` : ""}{d.condicional ? " · Si aplica" : ""}</p>
                           </div>
                           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${CLASES[estado] || CLASES.pendiente}`}>{ESTADOS_DOC[estado] || estado}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-3">
                           {d.archivoNombre && <a href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 underline"><FileText className="h-3.5 w-3.5"/>Ver documento</a>}
-                          {puedeEditar && <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" disabled={procesando} checked={d.obligatorio} onChange={(e) => void ejecutar(() => cambiarObligatoriedadContratista(d.id, e.target.checked), "Obligatoriedad actualizada.")}/>Obligatorio</label>}
+                          {puedeEditar && <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" disabled={procesando} checked={d.obligatorio} onChange={(e) => void ejecutar(() => cambiarObligatoriedadContratista(d.id, e.target.checked), "Obligatoriedad actualizada.")}/>{d.condicional ? "Aplica / obligatorio" : "Obligatorio"}</label>}
+                          {puedeEditar && <button type="button" disabled={procesando || !!(d.reglaTrabajadorId || d.archivoNombre || d.documentoBaseId || d.version > 0 || d.revisadoAt || d.observacionRevision || d.estado !== "pendiente" || d.versiones.length)} title={d.reglaTrabajadorId ? "Gestiona este requisito desde la regla de todos los trabajadores" : d.archivoNombre || d.version > 0 || d.revisadoAt || d.versiones.length ? "No se puede eliminar: contiene documentos o historial de revisión" : "Eliminar requisito sin documentos"} className="inline-flex items-center gap-1 text-xs font-medium text-red-700 disabled:cursor-not-allowed disabled:text-slate-400" onClick={() => {
+                            if (window.confirm(`¿Eliminar el requisito "${d.nombre}"? Esta acción no se puede deshacer.`))
+                              void ejecutar(() => eliminarRequisitoContratista(d.id), "Requisito eliminado.");
+                          }}><Trash2 className="h-3.5 w-3.5"/>Eliminar requisito</button>}
                         </div>
                         {d.categoria === "empresa" && <p className="mt-2 text-[11px] font-semibold text-slate-500">{d.alcance === "empresa" ? "Documento corporativo sujeto a revisión de esta faena" : "Documento específico de contrato / faena"}{d.documentoBase && <span className="ml-2 text-emerald-700">· Reutilizado de carpeta corporativa</span>}</p>}
                         {d.categoria === "empresa" && puedeEditar && !d.archivoNombre && docsBase.length > 0 && <div className="mt-2 flex flex-col gap-2 rounded-xl bg-emerald-50/60 p-3 sm:flex-row sm:items-center">
@@ -366,7 +417,7 @@ export default function SolicitudesContratistasClient() {
                     })}
                   </div>;
                 })}
-                {actual.requisitos.length === 0 && <p className="mt-4 text-sm text-slate-500">No se han configurado documentos todavía.</p>}
+                {actual.requisitos.length === 0 && actual.reglasTrabajadores.length === 0 && <p className="mt-4 text-sm text-slate-500">No se han configurado documentos todavía.</p>}
               </div>
             </section>}
           </div>

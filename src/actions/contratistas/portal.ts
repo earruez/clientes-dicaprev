@@ -2,11 +2,38 @@
 
 import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
-import { REQUISITOS_RECURSO, estadoEfectivo, type CategoriaContratista } from "@/lib/contratistas/requisitos";
+import { REQUISITOS_RECURSO, estadoEfectivo, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
 import { formatRutChile } from "@/lib/rut";
 
 function valido(input: string) {
   return input.trim().slice(0, 160);
+}
+
+function requisitosParaNuevoRecurso(
+  tipo: Exclude<CategoriaContratista, "empresa">,
+  reglas: { id: string; nombre: string; obligatorio: boolean; vigenciaMeses: number | null; condicional: boolean }[],
+) {
+  const nombreNormal = (nombre: string) => nombre.trim().toLocaleLowerCase("es");
+  const basicos = REQUISITOS_RECURSO[tipo].map((d) => {
+    const regla = tipo === "trabajador" ? reglas.find((r) => nombreNormal(r.nombre) === nombreNormal(d.nombre)) : undefined;
+    return {
+      nombre: d.nombre, categoria: d.categoria, obligatorio: regla?.obligatorio ?? d.obligatorio,
+      reglaTrabajadorId: regla?.id || null, vigenciaMeses: regla?.vigenciaMeses || null,
+      condicional: regla?.condicional || false,
+    };
+  });
+  if (tipo !== "trabajador") return basicos;
+  const nombres = new Set(basicos.map((d) => nombreNormal(d.nombre)));
+  const adicionales = reglas.filter((r) => {
+    const clave = nombreNormal(r.nombre);
+    if (nombres.has(clave)) return false;
+    nombres.add(clave);
+    return true;
+  }).map((r) => ({
+    nombre: r.nombre, categoria: "trabajador", obligatorio: r.obligatorio, reglaTrabajadorId: r.id,
+    vigenciaMeses: r.vigenciaMeses, condicional: r.condicional,
+  }));
+  return [...basicos, ...adicionales];
 }
 
 export async function obtenerPortalContratista(token: string) {
@@ -18,7 +45,7 @@ export async function obtenerPortalContratista(token: string) {
     nombre: s.nombre, faena: s.faena, servicio: s.servicio,
     estado: s.estado, contactoEmail: s.contactoEmail, empresaMandante: empresa?.nombre || "Empresa mandante",
     contratista: s.contratista, recursos: s.recursos, recursosBase,
-    requisitos: s.requisitos.map((r) => ({ ...r, estadoEfectivo: estadoEfectivo(r.estado, r.fechaVencimiento) })),
+    requisitos: s.requisitos.map((r) => ({ ...r, fechaVencimiento: vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses), estadoEfectivo: estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) })),
   };
 }
 
@@ -93,14 +120,20 @@ export async function agregarRecursoPortal(token: string, input: {
         identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
       },
     });
+    const reglas = input.tipo === "trabajador" ? await tx.contratistaRequisitoRegla.findMany({
+      where: { solicitudId: s.id, empresaId: s.empresaId, activo: true },
+      select: { id: true, nombre: true, obligatorio: true, vigenciaMeses: true, condicional: true },
+    }) : [];
     return tx.contratistaRecurso.create({
       data: {
         empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
         recursoBase: { connect: { id: base.id } }, tipo: input.tipo, nombre,
         identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
-        requisitos: { create: REQUISITOS_RECURSO[input.tipo].map((d) => ({
+        requisitos: { create: requisitosParaNuevoRecurso(input.tipo, reglas).map((d) => ({
           empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
+          vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
           solicitud: { connect: { id: s.id } },
+          ...(d.reglaTrabajadorId ? { reglaTrabajador: { connect: { id: d.reglaTrabajadorId } } } : {}),
         })) },
       },
       select: { id: true },
@@ -121,16 +154,24 @@ export async function incorporarRecursoBasePortal(token: string, recursoBaseId: 
   if (s.recursos.some((r) => r.recursoBaseId === base.id)) throw new Error("El recurso ya está incorporado en esta obra");
   const tipo = base.tipo as Exclude<CategoriaContratista, "empresa">;
   if (!(tipo in REQUISITOS_RECURSO)) throw new Error("Tipo de recurso no válido");
-  await prisma.contratistaRecurso.create({
-    data: {
-      empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
-      recursoBase: { connect: { id: base.id } }, tipo, nombre: base.nombre,
-      identificador: base.identificador, cargo: base.cargo, patente: base.patente,
-      requisitos: { create: REQUISITOS_RECURSO[tipo].map((d) => ({
-        empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
-        solicitud: { connect: { id: s.id } },
-      })) },
-    },
+  await prisma.$transaction(async (tx) => {
+    const reglas = tipo === "trabajador" ? await tx.contratistaRequisitoRegla.findMany({
+      where: { solicitudId: s.id, empresaId: s.empresaId, activo: true },
+      select: { id: true, nombre: true, obligatorio: true, vigenciaMeses: true, condicional: true },
+    }) : [];
+    await tx.contratistaRecurso.create({
+      data: {
+        empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
+        recursoBase: { connect: { id: base.id } }, tipo, nombre: base.nombre,
+        identificador: base.identificador, cargo: base.cargo, patente: base.patente,
+        requisitos: { create: requisitosParaNuevoRecurso(tipo, reglas).map((d) => ({
+          empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
+          vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
+          solicitud: { connect: { id: s.id } },
+          ...(d.reglaTrabajadorId ? { reglaTrabajador: { connect: { id: d.reglaTrabajadorId } } } : {}),
+        })) },
+      },
+    });
   });
   await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "enviada" } });
   return { ok: true };
@@ -149,7 +190,7 @@ export async function eliminarRecursoPortal(token: string, recursoId: string) {
 export async function enviarCarpetaContratista(token: string) {
   const s = await resolverPortalContratista(token);
   if (!s) throw new Error("Invitación inválida o vencida");
-  const pendientes = s.requisitos.filter((r) => r.obligatorio && (!r.archivoNombre || estadoEfectivo(r.estado, r.fechaVencimiento) === "vencido"));
+  const pendientes = s.requisitos.filter((r) => r.obligatorio && (!r.archivoNombre || estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "vencido"));
   if (!s.contratista.rut || !s.contratista.razonSocial) throw new Error("Completa los datos de la empresa contratista antes de enviar");
   if (pendientes.length) throw new Error(`Faltan ${pendientes.length} documentos obligatorios o hay documentos vencidos`);
   if (!s.requisitos.some((r) => r.archivoNombre && r.estado !== "aprobado" && r.estado !== "en_revision")) throw new Error("No hay documentos nuevos pendientes de envío");

@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { origenNextPrev } from "@/lib/contratistas/portal";
-import { faltaMigracionContratistas } from "@/lib/contratistas/requisitos";
+import { faltaMigracionContratistas, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
 
 const MS_DIA = 86_400_000;
 
@@ -20,7 +20,10 @@ export async function procesarAvisosContratistas() {
   const hasta = new Date(hoy.getTime() + 31 * MS_DIA);
   const requisitos = await prisma.contratistaRequisito.findMany({
     where: {
-      fechaVencimiento: { gte: hoy, lt: hasta },
+      OR: [
+        { fechaVencimiento: { gte: hoy, lt: hasta } },
+        { vigenciaMeses: { not: null }, fechaEmision: { not: null } },
+      ],
       archivoNombre: { not: null },
       solicitud: { estado: { not: "cerrada" } },
     },
@@ -39,10 +42,11 @@ export async function procesarAvisosContratistas() {
   let enviados = 0;
   let errores = 0;
   for (const r of requisitos) {
-    if (!r.fechaVencimiento) continue;
-    const vence = new Date(r.fechaVencimiento);
+    const vence = vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses);
+    if (!vence) continue;
     vence.setUTCHours(0, 0, 0, 0);
     const dias = Math.round((vence.getTime() - hoy.getTime()) / MS_DIA);
+    if (dias < 0 || dias > 30) continue;
     const tramo: 30 | 15 | 5 = dias <= 5 ? 5 : dias <= 15 ? 15 : 30;
     if ((tramo === 30 && r.aviso30At) || (tramo === 15 && r.aviso15At) || (tramo === 5 && r.aviso5At)) continue;
     const mandante = await prisma.empresa.findUnique({ where: { id: r.solicitud.empresaId }, select: { nombre: true } });

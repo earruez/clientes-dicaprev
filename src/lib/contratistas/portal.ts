@@ -25,6 +25,7 @@ export async function resolverPortalContratista(token: string) {
         orderBy: [{ categoria: "asc" }, { createdAt: "asc" }],
         select: {
           id: true, nombre: true, categoria: true, recursoId: true, obligatorio: true,
+          vigenciaMeses: true, condicional: true,
           estado: true, fechaEmision: true, fechaVencimiento: true,
           archivoNombre: true, archivoOriginal: true, observacionRevision: true,
           version: true,

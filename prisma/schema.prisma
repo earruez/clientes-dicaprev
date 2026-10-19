@@ -1751,6 +1751,7 @@ model Contratista {
   rut           String?
   razonSocial   String?
   email         String?
+  contactoNombre String?
   telefono      String?
   representanteLegal String?
   rutRepresentante   String?
@@ -2684,6 +2685,7 @@ model ContratistaSolicitud {
   centroTrabajo      CentroTrabajo?         @relation("ContratistaCentroTrabajo", fields: [centroTrabajoId], references: [id], onDelete: SetNull)
   recursos           ContratistaRecurso[]
   requisitos         ContratistaRequisito[]
+  reglasTrabajadores ContratistaRequisitoRegla[]
 
   @@index([empresaId, estado])
   @@index([contratistaId])
@@ -2732,6 +2734,24 @@ model ContratistaRecurso {
   @@index([recursoBaseId])
 }
 
+/** Regla por expediente que se aplica a trabajadores actuales y futuros. */
+model ContratistaRequisitoRegla {
+  id           String   @id @default(cuid())
+  empresaId    String
+  solicitudId  String
+  nombre       String
+  obligatorio  Boolean  @default(true)
+  vigenciaMeses Int?
+  condicional  Boolean  @default(false)
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  solicitud    ContratistaSolicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  requisitos   ContratistaRequisito[]
+
+  @@index([empresaId, solicitudId, activo])
+}
+
 model ContratistaRequisito {
   id                 String    @id @default(cuid())
   empresaId          String
@@ -2741,7 +2761,10 @@ model ContratistaRequisito {
   categoria          String
   alcance            String    @default("faena")
   documentoBaseId    String?
+  reglaTrabajadorId  String?
   obligatorio        Boolean   @default(true)
+  vigenciaMeses      Int?
+  condicional        Boolean   @default(false)
   estado             String    @default("pendiente")
   archivoNombre      String?
   archivoOriginal    String?
@@ -2762,11 +2785,13 @@ model ContratistaRequisito {
   solicitud          ContratistaSolicitud       @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
   recurso            ContratistaRecurso?        @relation(fields: [recursoId], references: [id], onDelete: Cascade)
   documentoBase      ContratistaDocumento?      @relation("RequisitoDocumentoBase", fields: [documentoBaseId], references: [id], onDelete: SetNull)
+  reglaTrabajador    ContratistaRequisitoRegla? @relation(fields: [reglaTrabajadorId], references: [id], onDelete: SetNull)
   versiones          ContratistaDocumentoVersion[]
 
   @@index([empresaId, estado])
   @@index([solicitudId, categoria])
   @@index([documentoBaseId])
+  @@unique([reglaTrabajadorId, recursoId])
   @@index([recursoId])
   @@index([fechaVencimiento])
 }

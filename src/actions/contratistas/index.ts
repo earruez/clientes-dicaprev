@@ -16,6 +16,7 @@ export type CrearContratistaInput = {
   razonSocial?: string;
   email?: string;
   telefono?: string;
+  contactoNombre?: string;
   observaciones?: string;
 };
 
@@ -52,6 +53,7 @@ export type ContratistaRow = {
   razonSocial: string | null;
   email: string | null;
   telefono: string | null;
+  contactoNombre: string | null;
   estadoGlobal: "pendiente" | "en_revision" | "aprobado" | "rechazado" | "vencido";
   totalDocumentos: number;
   documentosVencidos: number;
@@ -109,8 +111,9 @@ export async function crearContratista(input: CrearContratistaInput) {
       nombre,
       rut: input.rut?.trim() || null,
       razonSocial: input.razonSocial?.trim() || null,
-      email: input.email?.trim() || null,
+      email: input.email?.trim().toLowerCase() || null,
       telefono: input.telefono?.trim() || null,
+      contactoNombre: input.contactoNombre?.trim().slice(0, 160) || null,
       observaciones: input.observaciones?.trim() || null,
       activo: true,
     },
@@ -118,6 +121,27 @@ export async function crearContratista(input: CrearContratistaInput) {
   });
 
   return { id: contratista.id };
+}
+
+export async function actualizarContratista(input: CrearContratistaInput & { contratistaId: string }) {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+  const nombre = input.nombre?.trim();
+  if (!nombre) throw new Error("El nombre comercial del contratista es obligatorio");
+  const email = input.email?.trim().toLowerCase() || null;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Correo de contacto inválido");
+  const result = await prisma.contratista.updateMany({
+    where: { id: input.contratistaId, empresaId, activo: true },
+    data: {
+      nombre: nombre.slice(0, 180),
+      rut: input.rut?.trim().slice(0, 18) || null,
+      razonSocial: input.razonSocial?.trim().slice(0, 180) || null,
+      email,
+      telefono: input.telefono?.trim().slice(0, 50) || null,
+      contactoNombre: input.contactoNombre?.trim().slice(0, 160) || null,
+    },
+  });
+  if (result.count === 0) throw new Error("Contratista no encontrado");
+  return { ok: true };
 }
 
 export async function crearContratistaDocumento(input: CrearContratistaDocumentoInput) {
@@ -298,6 +322,7 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
       razonSocial: true,
       email: true,
       telefono: true,
+      contactoNombre: true,
       documentos: {
         select: {
           id: true,
@@ -358,6 +383,7 @@ export async function getContratistas(): Promise<ContratistaRow[]> {
       razonSocial: c.razonSocial,
       email: c.email,
       telefono: c.telefono,
+      contactoNombre: c.contactoNombre,
       estadoGlobal: calcularEstadoGlobal(docs),
       totalDocumentos: docs.length,
       documentosVencidos: vencidos,

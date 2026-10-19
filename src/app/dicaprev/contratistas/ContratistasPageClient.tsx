@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, BadgeCheck, Building2, CheckCircle2, ChevronDown, Clock3, FileCheck2, FileText, FolderOpen, HardHat, Plus, Search, ShieldCheck, UploadCloud, Users2 } from "lucide-react";
+import { AlertCircle, ArrowRight, BadgeCheck, Building2, CheckCircle2, ChevronDown, Clock3, FileCheck2, FileText, FolderOpen, HardHat, Pencil, Plus, Search, ShieldCheck, UploadCloud, Users2 } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { actualizarEstadoContratistaDocumento, crearContratista, crearContratistaDocumento, getContratistas, type ContratistaRow } from "@/actions/contratistas";
+import { actualizarEstadoContratistaDocumento, actualizarContratista, crearContratista, crearContratistaDocumento, getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import { obtenerCatalogoContratistas } from "@/actions/contratistas/catalogo";
 import { CATALOGO_EMPRESA } from "@/lib/contratistas/catalogo";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
@@ -34,9 +34,11 @@ export default function ContratistasPageClient() {
   const [busqueda, setBusqueda] = useState("");
   const [contratistaId, setContratistaId] = useState("");
   const [nuevo, setNuevo] = useState(false);
+  const [editando, setEditando] = useState(false);
+  const [edicion, setEdicion] = useState({ nombre: "", rut: "", razonSocial: "", email: "", telefono: "", contactoNombre: "" });
   const [nuevoDoc, setNuevoDoc] = useState(false);
   const [verDetalle, setVerDetalle] = useState<"documentos" | "obras" | "acreditaciones">("documentos");
-  const [empresa, setEmpresa] = useState({ nombre: "", rut: "", razonSocial: "", email: "", telefono: "" });
+  const [empresa, setEmpresa] = useState({ nombre: "", rut: "", razonSocial: "", email: "", telefono: "", contactoNombre: "" });
   const [documento, setDocumento] = useState({ clave: "", nombre: "", tipo: "", fechaEmision: "", fechaVencimiento: "" });
   const [archivos, setArchivos] = useState<Record<string, File | null>>({});
   const [fechas, setFechas] = useState<Record<string, { emision: string; vencimiento: string }>>({});
@@ -91,8 +93,31 @@ export default function ContratistasPageClient() {
       const r = await crearContratista(empresa);
       setContratistaId(r.id);
       setNuevo(false);
-      setEmpresa({ nombre: "", rut: "", razonSocial: "", email: "", telefono: "" });
+      setEmpresa({ nombre: "", rut: "", razonSocial: "", email: "", telefono: "", contactoNombre: "" });
     }, "Empresa contratista registrada. Ahora puedes completar su carpeta corporativa.");
+  }
+
+  function iniciarEdicion() {
+    if (!contratista) return;
+    setEdicion({
+      nombre: contratista.nombre,
+      rut: contratista.rut || "",
+      razonSocial: contratista.razonSocial || "",
+      email: contratista.email || "",
+      telefono: contratista.telefono || "",
+      contactoNombre: contratista.contactoNombre || "",
+    });
+    setEditando(true);
+    setError("");
+  }
+
+  async function guardarEdicion(e: React.FormEvent) {
+    e.preventDefault();
+    if (!contratista) return;
+    await ejecutar("editar-empresa", async () => {
+      await actualizarContratista({ contratistaId: contratista.id, ...edicion });
+      setEditando(false);
+    }, "Datos del contratista actualizados.");
   }
 
   async function crearDoc(e: React.FormEvent) {
@@ -144,8 +169,8 @@ export default function ContratistasPageClient() {
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {[
             { id: "nombre", nombre: "Nombre comercial *" }, { id: "rut", nombre: "RUT" },
-            { id: "razonSocial", nombre: "Razón social" }, { id: "email", nombre: "Correo de contacto" },
-            { id: "telefono", nombre: "Teléfono" },
+            { id: "razonSocial", nombre: "Razón social" }, { id: "contactoNombre", nombre: "Nombre del contacto" },
+            { id: "email", nombre: "Correo de contacto" }, { id: "telefono", nombre: "Teléfono" },
           ].map((r) => {
             const key = r.id as keyof typeof empresa;
             return <label key={key} className="space-y-1"><Label className="text-xs">{r.nombre}</Label><Input required={key === "nombre"} type={key === "email" ? "email" : "text"} className={campo} value={empresa[key]} onChange={(e) => setEmpresa((old) => ({ ...old, [key]: e.target.value }))}/></label>;
@@ -160,7 +185,7 @@ export default function ContratistasPageClient() {
             <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-bold text-slate-800">Directorio</h2><span className="text-xs font-semibold text-slate-500">{rows.length} empresas</span></div>
             <label className="relative block"><Search className="absolute left-3 top-3.5 h-4 w-4 text-slate-400"/><Input placeholder="Buscar por nombre o RUT" className={campo + " pl-9"} value={busqueda} onChange={(e) => setBusqueda(e.target.value)}/></label>
             <div className="mt-3 max-h-[65vh] space-y-2 overflow-y-auto pr-1">
-              {visibles.map((r) => <button key={r.id} onClick={() => { setContratistaId(r.id); setAviso(""); setVerDetalle("documentos"); }} type="button"
+              {visibles.map((r) => <button key={r.id} onClick={() => { setContratistaId(r.id); setAviso(""); setEditando(false); setVerDetalle("documentos"); }} type="button"
                 className={"w-full rounded-xl border p-3 text-left transition " + (r.id === contratistaId ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-white hover:bg-slate-50")}>
                 <p className="break-words text-sm font-bold text-slate-900">{r.nombre}</p><p className="mt-1 text-xs text-slate-500">{r.rut || r.razonSocial || "Sin RUT ingresado"}</p>
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500"><span>{r.totalDocumentos} documentos</span><span>·</span><span>{r.faenasActivas} faenas</span></div>
@@ -176,10 +201,36 @@ export default function ContratistasPageClient() {
             <section className={panel}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex min-w-0 gap-3"><div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><Building2 className="h-6 w-6"/></div>
-                  <div><h2 className="break-words text-xl font-extrabold text-slate-900">{contratista.nombre}</h2><p className="mt-1 break-words text-xs text-slate-500">{contratista.razonSocial || "Ficha corporativa"} {contratista.rut ? " · " + contratista.rut : ""}</p><p className="mt-1 text-xs text-slate-500">{contratista.email || "Correo no ingresado"}</p></div>
+                  <div><h2 className="break-words text-xl font-extrabold text-slate-900">{contratista.nombre}</h2><p className="mt-1 break-words text-xs text-slate-500">{contratista.razonSocial || "Ficha corporativa"} {contratista.rut ? " · " + contratista.rut : ""}</p><p className="mt-1 text-xs text-slate-500">{contratista.contactoNombre ? contratista.contactoNombre + " · " : ""}{contratista.email || "Correo no ingresado"}</p></div>
                 </div>
-                <span className={"rounded-full px-3 py-1.5 text-xs font-bold " + (ESTADO[contratista.estadoGlobal] || ESTADO.pendiente).color}>{(ESTADO[contratista.estadoGlobal] || ESTADO.pendiente).nombre}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={"rounded-full px-3 py-1.5 text-xs font-bold " + (ESTADO[contratista.estadoGlobal] || ESTADO.pendiente).color}>{(ESTADO[contratista.estadoGlobal] || ESTADO.pendiente).nombre}</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => editando ? setEditando(false) : iniciarEdicion()} className="rounded-xl">
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" />{editando ? "Cerrar edición" : "Editar datos"}
+                  </Button>
+                </div>
               </div>
+              {editando && <form onSubmit={(e) => void guardarEdicion(e)} className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4">
+                <h3 className="text-sm font-bold text-slate-900">Editar datos del contratista</h3>
+                <p className="mt-1 text-xs text-slate-500">Estos cambios actualizan la ficha permanente, sin modificar expedientes ni documentos ya revisados.</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {([
+                    { id: "nombre", label: "Nombre comercial *" },
+                    { id: "rut", label: "RUT" },
+                    { id: "razonSocial", label: "Razón social" },
+                    { id: "contactoNombre", label: "Nombre del contacto" },
+                    { id: "email", label: "Correo de contacto" },
+                    { id: "telefono", label: "Teléfono" },
+                  ] as const).map((campoEditable) => <label key={campoEditable.id} className="space-y-1">
+                    <Label className="text-xs">{campoEditable.label}</Label>
+                    <Input className={campo} required={campoEditable.id === "nombre"} type={campoEditable.id === "email" ? "email" : "text"} value={edicion[campoEditable.id]} onChange={(e) => setEdicion((prev) => ({ ...prev, [campoEditable.id]: e.target.value }))}/>
+                  </label>)}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="submit" disabled={!!ocupado} className={principal}>Guardar cambios</Button>
+                  <Button type="button" variant="outline" onClick={() => setEditando(false)}>Cancelar</Button>
+                </div>
+              </form>}
               <div className="mt-5 grid grid-cols-3 gap-2">
                 {[{ valor: contratista.totalDocumentos, label: "Docs. empresa", icono: FileText }, { valor: contratista.faenasActivas, label: "Faenas", icono: HardHat }, { valor: contratista.acreditacionesActivas, label: "Acreditaciones", icono: BadgeCheck }].map((i) => { const Icon = i.icono; return <div key={i.label} className="rounded-xl bg-slate-50 p-3 text-center"><Icon className="mx-auto h-4 w-4 text-slate-500"/><strong className="mt-2 block text-xl font-extrabold text-slate-900">{i.valor}</strong><p className="mt-1 text-[11px] text-slate-500">{i.label}</p></div>; })}
               </div>
