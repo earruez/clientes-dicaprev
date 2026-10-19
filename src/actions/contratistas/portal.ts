@@ -9,6 +9,25 @@ function valido(input: string) {
   return input.trim().slice(0, 160);
 }
 
+function requisitosParaNuevoRecurso(
+  tipo: Exclude<CategoriaContratista, "empresa">,
+  reglas: { id: string; nombre: string; obligatorio: boolean }[],
+) {
+  const basicos = REQUISITOS_RECURSO[tipo].map((d) => ({
+    nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio, reglaTrabajadorId: null as string | null,
+  }));
+  if (tipo !== "trabajador") return basicos;
+  const nombres = new Set(basicos.map((d) => d.nombre.trim().toLocaleLowerCase("es")));
+  return [...basicos, ...reglas.filter((r) => {
+    const clave = r.nombre.trim().toLocaleLowerCase("es");
+    if (nombres.has(clave)) return false;
+    nombres.add(clave);
+    return true;
+  }).map((r) => ({
+    nombre: r.nombre, categoria: "trabajador", obligatorio: r.obligatorio, reglaTrabajadorId: r.id,
+  }))];
+}
+
 export async function obtenerPortalContratista(token: string) {
   const s = await resolverPortalContratista(token);
   if (!s) return null;
@@ -93,14 +112,19 @@ export async function agregarRecursoPortal(token: string, input: {
         identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
       },
     });
+    const reglas = input.tipo === "trabajador" ? await tx.contratistaRequisitoRegla.findMany({
+      where: { solicitudId: s.id, empresaId: s.empresaId, activo: true },
+      select: { id: true, nombre: true, obligatorio: true },
+    }) : [];
     return tx.contratistaRecurso.create({
       data: {
         empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
         recursoBase: { connect: { id: base.id } }, tipo: input.tipo, nombre,
         identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
-        requisitos: { create: REQUISITOS_RECURSO[input.tipo].map((d) => ({
+        requisitos: { create: requisitosParaNuevoRecurso(input.tipo, reglas).map((d) => ({
           empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
           solicitud: { connect: { id: s.id } },
+          ...(d.reglaTrabajadorId ? { reglaTrabajador: { connect: { id: d.reglaTrabajadorId } } } : {}),
         })) },
       },
       select: { id: true },
@@ -121,16 +145,23 @@ export async function incorporarRecursoBasePortal(token: string, recursoBaseId: 
   if (s.recursos.some((r) => r.recursoBaseId === base.id)) throw new Error("El recurso ya está incorporado en esta obra");
   const tipo = base.tipo as Exclude<CategoriaContratista, "empresa">;
   if (!(tipo in REQUISITOS_RECURSO)) throw new Error("Tipo de recurso no válido");
-  await prisma.contratistaRecurso.create({
-    data: {
-      empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
-      recursoBase: { connect: { id: base.id } }, tipo, nombre: base.nombre,
-      identificador: base.identificador, cargo: base.cargo, patente: base.patente,
-      requisitos: { create: REQUISITOS_RECURSO[tipo].map((d) => ({
-        empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
-        solicitud: { connect: { id: s.id } },
-      })) },
-    },
+  await prisma.$transaction(async (tx) => {
+    const reglas = tipo === "trabajador" ? await tx.contratistaRequisitoRegla.findMany({
+      where: { solicitudId: s.id, empresaId: s.empresaId, activo: true },
+      select: { id: true, nombre: true, obligatorio: true },
+    }) : [];
+    await tx.contratistaRecurso.create({
+      data: {
+        empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
+        recursoBase: { connect: { id: base.id } }, tipo, nombre: base.nombre,
+        identificador: base.identificador, cargo: base.cargo, patente: base.patente,
+        requisitos: { create: requisitosParaNuevoRecurso(tipo, reglas).map((d) => ({
+          empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
+          solicitud: { connect: { id: s.id } },
+          ...(d.reglaTrabajadorId ? { reglaTrabajador: { connect: { id: d.reglaTrabajadorId } } } : {}),
+        })) },
+      },
+    });
   });
   await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "enviada" } });
   return { ok: true };
