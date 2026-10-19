@@ -325,7 +325,7 @@ export default function SolicitudesContratistasClient() {
                 {puedeEditar && <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 text-xs text-slate-600">
                   <summary className="cursor-pointer font-semibold text-sky-900">Ver documentos de la plantilla de acreditación</summary>
                   <ol className="mt-2 list-decimal space-y-1 pl-5">
-                    {PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => <li key={r.clave}>{describeRequisitoTrabajador(r)}</li>)}
+                    {PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => <li key={r.clave}><span className="font-semibold text-slate-800">{describeRequisitoTrabajador(r)}</span><p className="mt-0.5 text-slate-500">{r.detalle}</p></li>)}
                   </ol>
                   <p className="mt-2 text-slate-500">Condicionales: EPP, examen OAL y certificaciones según cargo; la mandante marca cada caso aplicable.</p>
                 </details>
