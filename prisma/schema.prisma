@@ -2741,6 +2741,8 @@ model ContratistaRequisitoRegla {
   solicitudId  String
   nombre       String
   obligatorio  Boolean  @default(true)
+  vigenciaMeses Int?
+  condicional  Boolean  @default(false)
   activo       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
@@ -2761,6 +2763,8 @@ model ContratistaRequisito {
   documentoBaseId    String?
   reglaTrabajadorId  String?
   obligatorio        Boolean   @default(true)
+  vigenciaMeses      Int?
+  condicional        Boolean   @default(false)
   estado             String    @default("pendiente")
   archivoNombre      String?
   archivoOriginal    String?
