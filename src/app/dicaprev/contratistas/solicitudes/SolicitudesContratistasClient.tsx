@@ -328,7 +328,7 @@ export default function SolicitudesContratistasClient() {
                     {PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => <li key={r.clave}><span className="font-semibold text-slate-800">{describeRequisitoTrabajador(r)}</span><p className="mt-0.5 text-slate-500">{r.detalle}</p></li>)}
                   </ol>
                   <p className="mt-2 text-slate-500">Condicionales: EPP, examen OAL y certificaciones según cargo; la mandante marca cada caso aplicable.</p>
-                </details>
+                </details>}
                 {agregando && puedeEditar && <form className="mt-4 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2" onSubmit={(e) => {
                   e.preventDefault();
                   void ejecutar(async () => {
