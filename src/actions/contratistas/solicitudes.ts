@@ -179,8 +179,16 @@ export async function eliminarRequisitoContratista(requisitoId: string) {
     include: { versiones: { take: 1, select: { id: true } } },
   });
   if (!requisito) throw new Error("Requisito no encontrado o expediente cerrado");
+  if (requisito.reglaTrabajadorId) throw new Error("Este requisito pertenece a una regla general. Gestiona su eliminación desde la regla para todos los trabajadores.");
   if (tieneEvidencia(requisito)) throw new Error("No se puede eliminar un requisito con archivos, versiones o revisión. Conserva su trazabilidad.");
-  await prisma.contratistaRequisito.delete({ where: { id: requisito.id } });
+  const eliminado = await prisma.contratistaRequisito.deleteMany({
+    where: {
+      id: requisito.id, empresaId, reglaTrabajadorId: null,
+      archivoNombre: null, documentoBaseId: null, version: 0, revisadoAt: null,
+      observacionRevision: null, estado: "pendiente", versiones: { none: {} },
+    },
+  });
+  if (!eliminado.count) throw new Error("El requisito cambió o recibió documentos. Actualiza la pantalla antes de intentar eliminarlo.");
   await recalcularEstado(requisito.solicitudId, empresaId);
   return { ok: true };
 }
