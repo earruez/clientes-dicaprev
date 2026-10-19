@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
-import { estadoEfectivo } from "@/lib/contratistas/requisitos";
+import { estadoEfectivo, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
 import { CATALOGO_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
@@ -281,7 +281,16 @@ export async function eliminarReglaRequisitosTrabajadores(reglaId: string) {
     if (regla.requisitos.some(tieneEvidencia)) {
       throw new Error("No se puede eliminar la regla porque al menos un trabajador tiene archivos o historial de revisión.");
     }
-    await tx.contratistaRequisito.deleteMany({ where: { empresaId, reglaTrabajadorId: regla.id } });
+    const estandar = REQUISITOS_RECURSO.trabajador.find((doc) => doc.nombre.trim().toLowerCase() === regla.nombre.trim().toLowerCase());
+    if (estandar) {
+      // IRL y EPP pueden ser requisitos base: restaurarlos al eliminar la pauta específica.
+      await tx.contratistaRequisito.updateMany({
+        where: { empresaId, reglaTrabajadorId: regla.id },
+        data: { reglaTrabajadorId: null, vigenciaMeses: null, condicional: false, obligatorio: estandar.obligatorio },
+      });
+    } else {
+      await tx.contratistaRequisito.deleteMany({ where: { empresaId, reglaTrabajadorId: regla.id } });
+    }
     await tx.contratistaRequisitoRegla.delete({ where: { id: regla.id } });
     return regla.solicitudId;
   });
