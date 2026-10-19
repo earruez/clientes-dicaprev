@@ -39,9 +39,40 @@ export const REQUISITOS_RECURSO: Record<Exclude<CategoriaContratista, "empresa">
   ],
 };
 
-export function estadoEfectivo(estado: string, fechaVencimiento: Date | string | null): string {
-  if (fechaVencimiento && !["observado", "rechazado"].includes(estado)) {
-    const vence = new Date(fechaVencimiento).toISOString().slice(0, 10);
+/** Vencimiento máximo según la pauta de cada mandante (no como plazo legal general). */
+export function vencimientoMaximoPorMeses(
+  emision: Date | string | null | undefined, vigenciaMeses: number | null | undefined,
+): Date | null {
+  if (!emision || !vigenciaMeses || vigenciaMeses <= 0) return null;
+  const f = new Date(emision);
+  if (Number.isNaN(f.getTime())) return null;
+  const target = new Date(Date.UTC(f.getUTCFullYear(), f.getUTCMonth() + vigenciaMeses, 1, 12));
+  const ultimo = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0, 12)).getUTCDate();
+  target.setUTCDate(Math.min(f.getUTCDate(), ultimo));
+  return target;
+}
+
+export function vencimientoEfectivoRequisito(
+  vencimiento: Date | string | null | undefined,
+  emision?: Date | string | null, vigenciaMeses?: number | null,
+): Date | null {
+  const informado = vencimiento ? new Date(vencimiento) : null;
+  const limite = vencimientoMaximoPorMeses(emision, vigenciaMeses);
+  if (informado && !Number.isNaN(informado.getTime()) && limite) {
+    return informado.getTime() < limite.getTime() ? informado : limite;
+  }
+  return limite || (informado && !Number.isNaN(informado.getTime()) ? informado : null);
+}
+
+export function estadoEfectivo(
+  estado: string, fechaVencimiento: Date | string | null,
+  fechaEmision?: Date | string | null, vigenciaMeses?: number | null,
+): string {
+  // Un documento previamente aprobado sin fecha de entrega no acredita un límite de antigüedad.
+  if (estado === "aprobado" && vigenciaMeses && !fechaEmision) return "vencido";
+  const efectiva = vencimientoEfectivoRequisito(fechaVencimiento, fechaEmision, vigenciaMeses);
+  if (efectiva && !["observado", "rechazado"].includes(estado)) {
+    const vence = efectiva.toISOString().slice(0, 10);
     const hoy = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     if (vence < hoy) return "vencido";
   }
