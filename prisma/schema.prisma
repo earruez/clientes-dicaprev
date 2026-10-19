@@ -1751,6 +1751,7 @@ model Contratista {
   rut           String?
   razonSocial   String?
   email         String?
+  contactoNombre String?
   telefono      String?
   representanteLegal String?
   rutRepresentante   String?
