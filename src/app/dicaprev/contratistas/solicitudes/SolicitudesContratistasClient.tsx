@@ -9,11 +9,12 @@ import { Label } from "@/components/ui/label";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import {
-  agregarRequisitoContratista, cambiarObligatoriedadContratista, cerrarExpedienteContratista,
+  agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, cerrarExpedienteContratista,
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
   invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
 } from "@/actions/contratistas/solicitudes";
-import { estadoEfectivo } from "@/lib/contratistas/requisitos";
+import { estadoEfectivo, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
+import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CATALOGO_FAENA } from "@/lib/contratistas/catalogo";
 import { crearCatalogoContratista, listarCentrosMandante, listarDocumentosBaseContratista, obtenerCatalogoContratistas, reutilizarDocumentoContratista } from "@/actions/contratistas/catalogo";
 
@@ -294,7 +295,7 @@ export default function SolicitudesContratistasClient() {
                     const docsRecurso = actual.requisitos.filter((r) => r.recursoId === recurso.id && r.obligatorio);
                     const docsEmpresa = actual.requisitos.filter((r) => r.categoria === "empresa" && r.obligatorio);
                     const todos = [...docsEmpresa, ...docsRecurso];
-                    const correctos = todos.filter((r) => estadoEfectivo(r.estado, r.fechaVencimiento) === "aprobado").length;
+                    const correctos = todos.filter((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "aprobado").length;
                     const listo = todos.length > 0 && correctos === todos.length;
                     return <div key={recurso.id} className="flex min-w-0 items-start justify-between gap-2 rounded-xl border border-slate-200 p-3">
                       <div className="min-w-0">
@@ -310,8 +311,24 @@ export default function SolicitudesContratistasClient() {
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>
-                  {puedeEditar && <Button variant="outline" size="sm" onClick={() => setAgregando((x) => !x)}><Plus className="mr-1 h-4 w-4"/>Agregar requisito</Button>}
+                  {puedeEditar && <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setAgregando((x) => !x)}><Plus className="mr-1 h-4 w-4"/>Agregar requisito</Button>
+                    <Button variant="outline" size="sm" disabled={procesando} className="border-sky-200 text-sky-800" onClick={() => {
+                      if (window.confirm("¿Aplicar la plantilla de Acreditación de trabajadores (9 documentos) a esta obra? Se asignará al personal actual y futuro. IRL y EPP existentes se reutilizan; no se borrarán archivos ni historiales. Esta exigencia no se aplicará a otras faenas.")) {
+                        void ejecutar(async () => {
+                          await aplicarPlantillaAcreditacionTrabajadores(actual.id);
+                        }, "Plantilla de acreditación aplicada a los trabajadores de este expediente.");
+                      }
+                    }}><ClipboardCheck className="mr-1 h-4 w-4"/>Plantilla acreditación (9)</Button>
+                  </div>}
                 </div>
+                {puedeEditar && <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 text-xs text-slate-600">
+                  <summary className="cursor-pointer font-semibold text-sky-900">Ver documentos de la plantilla de acreditación</summary>
+                  <ol className="mt-2 list-decimal space-y-1 pl-5">
+                    {PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => <li key={r.clave}>{describeRequisitoTrabajador(r)}</li>)}
+                  </ol>
+                  <p className="mt-2 text-slate-500">Condicionales: EPP, examen OAL y certificaciones según cargo; la mandante marca cada caso aplicable.</p>
+                </details>
                 {agregando && puedeEditar && <form className="mt-4 grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2" onSubmit={(e) => {
                   e.preventDefault();
                   void ejecutar(async () => {
@@ -346,7 +363,7 @@ export default function SolicitudesContratistasClient() {
                   {actual.reglasTrabajadores.map((regla) => <div key={regla.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3 sm:p-4">
                     <div className="min-w-0">
                       <p className="break-words text-sm font-medium text-slate-900">{regla.nombre}</p>
-                      <p className="text-xs text-slate-600">{regla._count.requisitos} trabajador(es) con este requisito · {regla.obligatorio ? "Obligatorio" : "Opcional"} · Se asignará automáticamente a los nuevos trabajadores</p>
+                      <p className="text-xs text-slate-600">{regla._count.requisitos} trabajador(es) con este requisito · {regla.condicional ? "Si aplica (configurar por trabajador)" : regla.obligatorio ? "Obligatorio" : "Opcional"}{regla.vigenciaMeses ? ` · máximo ${regla.vigenciaMeses} meses` : ""} · Se asignará automáticamente a los nuevos trabajadores</p>
                     </div>
                     {puedeEditar && <Button variant="outline" size="sm" disabled={procesando} className="text-red-700 hover:text-red-800" onClick={() => {
                       if (window.confirm(`¿Eliminar la regla "${regla.nombre}" para trabajadores actuales y futuros? También se quitarán sus requisitos individuales SIN archivos ni revisión. Si alguno tiene historial, la operación se bloqueará.`))
@@ -360,19 +377,19 @@ export default function SolicitudesContratistasClient() {
                   return <div key={key} className="mt-5 space-y-3">
                     <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">{label} ({docs.length})</h4>
                     {docs.map((d) => {
-                      const estado = estadoEfectivo(d.estado, d.fechaVencimiento);
+                      const estado = estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses);
                       return <div key={d.id} className="min-w-0 rounded-xl border border-slate-200 p-3 sm:p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <p className="break-words text-sm font-medium text-slate-900">{d.nombre}</p>
                             {d.recurso && <p className="text-xs text-slate-500">{d.recurso.nombre} · {d.recurso.patente || d.recurso.identificador || "Sin identificador"}</p>}
-                            <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(d.fechaVencimiento)} · Versión {d.version}</p>
+                            <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(vencimientoEfectivoRequisito(d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses))} · Versión {d.version}{d.vigenciaMeses ? ` · Vigencia máxima ${d.vigenciaMeses} meses` : ""}{d.condicional ? " · Si aplica" : ""}</p>
                           </div>
                           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${CLASES[estado] || CLASES.pendiente}`}>{ESTADOS_DOC[estado] || estado}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-3">
                           {d.archivoNombre && <a href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 underline"><FileText className="h-3.5 w-3.5"/>Ver documento</a>}
-                          {puedeEditar && <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" disabled={procesando} checked={d.obligatorio} onChange={(e) => void ejecutar(() => cambiarObligatoriedadContratista(d.id, e.target.checked), "Obligatoriedad actualizada.")}/>Obligatorio</label>}
+                          {puedeEditar && <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" disabled={procesando} checked={d.obligatorio} onChange={(e) => void ejecutar(() => cambiarObligatoriedadContratista(d.id, e.target.checked), "Obligatoriedad actualizada.")}/>{d.condicional ? "Aplica / obligatorio" : "Obligatorio"}</label>}
                           {puedeEditar && <button type="button" disabled={procesando || !!(d.reglaTrabajadorId || d.archivoNombre || d.documentoBaseId || d.version > 0 || d.revisadoAt || d.observacionRevision || d.estado !== "pendiente" || d.versiones.length)} title={d.reglaTrabajadorId ? "Gestiona este requisito desde la regla de todos los trabajadores" : d.archivoNombre || d.version > 0 || d.revisadoAt || d.versiones.length ? "No se puede eliminar: contiene documentos o historial de revisión" : "Eliminar requisito sin documentos"} className="inline-flex items-center gap-1 text-xs font-medium text-red-700 disabled:cursor-not-allowed disabled:text-slate-400" onClick={() => {
                             if (window.confirm(`¿Eliminar el requisito "${d.nombre}"? Esta acción no se puede deshacer.`))
                               void ejecutar(() => eliminarRequisitoContratista(d.id), "Requisito eliminado.");
