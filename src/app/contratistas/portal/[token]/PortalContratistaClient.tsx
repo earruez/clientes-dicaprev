@@ -104,7 +104,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       form.set("requisitoId", r.id);
       form.set("file", file);
       form.set("fechaEmision", fechas[r.id]?.emision ?? isoFecha(r.fechaEmision));
-      form.set("fechaVencimiento", fechas[r.id]?.vencimiento ?? isoFecha(r.fechaVencimiento));
+      form.set("fechaVencimiento", fechas[r.id]?.vencimiento ?? (r.vigenciaMeses ? "" : isoFecha(r.fechaVencimiento)));
       const response = await fetch(`/api/contratistas/portal/${token}/archivo`, { method: "POST", body: form });
       const json = await response.json() as { error?: string };
       if (!response.ok) throw new Error(json.error || "Error al cargar documento");
@@ -115,7 +115,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
 
 
   function bloqueRequisito(r: RequisitoPortal) {
-    const actual = fechas[r.id] || { emision: isoFecha(r.fechaEmision), vencimiento: isoFecha(r.fechaVencimiento) };
+    const actual = fechas[r.id] || { emision: isoFecha(r.fechaEmision), vencimiento: r.vigenciaMeses ? "" : isoFecha(r.fechaVencimiento) };
     const abierto = expandido === r.id;
     const requiereCorreccion = ["observado", "rechazado", "vencido"].includes(r.estadoEfectivo);
     const recursoRelacionado = portal.recursos.find((item) => item.id === r.recursoId);
