@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Building2, ClipboardCheck, FileText, Mail, Plus, RefreshCcw, XCircle } from "lucide-react";
+import { ArrowLeft, Building2, ClipboardCheck, FileText, Mail, Plus, RefreshCcw, Trash2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,8 @@ import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import {
   agregarRequisitoContratista, cambiarObligatoriedadContratista, cerrarExpedienteContratista,
-  crearSolicitudContratista, invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
+  crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
+  invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
 } from "@/actions/contratistas/solicitudes";
 import { estadoEfectivo } from "@/lib/contratistas/requisitos";
 import { CATALOGO_FAENA } from "@/lib/contratistas/catalogo";
@@ -72,7 +73,7 @@ export default function SolicitudesContratistasClient() {
     CATALOGO_FAENA.filter((r) => r.obligatorio).map((r) => r.clave),
   );
   const [agregando, setAgregando] = useState(false);
-  const [extra, setExtra] = useState({ nombre: "", alcance: "faena" as "empresa" | "faena", categoria: "empresa", recursoId: "", obligatorio: true });
+  const [extra, setExtra] = useState({ nombre: "", alcance: "faena" as "empresa" | "faena", categoria: "empresa", recursoId: "", aplicaATodosTrabajadores: false, obligatorio: true });
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const actual = useMemo(() => expedientes.find((s) => s.id === actualId) || null, [expedientes, actualId]);
   const puedeEditar = !!actual && actual.estado !== "cerrada";
@@ -303,27 +304,41 @@ export default function SolicitudesContratistasClient() {
                       solicitudId: actual.id, nombre: extra.nombre, alcance: extra.alcance,
                       categoria: extra.categoria as "empresa" | "trabajador" | "vehiculo" | "equipo",
                       recursoId: extra.recursoId || undefined, obligatorio: extra.obligatorio,
+                      aplicaATodosTrabajadores: extra.aplicaATodosTrabajadores,
                     });
-                    setExtra({ nombre: "", alcance: "faena", categoria: "empresa", recursoId: "", obligatorio: true });
+                    setExtra({ nombre: "", alcance: "faena", categoria: "empresa", recursoId: "", aplicaATodosTrabajadores: false, obligatorio: true });
                     setAgregando(false);
                   }, "Requisito agregado.");
                 }}>
                   <label className="space-y-1"><Label>Elegir del catálogo</Label>
                     <select className={CAMPO} value="" onChange={(e) => {
                       const elegido = catalogo.find((doc) => doc.id === e.target.value);
-                      if (elegido) setExtra({ ...extra, nombre: elegido.nombre, alcance: elegido.alcance, categoria: elegido.categoria, recursoId: elegido.categoria === "empresa" ? "" : extra.recursoId });
+                      if (elegido) setExtra({ ...extra, nombre: elegido.nombre, alcance: elegido.alcance, categoria: elegido.categoria, recursoId: "", aplicaATodosTrabajadores: elegido.categoria === "trabajador" });
                     }}>
                       <option value="">Documento personalizado...</option>
-                      {catalogo.filter((c) => c.categoria === "empresa" || actual.recursos.some((r) => r.tipo === c.categoria)).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      {catalogo.filter((c) => c.categoria === "empresa" || c.categoria === "trabajador" || actual.recursos.some((r) => r.tipo === c.categoria)).map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                     </select>
                   </label>
                   <label className="space-y-1"><Label>Documento *</Label><Input required value={extra.nombre} onChange={(e) => setExtra({ ...extra, nombre: e.target.value })}/></label>
                   {extra.categoria === "empresa" && <label className="space-y-1"><Label>Ámbito</Label><select className={CAMPO} value={extra.alcance} onChange={(e) => setExtra({ ...extra, alcance: e.target.value as "empresa" | "faena" })}><option value="faena">Específico de esta faena</option><option value="empresa">Corporativo reutilizable</option></select></label>}
-                  <label className="space-y-1"><Label>Categoría</Label><select className={CAMPO} value={extra.categoria} onChange={(e) => setExtra({ ...extra, categoria: e.target.value, recursoId: "" })}>{Object.entries(CATEGORIAS).map(([key,val]) => <option key={key} value={key}>{val}</option>)}</select></label>
-                  {extra.categoria !== "empresa" && <label className="space-y-1"><Label>Recurso</Label><select className={CAMPO} required value={extra.recursoId} onChange={(e) => setExtra({ ...extra, recursoId: e.target.value })}><option value="">Selecciona un recurso</option>{actual.recursos.filter((r) => r.tipo === extra.categoria).map((r) => <option key={r.id} value={r.id}>{r.nombre} {r.patente || r.identificador || ""}</option>)}</select></label>}
+                  <label className="space-y-1"><Label>Categoría</Label><select className={CAMPO} value={extra.categoria} onChange={(e) => setExtra({ ...extra, categoria: e.target.value, recursoId: "", aplicaATodosTrabajadores: e.target.value === "trabajador" })}>{Object.entries(CATEGORIAS).map(([key,val]) => <option key={key} value={key}>{val}</option>)}</select></label>
+                  {extra.categoria !== "empresa" && <label className="space-y-1"><Label>{extra.categoria === "trabajador" ? "Aplicar a" : "Recurso"}</Label><select className={CAMPO} required value={extra.aplicaATodosTrabajadores ? "__todos__" : extra.recursoId} onChange={(e) => setExtra({ ...extra, aplicaATodosTrabajadores: extra.categoria === "trabajador" && e.target.value === "__todos__", recursoId: e.target.value === "__todos__" ? "" : e.target.value })}><option value="">Selecciona un recurso</option>{extra.categoria === "trabajador" && <option value="__todos__">Todos los trabajadores actuales y futuros</option>}{actual.recursos.filter((r) => r.tipo === extra.categoria).map((r) => <option key={r.id} value={r.id}>{r.nombre} {r.patente || r.identificador || ""}</option>)}</select></label>}
                   <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={extra.obligatorio} onChange={(e) => setExtra({ ...extra, obligatorio: e.target.checked })}/>Obligatorio</label>
                   <Button type="submit" disabled={procesando} className="bg-sky-700 text-white">Guardar requisito</Button>
                 </form>}
+                {actual.reglasTrabajadores.length > 0 && <div className="mt-5 space-y-2">
+                  <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">Requisitos para todos los trabajadores actuales y futuros ({actual.reglasTrabajadores.length})</h4>
+                  {actual.reglasTrabajadores.map((regla) => <div key={regla.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3 sm:p-4">
+                    <div className="min-w-0">
+                      <p className="break-words text-sm font-medium text-slate-900">{regla.nombre}</p>
+                      <p className="text-xs text-slate-600">{regla._count.requisitos} trabajador(es) con este requisito · {regla.obligatorio ? "Obligatorio" : "Opcional"} · Se asignará automáticamente a los nuevos trabajadores</p>
+                    </div>
+                    {puedeEditar && <Button variant="outline" size="sm" disabled={procesando} className="text-red-700 hover:text-red-800" onClick={() => {
+                      if (window.confirm(`¿Eliminar la regla "${regla.nombre}" para trabajadores actuales y futuros? También se quitarán sus requisitos individuales SIN archivos ni revisión. Si alguno tiene historial, la operación se bloqueará.`))
+                        void ejecutar(() => eliminarReglaRequisitosTrabajadores(regla.id), "Regla general eliminada.");
+                    }}><Trash2 className="mr-1.5 h-3.5 w-3.5"/>Eliminar regla</Button>}
+                  </div>)}
+                </div>}
                 {Object.entries(CATEGORIAS).map(([key, label]) => {
                   const docs = actual.requisitos.filter((r) => r.categoria === key);
                   if (!docs.length) return null;
@@ -343,6 +358,10 @@ export default function SolicitudesContratistasClient() {
                         <div className="mt-2 flex flex-wrap items-center gap-3">
                           {d.archivoNombre && <a href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 underline"><FileText className="h-3.5 w-3.5"/>Ver documento</a>}
                           {puedeEditar && <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" disabled={procesando} checked={d.obligatorio} onChange={(e) => void ejecutar(() => cambiarObligatoriedadContratista(d.id, e.target.checked), "Obligatoriedad actualizada.")}/>Obligatorio</label>}
+                          {puedeEditar && <button type="button" disabled={procesando || !!(d.archivoNombre || d.documentoBaseId || d.version > 0 || d.revisadoAt || d.observacionRevision || d.estado !== "pendiente" || d.versiones.length)} title={d.archivoNombre || d.version > 0 || d.revisadoAt || d.versiones.length ? "No se puede eliminar: contiene documentos o historial de revisión" : "Eliminar requisito sin documentos"} className="inline-flex items-center gap-1 text-xs font-medium text-red-700 disabled:cursor-not-allowed disabled:text-slate-400" onClick={() => {
+                            if (window.confirm(`¿Eliminar el requisito "${d.nombre}"? Esta acción no se puede deshacer.`))
+                              void ejecutar(() => eliminarRequisitoContratista(d.id), "Requisito eliminado.");
+                          }}><Trash2 className="h-3.5 w-3.5"/>Eliminar requisito</button>}
                         </div>
                         {d.categoria === "empresa" && <p className="mt-2 text-[11px] font-semibold text-slate-500">{d.alcance === "empresa" ? "Documento corporativo sujeto a revisión de esta faena" : "Documento específico de contrato / faena"}{d.documentoBase && <span className="ml-2 text-emerald-700">· Reutilizado de carpeta corporativa</span>}</p>}
                         {d.categoria === "empresa" && puedeEditar && !d.archivoNombre && docsBase.length > 0 && <div className="mt-2 flex flex-col gap-2 rounded-xl bg-emerald-50/60 p-3 sm:flex-row sm:items-center">
@@ -366,7 +385,7 @@ export default function SolicitudesContratistasClient() {
                     })}
                   </div>;
                 })}
-                {actual.requisitos.length === 0 && <p className="mt-4 text-sm text-slate-500">No se han configurado documentos todavía.</p>}
+                {actual.requisitos.length === 0 && actual.reglasTrabajadores.length === 0 && <p className="mt-4 text-sm text-slate-500">No se han configurado documentos todavía.</p>}
               </div>
             </section>}
           </div>
