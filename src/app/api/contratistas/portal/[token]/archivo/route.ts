@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { descargarArchivoContratista, subirArchivoContratista } from "@/lib/contratistas/archivos";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
+import { vencimientoMaximoPorMeses } from "@/lib/contratistas/requisitos";
 
 type Context = { params: Promise<{ token: string }> };
 
@@ -28,11 +29,16 @@ export async function POST(request: Request, { params }: Context) {
     }
     const requisito = await prisma.contratistaRequisito.findFirst({
       where: { id: requisitoId, solicitudId: s.id, empresaId: s.empresaId },
-      select: { id: true, version: true },
+      select: { id: true, version: true, vigenciaMeses: true },
     });
     if (!requisito) return NextResponse.json({ error: "Requisito no encontrado" }, { status: 404 });
     const emision = fecha(data.get("fechaEmision"));
-    const vencimiento = fecha(data.get("fechaVencimiento"));
+    let vencimiento = fecha(data.get("fechaVencimiento"));
+    if (requisito.vigenciaMeses && !emision) {
+      return NextResponse.json({ error: "Indica la fecha de entrega para comprobar la vigencia máxima del documento" }, { status: 400 });
+    }
+    const maximo = vencimientoMaximoPorMeses(emision, requisito.vigenciaMeses);
+    if (maximo && (!vencimiento || vencimiento > maximo)) vencimiento = maximo;
     if (emision && vencimiento && emision > vencimiento) {
       return NextResponse.json({ error: "La fecha de vencimiento debe ser posterior a la emisión" }, { status: 400 });
     }
