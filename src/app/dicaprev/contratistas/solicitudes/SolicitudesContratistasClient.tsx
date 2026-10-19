@@ -21,6 +21,7 @@ type Expediente = Awaited<ReturnType<typeof listarSolicitudesContratistas>>[numb
 type Catalogo = Awaited<ReturnType<typeof obtenerCatalogoContratistas>>;
 type Centro = Awaited<ReturnType<typeof listarCentrosMandante>>[number];
 type DocumentoBase = Awaited<ReturnType<typeof listarDocumentosBaseContratista>>[number];
+const nombreExpediente = (faena: string) => faena.trim() ? `Requerimiento documental ${faena.trim()}` : "";
 const CAMPO = "block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-sky-600 focus:outline-none";
 const ESTADOS: Record<string, string> = {
   borrador: "Borrador", enviada: "Invitación enviada", en_revision: "En revisión",
@@ -65,6 +66,7 @@ export default function SolicitudesContratistasClient() {
   const [error, setError] = useState("");
   const [aviso, setAviso] = useState("");
   const [nuevo, setNuevo] = useState(false);
+  const [nombrePersonalizado, setNombrePersonalizado] = useState(false);
   const [form, setForm] = useState({
     contratistaId: "", nombre: "", faena: "", centroTrabajoId: "", servicio: "", contactoEmail: "",
     responsable: "", dotacionEstimada: "", fechaInicio: "", fechaTermino: "",
@@ -131,6 +133,7 @@ export default function SolicitudesContratistasClient() {
         requisitos: seleccionados,
       });
       setNuevo(false);
+      setNombrePersonalizado(false);
       setForm({ contratistaId: "", nombre: "", faena: "", centroTrabajoId: "", servicio: "", contactoEmail: "", responsable: "", dotacionEstimada: "", fechaInicio: "", fechaTermino: "" });
       await cargar();
       setActualId(creado.id);
@@ -196,18 +199,30 @@ export default function SolicitudesContratistasClient() {
                 </select>
                 <span className="text-xs text-slate-500">Si no aparece, crea la empresa en Gestión contratistas.</span>
               </label>
-              <label className="space-y-1.5"><Label>Nombre del expediente *</Label><Input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Instalaciones edificio A" /></label>
+              <label className="space-y-1.5"><Label>Nombre del expediente *</Label><Input required value={form.nombre} onChange={(e) => {
+                const nombre = e.target.value;
+                setNombrePersonalizado(nombre !== nombreExpediente(form.faena));
+                setForm((prev) => ({ ...prev, nombre }));
+              }} placeholder="Requerimiento documental BCI - VITACURA" />
+                <span className="text-xs text-slate-500">Se propone desde la obra o faena; puedes personalizarlo.</span>
+              </label>
               <label className="space-y-1.5"><Label>Centro de trabajo de la mandante</Label>
                 <select className={CAMPO} value={form.centroTrabajoId} onChange={(e) => {
                   const c = centros.find((item) => item.id === e.target.value);
-                  setForm((prev) => ({ ...prev, centroTrabajoId: e.target.value, faena: c?.nombre || prev.faena }));
+                  setForm((prev) => {
+                    const faena = c?.nombre || prev.faena;
+                    return { ...prev, centroTrabajoId: e.target.value, faena, nombre: nombrePersonalizado ? prev.nombre : nombreExpediente(faena) };
+                  });
                 }}>
                   <option value="">Otro / sin centro registrado</option>
                   {centros.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                 </select>
               </label>
-              <label className="space-y-1.5"><Label>Obra o faena *</Label><Input required value={form.faena} onChange={(e) => setForm({ ...form, faena: e.target.value })} placeholder="Obra, contrato o ubicación específica"/></label>
-              <label className="space-y-1.5"><Label>Servicio contratado</Label><Input value={form.servicio} onChange={(e) => setForm({ ...form, servicio: e.target.value })} /></label>
+              <label className="space-y-1.5"><Label>Obra o faena *</Label><Input required value={form.faena} onChange={(e) => {
+                const faena = e.target.value;
+                setForm((prev) => ({ ...prev, faena, nombre: nombrePersonalizado ? prev.nombre : nombreExpediente(faena) }));
+              }} placeholder="Ej. BCI - VITACURA"/></label>
+              <label className="space-y-1.5"><Label>Servicio contratado</Label><Input value={form.servicio} onChange={(e) => setForm({ ...form, servicio: e.target.value })} placeholder="Ej. Electricidad, climatización, cristales" /></label>
               <label className="space-y-1.5"><Label>Correo del contratista *</Label><Input type="email" required value={form.contactoEmail} onChange={(e) => setForm({ ...form, contactoEmail: e.target.value })} /></label>
               <label className="space-y-1.5"><Label>Responsable en faena</Label><Input value={form.responsable} onChange={(e) => setForm({ ...form, responsable: e.target.value })} /></label>
               <label className="space-y-1.5"><Label>Dotación estimada</Label><Input type="number" min="0" value={form.dotacionEstimada} onChange={(e) => setForm({ ...form, dotacionEstimada: e.target.value })} /></label>
