@@ -5,6 +5,7 @@ import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
 import { estadoEfectivo } from "@/lib/contratistas/requisitos";
 import { CATALOGO_CONTRATISTAS } from "@/lib/contratistas/catalogo";
+import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
 
 const DIAS_ENLACE = 60;
@@ -111,6 +112,8 @@ export async function agregarRequisitoContratista(input: {
   recursoId?: string;
   obligatorio?: boolean;
   aplicaATodosTrabajadores?: boolean;
+  vigenciaMeses?: number | null;
+  condicional?: boolean;
 }) {
   const { empresaId } = await requirePermission("canManageDocumentacion");
   const solicitud = await prisma.contratistaSolicitud.findFirst({ where: { id: input.solicitudId, empresaId, estado: { not: "cerrada" } }, select: { id: true } });
@@ -126,7 +129,9 @@ export async function agregarRequisitoContratista(input: {
       });
       if (duplicado) throw new Error("Este requisito ya está configurado para todos los trabajadores");
       const regla = await tx.contratistaRequisitoRegla.create({
-        data: { empresaId, solicitudId: solicitud.id, nombre, obligatorio: input.obligatorio !== false },
+        data: { empresaId, solicitudId: solicitud.id, nombre,
+          obligatorio: input.obligatorio !== false, vigenciaMeses: input.vigenciaMeses ?? null,
+          condicional: input.condicional === true },
       });
       const trabajadores = await tx.contratistaRecurso.findMany({
         where: { empresaId, solicitudId: solicitud.id, tipo: "trabajador" },
@@ -142,6 +147,7 @@ export async function agregarRequisitoContratista(input: {
           data: trabajadores.filter((t) => !yaTienen.has(t.id)).map((t) => ({
             empresaId, solicitudId: solicitud.id, recursoId: t.id, nombre,
             categoria: "trabajador", obligatorio: input.obligatorio !== false, reglaTrabajadorId: regla.id,
+            vigenciaMeses: input.vigenciaMeses ?? null, condicional: input.condicional === true,
           })),
           skipDuplicates: true,
         });
@@ -160,6 +166,77 @@ export async function agregarRequisitoContratista(input: {
   }
   await recalcularEstado(solicitud.id, empresaId);
   return { ok: true };
+}
+
+/** Aplica la pauta del mandante solo al expediente seleccionado; es idempotente y no borra evidencia. */
+export async function aplicarPlantillaAcreditacionTrabajadores(solicitudId: string) {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+  const resultado = await prisma.$transaction(async (tx) => {
+    const expediente = await tx.contratistaSolicitud.findFirst({
+      where: { id: solicitudId, empresaId, estado: { not: "cerrada" } },
+      select: { id: true },
+    });
+    if (!expediente) throw new Error("Expediente no encontrado o cerrado");
+    const trabajadores = await tx.contratistaRecurso.findMany({
+      where: { solicitudId, empresaId, tipo: "trabajador" }, select: { id: true },
+    });
+    const reglas = await tx.contratistaRequisitoRegla.findMany({
+      where: { solicitudId, empresaId, activo: true },
+    });
+    const existentes = await tx.contratistaRequisito.findMany({
+      where: { solicitudId, empresaId, categoria: "trabajador", recursoId: { not: null } },
+      select: { id: true, recursoId: true, nombre: true, reglaTrabajadorId: true, obligatorio: true },
+    });
+    const normalizar = (nombre: string) => nombre.trim().toLocaleLowerCase("es");
+    let creadas = 0;
+    let asignados = 0;
+    for (const item of PLANTILLA_ACREDITACION_TRABAJADORES) {
+      let regla = reglas.find((r) => normalizar(r.nombre) === normalizar(item.nombre));
+      if (!regla) {
+        regla = await tx.contratistaRequisitoRegla.create({
+          data: {
+            empresaId, solicitudId, nombre: item.nombre,
+            obligatorio: item.obligatorio, condicional: item.condicional,
+            vigenciaMeses: item.vigenciaMeses,
+          },
+        });
+        reglas.push(regla);
+        creadas++;
+      }
+      for (const trabajador of trabajadores) {
+        const existente = existentes.find((r) =>
+          r.recursoId === trabajador.id && normalizar(r.nombre) === normalizar(item.nombre));
+        if (existente) {
+          // Reutilizar especialmente los documentos estándar IRL y EPP, sin perder sus versiones.
+          if (!existente.reglaTrabajadorId) {
+            await tx.contratistaRequisito.update({
+              where: { id: existente.id },
+              data: { reglaTrabajadorId: regla.id, vigenciaMeses: item.vigenciaMeses,
+                condicional: item.condicional, obligatorio: item.obligatorio },
+            });
+            existente.reglaTrabajadorId = regla.id;
+            asignados++;
+          }
+          continue;
+        }
+        const creado = await tx.contratistaRequisito.create({
+          data: {
+            empresaId, solicitudId, recursoId: trabajador.id, nombre: item.nombre,
+            categoria: "trabajador", reglaTrabajadorId: regla.id,
+            obligatorio: regla.obligatorio, vigenciaMeses: regla.vigenciaMeses,
+            condicional: regla.condicional,
+          },
+          select: { id: true },
+        });
+        existentes.push({ id: creado.id, recursoId: trabajador.id,
+          nombre: item.nombre, reglaTrabajadorId: regla.id, obligatorio: regla.obligatorio });
+        asignados++;
+      }
+    }
+    return { creadas, asignados };
+  }, { timeout: 20000 });
+  await recalcularEstado(solicitudId, empresaId);
+  return resultado;
 }
 
 /** No se elimina ningún requisito que tenga archivo, versión o evidencia de revisión. */
