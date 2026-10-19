@@ -134,7 +134,8 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
           {recursoRelacionado && <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-slate-500"><Users2 className="h-3.5 w-3.5"/>{recursoRelacionado.nombre}{recursoRelacionado.patente ? " · " + recursoRelacionado.patente : ""}</p>}
           <p className="mt-1.5 break-all text-xs text-slate-500">{r.archivoOriginal || "Todavía no se ha adjuntado un archivo."}{r.version ? " · Versión " + r.version : ""}</p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <span className={"text-[11px] font-semibold " + (r.obligatorio ? "text-slate-700" : "text-slate-400")}>{r.obligatorio ? "● Obligatorio" : "○ Opcional"}</span>
+            <span className={"text-[11px] font-semibold " + (r.obligatorio ? "text-slate-700" : "text-slate-400")}>{r.obligatorio ? "● Obligatorio" : r.condicional ? "○ Si aplica" : "○ Opcional"}</span>
+            {r.vigenciaMeses && <span className="text-[11px] font-semibold text-sky-700">Vigencia máxima {r.vigenciaMeses === 12 ? "1 año" : r.vigenciaMeses === 24 ? "2 años" : `${r.vigenciaMeses} meses`}</span>}
             {r.fechaVencimiento && <span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><Clock3 className="h-3.5 w-3.5"/>Vence {new Date(r.fechaVencimiento).toLocaleDateString("es-CL", {timeZone:"UTC"})}</span>}
             {r.archivoNombre && <a href={"/api/contratistas/portal/" + token + "/archivo?requisitoId=" + r.id} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 hover:underline">Ver archivo <ExternalLink className="h-3.5 w-3.5"/></a>}
           </div>
@@ -154,9 +155,10 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
           <input type="file" className="sr-only" accept={DOCUMENTO_ACCEPT} aria-label={"Archivo para " + r.nombre} onChange={(e) => setArchivo((prev) => ({ ...prev, [r.id]: e.target.files?.[0] || null }))}/>
         </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de emisión <span className="font-normal text-slate-400">(si aplica)</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.emision} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, emision: e.target.value } }))}/></label>
+          <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de emisión o entrega <span className="font-normal text-slate-400">{r.vigenciaMeses ? "(obligatoria para validar vigencia)" : "(si aplica)"}</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.emision} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, emision: e.target.value } }))}/></label>
           <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de vencimiento <span className="font-normal text-slate-400">(si aplica)</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.vencimiento} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, vencimiento: e.target.value } }))}/></label>
         </div>
+        {r.vigenciaMeses && <p className="text-xs text-sky-800">NextPrev calculará automáticamente la fecha máxima de vigencia desde la emisión o entrega y respetará una fecha de vencimiento anterior si corresponde.</p>}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" className="min-h-11 rounded-xl" disabled={!!enProceso} onClick={() => setExpandido(null)}>Cancelar</Button>
           <Button type="button" disabled={!!enProceso || !archivo[r.id]} onClick={() => subir(r)} className="min-h-11 rounded-xl bg-gradient-to-r from-emerald-600 to-sky-600 px-5 font-semibold text-white hover:from-emerald-700 hover:to-sky-700">
