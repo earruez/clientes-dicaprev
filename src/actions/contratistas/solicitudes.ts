@@ -29,6 +29,7 @@ export async function listarSolicitudesContratistas() {
       contratista: { select: { nombre: true, rut: true, razonSocial: true } },
       centroTrabajo: { select: { id: true, nombre: true } },
       recursos: { orderBy: { createdAt: "asc" } },
+      reglasTrabajadores: { orderBy: { createdAt: "asc" }, include: { _count: { select: { requisitos: true } } } },
       requisitos: {
         orderBy: [{ categoria: "asc" }, { createdAt: "asc" }],
         include: { documentoBase: { select: { id: true, nombre: true, estado: true } }, recurso: { select: { nombre: true, identificador: true, patente: true } }, versiones: { orderBy: { version: "desc" }, select: { id: true, version: true, subidoAt: true, archivoNombre: true, archivoOriginal: true } } },
@@ -109,21 +110,97 @@ export async function agregarRequisitoContratista(input: {
   alcance?: "empresa" | "faena";
   recursoId?: string;
   obligatorio?: boolean;
+  aplicaATodosTrabajadores?: boolean;
 }) {
   const { empresaId } = await requirePermission("canManageDocumentacion");
   const solicitud = await prisma.contratistaSolicitud.findFirst({ where: { id: input.solicitudId, empresaId, estado: { not: "cerrada" } }, select: { id: true } });
   if (!solicitud) throw new Error("Expediente no encontrado o cerrado");
   if (!input.nombre?.trim()) throw new Error("Nombre del requisito obligatorio");
-  if (input.recursoId) {
-    const recurso = await prisma.contratistaRecurso.findFirst({ where: { id: input.recursoId, solicitudId: solicitud.id, empresaId } });
-    if (!recurso || recurso.tipo !== input.categoria) throw new Error("Recurso no válido para este requisito");
-  } else if (input.categoria !== "empresa") {
-    throw new Error("Selecciona un trabajador, vehículo o equipo para este requisito");
+  const nombre = input.nombre.trim().slice(0, 220);
+  if (input.aplicaATodosTrabajadores) {
+    if (input.categoria !== "trabajador" || input.recursoId) throw new Error("El alcance general es exclusivo de trabajadores");
+    await prisma.$transaction(async (tx) => {
+      const duplicado = await tx.contratistaRequisitoRegla.findFirst({
+        where: { empresaId, solicitudId: solicitud.id, activo: true, nombre: { equals: nombre, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (duplicado) throw new Error("Este requisito ya está configurado para todos los trabajadores");
+      const regla = await tx.contratistaRequisitoRegla.create({
+        data: { empresaId, solicitudId: solicitud.id, nombre, obligatorio: input.obligatorio !== false },
+      });
+      const trabajadores = await tx.contratistaRecurso.findMany({
+        where: { empresaId, solicitudId: solicitud.id, tipo: "trabajador" },
+        select: { id: true },
+      });
+      if (trabajadores.length) {
+        const existentes = await tx.contratistaRequisito.findMany({
+          where: { empresaId, solicitudId: solicitud.id, categoria: "trabajador", recursoId: { in: trabajadores.map((t) => t.id) } },
+          select: { recursoId: true, nombre: true },
+        });
+        const yaTienen = new Set(existentes.filter((d) => d.nombre.trim().toLocaleLowerCase("es") === nombre.toLocaleLowerCase("es")).map((d) => d.recursoId));
+        await tx.contratistaRequisito.createMany({
+          data: trabajadores.filter((t) => !yaTienen.has(t.id)).map((t) => ({
+            empresaId, solicitudId: solicitud.id, recursoId: t.id, nombre,
+            categoria: "trabajador", obligatorio: input.obligatorio !== false, reglaTrabajadorId: regla.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    });
+  } else {
+    if (input.recursoId) {
+      const recurso = await prisma.contratistaRecurso.findFirst({ where: { id: input.recursoId, solicitudId: solicitud.id, empresaId } });
+      if (!recurso || recurso.tipo !== input.categoria) throw new Error("Recurso no válido para este requisito");
+    } else if (input.categoria !== "empresa") {
+      throw new Error("Selecciona un trabajador, vehículo o equipo para este requisito");
+    }
+    await prisma.contratistaRequisito.create({
+      data: { empresaId, solicitudId: solicitud.id, recursoId: input.recursoId || null, nombre, categoria: input.categoria, alcance: input.categoria === "empresa" && input.alcance === "empresa" ? "empresa" : "faena", obligatorio: input.obligatorio !== false },
+    });
   }
-  await prisma.contratistaRequisito.create({
-    data: { empresaId, solicitudId: solicitud.id, recursoId: input.recursoId || null, nombre: input.nombre.trim().slice(0, 220), categoria: input.categoria, alcance: input.categoria === "empresa" && input.alcance === "empresa" ? "empresa" : "faena", obligatorio: input.obligatorio !== false },
-  });
   await recalcularEstado(solicitud.id, empresaId);
+  return { ok: true };
+}
+
+/** No se elimina ningún requisito que tenga archivo, versión o evidencia de revisión. */
+function tieneEvidencia(r: {
+  archivoNombre: string | null; documentoBaseId: string | null; version: number;
+  revisadoAt: Date | null; observacionRevision: string | null; estado: string;
+  versiones: { id: string }[];
+}) {
+  return !!(r.archivoNombre || r.documentoBaseId || r.version > 0 || r.revisadoAt ||
+    r.observacionRevision || r.estado !== "pendiente" || r.versiones.length);
+}
+
+export async function eliminarRequisitoContratista(requisitoId: string) {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+  const requisito = await prisma.contratistaRequisito.findFirst({
+    where: { id: requisitoId, empresaId, solicitud: { estado: { not: "cerrada" } } },
+    include: { versiones: { take: 1, select: { id: true } } },
+  });
+  if (!requisito) throw new Error("Requisito no encontrado o expediente cerrado");
+  if (tieneEvidencia(requisito)) throw new Error("No se puede eliminar un requisito con archivos, versiones o revisión. Conserva su trazabilidad.");
+  await prisma.contratistaRequisito.delete({ where: { id: requisito.id } });
+  await recalcularEstado(requisito.solicitudId, empresaId);
+  return { ok: true };
+}
+
+export async function eliminarReglaRequisitosTrabajadores(reglaId: string) {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+  const solicitudId = await prisma.$transaction(async (tx) => {
+    const regla = await tx.contratistaRequisitoRegla.findFirst({
+      where: { id: reglaId, empresaId, solicitud: { estado: { not: "cerrada" } } },
+      include: { requisitos: { include: { versiones: { take: 1, select: { id: true } } } } },
+    });
+    if (!regla) throw new Error("Regla no encontrada o expediente cerrado");
+    if (regla.requisitos.some(tieneEvidencia)) {
+      throw new Error("No se puede eliminar la regla porque al menos un trabajador tiene archivos o historial de revisión.");
+    }
+    await tx.contratistaRequisito.deleteMany({ where: { empresaId, reglaTrabajadorId: regla.id } });
+    await tx.contratistaRequisitoRegla.delete({ where: { id: regla.id } });
+    return regla.solicitudId;
+  });
+  await recalcularEstado(solicitudId, empresaId);
   return { ok: true };
 }
 
