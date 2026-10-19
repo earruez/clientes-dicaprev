@@ -45,7 +45,7 @@ export async function obtenerPortalContratista(token: string) {
     nombre: s.nombre, faena: s.faena, servicio: s.servicio,
     estado: s.estado, contactoEmail: s.contactoEmail, empresaMandante: empresa?.nombre || "Empresa mandante",
     contratista: s.contratista, recursos: s.recursos, recursosBase,
-    requisitos: s.requisitos.map((r) => ({ ...r, estadoEfectivo: estadoEfectivo(r.estado, r.fechaVencimiento) })),
+    requisitos: s.requisitos.map((r) => ({ ...r, estadoEfectivo: estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) })),
   };
 }
 
@@ -190,7 +190,7 @@ export async function eliminarRecursoPortal(token: string, recursoId: string) {
 export async function enviarCarpetaContratista(token: string) {
   const s = await resolverPortalContratista(token);
   if (!s) throw new Error("Invitación inválida o vencida");
-  const pendientes = s.requisitos.filter((r) => r.obligatorio && (!r.archivoNombre || estadoEfectivo(r.estado, r.fechaVencimiento) === "vencido"));
+  const pendientes = s.requisitos.filter((r) => r.obligatorio && (!r.archivoNombre || estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "vencido"));
   if (!s.contratista.rut || !s.contratista.razonSocial) throw new Error("Completa los datos de la empresa contratista antes de enviar");
   if (pendientes.length) throw new Error(`Faltan ${pendientes.length} documentos obligatorios o hay documentos vencidos`);
   if (!s.requisitos.some((r) => r.archivoNombre && r.estado !== "aprobado" && r.estado !== "en_revision")) throw new Error("No hay documentos nuevos pendientes de envío");
