@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
-import { REQUISITOS_RECURSO, estadoEfectivo, type CategoriaContratista } from "@/lib/contratistas/requisitos";
+import { REQUISITOS_RECURSO, estadoEfectivo, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
 import { formatRutChile } from "@/lib/rut";
 
 function valido(input: string) {
@@ -45,7 +45,7 @@ export async function obtenerPortalContratista(token: string) {
     nombre: s.nombre, faena: s.faena, servicio: s.servicio,
     estado: s.estado, contactoEmail: s.contactoEmail, empresaMandante: empresa?.nombre || "Empresa mandante",
     contratista: s.contratista, recursos: s.recursos, recursosBase,
-    requisitos: s.requisitos.map((r) => ({ ...r, estadoEfectivo: estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) })),
+    requisitos: s.requisitos.map((r) => ({ ...r, fechaVencimiento: vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses), estadoEfectivo: estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) })),
   };
 }
 
