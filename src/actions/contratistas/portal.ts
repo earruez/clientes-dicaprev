@@ -11,21 +11,29 @@ function valido(input: string) {
 
 function requisitosParaNuevoRecurso(
   tipo: Exclude<CategoriaContratista, "empresa">,
-  reglas: { id: string; nombre: string; obligatorio: boolean }[],
+  reglas: { id: string; nombre: string; obligatorio: boolean; vigenciaMeses: number | null; condicional: boolean }[],
 ) {
-  const basicos = REQUISITOS_RECURSO[tipo].map((d) => ({
-    nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio, reglaTrabajadorId: null as string | null,
-  }));
+  const nombreNormal = (nombre: string) => nombre.trim().toLocaleLowerCase("es");
+  const basicos = REQUISITOS_RECURSO[tipo].map((d) => {
+    const regla = tipo === "trabajador" ? reglas.find((r) => nombreNormal(r.nombre) === nombreNormal(d.nombre)) : undefined;
+    return {
+      nombre: d.nombre, categoria: d.categoria, obligatorio: regla?.obligatorio ?? d.obligatorio,
+      reglaTrabajadorId: regla?.id || null, vigenciaMeses: regla?.vigenciaMeses || null,
+      condicional: regla?.condicional || false,
+    };
+  });
   if (tipo !== "trabajador") return basicos;
-  const nombres = new Set(basicos.map((d) => d.nombre.trim().toLocaleLowerCase("es")));
-  return [...basicos, ...reglas.filter((r) => {
-    const clave = r.nombre.trim().toLocaleLowerCase("es");
+  const nombres = new Set(basicos.map((d) => nombreNormal(d.nombre)));
+  const adicionales = reglas.filter((r) => {
+    const clave = nombreNormal(r.nombre);
     if (nombres.has(clave)) return false;
     nombres.add(clave);
     return true;
   }).map((r) => ({
     nombre: r.nombre, categoria: "trabajador", obligatorio: r.obligatorio, reglaTrabajadorId: r.id,
-  }))];
+    vigenciaMeses: r.vigenciaMeses, condicional: r.condicional,
+  }));
+  return [...basicos, ...adicionales];
 }
 
 export async function obtenerPortalContratista(token: string) {
@@ -114,7 +122,7 @@ export async function agregarRecursoPortal(token: string, input: {
     });
     const reglas = input.tipo === "trabajador" ? await tx.contratistaRequisitoRegla.findMany({
       where: { solicitudId: s.id, empresaId: s.empresaId, activo: true },
-      select: { id: true, nombre: true, obligatorio: true },
+      select: { id: true, nombre: true, obligatorio: true, vigenciaMeses: true, condicional: true },
     }) : [];
     return tx.contratistaRecurso.create({
       data: {
@@ -123,6 +131,7 @@ export async function agregarRecursoPortal(token: string, input: {
         identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
         requisitos: { create: requisitosParaNuevoRecurso(input.tipo, reglas).map((d) => ({
           empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
+          vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
           solicitud: { connect: { id: s.id } },
           ...(d.reglaTrabajadorId ? { reglaTrabajador: { connect: { id: d.reglaTrabajadorId } } } : {}),
         })) },
@@ -148,7 +157,7 @@ export async function incorporarRecursoBasePortal(token: string, recursoBaseId: 
   await prisma.$transaction(async (tx) => {
     const reglas = tipo === "trabajador" ? await tx.contratistaRequisitoRegla.findMany({
       where: { solicitudId: s.id, empresaId: s.empresaId, activo: true },
-      select: { id: true, nombre: true, obligatorio: true },
+      select: { id: true, nombre: true, obligatorio: true, vigenciaMeses: true, condicional: true },
     }) : [];
     await tx.contratistaRecurso.create({
       data: {
@@ -157,6 +166,7 @@ export async function incorporarRecursoBasePortal(token: string, recursoBaseId: 
         identificador: base.identificador, cargo: base.cargo, patente: base.patente,
         requisitos: { create: requisitosParaNuevoRecurso(tipo, reglas).map((d) => ({
           empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
+          vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
           solicitud: { connect: { id: s.id } },
           ...(d.reglaTrabajadorId ? { reglaTrabajador: { connect: { id: d.reglaTrabajadorId } } } : {}),
         })) },
