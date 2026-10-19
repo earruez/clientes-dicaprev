@@ -39,7 +39,7 @@ export async function listarSolicitudesContratistas() {
   });
   return solicitudes.map((s) => {
     const total = s.requisitos.filter((r) => r.obligatorio).length;
-    const aprobados = s.requisitos.filter((r) => r.obligatorio && estadoEfectivo(r.estado, r.fechaVencimiento) === "aprobado").length;
+    const aprobados = s.requisitos.filter((r) => r.obligatorio && estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "aprobado").length;
     return { ...s, totalObligatorios: total, aprobados, porcentaje: total ? Math.round((aprobados / total) * 100) : 0 };
   });
 }
@@ -337,7 +337,7 @@ async function recalcularEstado(solicitudId: string, empresaId: string) {
   let estado: string;
   if (!solicitud.invitadoAt) estado = "borrador";
   else if (requeridos.some((r) => ["observado", "rechazado"].includes(r.estado))) estado = "observada";
-  else if (requeridos.length > 0 && requeridos.every((r) => estadoEfectivo(r.estado, r.fechaVencimiento) === "aprobado")) estado = "aprobada";
+  else if (requeridos.length > 0 && requeridos.every((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "aprobado")) estado = "aprobada";
   else if (solicitud.requisitos.some((r) => r.estado === "en_revision" || r.estado === "aprobado")) estado = "en_revision";
   else estado = "enviada";
   await prisma.contratistaSolicitud.update({ where: { id: solicitudId }, data: { estado } });
@@ -355,7 +355,7 @@ export async function revisarRequisitoContratista(input: {
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
   if (requisito.estado !== "en_revision") throw new Error("El contratista aún no ha enviado este documento a revisión");
-  if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento) === "vencido") throw new Error("No se puede aprobar un documento vencido");
+  if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, requisito.vigenciaMeses) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
   // maestra: no es necesario volver a subirlos para una obra futura.
