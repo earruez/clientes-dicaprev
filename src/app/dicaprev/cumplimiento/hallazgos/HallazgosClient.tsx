@@ -48,6 +48,7 @@ import {
 import { guardarFichaHallazgoPdf, guardarInformeHallazgosPdf } from "@/lib/hallazgos/generar-informe-hallazgos-pdf";
 import { fechaChile, filtrarHallazgosInforme, rangoInformeHallazgos, type PeriodicidadInformeHallazgos } from "@/lib/hallazgos/informe-periodico";
 import { coincideTarjetaHallazgo, coincideFiltroEstadoHallazgo, type TarjetaEstadoHallazgo, type FiltroEstadoHallazgo } from "@/lib/hallazgos/filtro-tarjetas";
+import { JERARQUIA_CONTROL_DS44, nombreJerarquiaControlDs44, type NivelJerarquiaControlDs44 } from "@/lib/hallazgos/jerarquia-control-ds44";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { cn } from "@/lib/utils";
 import type {
@@ -57,6 +58,7 @@ import type {
 } from "../types";
 import {
   agregarEvidenciaCierreHallazgo,
+  actualizarJerarquiaMedidaCorrectiva,
   actualizarHallazgo,
   actualizarEstadoMedidaCorrectiva,
   cerrarHallazgo,
@@ -139,6 +141,7 @@ type HallazgoFormData = {
   prioridad: PrioridadHallazgo;
   fechaCompromiso: string;
   medidaCorrectivaSugerida: string;
+  medidaCorrectivaNivel: NivelJerarquiaControlDs44 | "none";
 };
 
 function fechaCompromisoDesdePlantilla(dias: number): string {
@@ -221,6 +224,7 @@ function FORM_EMPTY(): HallazgoFormData {
     prioridad: "media",
     fechaCompromiso: "",
     medidaCorrectivaSugerida: "",
+    medidaCorrectivaNivel: "none",
   };
 }
 
@@ -271,6 +275,7 @@ export default function HallazgosClient({
   const [cierreError, setCierreError] = useState<string | null>(null);
   const [evidenciaCierreTexto, setEvidenciaCierreTexto] = useState("");
   const [medidaCorrectivaTexto, setMedidaCorrectivaTexto] = useState("");
+  const [medidaCorrectivaNivel, setMedidaCorrectivaNivel] = useState<NivelJerarquiaControlDs44 | "none">("none");
   const [evidenciaCierreArchivo, setEvidenciaCierreArchivo] = useState<File | null>(null);
   const [uploadingEvidencia, setUploadingEvidencia] = useState(false);
 
@@ -403,6 +408,7 @@ export default function HallazgosClient({
       prioridad: h.prioridad,
       fechaCompromiso: h.fechaCompromiso.slice(0, 10),
       medidaCorrectivaSugerida: "",
+      medidaCorrectivaNivel: "none",
     });
     setModalOpen(true);
   }
@@ -423,6 +429,7 @@ export default function HallazgosClient({
           descripcion: form.descripcion,
           fechaCompromiso: form.fechaCompromiso,
           medidaCorrectivaSugerida: form.medidaCorrectivaSugerida || null,
+          medidaCorrectivaNivel: form.medidaCorrectivaNivel === "none" ? null : form.medidaCorrectivaNivel,
         });
       } else {
         await actualizarHallazgo(editId, {
@@ -458,6 +465,7 @@ export default function HallazgosClient({
     setComentarioCierre("");
     setEvidenciaCierreTexto("");
     setMedidaCorrectivaTexto("");
+    setMedidaCorrectivaNivel("none");
     setCierreError(null);
     try {
       setDetalleLoading(true);
@@ -661,13 +669,29 @@ export default function HallazgosClient({
     }
   }
 
+  async function onCambiarJerarquiaMedida(hallazgoId: string, medidaId: string, nivel: NivelJerarquiaControlDs44) {
+    if (!opciones.puedeEditar) return;
+    try {
+      setSaving(true);
+      setCierreError(null);
+      await actualizarJerarquiaMedidaCorrectiva(hallazgoId, medidaId, nivel);
+      const actualizado = await getHallazgoDetalle(hallazgoId);
+      if (actualizado) setDetalle(actualizado);
+    } catch (error) {
+      setCierreError(error instanceof Error ? error.message : "No fue posible actualizar la jerarquía de control.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onRegistrarMedidaCorrectiva(hallazgoId: string) {
     if (!opciones.puedeEditar) return;
     try {
       setSaving(true);
       setCierreError(null);
-      await registrarMedidaCorrectivaHallazgo(hallazgoId, medidaCorrectivaTexto);
+      await registrarMedidaCorrectivaHallazgo(hallazgoId, medidaCorrectivaTexto, medidaCorrectivaNivel as NivelJerarquiaControlDs44);
       setMedidaCorrectivaTexto("");
+      setMedidaCorrectivaNivel("none");
       const detalleHallazgo = await getHallazgoDetalle(hallazgoId);
       if (detalleHallazgo) setDetalle(detalleHallazgo);
       await reloadHallazgos();
@@ -1370,6 +1394,22 @@ export default function HallazgosClient({
 
             <div className="space-y-1">
               <Label>Medida correctiva sugerida (opcional al crear)</Label>
+               {!editId && (
+                 <div className="space-y-2">
+                   <Label>Jerarquía de control DS44 (obligatoria si añades una medida)</Label>
+                   <Select value={form.medidaCorrectivaNivel}
+                     onValueChange={(valor) => setForm((prev) => ({ ...prev, medidaCorrectivaNivel: valor as NivelJerarquiaControlDs44 | "none" }))}>
+                     <SelectTrigger className="w-full"><SelectValue placeholder="Selecciona el nivel de control" /></SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="none">Sin medida inicial</SelectItem>
+                       {JERARQUIA_CONTROL_DS44.map((nivel) => <SelectItem key={nivel.codigo} value={nivel.codigo}>{nivel.orden}. {nivel.nombre}</SelectItem>)}
+                     </SelectContent>
+                   </Select>
+                   {form.medidaCorrectivaNivel !== "none" && (
+                     <p className="text-xs text-slate-500">{JERARQUIA_CONTROL_DS44.find((nivel) => nivel.codigo === form.medidaCorrectivaNivel)?.descripcion}</p>
+                   )}
+                 </div>
+               )}
               <Textarea
                 rows={3}
                 value={form.medidaCorrectivaSugerida}
@@ -1387,7 +1427,7 @@ export default function HallazgosClient({
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
               onClick={onSubmit}
-              disabled={saving || !form.descripcion.trim() || !form.centroTrabajoId || !form.fechaCompromiso}
+              disabled={saving || !form.descripcion.trim() || !form.centroTrabajoId || !form.fechaCompromiso || (!editId && !!form.medidaCorrectivaSugerida.trim() && form.medidaCorrectivaNivel === "none")}
             >
               {editId ? "Guardar cambios" : "Crear hallazgo"}
             </Button>
@@ -1617,6 +1657,22 @@ export default function HallazgosClient({
                               {medida.estado === "completada" ? <span className="text-xs text-emerald-300">Completada</span> : null}
                             </div>
                             <p className="text-sm leading-5 text-slate-200">{medida.descripcion}</p>
+                             <div className="mt-2 text-xs font-semibold text-blue-200">
+                               Jerarquía DS44: {nombreJerarquiaControlDs44(medida.jerarquiaControl)}
+                             </div>
+                             {opciones.puedeEditar && selected.estado !== "cerrado" && (
+                               <div className="mt-2">
+                                 <label className="mb-1 block text-xs text-slate-400">Nivel de control de esta medida</label>
+                                 <Select value={medida.jerarquiaControl ?? "none"} disabled={saving}
+                                   onValueChange={(valor) => void onCambiarJerarquiaMedida(selected.id, medida.id, valor as NivelJerarquiaControlDs44)}>
+                                   <SelectTrigger className="h-10 border-slate-600 bg-slate-900 text-xs text-white"><SelectValue /></SelectTrigger>
+                                   <SelectContent>
+                                     {!medida.jerarquiaControl && <SelectItem value="none" disabled>Sin clasificar (histórico)</SelectItem>}
+                                     {JERARQUIA_CONTROL_DS44.map((nivel) => <SelectItem key={nivel.codigo} value={nivel.codigo}>{nivel.orden}. {nivel.nombre}</SelectItem>)}
+                                   </SelectContent>
+                                 </Select>
+                               </div>
+                             )}
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               <span className="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-300">
                                 {medida.estado.replace(/_/g, " ")}
@@ -1669,6 +1725,23 @@ export default function HallazgosClient({
                         <label htmlFor="nueva-medida-correctiva" className="block text-sm font-semibold text-emerald-200">
                           Añadir otra medida correctiva
                         </label>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-emerald-100">Jerarquía de control DS44</label>
+                          <Select value={medidaCorrectivaNivel}
+                            onValueChange={(valor) => setMedidaCorrectivaNivel(valor as NivelJerarquiaControlDs44)}>
+                            <SelectTrigger className="h-10 border-slate-600 bg-slate-900 text-sm text-white">
+                              <SelectValue placeholder="Seleccionar nivel" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none" disabled>Seleccionar nivel</SelectItem>
+                              {JERARQUIA_CONTROL_DS44.map((nivel) => <SelectItem key={nivel.codigo} value={nivel.codigo}>{nivel.orden}. {nivel.nombre}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          {medidaCorrectivaNivel !== "none" && (
+                            <p className="text-xs text-slate-400">{JERARQUIA_CONTROL_DS44.find((nivel) => nivel.codigo === medidaCorrectivaNivel)?.descripcion}</p>
+                          )}
+                          <p className="text-xs text-slate-400">Prioriza eliminación y controles colectivos antes de recurrir a EPP para riesgos residuales.</p>
+                        </div>
                         <Textarea
                           id="nueva-medida-correctiva"
                           rows={3}
@@ -1681,7 +1754,7 @@ export default function HallazgosClient({
                           type="button"
                           size="sm"
                           onClick={() => void onRegistrarMedidaCorrectiva(selected.id)}
-                          disabled={saving || !medidaCorrectivaTexto.trim()}
+                          disabled={saving || !medidaCorrectivaTexto.trim() || medidaCorrectivaNivel === "none"}
                           className="w-full bg-emerald-500 text-white hover:bg-emerald-600 sm:w-auto"
                         >
                           <Plus className="mr-2 h-4 w-4" /> {saving ? "Guardando…" : "Agregar medida correctiva"}

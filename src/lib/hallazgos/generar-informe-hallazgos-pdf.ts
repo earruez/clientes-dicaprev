@@ -1,6 +1,7 @@
 import { jsPDF } from "jspdf";
 import type { Hallazgo } from "@/app/dicaprev/cumplimiento/types";
 import type { HallazgoDetalle } from "@/app/dicaprev/cumplimiento/hallazgos/actions";
+import { nombreJerarquiaControlDs44 } from "@/lib/hallazgos/jerarquia-control-ds44";
 import {
   agruparHallazgosPorEstado, estaVencidoInforme, fechaChile, rangoInformeHallazgos,
   type TipoInformeHallazgos,
@@ -384,7 +385,7 @@ export function guardarFichaHallazgoPdf(data: DatosFichaHallazgoPdf) {
       doc.setFontSize(9);
       const lines = doc.splitTextToSize(m.descripcion, CONTENT - 32) as string[];
       const mostrarFechaCompletada = m.estado === "completada";
-      const alto = Math.max(mostrarFechaCompletada ? 76 : 64, lines.length * 11 + (mostrarFechaCompletada ? 53 : 38));
+      const alto = Math.max(mostrarFechaCompletada ? 95 : 81, lines.length * 11 + (mostrarFechaCompletada ? 70 : 55));
       ensure(alto + 8);
       fondo(doc, i % 2 ? PALE : WHITE);
       doc.setDrawColor(...LINE);
@@ -397,6 +398,11 @@ export function guardarFichaHallazgoPdf(data: DatosFichaHallazgoPdf) {
       doc.setFontSize(8.8);
       doc.text(lines, M + 12, y + 29);
       doc.setFontSize(8);
+      colorear(doc, MUTED);
+      colorear(doc, BLUE);
+      doc.setFont("helvetica", "bold");
+      doc.text("Jerarquía DS44: " + nombreJerarquiaControlDs44(m.jerarquiaControl), M + 12, y + alto - (mostrarFechaCompletada ? 36 : 22));
+      doc.setFont("helvetica", "normal");
       colorear(doc, MUTED);
       doc.text("Responsable: " + limpia(m.responsable) + "  |  Compromiso: " + dia(m.fechaCompromiso), M + 12, y + alto - (mostrarFechaCompletada ? 23 : 9));
       if (mostrarFechaCompletada) {
