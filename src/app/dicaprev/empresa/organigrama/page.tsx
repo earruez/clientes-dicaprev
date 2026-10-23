@@ -1473,6 +1473,10 @@ export default function OrganigramaPage() {
         </div>
       </div>
 
+      <footer className="hidden print:block print:mt-6 print:border-t print:border-slate-300 print:pt-3 print:text-xs print:text-slate-600">
+        Generado por NextPrev | Organigrama de empresa | Uso interno SST
+      </footer>
+
       {/* ── Drawer ── */}
       <NodeDrawer
         node={selectedNode}
