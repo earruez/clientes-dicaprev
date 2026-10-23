@@ -18,7 +18,7 @@ export default async function EstadoDocumentalDashboardPage({ searchParams }: Pa
     { nombre: "Documentos de empresa", descripcion: "Documentos legales, corporativos y sus vencimientos.", icon: Building2,
       count: resumen.documentos.empresa[estado], href: "/dicaprev/documentacion" },
     { nombre: "Documentos de trabajadores", descripcion: "Requisitos documentales por trabajador, pendientes y vencimientos.", icon: Users,
-      count: resumen.documentos.trabajadores[estado], href: "/dicaprev/trabajadores/control-documental?tab=" + estado },
+      count: resumen.documentos.trabajadores[estado], href: "/dicaprev/trabajadores/control-documental?tab=" + (vencidos ? "vencimientos" : "pendientes") },
     { nombre: "Documentos de vehículos", descripcion: "Expedientes de la flota y documentos por regularizar.", icon: Car,
       count: resumen.documentos.vehiculos[estado], href: "/dicaprev/empresa/vehiculos" },
   ];
