@@ -8,6 +8,7 @@ type PageProps = {
   searchParams?: Promise<{
     workerId?: string | string[];
     centro?: string | string[];
+    tab?: string | string[];
   }>;
 };
 
@@ -34,12 +35,15 @@ export default async function ControlDocumentalPage({ searchParams }: PageProps)
 
   const workerId = getSingleParam(resolvedSearchParams?.workerId);
   const centro = getSingleParam(resolvedSearchParams?.centro);
+  const tab = getSingleParam(resolvedSearchParams?.tab);
+  const tabInicial = tab === "pendientes" || tab === "vencimientos" ? tab : undefined;
 
   return (
     <ControlDocumentalClient
       initialData={initialData}
       workerId={workerId}
       centro={centro}
+      tabInicial={tabInicial}
     />
   );
 }
