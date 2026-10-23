@@ -6,12 +6,12 @@ import {
 } from "@/lib/hallazgos/informe-periodico";
 import { construirInformeHallazgosPdf } from "@/lib/hallazgos/generar-informe-hallazgos-pdf";
 
-const base = {
+const base: Omit<Hallazgo, "estado"> = {
   id: "h-00000001", tipo: "condicion_insegura", descripcion: "Zona de acopio de cilindros obstruida",
   centroId: "c-1", centroNombre: "Casa Matriz / Bodega J5", responsableNombre: "Responsable de faena",
   creadoPor: "Usuario NextPrev", prioridad: "alta", fechaCompromiso: "2026-10-22",
   fechaCreacion: "2026-10-23T15:00:00.000Z", historial: [], evidenciaIds: [],
-} as const;
+};
 const fila = (estado: Hallazgo["estado"], idx: number): Hallazgo => ({
   ...base, id: "hallazgo-" + idx, estado,
   descripcion: base.descripcion + " (" + idx + ")",

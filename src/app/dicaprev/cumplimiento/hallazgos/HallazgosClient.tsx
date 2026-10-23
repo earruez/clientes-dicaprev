@@ -790,13 +790,15 @@ export default function HallazgosClient({
     });
   }, [hallazgos, search, filtroEstado, filtroTipo, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
 
+  const referenciaValida = /^\d{4}-\d{2}-\d{2}$/.test(fechaReferenciaInforme)
+    ? fechaReferenciaInforme : fechaChile(new Date());
   const resumenPeriodo = useMemo(
-    () => filtrarHallazgosInforme(hallazgos, tipoInforme, fechaReferenciaInforme),
-    [hallazgos, tipoInforme, fechaReferenciaInforme],
+    () => filtrarHallazgosInforme(hallazgos, tipoInforme, referenciaValida),
+    [hallazgos, tipoInforme, referenciaValida],
   );
   const rangoPeriodo = useMemo(
-    () => rangoInformeHallazgos(tipoInforme, fechaReferenciaInforme),
-    [tipoInforme, fechaReferenciaInforme],
+    () => rangoInformeHallazgos(tipoInforme, referenciaValida),
+    [tipoInforme, referenciaValida],
   );
 
   return (
