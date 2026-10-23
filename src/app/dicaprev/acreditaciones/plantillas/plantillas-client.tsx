@@ -40,6 +40,16 @@ type FormRequisito = {
   categoria: string;
   aplicaA: string;
   obligatorio: boolean;
+  codigoDocumento?: string | null;
+  documentoRequeridoEmpresaId?: string | null;
+  documentoTipoTrabajadorId?: string | null;
+  documentoTipoVehiculoId?: string | null;
+};
+
+type Vinculos = {
+  empresa: Array<{ id: string; nombre: string }>;
+  trabajador: Array<{ id: string; nombre: string }>;
+  vehiculo: Array<{ id: string; nombre: string }>;
 };
 
 const CATEGORIAS = ["empresa", "sst", "trabajador", "vehiculo", "anexo"];
@@ -48,9 +58,11 @@ const APLICA_A = ["empresa", "trabajador", "vehiculo"];
 export default function PlantillasClient({
   initialPlantillas,
   mandantes,
+  vinculos,
 }: {
   initialPlantillas: PlantillaItem[];
   mandantes: Array<{ id: string; nombre: string }>;
+  vinculos: Vinculos;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -170,6 +182,10 @@ export default function PlantillasClient({
         categoria: r.categoria,
         aplicaA: r.aplicaA,
         obligatorio: r.obligatorio,
+        codigoDocumento: r.codigoDocumento,
+        documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
+        documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
+        documentoTipoVehiculoId: r.documentoTipoVehiculoId,
       })),
     });
   }
@@ -384,6 +400,7 @@ export default function PlantillasClient({
           title="Nueva plantilla personalizada"
           pending={pending}
           mandantes={mandantes}
+          vinculos={vinculos}
           form={createForm}
           setForm={setCreateForm}
           onClose={() => setShowCreate(false)}
@@ -399,6 +416,7 @@ export default function PlantillasClient({
           title={`Editar plantilla: ${editing.nombre}`}
           pending={pending}
           mandantes={mandantes}
+          vinculos={vinculos}
           form={editForm}
           setForm={setEditForm}
           onClose={() => setEditing(null)}
@@ -416,6 +434,7 @@ function PlantillaModal({
   title,
   pending,
   mandantes,
+  vinculos,
   form,
   setForm,
   onClose,
@@ -427,6 +446,7 @@ function PlantillaModal({
   title: string;
   pending: boolean;
   mandantes: Array<{ id: string; nombre: string }>;
+  vinculos: Vinculos;
   form: {
     nombre: string;
     tipo: string;
@@ -527,7 +547,7 @@ function PlantillaModal({
                   </select>
                   <select
                     value={r.aplicaA}
-                    onChange={(e) => onUpdateReq(index, { aplicaA: e.target.value })}
+                    onChange={(e) => onUpdateReq(index, { aplicaA: e.target.value, documentoRequeridoEmpresaId: null, documentoTipoTrabajadorId: null, documentoTipoVehiculoId: null })}
                     className="h-8 rounded-md border border-slate-200 px-2 text-xs md:col-span-2"
                   >
                     {APLICA_A.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -546,6 +566,21 @@ function PlantillaModal({
                   >
                     Quitar
                   </button>
+                  <label className="md:col-span-12 flex flex-col gap-1 text-xs text-slate-600">
+                    Documento vinculado de NextPrev
+                    <select
+                      className="h-9 rounded-md border border-slate-200 bg-white px-2 text-xs"
+                      value={r.aplicaA === "trabajador" ? (r.documentoTipoTrabajadorId ?? "") : r.aplicaA === "vehiculo" ? (r.documentoTipoVehiculoId ?? "") : (r.documentoRequeridoEmpresaId ?? "")}
+                      onChange={(e) => onUpdateReq(index, {
+                        documentoRequeridoEmpresaId: r.aplicaA === "empresa" ? e.target.value || null : null,
+                        documentoTipoTrabajadorId: r.aplicaA === "trabajador" ? e.target.value || null : null,
+                        documentoTipoVehiculoId: r.aplicaA === "vehiculo" ? e.target.value || null : null,
+                      })}
+                    >
+                      <option value="">Sin vinculación (buscar por nombre)</option>
+                      {vinculos[r.aplicaA as keyof Vinculos]?.map((v) => <option key={v.id} value={v.id}>{v.nombre}</option>)}
+                    </select>
+                  </label>
                 </div>
               ))}
             </div>

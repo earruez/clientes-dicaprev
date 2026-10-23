@@ -77,7 +77,7 @@ export const TRANSICIONES: Record<EstadoAcreditacion, EstadoAcreditacion[]> = {
 };
 
 // Cuáles transiciones requieren un comentario
-const REQUIERE_COMENTARIO: EstadoAcreditacion[] = ["observada", "rechazado"];
+const REQUIERE_COMENTARIO: EstadoAcreditacion[] = ["enviado", "observada", "rechazado"];
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -184,7 +184,7 @@ export function CambiarEstadoModal({
             onChange={(e) => setComentario(e.target.value)}
             placeholder={
               necesitaComentario
-                ? "Describe el motivo del cambio de estado…"
+                ? estadoNuevo === "enviado" ? "Indica destinatario, medio de entrega y referencia comprobable del envío…" : "Describe el motivo del cambio de estado…"
                 : "Agrega notas sobre este cambio (opcional)…"
             }
             className="resize-none text-sm rounded-xl min-h-[80px]"

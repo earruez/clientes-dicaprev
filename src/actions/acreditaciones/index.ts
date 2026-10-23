@@ -2,7 +2,7 @@
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/server/auth/permissions";
+import { requireAuth, requirePermission } from "@/server/auth/permissions";
 import { detectarAlertas } from "@/lib/acreditaciones/calcular-duraciones";
 
 type EstadoAcreditacion =
@@ -111,8 +111,8 @@ function isDocumentoAprobado(estado?: string | null) {
   return ["aprobado", "completo", "vigente", "validado", "firmado"].includes(normalized);
 }
 
-function resolveEstadoDesdeFuente(args: { estado?: string | null; fechaVencimiento?: Date | null }) {
-  if (!isDocumentoAprobado(args.estado)) return "faltante" as const;
+function resolveEstadoDesdeFuente(args: { estado?: string | null; fechaVencimiento?: Date | null; archivoNombre?: string | null; archivoUrl?: string | null }) {
+  if (!isDocumentoAprobado(args.estado) || !(args.archivoNombre || args.archivoUrl)) return "faltante" as const;
 
   if (args.fechaVencimiento && args.fechaVencimiento.getTime() < Date.now()) {
     return "vencido" as const;
@@ -871,10 +871,10 @@ export async function crearPlantillaAcreditacion(data: {
     categoria: string;
     aplicaA: string;
     obligatorio: boolean;
-    codigoDocumento?: string;
-    documentoRequeridoEmpresaId?: string;
-    documentoTipoTrabajadorId?: string;
-    documentoTipoVehiculoId?: string;
+    codigoDocumento?: string | null;
+    documentoRequeridoEmpresaId?: string | null;
+    documentoTipoTrabajadorId?: string | null;
+    documentoTipoVehiculoId?: string | null;
   }>;
 }) {
   const empresaId = await getEmpresaId();
@@ -931,7 +931,7 @@ export async function actualizarPlantillaAcreditacion(data: {
     categoria: string;
     aplicaA: string;
     obligatorio: boolean;
-    codigoDocumento?: string;
+    codigoDocumento?: string | null;
     documentoRequeridoEmpresaId?: string | null;
     documentoTipoTrabajadorId?: string | null;
     documentoTipoVehiculoId?: string | null;
@@ -988,6 +988,13 @@ export async function actualizarPlantillaAcreditacion(data: {
     const idsEliminar = Array.from(existentesIds).filter((id) => !incomingIds.has(id));
 
     if (idsEliminar.length > 0) {
+      const requisitoUtilizado = await tx.documentoAcreditacion.findFirst({
+        where: { requisitoId: { in: idsEliminar } },
+        select: { id: true },
+      });
+      if (requisitoUtilizado) {
+        throw new Error("No puedes eliminar requisitos con expedientes históricos. Duplica la plantilla para crear una nueva versión.");
+      }
       await tx.requisitoPlantillaAcreditacion.deleteMany({
         where: { id: { in: idsEliminar }, plantillaId: data.id },
       });
@@ -1109,6 +1116,7 @@ export async function activarDesactivarPlantillaAcreditacion(id: string, activa:
 export async function crearAcreditacion(data: {
   mandanteId: string;
   plantillaId: string;
+  contratistaId?: string;
   nombreProyecto?: string;
   obraFaena?: string;
   trabajadorIds?: string[];
@@ -1133,6 +1141,14 @@ export async function crearAcreditacion(data: {
     include: { requisitos: true },
   });
   if (!plantilla) throw new Error("Plantilla not found");
+
+  if (data.contratistaId) {
+    const contratista = await prisma.contratista.findFirst({
+      where: { id: data.contratistaId, empresaId, activo: true },
+      select: { id: true },
+    });
+    if (!contratista) throw new Error("Contratista no encontrado para esta empresa");
+  }
 
   const trabajadorIds = Array.from(new Set(data.trabajadorIds ?? []));
   const vehiculoIds = Array.from(new Set(data.vehiculoIds ?? []));
@@ -1365,6 +1381,8 @@ export async function crearAcreditacion(data: {
       const estadoEmpresa = resolveEstadoDesdeFuente({
         estado: sourceEmpresa?.estado,
         fechaVencimiento: sourceEmpresa?.fechaVencimiento,
+      archivoNombre: sourceEmpresa?.archivoNombre,
+      archivoUrl: sourceEmpresa?.archivoUrl,
       });
 
       if (!seenKeys.has(keyEmpresa)) {
@@ -1417,6 +1435,8 @@ export async function crearAcreditacion(data: {
         const estadoTrabajador = resolveEstadoDesdeFuente({
           estado: sourceTrabajador?.estado,
           fechaVencimiento: sourceTrabajador?.fechaVencimiento,
+        archivoNombre: sourceTrabajador?.archivoNombre,
+        archivoUrl: sourceTrabajador?.archivoUrl,
         });
 
         seenKeys.add(keyTrabajador);
@@ -1470,6 +1490,8 @@ export async function crearAcreditacion(data: {
       const estadoVehiculo = resolveEstadoDesdeFuente({
         estado: sourceVehiculo?.estado,
         fechaVencimiento: sourceVehiculo?.fechaVencimiento,
+      archivoNombre: sourceVehiculo?.archivoNombre,
+      archivoUrl: sourceVehiculo?.archivoUrl,
       });
 
       seenKeys.add(keyVehiculo);
@@ -1498,6 +1520,7 @@ export async function crearAcreditacion(data: {
       empresaId,
       mandanteId: data.mandanteId,
       plantillaId: data.plantillaId,
+      contratistaId: data.contratistaId || null,
       nombreProyecto: data.nombreProyecto,
       obraFaena: data.obraFaena,
       estado: "en_preparacion",
@@ -1554,42 +1577,77 @@ export async function crearAcreditacion(data: {
   };
 }
 
-export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcreditacion, comentario?: string) {
-  const context = await getContext();
-  const empresaId = context.empresaId;
+const TRANSICIONES_ACREDITACION: Record<EstadoAcreditacion, EstadoAcreditacion[]> = {
+  en_preparacion: ["listo_para_enviar", "cerrada"],
+  listo_para_enviar: ["enviado", "en_preparacion", "cerrada"],
+  enviado: ["observada", "aprobado", "rechazado", "vencido", "cerrada"],
+  observada: ["en_preparacion", "enviado", "cerrada"],
+  aprobado: ["vencido", "cerrada"],
+  rechazado: ["en_preparacion", "cerrada"],
+  cerrada: [],
+  vencido: ["en_preparacion", "cerrada"],
+};
 
+export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcreditacion, comentario?: string) {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
   const acreditacion = await prisma.acreditacion.findFirst({
     where: { id, empresaId },
+    include: { documentos: true },
   });
-
-  if (!acreditacion) throw new Error("Acreditacion not found");
-
-  const updated = await prisma.acreditacion.update({
+  if (!acreditacion) throw new Error("Acreditación no encontrada");
+  const actual = acreditacion.estado as EstadoAcreditacion;
+  if (!TRANSICIONES_ACREDITACION[actual]?.includes(estado)) {
+    throw new Error("Transición de estado no permitida");
+  }
+  const nota = comentario?.trim().slice(0, 1200);
+  if (["enviado", "observada", "rechazado"].includes(estado) && !nota) {
+    throw new Error(estado === "enviado"
+      ? "Indica destinatario, medio y referencia del envío para conservar su trazabilidad"
+      : "Debes indicar el motivo de la observación o rechazo");
+  }
+  if (estado === "listo_para_enviar" || estado === "enviado" || estado === "aprobado") {
+    const obligatorios = acreditacion.documentos.filter((d) => d.obligatorio);
+    if (!obligatorios.length || obligatorios.some((d) =>
+      d.estado !== "completo" ||
+      !(d.archivoNombre || d.archivoUrl) ||
+      (d.fechaVencimiento && d.fechaVencimiento.getTime() < Date.now())
+    )) {
+      throw new Error("Faltan documentos obligatorios completos, vigentes y con archivo");
+    }
+  }
+  return prisma.acreditacion.update({
     where: { id },
     data: {
       estado,
+      ...(estado === "enviado" ? { fechaEnvio: new Date(), fechaRespuesta: null } : {}),
+      ...(["aprobado", "observada", "rechazado"].includes(estado) ? { fechaRespuesta: new Date() } : {}),
+      ...(nota ? { observaciones: nota } : {}),
       historial: {
         create: {
           accion: "cambiar_estado",
-          detalle: comentario,
-          estadoAnterior: acreditacion.estado,
+          detalle: nota ?? null,
+          estadoAnterior: actual,
           estadoNuevo: estado,
-          usuarioId: context.usuarioId,
+          usuarioId,
         },
       },
     },
-    include: {
-      mandante: true,
-      documentos: true,
-      historial: { orderBy: { createdAt: "desc" }, take: 5 },
-    },
+    include: { mandante: true, documentos: true, historial: { orderBy: { createdAt: "desc" }, take: 5 } },
   });
+}
 
-  return updated;
+export async function getOpcionesVinculacionAcreditacion() {
+  const { empresaId } = await requireAuth();
+  const [empresa, trabajador, vehiculo] = await Promise.all([
+    prisma.documentoRequeridoEmpresa.findMany({ where: { activo: true }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
+    prisma.documentoTipoTrabajador.findMany({ where: { empresaId }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
+    prisma.documentoTipoVehiculo.findMany({ where: { empresaId }, select: { id: true, nombre: true }, orderBy: { nombre: "asc" } }),
+  ]);
+  return { empresa, trabajador, vehiculo };
 }
 
 export async function generarDocumentosAcreditacion(acreditacionId: string) {
-  const empresaId = await getEmpresaId();
+  const { empresaId } = await requirePermission("canManageDocumentacion");
 
   const acreditacion = await prisma.acreditacion.findFirst({
     where: { id: acreditacionId, empresaId },
@@ -1794,6 +1852,8 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
       const estadoEmpresa = resolveEstadoDesdeFuente({
         estado: sourceEmpresa?.estado,
         fechaVencimiento: sourceEmpresa?.fechaVencimiento,
+      archivoNombre: sourceEmpresa?.archivoNombre,
+      archivoUrl: sourceEmpresa?.archivoUrl,
       });
 
       expectedDocs.push({
@@ -1841,6 +1901,8 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
         const estadoTrabajador = resolveEstadoDesdeFuente({
           estado: sourceTrabajador?.estado,
           fechaVencimiento: sourceTrabajador?.fechaVencimiento,
+        archivoNombre: sourceTrabajador?.archivoNombre,
+        archivoUrl: sourceTrabajador?.archivoUrl,
         });
 
         expectedDocs.push({
@@ -1890,6 +1952,8 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
       const estadoVehiculo = resolveEstadoDesdeFuente({
         estado: sourceVehiculo?.estado,
         fechaVencimiento: sourceVehiculo?.fechaVencimiento,
+      archivoNombre: sourceVehiculo?.archivoNombre,
+      archivoUrl: sourceVehiculo?.archivoUrl,
       });
 
       expectedDocs.push({
@@ -1913,7 +1977,12 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
 
   const existing = await prisma.documentoAcreditacion.findMany({
     where: { acreditacionId },
-    select: { id: true, requisitoId: true, titularTipo: true, titularId: true },
+    select: {
+      id: true, requisitoId: true, titularTipo: true, titularId: true,
+      fuenteTipo: true, fuenteId: true, archivoUrl: true, archivoNombre: true,
+      estado: true, fechaEmision: true, fechaVencimiento: true,
+      nombreDocumento: true, categoria: true, obligatorio: true, titularNombre: true,
+    },
   });
 
   const toKey = (doc: { requisitoId: string; titularTipo: string; titularId: string | null }) =>
@@ -1944,17 +2013,103 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
     .filter((doc) => !expectedKeys.has(toKey(doc)))
     .map((doc) => doc.id);
 
-  const createResult = creates.length > 0
-    ? await prisma.documentoAcreditacion.createMany({ data: creates })
-    : { count: 0 };
+  // No pisar archivos cargados manualmente ni estados de revisión manual.
+  const updates = expectedDocs.flatMap((doc) => {
+    const anterior = existingByKey.get(toKey(doc));
+    if (!anterior || anterior.fuenteTipo === "manual" ||
+        (anterior.archivoNombre && !anterior.fuenteTipo) ||
+        ["en_revision", "rechazado", "no_aplica"].includes(anterior.estado)) return [];
+    const estado = doc.estado ?? "faltante";
+    const cambio =
+      anterior.estado !== estado || anterior.fuenteId !== (doc.fuenteId ?? null) ||
+      anterior.fuenteTipo !== (doc.fuenteTipo ?? null) ||
+      anterior.archivoNombre !== (doc.archivoNombre ?? null) ||
+      anterior.archivoUrl !== (doc.archivoUrl ?? null) ||
+      anterior.fechaVencimiento?.getTime() !== (doc.fechaVencimiento ?? null)?.getTime() ||
+      anterior.fechaEmision?.getTime() !== (doc.fechaEmision ?? null)?.getTime() ||
+      anterior.nombreDocumento !== doc.nombreDocumento ||
+      anterior.categoria !== doc.categoria || anterior.obligatorio !== doc.obligatorio ||
+      anterior.titularNombre !== doc.titularNombre;
+    return cambio ? [{ id: anterior.id, doc, estado }] : [];
+  });
 
-  if (deletes.length > 0) {
-    await prisma.documentoAcreditacion.deleteMany({ where: { id: { in: deletes } } });
-  }
+  return prisma.$transaction(async (tx) => {
+    const createResult = creates.length > 0
+      ? await tx.documentoAcreditacion.createMany({ data: creates })
+      : { count: 0 };
+    for (const item of updates) {
+      await tx.documentoAcreditacion.update({
+        where: { id: item.id },
+        data: {
+          nombreDocumento: item.doc.nombreDocumento, categoria: item.doc.categoria,
+          obligatorio: item.doc.obligatorio, titularNombre: item.doc.titularNombre,
+          estado: item.estado, fuenteTipo: item.doc.fuenteTipo ?? null,
+          fuenteId: item.doc.fuenteId ?? null, archivoUrl: item.doc.archivoUrl ?? null,
+          archivoNombre: item.doc.archivoNombre ?? null,
+          fechaEmision: item.doc.fechaEmision ?? null,
+          fechaVencimiento: item.doc.fechaVencimiento ?? null,
+        },
+      });
+    }
+    if (deletes.length > 0) {
+      await tx.documentoAcreditacion.deleteMany({ where: { id: { in: deletes } } });
+    }
+    if (createResult.count || updates.length || deletes.length) {
+      await tx.historialAcreditacion.create({
+        data: { acreditacionId, accion: "sincronizar_documentos",
+          detalle: `Creados: ${createResult.count}, actualizados: ${updates.length}, retirados: ${deletes.length}` },
+      });
+    }
+    return { created: createResult.count, actualizados: updates.length, totalEsperados: expectedDocs.length, eliminados: deletes.length };
+  });
+}
 
-  return {
-    created: createResult.count,
-    totalEsperados: expectedDocs.length,
-    eliminados: deletes.length,
-  };
+/** Solicitudes documentales asociadas a la empresa contratista de esta acreditación. */
+export async function getSolicitudesContratistaAcreditacion(acreditacionId: string) {
+  const { empresaId } = await requireAuth();
+  const acreditacion = await prisma.acreditacion.findFirst({
+    where: { id: acreditacionId, empresaId },
+    select: { contratistaId: true, obraFaena: true, nombreProyecto: true },
+  });
+  if (!acreditacion?.contratistaId) return [];
+  const solicitudes = await prisma.contratistaSolicitud.findMany({
+    where: { empresaId, contratistaId: acreditacion.contratistaId },
+    select: {
+      id: true, nombre: true, faena: true, estado: true,
+      requisitos: { select: { estado: true, obligatorio: true, fechaVencimiento: true, archivoNombre: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 30,
+  });
+  const faena = normalizeText(acreditacion.obraFaena || acreditacion.nombreProyecto || "");
+  return solicitudes
+    .map((solicitud) => ({
+      id: solicitud.id,
+      nombre: solicitud.nombre,
+      estado: solicitud.estado,
+      relacionados: Boolean(faena && normalizeText(solicitud.faena || solicitud.nombre).includes(faena)),
+      completos: solicitud.requisitos.filter((r) => r.obligatorio && r.estado === "aprobado"
+        && Boolean(r.archivoNombre) && (!r.fechaVencimiento || r.fechaVencimiento.getTime() >= Date.now())).length,
+      total: solicitud.requisitos.filter((r) => r.obligatorio).length,
+    }))
+    .sort((a, b) => Number(b.relacionados) - Number(a.relacionados));
+}
+
+/** Audita la generación de un expediente luego de registrar el archivo. */
+export async function registrarGeneracionAcreditacion(acreditacionId: string, formato: "zip" | "pdf", totalDocumentos: number) {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  const acreditacion = await prisma.acreditacion.findFirst({
+    where: { id: acreditacionId, empresaId },
+    select: { id: true },
+  });
+  if (!acreditacion) throw new Error("Acreditación no encontrada");
+  const cantidad = Math.max(0, Math.floor(Number.isFinite(totalDocumentos) ? totalDocumentos : 0));
+  return prisma.historialAcreditacion.create({
+    data: {
+      acreditacionId,
+      usuarioId,
+      accion: formato === "zip" ? "generar_expediente_zip" : "generar_indice_pdf",
+      detalle: `Expediente ${formato.toUpperCase()} generado con ${cantidad} documentos`,
+    },
+  });
 }

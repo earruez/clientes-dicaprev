@@ -54,6 +54,7 @@ export default function SolicitudesClient({
   onCrearAction: (data: {
     mandanteId: string;
     plantillaId: string;
+    contratistaId?: string;
     nombreProyecto?: string;
     obraFaena?: string;
     trabajadorIds?: string[];
@@ -97,6 +98,7 @@ export default function SolicitudesClient({
   function handleCrear(data: {
     mandanteId: string;
     plantillaId: string;
+    contratistaId?: string;
     nombreProyecto?: string;
     obraFaena?: string;
     trabajadorIds: string[];
@@ -215,6 +217,7 @@ export default function SolicitudesClient({
           onClose={() => setOpenWizard(false)}
           onCrear={handleCrear}
           mandantes={mandantes}
+          contratistas={contratistas}
           plantillas={plantillas}
           trabajadores={trabajadores}
           vehiculos={vehiculos}

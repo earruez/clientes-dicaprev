@@ -1,10 +1,11 @@
-import { getMandantesAcreditacion, getPlantillasAcreditacion } from "@/actions/acreditaciones";
+import { getMandantesAcreditacion, getPlantillasAcreditacion, getOpcionesVinculacionAcreditacion } from "@/actions/acreditaciones";
 import PlantillasClient from "./plantillas-client";
 
 export default async function PlantillasPage() {
-  const [plantillas, mandantes] = await Promise.all([
+  const [plantillas, mandantes, vinculos] = await Promise.all([
     getPlantillasAcreditacion(),
     getMandantesAcreditacion(),
+    getOpcionesVinculacionAcreditacion(),
   ]);
 
   return (
@@ -33,6 +34,7 @@ export default async function PlantillasPage() {
         })),
       }))}
       mandantes={mandantes.map((m) => ({ id: m.id, nombre: m.nombre }))}
+      vinculos={vinculos}
     />
   );
 }
