@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
 import { REQUISITOS_RECURSO, estadoEfectivo, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
 import { formatRutChile, validarRutChile } from "@/lib/rut";
+import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
 function valido(input: string) {
   return input.trim().slice(0, 160);
@@ -45,10 +46,10 @@ function heredarPerfilCargo<T extends { reglaTrabajadorId: string | null; obliga
   expediente: Awaited<ReturnType<typeof resolverPortalContratista>>,
   cargo: string,
 ): T[] {
-  const etiqueta = cargo.trim().toLocaleLowerCase("es");
+  const etiqueta = claveAgrupacionCargoContratista(cargo);
   if (!expediente || !etiqueta) return documentos;
   const trabajadores = expediente.recursos.filter((r) => r.tipo === "trabajador" &&
-    r.cargo?.trim().toLocaleLowerCase("es") === etiqueta);
+    claveAgrupacionCargoContratista(r.cargo || "") === etiqueta);
   if (!trabajadores.length) return documentos;
   return documentos.map((doc) => {
     if (!doc.reglaTrabajadorId) return doc;
@@ -118,6 +119,7 @@ export async function agregarRecursoPortal(token: string, input: {
     input.tipo === "trabajador" && identificadorBase
       ? formatRutChile(identificadorBase)
       : identificadorBase;
+  const cargo = input.tipo === "trabajador" ? normalizarCargoContratista(input.cargo || "") : valido(input.cargo || "");
   const patente = valido(input.patente || "");
   if (input.tipo === "trabajador" && !validarRutChile(identificador)) throw new Error("El RUT del trabajador no es válido.");
   if (input.tipo === "vehiculo" && !patente) throw new Error("Indica la patente del vehículo");
@@ -137,10 +139,10 @@ export async function agregarRecursoPortal(token: string, input: {
   const r = await prisma.$transaction(async (tx) => {
     const base = await tx.contratistaRecursoBase.upsert({
       where: { contratistaId_tipo_clave: { contratistaId: s.contratistaId, tipo: input.tipo, clave } },
-      update: { nombre, identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null },
+      update: { nombre, identificador: identificador || null, cargo: cargo || null, patente: patente || null },
       create: {
         empresaId: s.empresaId, contratistaId: s.contratistaId, tipo: input.tipo, clave, nombre,
-        identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
+        identificador: identificador || null, cargo: cargo || null, patente: patente || null,
       },
     });
     const reglas = input.tipo === "trabajador" ? await tx.contratistaRequisitoRegla.findMany({
@@ -151,8 +153,8 @@ export async function agregarRecursoPortal(token: string, input: {
       data: {
         empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
         recursoBase: { connect: { id: base.id } }, tipo: input.tipo, nombre,
-        identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
-        requisitos: { create: heredarPerfilCargo(requisitosParaNuevoRecurso(input.tipo, reglas), s, input.cargo || "").map((d) => ({
+        identificador: identificador || null, cargo: cargo || null, patente: patente || null,
+        requisitos: { create: heredarPerfilCargo(requisitosParaNuevoRecurso(input.tipo, reglas), s, cargo).map((d) => ({
           empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
           vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
           solicitud: { connect: { id: s.id } },
@@ -180,10 +182,10 @@ export async function importarNominaContratistaPortal(
   const normalizadas = filas.map((fila, index) => {
     const nombre = valido(String(fila.nombre || ""));
     const rut = formatRutChile(String(fila.rut || ""));
-    const cargo = valido(String(fila.cargo || ""));
+    const cargo = normalizarCargoContratista(String(fila.cargo || ""));
     const clave = rut.replace(/[^0-9K]/gi, "").toUpperCase();
-    if (!nombre || !validarRutChile(rut)) {
-      throw new Error(`Fila ${index + 2}: nombre o RUT de trabajador no válido.`);
+    if (!nombre || !validarRutChile(rut) || !cargo) {
+      throw new Error(`Fila ${index + 2}: nombre, RUT o cargo de trabajador no válido.`);
     }
     return { nombre, rut, cargo, clave };
   });
@@ -267,7 +269,7 @@ export async function incorporarRecursoBasePortal(token: string, recursoBaseId: 
         empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
         recursoBase: { connect: { id: base.id } }, tipo, nombre: base.nombre,
         identificador: base.identificador, cargo: base.cargo, patente: base.patente,
-        requisitos: { create: heredarPerfilCargo(requisitosParaNuevoRecurso(tipo, reglas), s, base.cargo || "").map((d) => ({
+        requisitos: { create: heredarPerfilCargo(requisitosParaNuevoRecurso(tipo, reglas), s, normalizarCargoContratista(base.cargo || "")).map((d) => ({
           empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
           vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
           solicitud: { connect: { id: s.id } },

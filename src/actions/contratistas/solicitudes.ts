@@ -8,6 +8,7 @@ import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
 import { normalizarNombreRequisitoContratista } from "@/lib/contratistas/estandarizar-requisitos";
+import { claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
 const DIAS_ENLACE = 60;
 
@@ -322,11 +323,13 @@ export async function configurarRequisitoPorCargoContratista(input: {
       select: { id: true, nombre: true },
     });
     if (!regla) throw new Error("Requisito no encontrado en la faena.");
-    const personas = await tx.contratistaRecurso.findMany({
-      where: { solicitudId: input.solicitudId, empresaId, tipo: "trabajador",
-        cargo: { equals: cargo, mode: "insensitive" } },
-      select: { id: true },
+    const candidatos = await tx.contratistaRecurso.findMany({
+      where: { solicitudId: input.solicitudId, empresaId, tipo: "trabajador" },
+      select: { id: true, cargo: true },
     });
+    // Incluye variantes previas como "maestro eléctrico" y "electricista".
+    const grupo = claveAgrupacionCargoContratista(cargo);
+    const personas = candidatos.filter((p) => claveAgrupacionCargoContratista(p.cargo || "") === grupo);
     if (!personas.length) throw new Error("No hay trabajadores con ese cargo.");
     const actualizados = await tx.contratistaRequisito.updateMany({
       where: { solicitudId: input.solicitudId, empresaId, reglaTrabajadorId: regla.id,

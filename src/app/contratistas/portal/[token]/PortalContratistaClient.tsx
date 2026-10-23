@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { agregarRecursoPortal, importarNominaContratistaPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 import { formatRutChile } from "@/lib/rut";
+import { CARGOS_SUGERIDOS_CONTRATISTAS, normalizarCargoContratista } from "@/lib/contratistas/cargos";
 
 type DatosPortal = NonNullable<Awaited<ReturnType<typeof obtenerPortalContratista>>>;
 type RequisitoPortal = DatosPortal["requisitos"][number];
@@ -62,6 +63,10 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   const observados = portal.requisitos.filter((r) => ["observado", "rechazado", "vencido"].includes(r.estadoEfectivo)).length;
   const datosCompletos = Boolean(portal.contratista.rut && portal.contratista.razonSocial);
   const trabajadores = portal.recursos.filter((r) => r.tipo === "trabajador");
+  const cargosPropiosContratista = useMemo(() => [...new Set([
+    ...portal.recursosBase.filter((r) => r.tipo === "trabajador").map((r) => normalizarCargoContratista(r.cargo || "")),
+    ...portal.recursos.filter((r) => r.tipo === "trabajador").map((r) => normalizarCargoContratista(r.cargo || "")),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")), [portal.recursosBase, portal.recursos]);
   const trabajadorActivoId = trabajadores.some((r) => r.id === trabajadorSeleccionado)
     ? trabajadorSeleccionado : (trabajadores[0]?.id || "");
   const documentosCategoria = portal.requisitos.filter((r) =>
@@ -127,9 +132,26 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   async function descargarPlantillaNomina() {
     const XLSX = await import("xlsx");
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook,
-      XLSX.utils.aoa_to_sheet([["Nombre completo", "RUT", "Cargo"], ["Ejemplo Trabajador", "12.345.678-5", "Instalador"]]),
-      "Nomina");
+    const hojaNomina = XLSX.utils.aoa_to_sheet([["Nombre completo", "RUT", "Cargo"]]);
+    hojaNomina["!cols"] = [{ wch: 34 }, { wch: 18 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(workbook, hojaNomina, "Nomina");
+    const sugeridos = CARGOS_SUGERIDOS_CONTRATISTAS.map((cargo) => [cargo.nombre, cargo.grupo]);
+    const propios = cargosPropiosContratista.filter((nombre) =>
+      !CARGOS_SUGERIDOS_CONTRATISTAS.some((c) => c.nombre === nombre)).map((nombre) => [nombre, "Cargos usados por este contratista"]);
+    const hojaCatalogo = XLSX.utils.aoa_to_sheet([
+      ["Cargo sugerido", "Rubro"],
+      ...sugeridos,
+      ...propios,
+    ]);
+    hojaCatalogo["!cols"] = [{ wch: 42 }, { wch: 32 }];
+    XLSX.utils.book_append_sheet(workbook, hojaCatalogo, "Cargos sugeridos");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ["INSTRUCCIONES", "NextPrev - nómina de empresa contratista"],
+      ["1", "Complete solo las columnas Nombre completo, RUT y Cargo de la hoja Nomina."],
+      ["2", "En Cargos sugeridos hay cargos frecuentes. Puede indicar un cargo propio si no está en la lista."],
+      ["3", "No agregue columnas de documentos; los requisitos se asignan automáticamente por NextPrev."],
+      ["4", "El cargo se puede homologar a una denominación estándar. La mandante valida riesgos especiales."],
+    ]), "Instrucciones");
     XLSX.writeFile(workbook, "NextPrev_Plantilla_Nomina_Contratista.xlsx");
   }
 
@@ -150,7 +172,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       const nombreIdx = cab.findIndex((c) => ["nombre completo", "nombre", "nombre y apellido", "nombres y apellidos"].includes(c));
       const rutIdx = cab.findIndex((c) => c === "rut" || c === "r.u.t.");
       const cargoIdx = cab.findIndex((c) => c === "cargo" || c === "funcion");
-      if (nombreIdx < 0 || rutIdx < 0) throw new Error("Faltan las columnas Nombre completo y RUT.");
+      if (nombreIdx < 0 || rutIdx < 0 || cargoIdx < 0) throw new Error("Faltan las columnas Nombre completo, RUT y Cargo.");
       const trabajadoresArchivo = filas.slice(1).filter((fila) => fila.some((x) => String(x || "").trim()))
         .map((fila) => ({
           nombre: String(fila[nombreIdx] || "").trim(),
@@ -435,7 +457,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
             <div className="min-w-0 flex-1"><p className="text-sm font-bold text-sky-900">Nómina de trabajadores</p>
-              <p className="text-xs text-sky-700">Importa Excel o CSV para crear una carpeta por trabajador (nombre, RUT y cargo). Luego adjunta sus documentos desde la pestaña Trabajadores.</p>
+              <p className="text-xs text-sky-700">Importa Excel o CSV con nombre, RUT y cargo. La plantilla incluye cargos sugeridos y los usados por este contratista, sin depender de los cargos de la mandante. NextPrev crea automáticamente las carpetas y requisitos estándar.</p>
             </div>
             <Button type="button" variant="outline" disabled={!!enProceso} onClick={() => void descargarPlantillaNomina()}>Descargar plantilla Excel</Button>
             <label className="relative inline-flex min-h-11 cursor-pointer items-center rounded-xl bg-sky-700 px-4 text-xs font-bold text-white">
@@ -478,7 +500,15 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
                   onChange={(e) =>
                     setRecurso({ ...recurso, identificador: formatRutChile(e.target.value) })
                   }
-                /></label><label className="space-y-2"><Label className="text-xs font-semibold">Cargo</Label><Input className={textoInput} value={recurso.cargo} onChange={(e) => setRecurso({ ...recurso, cargo: e.target.value })}/></label></>}
+                /></label><label className="space-y-2"><Label className="text-xs font-semibold">Cargo del contratista *</Label>
+  <Input required list="cargos-contratista-sugeridos" className={textoInput} value={recurso.cargo} placeholder="Selecciona o escribe un cargo propio"
+    onChange={(e) => setRecurso({ ...recurso, cargo: e.target.value })}/>
+  <datalist id="cargos-contratista-sugeridos">
+    {cargosPropiosContratista.map((cargo) => <option key={"previo:" + cargo} value={cargo}/>)}
+    {CARGOS_SUGERIDOS_CONTRATISTAS.map((cargo) => <option key={cargo.nombre} value={cargo.nombre}/>)}
+  </datalist>
+  <span className="text-[11px] text-slate-500">Catálogo independiente de la mandante. Puedes usar un cargo que no esté en la lista.</span>
+</label></>}
             {recurso.tipo === "vehiculo" && <label className="space-y-2"><Label className="text-xs font-semibold">Patente *</Label><Input required className={textoInput} value={recurso.patente} onChange={(e) => setRecurso({ ...recurso, patente: e.target.value })}/></label>}
             {recurso.tipo === "equipo" && <label className="space-y-2"><Label className="text-xs font-semibold">N° serie o identificación</Label><Input className={textoInput} value={recurso.identificador} onChange={(e) => setRecurso({ ...recurso, identificador: e.target.value })}/></label>}
             <div className="flex flex-wrap items-end gap-2 sm:col-span-2"><Button type="submit" disabled={!!enProceso} className={botonPrincipal}>{enProceso === "recurso" ? "Guardando…" : "Incorporar recurso"}</Button><Button type="button" variant="outline" onClick={() => setFormVisible(false)}>Cancelar</Button></div>

@@ -16,6 +16,7 @@ import {
 import { estadoEfectivo, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
+import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 import JSZip from "jszip";
 import { crearCatalogoContratista, listarCentrosMandante, listarDocumentosBaseContratista, obtenerCatalogoContratistas, reutilizarDocumentoContratista } from "@/actions/contratistas/catalogo";
 
@@ -411,7 +412,7 @@ export default function SolicitudesContratistasClient() {
                     <label className="space-y-1 text-xs font-semibold text-slate-700">Cargo
                       <select className={CAMPO} value={cargoMasivo} onChange={(e) => setCargoMasivo(e.target.value)}>
                         <option value="">Seleccionar cargo</option>
-                        {[...new Set(actual.recursos.filter((r) => r.tipo === "trabajador").map((r) => r.cargo?.trim()).filter((v): v is string => Boolean(v)))].sort((a,b)=>a.localeCompare(b,"es")).map((cargo) => <option key={cargo} value={cargo}>{cargo} ({actual.recursos.filter((r)=>r.tipo==="trabajador" && r.cargo?.trim().toLowerCase()===cargo.toLowerCase()).length})</option>)}
+                        {[...new Set(actual.recursos.filter((r) => r.tipo === "trabajador").map((r) => normalizarCargoContratista(r.cargo || "")).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es")).map((cargo) => <option key={cargo} value={cargo}>{cargo} ({actual.recursos.filter((r)=>r.tipo==="trabajador" && claveAgrupacionCargoContratista(r.cargo || "")===claveAgrupacionCargoContratista(cargo)).length})</option>)}
                       </select>
                     </label>
                     <label className="space-y-1 text-xs font-semibold text-slate-700">Documento estándar
