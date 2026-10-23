@@ -1,147 +1,74 @@
-"use client";
-
-import React from "react";
-import { ShieldCheck, TrendingDown, AlertTriangle, Activity, Users, CalendarOff } from "lucide-react";
-import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { Activity, AlertTriangle, ArrowRight, CalendarDays, ShieldCheck, Users } from "lucide-react";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
+import { getEmpresaKpisActual } from "@/app/dicaprev/empresa/informacion-general/actions";
+import { getCurrentAppContext } from "@/server/context";
+import { prisma } from "@/lib/prisma";
 
-// ── Mock SST indicators ────────────────────────────────────────────────
+export const metadata = { title: "Indicadores SST | NextPrev" };
 
-const INDICADORES = [
-  {
-    id: "ta",
-    label: "Tasa de accidentabilidad",
-    value: "0,82%",
-    ref: "≤ 1,5%",
-    estado: "ok",
-    desc: "Accidentes con tiempo perdido × 100 / personal promedio del período.",
-    icon: <Activity className="h-5 w-5" />,
-  },
-  {
-    id: "ts",
-    label: "Tasa de siniestralidad",
-    value: "1,55%",
-    ref: "≤ 3,0%",
-    estado: "ok",
-    desc: "Días perdidos × 100 / días trabajados totales.",
-    icon: <TrendingDown className="h-5 w-5" />,
-  },
-  {
-    id: "if",
-    label: "Índice de frecuencia",
-    value: "4,8",
-    ref: "≤ 8,0",
-    estado: "ok",
-    desc: "N° accidentes × 1.000.000 / horas hombre trabajadas.",
-    icon: <AlertTriangle className="h-5 w-5" />,
-  },
-  {
-    id: "ig",
-    label: "Índice de gravedad",
-    value: "32",
-    ref: "≤ 60",
-    estado: "ok",
-    desc: "Días perdidos × 1.000 / horas hombre trabajadas.",
-    icon: <CalendarOff className="h-5 w-5" />,
-  },
-  {
-    id: "dp",
-    label: "Días perdidos (acum.)",
-    value: "12",
-    ref: "—",
-    estado: "neutral",
-    desc: "Total de días perdidos por accidentes en el período.",
-    icon: <CalendarOff className="h-5 w-5" />,
-  },
-  {
-    id: "wc",
-    label: "Trabajadores sin accidentes",
-    value: "46 / 48",
-    ref: "—",
-    estado: "ok",
-    desc: "Trabajadores activos sin ningún accidente registrado en el período.",
-    icon: <Users className="h-5 w-5" />,
-  },
+const tasas = [
+  { titulo: "Tasa de accidentabilidad", nota: "Requiere accidentes del trabajo confirmados y dotación promedio del período." },
+  { titulo: "Tasa de siniestralidad", nota: "Requiere antecedentes consolidados de incapacidades y días perdidos, según el indicador aplicable." },
+  { titulo: "Índice de frecuencia", nota: "Requiere accidentes computables y horas-hombre trabajadas verificadas." },
+  { titulo: "Índice de gravedad", nota: "Requiere días perdidos computables y horas-hombre trabajadas verificadas." },
 ];
 
-const ESTADO_CLS: Record<string, string> = {
-  ok: "text-emerald-600",
-  alerta: "text-amber-600",
-  critico: "text-rose-600",
-  neutral: "text-slate-700",
-};
+export default async function IndicadoresSSTPage() {
+  const [context, resumen] = await Promise.all([getCurrentAppContext(), getEmpresaKpisActual()]);
+  const fechaDesde = new Date();
+  fechaDesde.setFullYear(fechaDesde.getFullYear() - 1);
+  const investigaciones = await prisma.accidenteInvestigacion.count({
+    where: { empresaId: context.empresaId, fechaAccidente: { gte: fechaDesde } },
+  });
+  const fechaReferencia = fechaDesde.toLocaleDateString("es-CL", { timeZone: "America/Santiago" });
 
-const ESTADO_BADGE: Record<string, string> = {
-  ok: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  alerta: "bg-amber-50 text-amber-700 border-amber-200",
-  critico: "bg-rose-50 text-rose-700 border-rose-200",
-  neutral: "bg-slate-100 text-slate-600 border-slate-200",
-};
-
-export default function IndicadoresSSTPage() {
   return (
-    <div className="min-h-screen bg-slate-50/60">
-      <div className="px-6 pt-2">
-        <StandardPageHeader
-          moduleLabel="Módulo Empresa"
-          title="Indicadores SST"
-          description="Tasas e índices de seguridad y salud en el trabajo del período vigente."
-          icon={<ShieldCheck className="h-6 w-6" />}
-          iconWrapClassName="bg-emerald-800"
-        />
-      </div>
-
-      <div className="py-6">
-        {/* Período */}
-        <div className="mb-5 flex items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-            Período
-          </span>
-          <span className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-700 shadow-sm">
-            Enero – Abril 2026
-          </span>
+    <main className="space-y-6 px-4 py-6 sm:px-6">
+      <StandardPageHeader
+        moduleLabel="Módulo Empresa"
+        title="Indicadores SST"
+        description="Registros comprobables de la empresa y estado de disponibilidad de indicadores."
+        icon={<ShieldCheck className="h-6 w-6" />}
+        iconWrapClassName="bg-emerald-800"
+      />
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+          <div><strong>Las tasas SST todavía no se pueden calcular de manera confiable.</strong>
+            <p className="mt-1">NextPrev aún no dispone de todas las fuentes necesarias para cada fórmula. No se muestran porcentajes de demostración ni se interpreta la ausencia de registros como tasa cero.</p>
+          </div>
         </div>
-
-        {/* KPI grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {INDICADORES.map((ind) => (
-            <div
-              key={ind.id}
-              className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 flex flex-col gap-3"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2 text-slate-400">{ind.icon}</div>
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                    ESTADO_BADGE[ind.estado]
-                  )}
-                >
-                  {ind.estado === "ok" ? "En rango" : ind.estado === "alerta" ? "Alerta" : ind.estado === "critico" ? "Crítico" : "Refs."}
-                </span>
-              </div>
-
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-0.5">
-                  {ind.label}
-                </p>
-                <p className={cn("text-3xl font-bold tracking-tight", ESTADO_CLS[ind.estado])}>
-                  {ind.value}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between text-xs text-slate-400 border-t border-slate-100 pt-2 mt-auto">
-                <span>{ind.desc}</span>
-                {ind.ref !== "—" && (
-                  <span className="shrink-0 ml-2 font-medium text-slate-500">
-                    Ref: {ind.ref}
-                  </span>
-                )}
-              </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <Users className="h-6 w-6 text-blue-700" />
+          <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Trabajadores activos</p>
+          <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">{resumen.totalTrabajadores}</p>
+          <p className="mt-2 text-sm text-slate-500">Dotación registrada actualmente; no equivale a dotación promedio del período.</p>
+          <Link href="/dicaprev/trabajadores" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-blue-800">Ver trabajadores <ArrowRight className="h-4 w-4" /></Link>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <Activity className="h-6 w-6 text-orange-700" />
+          <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Investigaciones de accidentes e incidentes registradas</p>
+          <p className="mt-1 text-3xl font-bold tabular-nums text-slate-900">{investigaciones}</p>
+          <p className="mt-2 text-sm text-slate-500">Registros desde {fechaReferencia}. No representa el número certificado de accidentes ni una tasa.</p>
+          <Link href="/dicaprev/accidentes" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-blue-800">Ver investigaciones <ArrowRight className="h-4 w-4" /></Link>
+        </div>
+      </div>
+      <div className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900"><CalendarDays className="h-5 w-5" /> Indicadores pendientes de integración</h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {tasas.map((tasa) => (
+            <div key={tasa.titulo} className="rounded-xl border border-slate-200 bg-white p-5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{tasa.titulo}</p>
+              <p className="mt-2 text-xl font-semibold text-slate-800">Sin cálculo disponible</p>
+              <p className="mt-2 text-sm text-slate-600">{tasa.nota}</p>
             </div>
           ))}
         </div>
       </div>
-    </div>
+      <p className="text-xs text-slate-500">Los registros se consultan para la empresa activa. La configuración de indicadores requerirá sus fuentes, período de referencia y metodología documentada.</p>
+    </main>
   );
 }
