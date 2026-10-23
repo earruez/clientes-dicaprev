@@ -65,7 +65,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
     },
     {
       label: "Documentos pendientes",
-      href: "/dicaprev/reportes/pendientes",
+      href: "/dicaprev/dashboard/documentos?estado=pendientes",
       value: resumen.kpis.documentosPendientes,
       detail: "Empresa, trabajadores y vehículos",
       icon: <ClipboardList className="h-5 w-5" />,
@@ -73,7 +73,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
     },
     {
       label: "Documentos vencidos",
-      href: "/dicaprev/reportes/vencimientos",
+      href: "/dicaprev/dashboard/documentos?estado=vencidos",
       value: resumen.kpis.documentosVencidos,
       detail: "Requieren regularización",
       icon: <AlertTriangle className="h-5 w-5" />,
