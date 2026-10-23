@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, requirePermission } from "@/server/auth/permissions";
+import { after } from "next/server";
+import { avisarNuevoHallazgo } from "@/lib/hallazgos/avisos-correo";
 import type { PrioridadHallazgo } from "../types";
 
 export type TipoHallazgoIA =
@@ -557,5 +559,15 @@ export async function confirmarHallazgoDesdeFotoIA(
     return { hallazgoId: hallazgo.id, evidenciaId: evidencia.id, accionCorrectivaId: accionCorrectiva.id };
   });
 
+  after(async () => {
+    try {
+      await avisarNuevoHallazgo(created.hallazgoId, context.empresaId);
+    } catch (error) {
+      console.error("[hallazgos-email] Foto IA: fallo aviso de creación", {
+        hallazgoId: created.hallazgoId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
   return created;
 }

@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { PERMISSIONS } from "@/lib/permissions-matrix";
 import { requireAuth, requirePermission } from "@/server/auth/permissions";
+import { after } from "next/server";
+import { avisarNuevoHallazgo } from "@/lib/hallazgos/avisos-correo";
 import { extraerNombreArchivoSeguro } from "@/lib/documentacion/archivo-seguro";
 import { ORIGEN_MEDIDA_EN_PROCESO, estadoMedidaHallazgo, requisitosCierreMedidas, type EstadoMedidaHallazgo } from "@/lib/hallazgos/medidas-correctivas";
 import type {
@@ -652,6 +654,18 @@ export async function crearHallazgo(data: HallazgoInput): Promise<{ id: string }
     }
 
     return hallazgo;
+  });
+
+  // Programar después de confirmar el registro: si falla el proveedor de
+  // correo, el hallazgo nunca se pierde ni se revierte.
+  after(async () => {
+    try {
+      await avisarNuevoHallazgo(created.id, context.empresaId);
+    } catch (error) {
+      console.error("[hallazgos-email] No se pudo procesar aviso de creación", {
+        hallazgoId: created.id, error: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   return created;

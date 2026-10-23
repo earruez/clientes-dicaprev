@@ -2,6 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
+import { after } from "next/server";
+import { avisarNuevoHallazgo } from "@/lib/hallazgos/avisos-correo";
 
 export type CrearChecklistTemplateInput = {
   nombre: string;
@@ -211,6 +213,7 @@ export async function ejecutarChecklist(input: EjecutarChecklistInput) {
   });
 
   let hallazgosGenerados = 0;
+  const nuevosHallazgosIds: string[] = [];
 
   for (const pregunta of template.preguntas) {
     const respuestaInput = respuestasMap.get(pregunta.id);
@@ -234,7 +237,7 @@ export async function ejecutarChecklist(input: EjecutarChecklistInput) {
       const compromiso = new Date();
       compromiso.setDate(compromiso.getDate() + 7);
 
-      await prisma.hallazgoCumplimiento.create({
+      const nuevoHallazgo = await prisma.hallazgoCumplimiento.create({
         data: {
           empresaId,
           centroTrabajoId: input.centroTrabajoId || null,
@@ -249,10 +252,26 @@ export async function ejecutarChecklist(input: EjecutarChecklistInput) {
           fechaCompromiso: compromiso,
           creadoPorId: usuarioId,
         },
+        select: { id: true },
       });
+      nuevosHallazgosIds.push(nuevoHallazgo.id);
 
       hallazgosGenerados += 1;
     }
+  }
+
+  if (nuevosHallazgosIds.length) {
+    after(async () => {
+      for (const hallazgoId of nuevosHallazgosIds) {
+        try {
+          await avisarNuevoHallazgo(hallazgoId, empresaId);
+        } catch (error) {
+          console.error("[hallazgos-email] Checklist: fallo aviso de creación", {
+            hallazgoId, error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    });
   }
 
   return {
