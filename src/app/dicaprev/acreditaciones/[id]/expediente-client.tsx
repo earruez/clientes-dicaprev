@@ -671,8 +671,13 @@ export default function ExpedienteClient({
     ]);
   };
 
-  async function handleZip() {
-    if (validacion.bloqueado) { push("error", `${validacion.faltantesOblig.length} documentos obligatorios faltantes.`); return; }
+  async function handleZip(): Promise<boolean> {
+    if (validacion.bloqueado) {
+      push("error", validacion.faltantesOblig.length
+        ? `${validacion.faltantesOblig.length} documentos obligatorios faltantes o sin archivo.`
+        : "No hay requisitos suficientes o existen documentos obligatorios vencidos.");
+      return false;
+    }
     setGenerando(true);
     try {
       const zip = await generarZip(docs, { empresaNombre: acreditacion.empresaNombre, mandante: acreditacion.mandante, plantillaNombre: acreditacion.plantillaNombre });
@@ -697,7 +702,11 @@ export default function ExpedienteClient({
       }
       addHistorial("generado");
       push("success", "ZIP descargado correctamente.");
-    } catch (error) { push("error", error instanceof Error ? error.message : "Error al generar el ZIP."); }
+      return true;
+    } catch (error) {
+      push("error", error instanceof Error ? error.message : "Error al generar el ZIP.");
+      return false;
+    }
     finally { setGenerando(false); }
   }
 
@@ -1164,7 +1173,7 @@ export default function ExpedienteClient({
             </Button>
 
             <Button
-              onClick={async () => { await handleZip(); if (!validacion.bloqueado) handlePDF(); }}
+              onClick={async () => { if (await handleZip()) await handlePDF(); }}
               disabled={generando || validacion.bloqueado}
               className="w-full rounded-xl h-10 bg-slate-900 hover:bg-slate-800 text-white text-sm"
             >

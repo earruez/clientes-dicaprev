@@ -988,6 +988,13 @@ export async function actualizarPlantillaAcreditacion(data: {
     const idsEliminar = Array.from(existentesIds).filter((id) => !incomingIds.has(id));
 
     if (idsEliminar.length > 0) {
+      const requisitoUtilizado = await tx.documentoAcreditacion.findFirst({
+        where: { requisitoId: { in: idsEliminar } },
+        select: { id: true },
+      });
+      if (requisitoUtilizado) {
+        throw new Error("No puedes eliminar requisitos con expedientes históricos. Duplica la plantilla para crear una nueva versión.");
+      }
       await tx.requisitoPlantillaAcreditacion.deleteMany({
         where: { id: { in: idsEliminar }, plantillaId: data.id },
       });
@@ -1583,8 +1590,10 @@ export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcr
     throw new Error("Transición de estado no permitida");
   }
   const nota = comentario?.trim().slice(0, 1200);
-  if ((estado === "observada" || estado === "rechazado") && !nota) {
-    throw new Error("Debes indicar el motivo de la observación o rechazo");
+  if (["enviado", "observada", "rechazado"].includes(estado) && !nota) {
+    throw new Error(estado === "enviado"
+      ? "Indica destinatario, medio y referencia del envío para conservar su trazabilidad"
+      : "Debes indicar el motivo de la observación o rechazo");
   }
   if (estado === "listo_para_enviar" || estado === "enviado" || estado === "aprobado") {
     const obligatorios = acreditacion.documentos.filter((d) => d.obligatorio);
