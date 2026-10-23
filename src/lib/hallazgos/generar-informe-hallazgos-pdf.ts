@@ -53,30 +53,60 @@ function limpia(value: string | null | undefined, fallback = "-"): string {
 function colorear(doc: jsPDF, color: [number, number, number]): void { doc.setTextColor(...color); }
 function fondo(doc: jsPDF, color: [number, number, number]): void { doc.setFillColor(...color); }
 
-function encabezado(doc: jsPDF, titulo: string, subtitulo: string, empresa: string, emitido: string) {
+type LogosHallazgos = { nextprevLogoDataUrl?: string | null; empresaLogoDataUrl?: string | null };
+
+function insertarLogoEnCaja(doc: jsPDF, src: string, x: number, y: number, anchoMax: number, altoMax: number): boolean {
+  try {
+    const propiedades = doc.getImageProperties(src);
+    const escala = Math.min(anchoMax / propiedades.width, altoMax / propiedades.height);
+    const ancho = propiedades.width * escala;
+    const alto = propiedades.height * escala;
+    doc.addImage(src, src.startsWith("data:image/jpeg") ? "JPEG" : "PNG",
+      x + (anchoMax - ancho) / 2, y + (altoMax - alto) / 2, ancho, alto, undefined, "FAST");
+    return true;
+  } catch { return false; }
+}
+
+function encabezado(doc: jsPDF, titulo: string, subtitulo: string, empresa: string, emitido: string, logos: LogosHallazgos = {}) {
   fondo(doc, NAVY);
   doc.rect(0, 0, W, 89, "F");
   fondo(doc, GOLD);
   doc.rect(0, 88, W, 3, "F");
-  doc.roundedRect(M, 19, 34, 34, 8, 8, "F");
-  colorear(doc, NAVY);
+  const logoNextPrev = logos.nextprevLogoDataUrl ? insertarLogoEnCaja(doc, logos.nextprevLogoDataUrl, M, 15, 196, 41) : false;
+  if (!logoNextPrev) {
+    fondo(doc, GOLD);
+    doc.roundedRect(M, 19, 34, 34, 8, 8, "F");
+    colorear(doc, NAVY);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text("NP", M + 17, 41, { align: "center" });
+    colorear(doc, WHITE);
+    doc.setFontSize(17);
+    doc.text("NextPrev", M + 44, 41);
+  }
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("NP", M + 17, 41, { align: "center" });
-  colorear(doc, WHITE);
-  doc.setFontSize(17);
-  doc.text("NextPrev", M + 44, 41);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
+    doc.setFontSize(14);
   doc.text(titulo, M, 69);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.text(subtitulo, M + 255, 69);
-  const empresaReducida = doc.splitTextToSize(limpia(empresa, "Empresa activa"), 245)[0];
-  doc.text(empresaReducida, W - M, 28, { align: "right" });
+  let empresaTextoX = W - M;
+  if (logos.empresaLogoDataUrl) {
+    const boxX = W - M - 91;
+    fondo(doc, WHITE);
+    doc.roundedRect(boxX, 10, 91, 52, 5, 5, "F");
+    if (insertarLogoEnCaja(doc, logos.empresaLogoDataUrl, boxX + 5, 15, 81, 42)) {
+      empresaTextoX = boxX - 10;
+    }
+  }
+  colorear(doc, WHITE);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  const empresaReducida = doc.splitTextToSize(limpia(empresa, "Empresa activa"), empresaTextoX === W - M ? 245 : 205)[0];
+  doc.text(empresaReducida, empresaTextoX, 28, { align: "right" });
   doc.setTextColor(192, 204, 220);
   doc.setFontSize(8.5);
-  doc.text("Emisión: " + emitido, W - M, 44, { align: "right" });
+  doc.text("Emisión: " + emitido, empresaTextoX, 44, { align: "right" });
 }
 
 function numerar(doc: jsPDF, nombre: string) {
@@ -103,9 +133,9 @@ function colorPrioridad(h: Hallazgo): [number, number, number] {
   if (h.prioridad === "media") return AMBER;
   return BLUE;
 }
-function iniciarPagina(doc: jsPDF, titulo: string, subtitulo: string, empresa: string, emitido: string): number {
+function iniciarPagina(doc: jsPDF, titulo: string, subtitulo: string, empresa: string, emitido: string, logos: LogosHallazgos = {}): number {
   doc.addPage();
-  encabezado(doc, titulo, subtitulo, empresa, emitido);
+  encabezado(doc, titulo, subtitulo, empresa, emitido, logos);
   return 113;
 }
 function tituloSeccion(doc: jsPDF, y: number, titulo: string, total?: number, color: [number, number, number] = BLUE) {
@@ -158,7 +188,7 @@ function encabezadoTabla(doc: jsPDF, y: number) {
   }
 }
 
-export type DatosInformeHallazgosPdf = {
+export type DatosInformeHallazgosPdf = LogosHallazgos & {
   empresaNombre: string;
   tipo: TipoInformeHallazgos;
   referencia: string;
@@ -173,7 +203,7 @@ export function construirInformeHallazgosPdf(data: DatosInformeHallazgosPdf): js
   const rango = data.tipo === "seleccion" ? null : rangoInformeHallazgos(data.tipo, data.referencia);
   const subtitulo = rango ? dia(rango.desde) + " al " + dia(rango.hasta) : "Hallazgos seleccionados";
   const titulo = (rango ? rango.titulo : "Informe de hallazgos") + " · DS 44";
-  encabezado(doc, titulo, subtitulo, data.empresaNombre, emitido);
+  encabezado(doc, titulo, subtitulo, data.empresaNombre, emitido, data);
 
   const grupos = agruparHallazgosPorEstado(data.hallazgos);
   const total = data.hallazgos.length;
@@ -207,7 +237,7 @@ export function construirInformeHallazgosPdf(data: DatosInformeHallazgosPdf): js
   doc.line(M, 220, W - M, 220);
 
   let y = 235;
-  const crearPagina = () => { y = iniciarPagina(doc, titulo, subtitulo, data.empresaNombre, emitido); };
+  const crearPagina = () => { y = iniciarPagina(doc, titulo, subtitulo, data.empresaNombre, emitido, data); };
 
   for (const grupo of grupos) {
     if (y > LOWER - 96) crearPagina();
@@ -309,7 +339,7 @@ export function guardarInformeHallazgosPdf(data: DatosInformeHallazgosPdf) {
   doc.save("NextPrev_Hallazgos_" + sufijo + ".pdf");
 }
 
-export type DatosFichaHallazgoPdf = {
+export type DatosFichaHallazgoPdf = LogosHallazgos & {
   hallazgo: Hallazgo;
   detalle: HallazgoDetalle | null;
   empresaNombre: string;
@@ -323,9 +353,9 @@ export function guardarFichaHallazgoPdf(data: DatosFichaHallazgoPdf) {
   const emitido = dia(fechaChile(new Date()));
   const titulo = "Ficha de hallazgo · DS 44";
   const subtitulo = "Identificador " + h.id.slice(0, 12);
-  encabezado(doc, titulo, subtitulo, data.empresaNombre, emitido);
+  encabezado(doc, titulo, subtitulo, data.empresaNombre, emitido, data);
   let y = 110;
-  const siguientePagina = () => { y = iniciarPagina(doc, titulo, subtitulo, data.empresaNombre, emitido); };
+  const siguientePagina = () => { y = iniciarPagina(doc, titulo, subtitulo, data.empresaNombre, emitido, data); };
   const ensure = (height: number) => { if (y + height > LOWER) siguientePagina(); };
   const metadatos = [
     ["Estado", LABEL_ESTADO[h.estado] || h.estado],
