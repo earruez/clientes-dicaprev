@@ -355,22 +355,29 @@ export function guardarFichaHallazgoPdf(data: DatosFichaHallazgoPdf) {
   }
   y += 132;
 
+  // Fragmentar secciones y medidas largas, manteniendo siempre el pie de página visible.
   const bloque = (nombre: string, contenido: string) => {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9.5);
     const lineas = doc.splitTextToSize(contenido, CONTENT - 30) as string[];
-    const altura = Math.max(57, lineas.length * 13 + 47);
-    ensure(altura + 10);
-    tituloSeccion(doc, y, nombre);
-    y += 30;
-    fondo(doc, PALE);
-    doc.setDrawColor(...LINE);
-    doc.roundedRect(M, y, CONTENT, altura - 30, 6, 6, "FD");
-    colorear(doc, INK);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(9.5);
-    doc.text(lineas, M + 14, y + 17, { lineHeightFactor: 1.34 });
-    y += altura - 16;
+    let indice = 0;
+    do {
+      if (y + 75 > LOWER) siguientePagina();
+      const capacidad = Math.max(1, Math.floor((LOWER - y - 30 - 25) / 13));
+      const segmento = lineas.slice(indice, indice + capacidad);
+      const altoContenido = Math.max(28, segmento.length * 13 + 17);
+      tituloSeccion(doc, y, nombre + (indice > 0 ? " (continuación)" : ""));
+      y += 30;
+      fondo(doc, PALE);
+      doc.setDrawColor(...LINE);
+      doc.roundedRect(M, y, CONTENT, altoContenido, 6, 6, "FD");
+      colorear(doc, INK);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      if (segmento.length) doc.text(segmento, M + 14, y + 17, { lineHeightFactor: 1.34 });
+      y += altoContenido + 14;
+      indice += segmento.length;
+    } while (indice < lineas.length);
   };
   bloque("Descripción del hallazgo", limpia(h.descripcion, "Sin descripción"));
 
@@ -383,33 +390,45 @@ export function guardarFichaHallazgoPdf(data: DatosFichaHallazgoPdf) {
       const m = medidas[i];
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      const lines = doc.splitTextToSize(m.descripcion, CONTENT - 32) as string[];
+      const lineas = doc.splitTextToSize(m.descripcion, CONTENT - 32) as string[];
       const mostrarFechaCompletada = m.estado === "completada";
-      const alto = Math.max(mostrarFechaCompletada ? 95 : 81, lines.length * 11 + (mostrarFechaCompletada ? 70 : 55));
-      ensure(alto + 8);
-      fondo(doc, i % 2 ? PALE : WHITE);
-      doc.setDrawColor(...LINE);
-      doc.roundedRect(M, y, CONTENT, alto, 5, 5, "FD");
-      colorear(doc, INK);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text("MEDIDA " + (i + 1) + " · " + m.estado.replace(/_/g, " ").toUpperCase(), M + 12, y + 15);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.8);
-      doc.text(lines, M + 12, y + 29);
-      doc.setFontSize(8);
-      colorear(doc, MUTED);
-      colorear(doc, BLUE);
-      doc.setFont("helvetica", "bold");
-      doc.text("Jerarquía DS44: " + nombreJerarquiaControlDs44(m.jerarquiaControl), M + 12, y + alto - (mostrarFechaCompletada ? 36 : 22));
-      doc.setFont("helvetica", "normal");
-      colorear(doc, MUTED);
-      doc.text("Responsable: " + limpia(m.responsable) + "  |  Compromiso: " + dia(m.fechaCompromiso), M + 12, y + alto - (mostrarFechaCompletada ? 23 : 9));
-      if (mostrarFechaCompletada) {
-        colorear(doc, GREEN);
-        doc.text(m.fechaCompletada ? "Fecha de finalización: " + dia(fechaChile(m.fechaCompletada)) : "Fecha de finalización: no registrada", M + 12, y + alto - 9);
-      }
-      y += alto + 8;
+      let indice = 0;
+      do {
+        if (y + 110 > LOWER) siguientePagina();
+        const espacioMetadatos = mostrarFechaCompletada ? 57 : 43;
+        const capacidad = Math.max(1, Math.floor((LOWER - y - 29 - espacioMetadatos - 10) / 11));
+        const segmento = lineas.slice(indice, indice + capacidad);
+        const ultimaParte = indice + segmento.length >= lineas.length;
+        const alto = Math.max(ultimaParte ? (mostrarFechaCompletada ? 95 : 81) : 52, 29 + segmento.length * 11 + (ultimaParte ? espacioMetadatos : 14));
+        fondo(doc, i % 2 ? PALE : WHITE);
+        doc.setDrawColor(...LINE);
+        doc.roundedRect(M, y, CONTENT, alto, 5, 5, "FD");
+        colorear(doc, INK);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.text("MEDIDA " + (i + 1) + " · " + m.estado.replace(/_/g, " ").toUpperCase() + (indice ? " (continuación)" : ""), M + 12, y + 15);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8.8);
+        if (segmento.length) doc.text(segmento, M + 12, y + 29);
+        doc.setFontSize(8);
+        if (ultimaParte) {
+          colorear(doc, BLUE);
+          doc.setFont("helvetica", "bold");
+          doc.text("Jerarquía DS44: " + nombreJerarquiaControlDs44(m.jerarquiaControl), M + 12, y + alto - (mostrarFechaCompletada ? 36 : 22));
+          doc.setFont("helvetica", "normal");
+          colorear(doc, MUTED);
+          doc.text("Responsable: " + limpia(m.responsable) + "  |  Compromiso: " + dia(m.fechaCompromiso), M + 12, y + alto - (mostrarFechaCompletada ? 23 : 9), { maxWidth: CONTENT - 24 });
+          if (mostrarFechaCompletada) {
+            colorear(doc, GREEN);
+            doc.text(m.fechaCompletada ? "Fecha de finalización: " + dia(fechaChile(m.fechaCompletada)) : "Fecha de finalización: no registrada", M + 12, y + alto - 9);
+          }
+        } else {
+          colorear(doc, MUTED);
+          doc.text("Continúa en la siguiente sección", M + 12, y + alto - 9);
+        }
+        y += alto + 8;
+        indice += segmento.length;
+      } while (indice < lineas.length);
     }
   }
 
