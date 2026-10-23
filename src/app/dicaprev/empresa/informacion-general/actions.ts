@@ -66,7 +66,7 @@ export async function getEmpresaActual(): Promise<EmpresaGeneralData> {
     prisma.trabajador.count({
       where: {
         empresaId,
-        estado: { not: "inactivo" },
+        estado: "activo",
       },
     }),
   ]);
@@ -88,7 +88,7 @@ export async function getEmpresaKpisActual(): Promise<EmpresaKpisData> {
     prisma.trabajador.count({
       where: {
         empresaId,
-        estado: { not: "inactivo" },
+        estado: "activo",
       },
     }),
     prisma.centroTrabajo.count({ where: { empresaId } }),

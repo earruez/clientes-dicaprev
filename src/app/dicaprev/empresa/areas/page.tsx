@@ -20,7 +20,6 @@ import {
 import { cn } from "@/lib/utils";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import {
-  empresaStore,
   type EmpresaArea as Area,
   type AreaStatus,
   type EmpresaCargo as Cargo,
@@ -321,7 +320,6 @@ export default function AreasCargosPage() {
 
   // ── Shared state ──
   const [mainTab, setMainTab] = useState<MainTab>("areas");
-  const [plantillaActiva, setPlantillaActiva] = useState<string | null>(null);
 
   // ── Areas state ──
   const [areas, setAreas]                   = useState<Area[]>([]);
@@ -367,11 +365,6 @@ export default function AreasCargosPage() {
 
     async function loadData() {
       try {
-        await empresaStore.init();
-        if (mounted) {
-          setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
-        }
-
         const [areaRows, cargoRows, dotacionRowsResult] = await Promise.allSettled([
           getAreas(),
           getCargos(),
@@ -800,14 +793,6 @@ export default function AreasCargosPage() {
               <AreaKpiCard label="Cargo crítico SST"     value={aAreasDs44}   icon={<ShieldAlert className="h-5 w-5 text-white" />} accent="bg-rose-600"   sub="áreas con cargos críticos SST" />
             </div>
 
-            {plantillaActiva && (
-              <div className="flex items-center gap-2 rounded-2xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-teal-600" />
-                <span className="flex-1">Estructura desde plantilla: <strong>{plantillaActiva}</strong></span>
-                <a href="/dicaprev/empresa" className="text-xs font-semibold underline underline-offset-2 hover:text-teal-600">Cambiar plantilla</a>
-              </div>
-            )}
-
 
             {areasLoadError && (
               <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -943,14 +928,6 @@ export default function AreasCargosPage() {
               <CargoKpiCard icon={<FileText className="h-5 w-5 text-amber-600" />}        label="Documentos base"        value={kpiCDocs}    bg="bg-amber-50" />
               <CargoKpiCard icon={<GraduationCap className="h-5 w-5 text-emerald-600" />} label="Capacitaciones base"   value={kpiCCaps}    bg="bg-emerald-50" />
             </div>
-
-            {plantillaActiva && (
-              <div className="flex items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-violet-600" />
-                <span className="flex-1">Estructura desde plantilla: <strong>{plantillaActiva}</strong></span>
-                <a href="/dicaprev/empresa" className="text-xs font-semibold underline underline-offset-2 hover:text-violet-600">Cambiar plantilla</a>
-              </div>
-            )}
 
             <Card className="border border-slate-200 rounded-2xl shadow-sm">
               <CardContent className="p-4">

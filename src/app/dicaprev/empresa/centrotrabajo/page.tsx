@@ -1,5 +1,6 @@
-import CentrosTrabajoExecutivePage from "@/components/empresa/CentrosTrabajoExecutivePage";
+import { redirect } from "next/navigation";
 
-export default function EmpresaCentrosTrabajoPage() {
-  return <CentrosTrabajoExecutivePage />;
+/** La vista anterior utilizaba almacenamiento local; redirigir al módulo Prisma. */
+export default function CentrosTrabajoLegacyPage() {
+  redirect("/dicaprev/empresa/centros");
 }
