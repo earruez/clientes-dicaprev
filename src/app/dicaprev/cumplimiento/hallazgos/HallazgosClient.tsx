@@ -189,7 +189,7 @@ function toAbsoluteUrl(url: string): string {
   return `${window.location.origin}${normalized}`;
 }
 
-async function imageUrlToDataUrl(url: string): Promise<string | null> {
+async function imageUrlToDataUrl(url: string, transparencia = false): Promise<string | null> {
   try {
     const response = await fetch(toAbsoluteUrl(url));
     if (!response.ok) return null;
@@ -216,10 +216,12 @@ async function imageUrlToDataUrl(url: string): Promise<string | null> {
         canvas.height = height;
         const ctx = canvas.getContext("2d");
         if (!ctx) return resolve(rawDataUrl);
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, width, height);
+        if (!transparencia) {
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, width, height);
+        }
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", 0.64));
+        resolve(transparencia ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", 0.64));
       };
       img.onerror = () => resolve(rawDataUrl);
       img.src = rawDataUrl;
@@ -777,10 +779,12 @@ export default function HallazgosClient({
         titulo: foto.titulo,
         src: foto.archivoUrl ? await imageUrlToDataUrl(foto.archivoUrl) : null,
       })));
+      const logos = await logosParaInformeHallazgos();
       guardarFichaHallazgoPdf({
         hallazgo: selected,
         detalle,
         empresaNombre: opciones.empresaNombre,
+        ...logos,
         fotos: fotografias.filter((f): f is { titulo: string; src: string } => Boolean(f.src)),
       });
     } catch (error) {
@@ -791,13 +795,27 @@ export default function HallazgosClient({
     }
   }
 
+  async function logosParaInformeHallazgos() {
+    const [nextprevLogoDataUrl, empresaLogoDataUrl] = await Promise.all([
+      imageUrlToDataUrl("/brand/nextprev-logo.svg", true),
+      opciones.empresaLogoUrl ? imageUrlToDataUrl(opciones.empresaLogoUrl, true) : Promise.resolve(null),
+    ]);
+    // Logos anteriores guardados en filesystem efímero pueden ya no existir en Vercel.
+    if (opciones.empresaLogoUrl && !empresaLogoDataUrl) {
+      setErrorInforme("El logo de la empresa no se pudo leer. Vuelve a subirlo en Empresa → Información general.");
+    }
+    return { nextprevLogoDataUrl, empresaLogoDataUrl };
+  }
+
   async function descargarInformeMasivo() {
     if (!hallazgosSeleccionados.size) return;
     setGenerandoInforme(true);
     setErrorInforme("");
     try {
+      const logos = await logosParaInformeHallazgos();
       guardarInformeHallazgosPdf({
         empresaNombre: opciones.empresaNombre,
+        ...logos,
         tipo: "seleccion",
         referencia: fechaChile(new Date()),
         hallazgos: hallazgos.filter((h) => hallazgosSeleccionados.has(h.id)),
@@ -817,8 +835,10 @@ export default function HallazgosClient({
     try {
       const periodo = rangoInformeHallazgos(tipoInforme, fechaReferenciaInforme);
       const items = filtrarHallazgosInforme(hallazgos, tipoInforme, fechaReferenciaInforme);
+      const logos = await logosParaInformeHallazgos();
       guardarInformeHallazgosPdf({
         empresaNombre: opciones.empresaNombre,
+        ...logos,
         tipo: tipoInforme,
         referencia: periodo.hasta,
         hallazgos: items,
