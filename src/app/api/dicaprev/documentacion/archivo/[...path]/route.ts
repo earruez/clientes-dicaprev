@@ -21,6 +21,7 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
     documentoTrabajador,
     historialTrabajador,
     documentoAcreditacion,
+    documentoVehiculo,
     evidenciaCumplimiento,
     permisoAprobado,
   ] = await Promise.all([
@@ -48,6 +49,10 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
         where: { archivoNombre, acreditacion: { empresaId } },
         select: { id: true },
       }),
+      prisma.vehiculoDocumento.findFirst({
+        where: { empresaId, archivoNombre },
+        select: { id: true },
+      }),
       prisma.evidenciaCumplimiento.findFirst({
         where: { empresaId, archivoNombre },
         select: { id: true },
@@ -65,6 +70,7 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
       documentoTrabajador ||
       historialTrabajador ||
       documentoAcreditacion ||
+      documentoVehiculo ||
       evidenciaCumplimiento ||
       permisoAprobado,
   );

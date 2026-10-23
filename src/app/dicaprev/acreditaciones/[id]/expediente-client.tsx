@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { actualizarEstadoAcreditacion, generarDocumentosAcreditacion } from "@/actions/acreditaciones";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -117,6 +118,8 @@ type AcreditacionExpediente = {
   historialEstados: HistorialEstadoAcreditacion[];
 };
 
+type SolicitudContratista = { id: string; nombre: string; estado: string; relacionados: boolean; completos: number; total: number };
+
 type ExpedienteAgrupado = {
   empresa: DocumentoInstancia[];
   sst: DocumentoInstancia[];
@@ -164,14 +167,17 @@ function agruparExpediente(acreditacion: AcreditacionExpediente, docs: Documento
 
 function calcularCompletitud(docs: DocumentoInstancia[], soloObligatorios = true): number {
   const base = soloObligatorios ? docs.filter((d) => d.obligatorio) : docs;
-  if (base.length === 0) return 100;
-  return Math.round((base.filter((d) => d.estado === "completo").length / base.length) * 100);
+  if (base.length === 0) return 0;
+  return Math.round((base.filter((d) => d.estado === "completo" && Boolean(d.archivoNombre || d.archivoUrl)
+    && (!d.fechaVencimiento || new Date(d.fechaVencimiento).getTime() >= Date.now())).length / base.length) * 100);
 }
 
 function evaluarEstadoExpediente(docs: DocumentoInstancia[]) {
-  const faltantesOblig = docs.filter((d) => d.obligatorio && d.estado === "faltante");
-  const vencidosOblig = docs.filter((d) => d.obligatorio && d.estado === "vencido");
-  const bloqueado = faltantesOblig.length > 0;
+  const faltantesOblig = docs.filter((d) => d.obligatorio &&
+    (d.estado !== "completo" && d.estado !== "vencido" || !(d.archivoUrl || d.archivoNombre)));
+  const vencidosOblig = docs.filter((d) => d.obligatorio &&
+    (d.estado === "vencido" || Boolean(d.fechaVencimiento && new Date(d.fechaVencimiento).getTime() < Date.now())));
+  const bloqueado = !docs.some((d) => d.obligatorio) || faltantesOblig.length > 0 || vencidosOblig.length > 0;
   const advertencias = vencidosOblig.length;
 
   return {
@@ -324,51 +330,66 @@ function Toasts({ toasts }: { toasts: ToastT[] }) {
 
 // ── Generación ZIP ────────────────────────────────────────────────────
 
-async function generarZip(docs: DocumentoInstancia[], empresaNombre: string): Promise<Blob> {
+async function generarZip(docs: DocumentoInstancia[], ac: { empresaNombre: string; mandante: string; plantillaNombre: string }): Promise<Blob> {
   const zip = new JSZip();
   const fecha = new Date().toISOString().slice(0, 10);
-  const base = `Expediente_${empresaNombre.replace(/\s/g, "_")}_${fecha}`;
+  const base = `Expediente_${ac.empresaNombre.replace(/[^a-zA-Z0-9_-]+/g, "_")}_${fecha}`;
   const root = zip.folder(base)!;
-
   const carpetas: Partial<Record<CategoriaRequisito, JSZip>> = {
     empresa: root.folder("01_Empresa")!,
     sst: root.folder("03_SST")!,
     anexo: root.folder("05_Anexos")!,
   };
-  const tCarpetas: Record<string, JSZip> = {};
-  const vCarpetas: Record<string, JSZip> = {};
   const tRoot = root.folder("02_Trabajadores")!;
   const vRoot = root.folder("04_Vehiculos")!;
+  const tCarpetas: Record<string, JSZip> = {};
+  const vCarpetas: Record<string, JSZip> = {};
+  const incluidos = docs.filter((d) => d.estado === "completo" && (d.archivoNombre || d.archivoUrl) &&
+    (!d.fechaVencimiento || new Date(d.fechaVencimiento).getTime() >= Date.now()));
+  if (!incluidos.length) throw new Error("No hay archivos válidos para incluir en el expediente.");
 
-  for (const doc of docs.filter((d) => d.estado !== "faltante")) {
-    const nombre = doc.nombreArchivo ?? doc.archivoNombre ?? `${doc.nombreDocumento.replace(/[^a-zA-Z0-9]/g, "_")}.pdf`;
-    const contenido = `[Simulado] ${doc.nombreDocumento}\nTitular: ${doc.titularNombre}\nEmisión: ${doc.fechaEmision ?? "—"}\nVencimiento: ${doc.fechaVencimiento ?? "—"}`;
-    const blob = new Blob([contenido], { type: "application/pdf" });
-
-    if (doc.categoria === "empresa" || doc.categoria === "sst" || doc.categoria === "anexo") {
-      carpetas[doc.categoria]?.file(nombre, blob);
-    } else if (doc.categoria === "trabajador") {
-      const key = doc.titularId ?? `trabajador_${doc.id}`;
-      if (!tCarpetas[key]) tCarpetas[key] = tRoot.folder(doc.titularNombre.replace(/\s/g, "_"))!;
-      tCarpetas[key].file(nombre, blob);
+  for (const doc of incluidos) {
+    const candidato = doc.archivoNombre
+      ? `/api/dicaprev/documentacion/archivo/${encodeURIComponent(doc.archivoNombre)}`
+      : normalizarArchivoSeguroUrl(doc.archivoUrl);
+    if (!candidato) throw new Error(`No hay archivo accesible para ${doc.nombreDocumento}`);
+    const url = new URL(candidato, window.location.origin);
+    if (url.origin !== window.location.origin) {
+      throw new Error(`El documento ${doc.nombreDocumento} requiere un archivo privado de NextPrev`);
+    }
+    const response = await fetch(url.pathname + url.search, { credentials: "same-origin", cache: "no-store" });
+    if (!response.ok) throw new Error(`No se pudo descargar ${doc.nombreDocumento} (HTTP ${response.status}).`);
+    const contenido = await response.blob();
+    if (!contenido.size || contenido.type.includes("text/html") || contenido.type.includes("application/json")) {
+      throw new Error(`El archivo de ${doc.nombreDocumento} está vacío o no es válido`);
+    }
+    const nombreSeguro = (doc.archivoNombre || doc.nombreArchivo || doc.nombreDocumento + ".pdf")
+      .replace(/[^a-zA-Z0-9._-]/g, "_");
+    const nombre = `${doc.id.slice(0, 8)}_${nombreSeguro}`;
+    if (doc.categoria === "trabajador") {
+      const key = doc.titularId ?? doc.id;
+      if (!tCarpetas[key]) tCarpetas[key] = tRoot.folder(doc.titularNombre.replace(/[^a-zA-Z0-9_-]/g, "_"))!;
+      tCarpetas[key].file(nombre, contenido);
     } else if (doc.categoria === "vehiculo") {
-      const key = doc.titularId ?? `vehiculo_${doc.id}`;
-      if (!vCarpetas[key]) vCarpetas[key] = vRoot.folder(doc.titularNombre.replace(/[^a-zA-Z0-9]/g, "_"))!;
-      vCarpetas[key].file(nombre, blob);
+      const key = doc.titularId ?? doc.id;
+      if (!vCarpetas[key]) vCarpetas[key] = vRoot.folder(doc.titularNombre.replace(/[^a-zA-Z0-9_-]/g, "_"))!;
+      vCarpetas[key].file(nombre, contenido);
+    } else {
+      carpetas[doc.categoria]?.file(nombre, contenido);
     }
   }
-
+  root.file("00_Indice_Expediente.pdf", generarPDF(docs, ac, false));
   const zipBlob = await zip.generateAsync({ type: "blob" });
   const url = URL.createObjectURL(zipBlob);
   const a = document.createElement("a");
   a.href = url;
   a.download = `${base}.zip`;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   return zipBlob;
 }
 
-function generarPDF(docs: DocumentoInstancia[], ac: { empresaNombre: string; mandante: string; plantillaNombre: string }) {
+function generarPDF(docs: DocumentoInstancia[], ac: { empresaNombre: string; mandante: string; plantillaNombre: string }, descargar = true) {
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const W = pdf.internal.pageSize.getWidth();
   const fecha = new Date().toLocaleDateString("es-CL");
@@ -432,13 +453,13 @@ function generarPDF(docs: DocumentoInstancia[], ac: { empresaNombre: string; man
   }
 
   const blob = pdf.output("blob");
-  pdf.save(`Indice_${ac.empresaNombre.replace(/\s/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`);
+  if (descargar) pdf.save(`Indice_${ac.empresaNombre.replace(/\s/g, "_")}_${new Date().toISOString().slice(0, 10)}.pdf`);
   return blob;
 }
 
 function generarEmail(ac: { empresaNombre: string; mandante: string }, docs: DocumentoInstancia[]) {
   const incl = docs.filter((d) => d.estado !== "faltante").length;
-  return `Estimado equipo ${ac.mandante},\n\nAdjunto el expediente de acreditación de ${ac.empresaNombre} (${new Date().toLocaleDateString("es-CL")}), con ${incl} documentos organizados según requisitos.\n\nQuedo atento ante cualquier consulta.\n\nSaludos,\nEquipo DICAPREV`;
+  return `Estimado equipo ${ac.mandante},\n\nAdjunto el expediente de acreditación de ${ac.empresaNombre} (${new Date().toLocaleDateString("es-CL")}), con ${incl} documentos organizados según requisitos.\n\nQuedo atento ante cualquier consulta.\n\nSaludos,\nEquipo NextPrev`;
 }
 
 // ── Componente BloqueDocumentos ───────────────────────────────────────
@@ -594,10 +615,12 @@ export default function ExpedienteClient({
   acreditacion,
   initialDocs,
   initialHistorial,
+  solicitudesContratista,
 }: {
   acreditacion: AcreditacionExpediente;
   initialDocs: DocumentoInstancia[];
   initialHistorial: HistorialExpediente[];
+  solicitudesContratista: SolicitudContratista[];
 }) {
   const router = useRouter();
   const acId = acreditacion.id;
@@ -627,6 +650,8 @@ export default function ExpedienteClient({
 
   const [historial, setHistorial] = useState<HistorialExpediente[]>(initialHistorial);
   const [generando, setGenerando] = useState(false);
+  const [sincronizando, setSincronizando] = useState(false);
+  const [guardandoEstado, setGuardandoEstado] = useState(false);
   const [estadoActual, setEstadoActual] = useState<EstadoAcreditacion>(acreditacion.estado ?? "en_preparacion");
   const [, setHistorialEstados] = useState<HistorialEstadoAcreditacion[]>(acreditacion.historialEstados ?? []);
   const [modalCambioEstado, setModalCambioEstado] = useState<EstadoAcreditacion | null>(null);
@@ -650,7 +675,7 @@ export default function ExpedienteClient({
     if (validacion.bloqueado) { push("error", `${validacion.faltantesOblig.length} documentos obligatorios faltantes.`); return; }
     setGenerando(true);
     try {
-      const zip = await generarZip(docs, acreditacion!.empresaNombre);
+      const zip = await generarZip(docs, { empresaNombre: acreditacion.empresaNombre, mandante: acreditacion.mandante, plantillaNombre: acreditacion.plantillaNombre });
       if (acreditacion?.empresaId) {
         const stamp = new Date().toISOString().slice(0, 10);
         await persistirDocumentoGenerado({
@@ -672,7 +697,7 @@ export default function ExpedienteClient({
       }
       addHistorial("generado");
       push("success", "ZIP descargado correctamente.");
-    } catch { push("error", "Error al generar el ZIP."); }
+    } catch (error) { push("error", error instanceof Error ? error.message : "Error al generar el ZIP."); }
     finally { setGenerando(false); }
   }
 
@@ -710,18 +735,39 @@ export default function ExpedienteClient({
     navigator.clipboard.writeText(generarEmail(acreditacion!, docs)).then(() => push("success", "Texto copiado al portapapeles."));
   }
 
-  function confirmarCambioEstado(comentario: string) {
-    if (!modalCambioEstado) return;
-    const entrada: HistorialEstadoAcreditacion = {
-      estado: modalCambioEstado,
-      fecha: new Date().toISOString(),
-      usuario: "Prevencionista NEXTPREV",
-      ...(comentario ? { comentario } : {}),
-    };
-    setEstadoActual(modalCambioEstado);
-    setHistorialEstados((prev) => [...prev, entrada]);
-    push("success", `Estado actualizado a \u201c${ESTADO_AC_CFG[modalCambioEstado]?.label}\u201d.`);
-    setModalCambioEstado(null);
+  async function confirmarCambioEstado(comentario: string) {
+    if (!modalCambioEstado || guardandoEstado) return;
+    setGuardandoEstado(true);
+    const nuevoEstado = modalCambioEstado;
+    try {
+      await actualizarEstadoAcreditacion(acId, nuevoEstado, comentario);
+      setEstadoActual(nuevoEstado);
+      setHistorialEstados((prev) => [...prev, {
+        estado: nuevoEstado, fecha: new Date().toISOString(), usuario: "Usuario actual",
+        ...(comentario ? { comentario } : {}),
+      }]);
+      setModalCambioEstado(null);
+      push("success", "Estado guardado en NextPrev.");
+      router.refresh();
+    } catch (error) {
+      push("error", error instanceof Error ? error.message : "No se pudo actualizar el estado");
+    } finally {
+      setGuardandoEstado(false);
+    }
+  }
+
+  async function sincronizar() {
+    if (sincronizando) return;
+    setSincronizando(true);
+    try {
+      const cambios = await generarDocumentosAcreditacion(acId);
+      push("success", `Documentos actualizados: ${cambios.actualizados}; nuevos: ${cambios.created}.`);
+      router.refresh();
+    } catch (error) {
+      push("error", error instanceof Error ? error.message : "No se pudo actualizar la documentación");
+    } finally {
+      setSincronizando(false);
+    }
   }
 
   function enfocarDocumentos(filtro: EstadoDocumentoFiltro) {
@@ -863,6 +909,23 @@ export default function ExpedienteClient({
             )}
           </div>
 
+          {solicitudesContratista.length > 0 && (
+            <div className="rounded-2xl border border-sky-200 bg-white p-5 shadow-sm">
+              <p className="mb-2 text-xs font-bold text-slate-800">Carpetas del contratista asociado</p>
+              <p className="mb-3 text-[11px] text-slate-500">Seguimiento documental del contratista. La aprobación de cada carpeta es independiente.</p>
+              <ul className="space-y-2">
+                {solicitudesContratista.map((sol) => (
+                  <li key={sol.id}>
+                    <a href={`/dicaprev/contratistas/solicitudes?expediente=${encodeURIComponent(sol.id)}`}
+                      className="block rounded-lg border border-slate-200 p-2 text-xs text-sky-800 hover:bg-sky-50">
+                      <span className="block font-semibold">{sol.nombre}</span>
+                      <span className="text-slate-500">{sol.estado} · {sol.completos}/{sol.total} obligatorios aprobados{sol.relacionados ? " · Posible coincidencia con faena" : ""}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {/* Historial */}
           {historial.length > 0 && (
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
@@ -1076,6 +1139,11 @@ export default function ExpedienteClient({
           {/* Acciones */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-2.5">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Acciones</p>
+            <Button variant="outline" onClick={() => void sincronizar()} disabled={sincronizando || generando} className="w-full rounded-xl text-sm h-10 justify-start">
+              <Sparkles className="mr-2 h-4 w-4 text-sky-600" />
+              {sincronizando ? "Actualizando documentos…" : "Actualizar desde NextPrev"}
+            </Button>
+            <p className="text-[11px] text-slate-500">Sincroniza los documentos de empresa, trabajadores y vehículos antes de generar el expediente.</p>
 
             <Button
               variant="outline"

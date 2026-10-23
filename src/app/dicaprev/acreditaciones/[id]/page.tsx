@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { getAcreditacionById } from "@/actions/acreditaciones";
+import { getAcreditacionById, getSolicitudesContratistaAcreditacion } from "@/actions/acreditaciones";
 import ExpedienteClient from "./expediente-client";
 
 type EstadoAcreditacion =
@@ -75,6 +75,8 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
   if (!acreditacion) {
     notFound();
   }
+
+  const solicitudesContratista = await getSolicitudesContratistaAcreditacion(id);
 
   const workers = acreditacion.trabajadores
     .filter((item) => Boolean(item.trabajador))
@@ -158,6 +160,7 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
       }}
       initialDocs={docs}
       initialHistorial={historial}
+      solicitudesContratista={solicitudesContratista}
     />
   );
 }
