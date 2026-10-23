@@ -44,7 +44,8 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { jsPDF } from "jspdf";
+import { guardarFichaHallazgoPdf, guardarInformeHallazgosPdf } from "@/lib/hallazgos/generar-informe-hallazgos-pdf";
+import { fechaChile, filtrarHallazgosInforme, rangoInformeHallazgos, type PeriodicidadInformeHallazgos } from "@/lib/hallazgos/informe-periodico";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { cn } from "@/lib/utils";
 import type {
@@ -144,9 +145,11 @@ function fechaCompromisoDesdePlantilla(dias: number): string {
 }
 
 function fmtFecha(iso: string): string {
+  // Fecha civil (YYYY-MM-DD) sin desplazamiento por zona horaria.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso.slice(8, 10) + "-" + iso.slice(5, 7) + "-" + iso.slice(0, 4);
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("es-CL");
+  return d.toLocaleDateString("es-CL", { timeZone: "America/Santiago" });
 }
 
 function toAbsoluteUrl(url: string): string {
@@ -172,8 +175,8 @@ async function imageUrlToDataUrl(url: string): Promise<string | null> {
     return await new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
-        const maxWidth = 1280;
-        const maxHeight = 1280;
+        const maxWidth = 1000;
+        const maxHeight = 1000;
         const ratio = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
         const width = Math.max(1, Math.round(img.width * ratio));
         const height = Math.max(1, Math.round(img.height * ratio));
@@ -185,73 +188,13 @@ async function imageUrlToDataUrl(url: string): Promise<string | null> {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, width, height);
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", 0.72));
+        resolve(canvas.toDataURL("image/jpeg", 0.64));
       };
       img.onerror = () => resolve(rawDataUrl);
       img.src = rawDataUrl;
     });
   } catch {
     return null;
-  }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-async function renderStyledPdfFromHtml(html: string, filename: string) {
-  const htmlWidth = 720;
-  const pdfContentWidth = 559;
-  const mount = document.createElement("div");
-  mount.style.position = "fixed";
-  mount.style.left = "0";
-  mount.style.top = "0";
-  mount.style.width = `${htmlWidth}px`;
-  mount.style.maxWidth = `${htmlWidth}px`;
-  mount.style.pointerEvents = "none";
-  mount.style.zIndex = "-1";
-  mount.style.background = "#ffffff";
-  mount.innerHTML = html;
-  document.body.appendChild(mount);
-
-  try {
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    if (document.fonts?.ready) {
-      await document.fonts.ready;
-    }
-
-    const images = Array.from(mount.querySelectorAll("img"));
-    await Promise.all(
-      images.map(
-        (img) =>
-          new Promise<void>((resolve) => {
-            if (img.complete) return resolve();
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
-          }),
-      ),
-    );
-
-    const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
-    await doc.html(mount, {
-      margin: [18, 18, 18, 18],
-      autoPaging: "text",
-      width: pdfContentWidth,
-      windowWidth: htmlWidth,
-      html2canvas: {
-        scale: 0.72,
-        useCORS: true,
-        backgroundColor: "#ffffff",
-      },
-    });
-    doc.save(filename);
-  } finally {
-    document.body.removeChild(mount);
   }
 }
 
@@ -291,6 +234,9 @@ export default function HallazgosClient({
   const [hallazgos, setHallazgos] = useState<Hallazgo[]>(initialHallazgos);
   const [hallazgosSeleccionados, setHallazgosSeleccionados] = useState<Set<string>>(new Set());
   const [generandoInforme, setGenerandoInforme] = useState(false);
+  const [tipoInforme, setTipoInforme] = useState<PeriodicidadInformeHallazgos>("mensual");
+  const [fechaReferenciaInforme, setFechaReferenciaInforme] = useState(() => fechaChile(new Date()));
+  const [errorInforme, setErrorInforme] = useState("");
   const [eliminandoMasivo, setEliminandoMasivo] = useState(false);
   const [moviendoEmpresa, setMoviendoEmpresa] = useState(false);
   const [modalMoverEmpresaOpen, setModalMoverEmpresaOpen] = useState(false);
@@ -744,373 +690,65 @@ export default function HallazgosClient({
 
   async function descargarPDFHallazgo() {
     if (!selected) return;
+    setGenerandoInforme(true);
+    setCierreError(null);
     try {
       const fotos = (detalle?.evidencias ?? []).filter(
         (e) => e.tipo === "fotografia" || e.archivoUrl?.match(/\.(jpg|jpeg|png|webp)$/i),
       );
-      const fotosConSrc = await Promise.all(
-        fotos.map(async (foto) => ({
-          ...foto,
-          src: foto.archivoUrl ? await imageUrlToDataUrl(foto.archivoUrl) : null,
-        })),
-      );
-
-      const html = `
-        <style>
-          :root {
-            --ink: #1f2937;
-            --muted: #6b7280;
-            --paper: #ffffff;
-            --paper-soft: #f9fafb;
-            --line: #e5e7eb;
-            --accent: #0f766e;
-            --accent-soft: #ecfdf5;
-          }
-          * { box-sizing: border-box; }
-          body { font-family: "Georgia", "Times New Roman", serif; color: var(--ink); background: #ffffff; margin: 0; padding: 0; }
-          .report-shell { width: 100%; max-width: 680px; margin: 0 auto; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
-          .header { background: #ffffff; color: var(--ink); padding: 0 0 14px; border-bottom: 2px solid var(--line); }
-          .header h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: 0.01em; font-weight: 700; }
-          .header p { margin: 0; font-size: 11px; color: var(--muted); }
-          .header-sub { margin-top: 8px; font-size: 13px; color: #374151; }
-          .header-chips { margin-top: 12px; }
-          .chip { display: inline-block; margin: 0 8px 6px 0; padding: 4px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; border: 1px solid #d1d5db; background: #f9fafb; color: #374151; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .section { margin-top: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--paper); }
-          .section-title { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-          .item { background: var(--paper-soft); border: 1px solid var(--line); border-radius: 8px; padding: 9px; }
-          .label { font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.05em; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .value { font-size: 12px; color: #111827; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .desc { background: var(--paper-soft); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px; font-size: 12px; line-height: 1.55; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .hero { margin-top: 10px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--paper); }
-          .hero-top { display: flex; }
-          .hero-accent { width: 8px; }
-          .hero-critical { background: #b91c1c; }
-          .hero-high { background: #be123c; }
-          .hero-medium { background: #b45309; }
-          .hero-low { background: #0369a1; }
-          .hero-content { flex: 1; padding: 12px; background: #ffffff; }
-          .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 9px; font-weight: 700; margin-right: 6px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .pill-state { background: #ecfeff; color: #155e75; border: 1px solid #bae6fd; }
-          .pill-prio { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
-          .photo { margin-bottom: 12px; }
-          .photo img { width: 100%; max-height: 300px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-          .photo-meta { margin-top: 5px; font-size: 10px; color: #4b5563; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .mc { font-size: 10px; border: 1px solid var(--line); background: var(--paper-soft); padding: 9px; border-radius: 8px; margin-bottom: 7px; line-height: 1.45; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 10px; color: var(--muted); text-align: center; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-        </style>
-        <div class="report-shell">
-        <div class="header">
-          <h1>Reporte de Hallazgo</h1>
-          <p>${escapeHtml(new Date().toLocaleString("es-CL"))}</p>
-          <div class="header-sub">Informe ejecutivo de cumplimiento y control operacional</div>
-          <div class="header-chips">
-            <span class="chip">Centro ${escapeHtml(selected.centroNombre)}</span>
-            <span class="chip">Estado ${escapeHtml(ESTADO_CFG[selected.estado as EstadoHallazgo]?.label || selected.estado)}</span>
-            <span class="chip">Prioridad ${escapeHtml(PRIORIDAD_CFG[selected.prioridad]?.label || selected.prioridad)}</span>
-          </div>
-        </div>
-
-        <div class="section">
-          <h3 class="section-title">Información general</h3>
-          <div class="grid">
-            <div class="item"><div class="label">Estado</div><div class="value">${escapeHtml(ESTADO_CFG[selected.estado as EstadoHallazgo]?.label || selected.estado)}</div></div>
-            <div class="item"><div class="label">Tipo</div><div class="value">${escapeHtml(TIPO_CFG[selected.tipo]?.label || selected.tipo)}</div></div>
-            <div class="item"><div class="label">Centro</div><div class="value">${escapeHtml(selected.centroNombre)}</div></div>
-            <div class="item"><div class="label">Trabajador</div><div class="value">${escapeHtml(selected.trabajadorNombre || "No asociado")}</div></div>
-            <div class="item"><div class="label">Responsable</div><div class="value">${escapeHtml(selected.responsableNombre || detalle?.responsable?.nombre || "Por asignar")}</div></div>
-            <div class="item"><div class="label">Prioridad</div><div class="value">${escapeHtml(PRIORIDAD_CFG[selected.prioridad]?.label || selected.prioridad)}</div></div>
-            <div class="item"><div class="label">Compromiso</div><div class="value">${escapeHtml(fmtFecha(selected.fechaCompromiso))}</div></div>
-          </div>
-        </div>
-
-        <div class="section">
-          <h3 class="section-title">Descripción</h3>
-          <div class="hero">
-            <div class="hero-top">
-              <div class="hero-accent ${selected.prioridad === "critica" ? "hero-critical" : selected.prioridad === "alta" ? "hero-high" : selected.prioridad === "media" ? "hero-medium" : "hero-low"}"></div>
-              <div class="hero-content">
-                <span class="pill pill-state">${escapeHtml(ESTADO_CFG[selected.estado as EstadoHallazgo]?.label || selected.estado)}</span>
-                <span class="pill pill-prio">Prioridad ${escapeHtml(PRIORIDAD_CFG[selected.prioridad]?.label || selected.prioridad)}</span>
-                <div class="desc" style="margin-top:10px;">${escapeHtml(selected.descripcion)}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        ${fotosConSrc.some((f) => f.src) ? `
-          <div class="section">
-            <h3 class="section-title">Fotografías del hallazgo</h3>
-            ${fotosConSrc
-              .filter((f) => f.src)
-              .map((foto) => `
-                <div class="photo">
-                  <img src="${foto.src}" alt="${escapeHtml(foto.titulo)}" />
-                  <div class="photo-meta">${escapeHtml(foto.titulo)} - ${escapeHtml(fmtFecha(foto.fechaEvidencia))}</div>
-                </div>
-              `)
-              .join("")}
-          </div>
-        ` : ""}
-
-        ${detalle?.medidasCorrectivas?.length ? `
-          <div class="section">
-            <h3 class="section-title">Medidas correctivas</h3>
-            ${detalle.medidasCorrectivas
-              .map(
-                (m) => `<div class="mc"><strong>${escapeHtml(m.descripcion)}</strong><br/>Responsable: ${escapeHtml(m.responsable)} | Estado: ${escapeHtml(m.estado)} | Compromiso: ${escapeHtml(fmtFecha(m.fechaCompromiso))}</div>`,
-              )
-              .join("")}
-          </div>
-        ` : ""}
-
-        <div class="footer">Generado por NextPrev</div>
-        </div>
-      `;
-
-      await renderStyledPdfFromHtml(html, `Hallazgo_${selected.id}_${new Date().getTime()}.pdf`);
-    } catch {
-      setCierreError("No fue posible descargar el PDF del hallazgo.");
+      const fotografias = await Promise.all(fotos.map(async (foto) => ({
+        titulo: foto.titulo,
+        src: foto.archivoUrl ? await imageUrlToDataUrl(foto.archivoUrl) : null,
+      })));
+      guardarFichaHallazgoPdf({
+        hallazgo: selected,
+        detalle,
+        empresaNombre: opciones.empresaNombre,
+        fotos: fotografias.filter((f): f is { titulo: string; src: string } => Boolean(f.src)),
+      });
+    } catch (error) {
+      console.error("No se pudo generar la ficha de hallazgo:", error);
+      setCierreError("No fue posible generar el PDF del hallazgo.");
+    } finally {
+      setGenerandoInforme(false);
     }
   }
 
   async function descargarInformeMasivo() {
-    if (hallazgosSeleccionados.size === 0) {
-      return;
-    }
-
+    if (!hallazgosSeleccionados.size) return;
+    setGenerandoInforme(true);
+    setErrorInforme("");
     try {
-      setGenerandoInforme(true);
-      
-      // Cargar detalles de todos los hallazgos seleccionados
-      const hallazgosConDetalle = [];
-      for (const id of hallazgosSeleccionados) {
-        const h = hallazgos.find((h) => h.id === id);
-        if (h) {
-          const detalleHallazgo = await getHallazgoDetalle(id);
-          hallazgosConDetalle.push({ hall: h, detalle: detalleHallazgo });
-        }
-      }
-
-      const hallazgosConDetalleFotos = await Promise.all(
-        hallazgosConDetalle.map(async (item) => {
-          const fotos = (item.detalle?.evidencias ?? []).filter(
-            (e) => e.tipo === "fotografia" || e.archivoUrl?.match(/\.(jpg|jpeg|png|webp)$/i),
-          );
-
-          const fotosConSrc = await Promise.all(
-            fotos.map(async (foto) => ({
-              ...foto,
-              src: foto.archivoUrl ? await imageUrlToDataUrl(foto.archivoUrl) : null,
-            })),
-          );
-
-          return { ...item, fotosConSrc };
-        }),
-      );
-
-      const html = `
-        <style>
-          :root {
-            --ink: #1f2937;
-            --muted: #6b7280;
-            --paper: #ffffff;
-            --paper-soft: #f9fafb;
-            --line: #e5e7eb;
-            --accent: #0f766e;
-          }
-          * { box-sizing: border-box; }
-          body { font-family: "Georgia", "Times New Roman", serif; color: var(--ink); background: #ffffff; margin: 0; padding: 0; }
-          .report-shell { width: 100%; max-width: 680px; margin: 0 auto; background: var(--paper); border: 1px solid #d1d5db; border-radius: 12px; padding: 16px; overflow: hidden; }
-          .header { background: #ffffff; color: var(--ink); padding: 0 0 14px; border-bottom: 2px solid var(--line); margin-bottom: 14px; }
-          .header h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: 0.01em; font-weight: 700; }
-          .header p { margin: 0; font-size: 11px; color: var(--muted); }
-          .header-sub { margin-top: 8px; font-size: 13px; color: #374151; }
-          .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-          .kpi { border-radius: 8px; padding: 9px; border: 1px solid #d6dbe1; }
-          .kpi-label { font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .kpi-value { font-size: 20px; color: #111827; font-weight: 700; margin-top: 2px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .kpi-abiertos { background: #fff7ed; }
-          .kpi-proceso { background: #eff6ff; }
-          .kpi-resueltos { background: #f0fdfa; }
-          .kpi-cerrados { background: #ecfdf5; }
-          .cover-page { min-height: 980px; }
-          .summary-page { page-break-before: always; break-before: page; min-height: 980px; }
-          .section { margin-top: 14px; border: 1px solid #d6dbe1; border-radius: 10px; padding: 12px; background: #ffffff; }
-          .section-title { margin: 0 0 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          table { width: 100%; border-collapse: collapse; font-size: 9px; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; table-layout: fixed; }
-          th { background: #0f766e; color: #fff; padding: 7px 6px; text-align: left; font-weight: 700; }
-          td { border: 1px solid var(--line); padding: 6px; vertical-align: top; }
-          th, td { word-break: break-word; overflow-wrap: anywhere; }
-          th:nth-child(1), td:nth-child(1) { width: 13%; }
-          th:nth-child(2), td:nth-child(2) { width: 39%; }
-          th:nth-child(3), td:nth-child(3) { width: 24%; }
-          th:nth-child(4), td:nth-child(4) { width: 24%; }
-          .summary-main { font-weight: 600; color: #111827; }
-          .summary-sub { margin-top: 3px; color: #6b7280; font-size: 8px; line-height: 1.35; }
-          .hallazgo-page { page-break-before: always; break-before: page; min-height: 980px; }
-          .card { margin-top: 0; border: 1px solid #d1d5db; border-radius: 10px; padding: 0; page-break-inside: avoid; overflow: hidden; background: #ffffff; }
-          .card-wrap { display: flex; }
-          .card-band { width: 8px; }
-          .band-critical { background: #b91c1c; }
-          .band-high { background: #be123c; }
-          .band-medium { background: #b45309; }
-          .band-low { background: #0369a1; }
-          .card-main { flex: 1; padding: 10px; }
-          .card h3 { margin: 0 0 8px; color: #111827; font-size: 13px; }
-          .card-responsable { margin: 0 0 10px; font-size: 10px; color: #374151; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .desc { background: var(--paper-soft); border-left: 3px solid #0f766e; border-radius: 8px; padding: 9px; font-size: 11px; margin-bottom: 10px; line-height: 1.45; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
-          .meta-item { border: 1px solid #d6dbe1; background: var(--paper-soft); border-radius: 8px; padding: 7px; }
-          .meta-label { font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700; margin-bottom: 3px; letter-spacing: 0.05em; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .meta-value { font-size: 10px; color: #111827; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
-          .detail-col { min-width: 0; }
-          .detail-block-title { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .photo { margin-bottom: 10px; }
-          .photo img { width: 100%; max-height: 170px; object-fit: contain; border: 1px solid #d6dbe1; border-radius: 8px; background: #fff; }
-          .photo-meta { margin-top: 4px; font-size: 10px; color: #4b5563; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .mc { font-size: 10px; border: 1px solid #d6dbe1; background: var(--paper-soft); padding: 8px; border-radius: 8px; margin-bottom: 6px; line-height: 1.45; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-          .photo, .desc, .meta, .mc { page-break-inside: avoid; break-inside: avoid; }
-          .page-break { page-break-after: always; }
-          .footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid #d6dbe1; font-size: 10px; color: var(--muted); text-align: center; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; }
-        </style>
-        <div class="report-shell">
-        <div class="cover-page">
-          <div class="header">
-            <h1>Informe de Hallazgos</h1>
-            <p>${escapeHtml(new Date().toLocaleString("es-CL"))}</p>
-            <div class="header-sub">Dashboard ejecutivo de cumplimiento por hallazgos seleccionados</div>
-          </div>
-
-          <div class="kpis">
-            <div class="kpi kpi-abiertos"><div class="kpi-label">Abiertos</div><div class="kpi-value">${hallazgosConDetalleFotos.filter((h) => h.hall.estado === "abierto").length}</div></div>
-            <div class="kpi kpi-proceso"><div class="kpi-label">En proceso</div><div class="kpi-value">${hallazgosConDetalleFotos.filter((h) => h.hall.estado === "en_proceso" || h.hall.estado === "en_seguimiento").length}</div></div>
-            <div class="kpi kpi-resueltos"><div class="kpi-label">Resueltos</div><div class="kpi-value">${hallazgosConDetalleFotos.filter((h) => h.hall.estado === "resuelto").length}</div></div>
-            <div class="kpi kpi-cerrados"><div class="kpi-label">Cerrados</div><div class="kpi-value">${hallazgosConDetalleFotos.filter((h) => h.hall.estado === "cerrado").length}</div></div>
-          </div>
-        </div>
-
-        <div class="summary-page">
-          <div class="header">
-            <h1>Resumen de Hallazgos</h1>
-            <p>${escapeHtml(new Date().toLocaleString("es-CL"))}</p>
-            <div class="header-sub">Vista consolidada para revisión y trazabilidad</div>
-          </div>
-
-          <div class="section">
-            <h3 class="section-title">Resumen de Hallazgos</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Estado</th>
-                  <th>Hallazgo</th>
-                  <th>Centro</th>
-                  <th>Gestión</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${hallazgosConDetalleFotos
-                  .map(
-                    (item) => `
-                      <tr>
-                        <td>${escapeHtml(ESTADO_CFG[item.hall.estado as EstadoHallazgo]?.label || item.hall.estado)}</td>
-                        <td>
-                          <div class="summary-main">${escapeHtml(item.hall.descripcion)}</div>
-                          <div class="summary-sub">Tipo: ${escapeHtml(TIPO_CFG[item.hall.tipo]?.label || item.hall.tipo)}</div>
-                        </td>
-                        <td>
-                          <div class="summary-main">${escapeHtml(item.hall.centroNombre)}</div>
-                          <div class="summary-sub">Trabajador: ${escapeHtml(item.hall.trabajadorNombre || "No asociado")}</div>
-                        </td>
-                        <td>
-                          <div class="summary-main">${escapeHtml(item.hall.responsableNombre || item.detalle?.responsable?.nombre || "Por asignar")}</div>
-                          <div class="summary-sub">Prioridad: ${escapeHtml(PRIORIDAD_CFG[item.hall.prioridad]?.label || item.hall.prioridad)} · Compromiso: ${escapeHtml(fmtFecha(item.hall.fechaCompromiso))}</div>
-                        </td>
-                      </tr>
-                    `,
-                  )
-                  .join("")}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        ${hallazgosConDetalleFotos
-          .map(
-            (item, idx) => `
-              <div class="hallazgo-page">
-                <div class="card">
-                  <div class="card-wrap">
-                    <div class="card-band ${item.hall.prioridad === "critica" ? "band-critical" : item.hall.prioridad === "alta" ? "band-high" : item.hall.prioridad === "media" ? "band-medium" : "band-low"}"></div>
-                    <div class="card-main">
-                      <h3>${idx + 1}. ${escapeHtml(item.hall.descripcion)}</h3>
-                      <div class="card-responsable">Responsable: <strong>${escapeHtml(item.hall.responsableNombre || item.detalle?.responsable?.nombre || "Por asignar")}</strong></div>
-                      <div class="desc">${escapeHtml(item.hall.descripcion)}</div>
-
-                      <div class="detail-grid">
-                        <div class="detail-col">
-                          <div class="meta">
-                            <div class="meta-item"><div class="meta-label">Estado</div><div class="meta-value">${escapeHtml(ESTADO_CFG[item.hall.estado as EstadoHallazgo]?.label || item.hall.estado)}</div></div>
-                            <div class="meta-item"><div class="meta-label">Tipo</div><div class="meta-value">${escapeHtml(TIPO_CFG[item.hall.tipo]?.label || item.hall.tipo)}</div></div>
-                            <div class="meta-item"><div class="meta-label">Centro</div><div class="meta-value">${escapeHtml(item.hall.centroNombre)}</div></div>
-                            <div class="meta-item"><div class="meta-label">Trabajador</div><div class="meta-value">${escapeHtml(item.hall.trabajadorNombre || "No asociado")}</div></div>
-                            <div class="meta-item"><div class="meta-label">Responsable</div><div class="meta-value">${escapeHtml(item.hall.responsableNombre || item.detalle?.responsable?.nombre || "Por asignar")}</div></div>
-                            <div class="meta-item"><div class="meta-label">Prioridad</div><div class="meta-value">${escapeHtml(PRIORIDAD_CFG[item.hall.prioridad]?.label || item.hall.prioridad)}</div></div>
-                            <div class="meta-item"><div class="meta-label">Compromiso</div><div class="meta-value">${escapeHtml(fmtFecha(item.hall.fechaCompromiso))}</div></div>
-                          </div>
-
-                          ${item.detalle?.medidasCorrectivas?.length
-                            ? `
-                              <div class="detail-block-title">Medidas correctivas</div>
-                              ${item.detalle.medidasCorrectivas
-                                .slice(0, 3)
-                                .map(
-                                  (m) => `<div class="mc"><strong>${escapeHtml(m.descripcion)}</strong><br/>Responsable: ${escapeHtml(m.responsable)} | Estado: ${escapeHtml(m.estado)} | Compromiso: ${escapeHtml(fmtFecha(m.fechaCompromiso))}</div>`,
-                                )
-                                .join("")}
-                            `
-                            : ""}
-                        </div>
-
-                        <div class="detail-col">
-                          ${item.fotosConSrc.some((foto) => foto.src)
-                            ? `
-                              <div class="detail-block-title">Fotografías</div>
-                              ${item.fotosConSrc
-                                .filter((foto) => foto.src)
-                                .slice(0, 2)
-                                .map(
-                                  (foto) => `
-                                    <div class="photo">
-                                      <img src="${foto.src}" alt="${escapeHtml(foto.titulo)}" />
-                                      <div class="photo-meta">${escapeHtml(foto.titulo)} - ${escapeHtml(fmtFecha(foto.fechaEvidencia))}</div>
-                                    </div>
-                                  `,
-                                )
-                                .join("")}
-                            `
-                            : `<div class="detail-block-title">Fotografías</div><div class="mc">Sin fotografías asociadas.</div>`}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            `,
-          )
-          .join("")}
-
-        <div class="footer">Total de hallazgos: ${hallazgosConDetalleFotos.length} · Generado por NextPrev</div>
-        </div>
-      `;
-
-      await renderStyledPdfFromHtml(html, `Informe_Hallazgos_${new Date().getTime()}.pdf`);
-
-      // Limpiar selección
+      guardarInformeHallazgosPdf({
+        empresaNombre: opciones.empresaNombre,
+        tipo: "seleccion",
+        referencia: fechaChile(new Date()),
+        hallazgos: hallazgos.filter((h) => hallazgosSeleccionados.has(h.id)),
+      });
       setHallazgosSeleccionados(new Set());
     } catch (error) {
-      console.error("Error al generar informe:", error);
+      console.error("Error al generar informe seleccionado:", error);
+      setErrorInforme("No fue posible generar el PDF de los hallazgos seleccionados.");
+    } finally {
+      setGenerandoInforme(false);
+    }
+  }
+
+  async function descargarInformePeriodo() {
+    setGenerandoInforme(true);
+    setErrorInforme("");
+    try {
+      const periodo = rangoInformeHallazgos(tipoInforme, fechaReferenciaInforme);
+      const items = filtrarHallazgosInforme(hallazgos, tipoInforme, fechaReferenciaInforme);
+      guardarInformeHallazgosPdf({
+        empresaNombre: opciones.empresaNombre,
+        tipo: tipoInforme,
+        referencia: periodo.hasta,
+        hallazgos: items,
+      });
+    } catch (error) {
+      console.error("Error al generar informe periódico:", error);
+      setErrorInforme("No fue posible generar el informe del período seleccionado.");
     } finally {
       setGenerandoInforme(false);
     }
@@ -1151,6 +789,17 @@ export default function HallazgosClient({
       return matchText && matchEstado && matchTipo && matchCentro && matchFechaDesde && matchFechaHasta;
     });
   }, [hallazgos, search, filtroEstado, filtroTipo, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
+
+  const referenciaValida = /^\d{4}-\d{2}-\d{2}$/.test(fechaReferenciaInforme)
+    ? fechaReferenciaInforme : fechaChile(new Date());
+  const resumenPeriodo = useMemo(
+    () => filtrarHallazgosInforme(hallazgos, tipoInforme, referenciaValida),
+    [hallazgos, tipoInforme, referenciaValida],
+  );
+  const rangoPeriodo = useMemo(
+    () => rangoInformeHallazgos(tipoInforme, referenciaValida),
+    [tipoInforme, referenciaValida],
+  );
 
   return (
     <div className="min-h-screen bg-slate-50/80 py-10">
@@ -1216,6 +865,47 @@ export default function HallazgosClient({
             </div>
           }
         />
+
+        <Card className="border border-slate-200 bg-white shadow-sm">
+          <CardContent className="space-y-4 p-5 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-blue-800">Informes · NextPrev</p>
+                <h2 className="mt-1 text-lg font-bold text-slate-900">Informe de hallazgos por período</h2>
+                <p className="mt-1 text-sm text-slate-600">PDF corporativo liviano, con indicadores y una tabla por estado. No requiere seleccionar filas.</p>
+              </div>
+              <div className="rounded-xl bg-blue-50 px-3 py-2 text-right text-xs font-semibold text-blue-800">
+                {resumenPeriodo.length} hallazgo(s) en el período
+              </div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Periodicidad</span>
+                <select aria-label="Periodicidad del informe" value={tipoInforme}
+                  onChange={(e) => setTipoInforme(e.target.value as PeriodicidadInformeHallazgos)}
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800">
+                  <option value="diario">Diario</option>
+                  <option value="semanal">Semanal (lunes a domingo)</option>
+                  <option value="mensual">Mensual</option>
+                </select>
+              </label>
+              <label className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Fecha de referencia</span>
+                <Input type="date" aria-label="Fecha de referencia del informe" value={fechaReferenciaInforme}
+                  onChange={(e) => setFechaReferenciaInforme(e.target.value)} className="h-11" />
+              </label>
+              <Button disabled={generandoInforme || !fechaReferenciaInforme} onClick={() => void descargarInformePeriodo()}
+                className="h-11 bg-[#07366f] px-5 text-white hover:bg-[#052a57]">
+                <Download className="mr-2 h-4 w-4" />{generandoInforme ? "Generando…" : "Descargar PDF"}
+              </Button>
+            </div>
+            <p className="text-xs text-slate-500">
+              Período: {fmtFecha(rangoPeriodo.desde)} a {fmtFecha(rangoPeriodo.hasta)} · Filtrado por fecha de creación del hallazgo.
+              Los estados y vencimientos reflejan la situación actual al generar el PDF.
+            </p>
+            {errorInforme && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{errorInforme}</p>}
+          </CardContent>
+        </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
