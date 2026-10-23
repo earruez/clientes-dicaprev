@@ -126,7 +126,7 @@ function ObligacionDrawer({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+24px)] space-y-6 [-webkit-overflow-scrolling:touch]">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-2">
               Cumplimiento global
