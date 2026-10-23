@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { actualizarEstadoAcreditacion, generarDocumentosAcreditacion } from "@/actions/acreditaciones";
+import { actualizarEstadoAcreditacion, generarDocumentosAcreditacion, registrarGeneracionAcreditacion } from "@/actions/acreditaciones";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -700,6 +700,7 @@ export default function ExpedienteClient({
           },
         });
       }
+      await registrarGeneracionAcreditacion(acId, "zip", docs.filter((d) => d.estado === "completo" && (d.archivoNombre || d.archivoUrl)).length);
       addHistorial("generado");
       push("success", "ZIP descargado correctamente.");
       return true;
@@ -734,6 +735,7 @@ export default function ExpedienteClient({
           },
         });
       }
+      await registrarGeneracionAcreditacion(acId, "pdf", docs.length);
       push("success", "PDF índice generado.");
     } catch {
       push("error", "Error al generar el PDF.");

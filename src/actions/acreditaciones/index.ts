@@ -2094,3 +2094,22 @@ export async function getSolicitudesContratistaAcreditacion(acreditacionId: stri
     }))
     .sort((a, b) => Number(b.relacionados) - Number(a.relacionados));
 }
+
+/** Audita la generación de un expediente luego de registrar el archivo. */
+export async function registrarGeneracionAcreditacion(acreditacionId: string, formato: "zip" | "pdf", totalDocumentos: number) {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  const acreditacion = await prisma.acreditacion.findFirst({
+    where: { id: acreditacionId, empresaId },
+    select: { id: true },
+  });
+  if (!acreditacion) throw new Error("Acreditación no encontrada");
+  const cantidad = Math.max(0, Math.floor(Number.isFinite(totalDocumentos) ? totalDocumentos : 0));
+  return prisma.historialAcreditacion.create({
+    data: {
+      acreditacionId,
+      usuarioId,
+      accion: formato === "zip" ? "generar_expediente_zip" : "generar_indice_pdf",
+      detalle: `Expediente ${formato.toUpperCase()} generado con ${cantidad} documentos`,
+    },
+  });
+}
