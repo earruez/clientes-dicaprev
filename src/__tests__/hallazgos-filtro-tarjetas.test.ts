@@ -1,9 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { EstadoHallazgo } from "@/app/dicaprev/cumplimiento/types";
-import { coincideTarjetaHallazgo } from "@/lib/hallazgos/filtro-tarjetas";
+import { coincideTarjetaHallazgo, coincideFiltroEstadoHallazgo } from "@/lib/hallazgos/filtro-tarjetas";
 
 describe("Tarjetas de estado - Hallazgos DS44", () => {
   const estados: EstadoHallazgo[] = ["abierto", "abierto", "en_proceso", "en_seguimiento", "resuelto", "cerrado"];
+  it("vista principal excluye cerrados sin eliminarlos", () => {
+    expect(estados.filter((x) => coincideFiltroEstadoHallazgo(x, "activos"))).toEqual(
+      ["abierto", "abierto", "en_proceso", "en_seguimiento", "resuelto"]
+    );
+    expect(estados.filter((x) => coincideFiltroEstadoHallazgo(x, "todos"))).toHaveLength(6);
+  });
+  it("tarjeta Cerrados accede al histórico sin depender de la vista por defecto", () => {
+    const cerrados = estados.filter((estado) =>
+      coincideFiltroEstadoHallazgo(estado, "todos") && coincideTarjetaHallazgo(estado, "cerrado")
+    );
+    expect(cerrados).toEqual(["cerrado"]);
+  });
   it("la tarjeta Abiertos muestra solamente abiertos", () => {
     expect(estados.filter((x) => coincideTarjetaHallazgo(x, "abierto"))).toHaveLength(2);
   });
