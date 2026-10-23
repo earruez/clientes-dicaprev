@@ -9,13 +9,15 @@ import { Label } from "@/components/ui/label";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import {
-  agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, cerrarExpedienteContratista,
+  agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, configurarRequisitoPorCargoContratista, cerrarExpedienteContratista,
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
   invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
 } from "@/actions/contratistas/solicitudes";
 import { estadoEfectivo, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
-import { CATALOGO_FAENA } from "@/lib/contratistas/catalogo";
+import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
+import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
+import JSZip from "jszip";
 import { crearCatalogoContratista, listarCentrosMandante, listarDocumentosBaseContratista, obtenerCatalogoContratistas, reutilizarDocumentoContratista } from "@/actions/contratistas/catalogo";
 
 type Expediente = Awaited<ReturnType<typeof listarSolicitudesContratistas>>[number];
@@ -72,9 +74,12 @@ export default function SolicitudesContratistasClient() {
     contratistaId: "", nombre: "", faena: "", centroTrabajoId: "", servicio: "", contactoEmail: "",
     responsable: "", dotacionEstimada: "", fechaInicio: "", fechaTermino: "",
   });
-  const [seleccionados, setSeleccionados] = useState<string[]>(
-    CATALOGO_FAENA.filter((r) => r.obligatorio).map((r) => r.clave),
-  );
+  const [seleccionados, setSeleccionados] = useState<string[]>([...CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS]);
+  const [descargandoZip, setDescargandoZip] = useState(false);
+  const [filtroTrabajador, setFiltroTrabajador] = useState("");
+  const [cargoMasivo, setCargoMasivo] = useState("");
+  const [reglaMasiva, setReglaMasiva] = useState("");
+  const [obligatorioMasivo, setObligatorioMasivo] = useState(true);
   const [agregando, setAgregando] = useState(false);
   const [extra, setExtra] = useState({ nombre: "", alcance: "faena" as "empresa" | "faena", categoria: "empresa", recursoId: "", aplicaATodosTrabajadores: false, obligatorio: true });
   const [motivos, setMotivos] = useState<Record<string, string>>({});
@@ -144,6 +149,46 @@ export default function SolicitudesContratistasClient() {
     } finally {
       setProcesando(false);
     }
+  }
+
+  async function descargarCarpetaZip() {
+    if (!actual || descargandoZip) return;
+    setDescargandoZip(true); setError("");
+    try {
+      const zip = new JSZip();
+      const limpieza = (value: string) => value.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").replace(/[^a-zA-Z0-9 ._()-]/g, "_").slice(0, 90);
+      const usados = new Set<string>();
+      const filas = ["Carpeta;Requisito;Estado;Obligatorio;Archivo;Vencimiento"];
+      for (const requisito of actual.requisitos) {
+        const recurso = actual.recursos.find((r) => r.id === requisito.recursoId);
+        const carpeta = requisito.categoria === "empresa"
+          ? (requisito.alcance === "empresa" ? "01_Empresa" : "02_Faena_y_SST")
+          : requisito.categoria === "trabajador"
+            ? `03_Trabajadores/${limpieza(recurso?.identificador || recurso?.nombre || "Sin identificar")}_${limpieza(recurso?.nombre || "")}`
+            : `04_${requisito.categoria}/${limpieza(recurso?.nombre || "Sin identificar")}`;
+        filas.push([carpeta, requisito.nombre, requisito.estado, requisito.obligatorio ? "Sí" : "No",
+          requisito.archivoOriginal || "", requisito.fechaVencimiento ? new Date(requisito.fechaVencimiento).toISOString().slice(0,10) : ""
+        ].map(v => String(v).replace(/;/g, ",")).join(";"));
+        if (!requisito.archivoNombre) continue;
+        const response = await fetch(`/api/dicaprev/contratistas/archivo?requisitoId=${encodeURIComponent(requisito.id)}`);
+        if (!response.ok) throw new Error(`No se pudo descargar ${requisito.nombre}. No se generó un ZIP incompleto.`);
+        const nombre = limpieza(requisito.archivoOriginal || requisito.archivoNombre);
+        let dest = `${carpeta}/${nombre}`, n = 2;
+        while (usados.has(dest)) dest = `${carpeta}/${n++}_${nombre}`;
+        usados.add(dest);
+        zip.file(dest, await response.blob());
+      }
+      zip.file("INDICE_DOCUMENTAL.csv", "\uFEFF" + filas.join("\r\n"));
+      const contenido = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(contenido);
+      const link = document.createElement("a");
+      link.href = url; link.download = `NextPrev_Contratista_${limpieza(actual.nombre)}.zip`;
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      setAviso("Carpeta descargada con originales y un índice de pendientes y estados.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "No se pudo generar la carpeta.");
+    } finally { setDescargandoZip(false); }
   }
 
   async function crearTipoCatalogo(e: React.FormEvent) {
@@ -234,7 +279,8 @@ export default function SolicitudesContratistasClient() {
             </div>
             <fieldset className="space-y-4 rounded-2xl border border-slate-200 p-3 sm:p-5">
               <legend className="px-2 text-sm font-semibold text-slate-800">Requisitos de la obra</legend>
-              <p className="text-xs leading-relaxed text-slate-500">La carpeta corporativa se gestiona en la ficha del contratista. Aquí solicitas documentos específicos del contrato y, opcionalmente, la revalidación de documentos corporativos ya registrados.</p>
+              <p className="text-xs leading-relaxed text-slate-500">Plantilla integral: documentos de empresa, contrato/faena y prevención. Los requisitos individuales se crean al incorporar la nómina. Cada grupo se entrega y revisa de forma independiente.</p>
+              <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setSeleccionados([...CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS])}>Restaurar plantilla integral</Button><Button type="button" variant="outline" onClick={() => setSeleccionados([])}>Limpiar selección</Button></div>
               <div className="space-y-4">
                 {[{ alcance: "faena", title: "1 · Documentación del contrato o faena" }, { alcance: "empresa", title: "2 · Documentación corporativa a revalidar (opcional)" }].map((grupo) => {
                   const items = catalogo.filter((r) => r.alcance === grupo.alcance && r.categoria === "empresa");
@@ -311,15 +357,16 @@ export default function SolicitudesContratistasClient() {
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>
+                  <Button variant="outline" size="sm" disabled={descargandoZip} onClick={() => void descargarCarpetaZip()}>{descargandoZip ? "Generando ZIP…" : "Descargar carpeta ZIP"}</Button>
                   {puedeEditar && <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setAgregando((x) => !x)}><Plus className="mr-1 h-4 w-4"/>Agregar requisito</Button>
                     <Button variant="outline" size="sm" disabled={procesando} className="border-sky-200 text-sky-800" onClick={() => {
-                      if (window.confirm("¿Aplicar la plantilla de Acreditación de trabajadores (9 documentos) a esta obra? Se asignará al personal actual y futuro. IRL y EPP existentes se reutilizan; no se borrarán archivos ni historiales. Esta exigencia no se aplicará a otras faenas.")) {
+                      if (window.confirm("¿Aplicar la plantilla individual de trabajadores a esta obra? Se asignará al personal actual y futuro. IRL y EPP existentes se reutilizan; no se borrarán archivos ni historiales. Esta exigencia no se aplicará a otras faenas.")) {
                         void ejecutar(async () => {
                           await aplicarPlantillaAcreditacionTrabajadores(actual.id);
                         }, "Plantilla de acreditación aplicada a los trabajadores de este expediente.");
                       }
-                    }}><ClipboardCheck className="mr-1 h-4 w-4"/>Plantilla acreditación (9)</Button>
+                    }}><ClipboardCheck className="mr-1 h-4 w-4"/>Plantilla trabajadores ({PLANTILLA_ACREDITACION_TRABAJADORES.length})</Button>
                   </div>}
                 </div>
                 {puedeEditar && <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 text-xs text-slate-600">
@@ -358,6 +405,34 @@ export default function SolicitudesContratistasClient() {
                   <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={extra.obligatorio} onChange={(e) => setExtra({ ...extra, obligatorio: e.target.checked })}/>Obligatorio</label>
                   <Button type="submit" disabled={procesando} className="bg-sky-700 text-white">Guardar requisito</Button>
                 </form>}
+                {puedeEditar && actual.reglasTrabajadores.length > 0 && actual.recursos.some((r) => r.tipo === "trabajador" && r.cargo) && <section className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                  <h4 className="text-sm font-bold text-emerald-900">Configuración masiva por cargo</h4>
+                  <p className="mt-1 text-xs text-emerald-800">Para 100 trabajadores, selecciona un cargo y marca en bloque si un requisito aplica. No cambia los nombres de documentos ni elimina archivos o historial.</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label className="space-y-1 text-xs font-semibold text-slate-700">Cargo
+                      <select className={CAMPO} value={cargoMasivo} onChange={(e) => setCargoMasivo(e.target.value)}>
+                        <option value="">Seleccionar cargo</option>
+                        {[...new Set(actual.recursos.filter((r) => r.tipo === "trabajador").map((r) => normalizarCargoContratista(r.cargo || "")).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es")).map((cargo) => <option key={cargo} value={cargo}>{cargo} ({actual.recursos.filter((r)=>r.tipo==="trabajador" && claveAgrupacionCargoContratista(r.cargo || "")===claveAgrupacionCargoContratista(cargo)).length})</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-semibold text-slate-700">Documento estándar
+                      <select className={CAMPO} value={reglaMasiva} onChange={(e) => setReglaMasiva(e.target.value)}>
+                        <option value="">Seleccionar requisito</option>
+                        {actual.reglasTrabajadores.map((r)=><option key={r.id} value={r.id}>{r.nombre}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-semibold text-slate-700">Aplicabilidad
+                      <select className={CAMPO} value={obligatorioMasivo ? "si" : "no"} onChange={(e) => setObligatorioMasivo(e.target.value === "si")}>
+                        <option value="si">Aplica / obligatorio</option>
+                        <option value="no">No aplica / no exigible</option>
+                      </select>
+                    </label>
+                  </div>
+                  <Button className="mt-3 bg-emerald-700 text-white" disabled={procesando || !cargoMasivo || !reglaMasiva} onClick={()=>void ejecutar(
+                    () => configurarRequisitoPorCargoContratista({ solicitudId: actual.id, reglaId: reglaMasiva, cargo: cargoMasivo, obligatorio: obligatorioMasivo }),
+                    "Requisitos actualizados para todos los trabajadores de ese cargo. La documentación permanece intacta."
+                  )}>Aplicar a todo el cargo</Button>
+                </section>}
                 {actual.reglasTrabajadores.length > 0 && <div className="mt-5 space-y-2">
                   <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">Requisitos para todos los trabajadores actuales y futuros ({actual.reglasTrabajadores.length})</h4>
                   {actual.reglasTrabajadores.map((regla) => <div key={regla.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3 sm:p-4">
@@ -376,7 +451,16 @@ export default function SolicitudesContratistasClient() {
                   if (!docs.length) return null;
                   return <div key={key} className="mt-5 space-y-3">
                     <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">{label} ({docs.length})</h4>
-                    {docs.map((d) => {
+                    {key === "trabajador" && <div className="mb-3 rounded-xl bg-sky-50 p-3">
+                      <label htmlFor="mandante-trabajador" className="text-xs font-bold text-sky-900">Revisar carpeta por trabajador</label>
+                      <select id="mandante-trabajador" className={CAMPO + " mt-2"} value={filtroTrabajador}
+                        onChange={(e) => setFiltroTrabajador(e.target.value)}>
+                        <option value="">Todos los trabajadores</option>
+                        {actual.recursos.filter((r) => r.tipo === "trabajador").map((r) =>
+                          <option key={r.id} value={r.id}>{r.nombre} · {r.identificador || "Sin RUT"}</option>)}
+                      </select>
+                    </div>}
+                    {docs.filter((d) => key !== "trabajador" || !filtroTrabajador || d.recursoId === filtroTrabajador).map((d) => {
                       const estado = estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses);
                       return <div key={d.id} className="min-w-0 rounded-xl border border-slate-200 p-3 sm:p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">

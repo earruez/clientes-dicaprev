@@ -5,9 +5,10 @@ import { AlertCircle, ArrowRight, ArrowUpRight, Building2, CarFront, Check, Chec
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { agregarRecursoPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
+import { agregarRecursoPortal, importarNominaContratistaPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 import { formatRutChile } from "@/lib/rut";
+import { CARGOS_SUGERIDOS_CONTRATISTAS, normalizarCargoContratista } from "@/lib/contratistas/cargos";
 
 type DatosPortal = NonNullable<Awaited<ReturnType<typeof obtenerPortalContratista>>>;
 type RequisitoPortal = DatosPortal["requisitos"][number];
@@ -51,6 +52,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   const [exito, setExito] = useState("");
   const [formVisible, setFormVisible] = useState(false);
   const [recursoExistenteId, setRecursoExistenteId] = useState("");
+  const [trabajadorSeleccionado, setTrabajadorSeleccionado] = useState("");
   const [recurso, setRecurso] = useState({ tipo: "trabajador" as "trabajador" | "vehiculo" | "equipo", nombre: "", identificador: "", cargo: "", patente: "" });
 
   const aprobados = useMemo(() => portal.requisitos.filter((r) => r.obligatorio && r.estadoEfectivo === "aprobado").length, [portal.requisitos]);
@@ -60,9 +62,21 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   const porcentaje = total ? Math.round((entregados / total) * 100) : 0;
   const observados = portal.requisitos.filter((r) => ["observado", "rechazado", "vencido"].includes(r.estadoEfectivo)).length;
   const datosCompletos = Boolean(portal.contratista.rut && portal.contratista.razonSocial);
-  const tieneCambios = portal.requisitos.some((r) => r.archivoNombre && r.estado !== "aprobado" && r.estado !== "en_revision");
-  const puedeEnviar = !enProceso && faltantes === 0 && total > 0 && datosCompletos && tieneCambios;
-  const documentosCategoria = portal.requisitos.filter((r) => r.categoria === categoria);
+  const trabajadores = portal.recursos.filter((r) => r.tipo === "trabajador");
+  const cargosPropiosContratista = useMemo(() => [...new Set([
+    ...portal.recursosBase.filter((r) => r.tipo === "trabajador").map((r) => normalizarCargoContratista(r.cargo || "")),
+    ...portal.recursos.filter((r) => r.tipo === "trabajador").map((r) => normalizarCargoContratista(r.cargo || "")),
+  ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "es")), [portal.recursosBase, portal.recursos]);
+  const trabajadorActivoId = trabajadores.some((r) => r.id === trabajadorSeleccionado)
+    ? trabajadorSeleccionado : (trabajadores[0]?.id || "");
+  const documentosCategoria = portal.requisitos.filter((r) =>
+    r.categoria === categoria && (categoria !== "trabajador" || r.recursoId === trabajadorActivoId));
+  const documentosEnviables = documentosCategoria.filter((r) => r.archivoNombre &&
+    !["en_revision", "aprobado", "vencido"].includes(r.estadoEfectivo));
+  const puedeEnviar = !enProceso && datosCompletos && documentosEnviables.length > 0;
+  const obligatoriosCategoria = documentosCategoria.filter((r) => r.obligatorio);
+  const entregadosCategoria = obligatoriosCategoria.filter((r) => r.archivoNombre && r.estadoEfectivo !== "vencido");
+  const pendientesCategoria = obligatoriosCategoria.length - entregadosCategoria.length;
 
   async function recargar() {
     const datos = await obtenerPortalContratista(token);
@@ -114,6 +128,91 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   }
 
 
+
+  async function descargarPlantillaNomina() {
+    const XLSX = await import("xlsx");
+    const workbook = XLSX.utils.book_new();
+    const hojaNomina = XLSX.utils.aoa_to_sheet([["Nombre completo", "RUT", "Cargo"]]);
+    hojaNomina["!cols"] = [{ wch: 34 }, { wch: 18 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(workbook, hojaNomina, "Nomina");
+    const sugeridos = CARGOS_SUGERIDOS_CONTRATISTAS.map((cargo) => [cargo.nombre, cargo.grupo]);
+    const propios = cargosPropiosContratista.filter((nombre) =>
+      !CARGOS_SUGERIDOS_CONTRATISTAS.some((c) => c.nombre === nombre)).map((nombre) => [nombre, "Cargos usados por este contratista"]);
+    const hojaCatalogo = XLSX.utils.aoa_to_sheet([
+      ["Cargo sugerido", "Rubro"],
+      ...sugeridos,
+      ...propios,
+    ]);
+    hojaCatalogo["!cols"] = [{ wch: 42 }, { wch: 32 }];
+    XLSX.utils.book_append_sheet(workbook, hojaCatalogo, "Cargos sugeridos");
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+      ["INSTRUCCIONES", "NextPrev - nómina de empresa contratista"],
+      ["1", "Complete solo las columnas Nombre completo, RUT y Cargo de la hoja Nomina."],
+      ["2", "En Cargos sugeridos hay cargos frecuentes. Puede indicar un cargo propio si no está en la lista."],
+      ["3", "No agregue columnas de documentos; los requisitos se asignan automáticamente por NextPrev."],
+      ["4", "El cargo se puede homologar a una denominación estándar. La mandante valida riesgos especiales."],
+    ]), "Instrucciones");
+    XLSX.writeFile(workbook, "NextPrev_Plantilla_Nomina_Contratista.xlsx");
+  }
+
+  async function importarNomina(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { setError("La nómina no debe superar 2 MB."); return; }
+    void ejecutar("nomina", async () => {
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error("La nómina no tiene una hoja válida.");
+      const filas = XLSX.utils.sheet_to_json<(string | number)[]>(sheet, { header: 1, raw: false, defval: "" });
+      if (filas.length < 2) throw new Error("La nómina debe tener encabezados y trabajadores.");
+      const clean = (value: unknown) => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      const cab = filas[0].map(clean);
+      const nombreIdx = cab.findIndex((c) => ["nombre completo", "nombre", "nombre y apellido", "nombres y apellidos"].includes(c));
+      const rutIdx = cab.findIndex((c) => c === "rut" || c === "r.u.t.");
+      const cargoIdx = cab.findIndex((c) => c === "cargo" || c === "funcion");
+      if (nombreIdx < 0 || rutIdx < 0 || cargoIdx < 0) throw new Error("Faltan las columnas Nombre completo, RUT y Cargo.");
+      const trabajadoresArchivo = filas.slice(1).filter((fila) => fila.some((x) => String(x || "").trim()))
+        .map((fila) => ({
+          nombre: String(fila[nombreIdx] || "").trim(),
+          rut: String(fila[rutIdx] || "").trim(),
+          cargo: cargoIdx >= 0 ? String(fila[cargoIdx] || "").trim() : "",
+        }));
+      const resultado = await importarNominaContratistaPortal(token, trabajadoresArchivo);
+      if (!resultado.creados) throw new Error("Todos estos trabajadores ya se encontraban incorporados.");
+
+      // La nómina original es evidencia del expediente; no se solicita una segunda carga.
+      const requisitoNomina = portal.requisitos.find((r) =>
+        r.categoria === "empresa" &&
+        r.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase().includes("nomina de trabajadores"));
+      if (requisitoNomina) {
+        const evidencia = file.name.toLowerCase().endsWith(".csv")
+          ? new File([XLSX.write(workbook, { type: "array", bookType: "xlsx" })],
+              "nomina_trabajadores.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+          : file;
+        const formulario = new FormData();
+        formulario.set("requisitoId", requisitoNomina.id);
+        formulario.set("file", evidencia);
+        const subida = await fetch(`/api/contratistas/portal/${token}/archivo`, { method: "POST", body: formulario });
+        if (!subida.ok) {
+          const dato = await subida.json().catch(() => null) as { error?: string } | null;
+          throw new Error(`Los trabajadores se registraron, pero la nómina no se adjuntó: ${dato?.error || "error de almacenamiento"}. Puedes adjuntarla desde Empresa.`);
+        }
+      }
+      setCategoria("trabajador"); setTrabajadorSeleccionado("");
+    }, "Nómina importada; cada persona tiene una carpeta documental independiente.");
+  }
+
+  function enviarGrupo() {
+    const recursoId = categoria === "trabajador" ? trabajadorActivoId : undefined;
+    void ejecutar("enviar", () => enviarCarpetaContratista(token, categoria, recursoId),
+      categoria === "empresa" ? "Antecedentes de empresa enviados. La nómina se puede entregar después."
+      : categoria === "trabajador" ? "Documentos del trabajador enviados; los demás pueden seguir cargando."
+      : "Documentos enviados a revisión.");
+  }
+
   function bloqueRequisito(r: RequisitoPortal) {
     const actual = fechas[r.id] || { emision: isoFecha(r.fechaEmision), vencimiento: r.vigenciaMeses ? "" : isoFecha(r.fechaVencimiento) };
     const abierto = expandido === r.id;
@@ -148,11 +247,11 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       {r.observacionRevision && <div className="mx-4 mb-4 flex gap-2 rounded-xl border border-orange-200 bg-orange-50 p-3 sm:mx-5"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-orange-600"/><p className="text-xs leading-relaxed text-orange-900"><strong>Observación de la mandante:</strong> {r.observacionRevision}</p></div>}
       {abierto && <div className="space-y-4 border-t border-slate-100 bg-gradient-to-b from-emerald-50/40 to-white p-4 sm:p-5">
         <div><h5 className="text-sm font-bold text-slate-900">{r.archivoNombre ? "Cargar una nueva versión" : "Adjuntar documento"}</h5><p className="mt-1 text-xs text-slate-500">PDF, Word, Excel o imagen. Tamaño máximo: 4 MB.</p></div>
-        <label className={"group flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition " + (archivo[r.id] ? "border-emerald-400 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/30")}>
+        <label className={"relative group flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition " + (archivo[r.id] ? "border-emerald-400 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/30")}>
           <span className={"flex h-10 w-10 items-center justify-center rounded-xl " + (archivo[r.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600")}>{archivo[r.id] ? <Check className="h-5 w-5"/> : <CloudUpload className="h-5 w-5"/>}</span>
           <span className="max-w-full break-all text-sm font-bold text-slate-800">{archivo[r.id]?.name || "Elegir archivo"}</span>
           <span className="text-xs text-slate-500">{archivo[r.id] ? "Toca para cambiar el archivo" : "Toca aquí para seleccionar desde tu dispositivo"}</span>
-          <input type="file" className="sr-only" accept={DOCUMENTO_ACCEPT} aria-label={"Archivo para " + r.nombre} onChange={(e) => setArchivo((prev) => ({ ...prev, [r.id]: e.target.files?.[0] || null }))}/>
+          <input type="file" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" accept={DOCUMENTO_ACCEPT} aria-label={"Archivo para " + r.nombre} onChange={(e) => setArchivo((prev) => ({ ...prev, [r.id]: e.target.files?.[0] || null }))}/>
         </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de emisión o entrega <span className="font-normal text-slate-400">{r.vigenciaMeses ? "(obligatoria para validar vigencia)" : "(si aplica)"}</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.emision} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, emision: e.target.value } }))}/></label>
@@ -356,6 +455,16 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
             <div><p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Etapa 02 · Recursos</p><h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">Personal, vehículos y equipos</h2><p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-500">Añade los recursos que participarán del contrato. Se habilitarán automáticamente sus documentos requeridos.</p></div>
             <Button type="button" onClick={() => setFormVisible((v) => !v)} className={botonPrincipal}><Plus className="mr-2 h-4 w-4"/>Agregar recurso</Button>
           </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
+            <div className="min-w-0 flex-1"><p className="text-sm font-bold text-sky-900">Nómina de trabajadores</p>
+              <p className="text-xs text-sky-700">Importa Excel o CSV con nombre, RUT y cargo. La plantilla incluye cargos sugeridos y los usados por este contratista, sin depender de los cargos de la mandante. NextPrev crea automáticamente las carpetas y requisitos estándar.</p>
+            </div>
+            <Button type="button" variant="outline" disabled={!!enProceso} onClick={() => void descargarPlantillaNomina()}>Descargar plantilla Excel</Button>
+            <label className="relative inline-flex min-h-11 cursor-pointer items-center rounded-xl bg-sky-700 px-4 text-xs font-bold text-white">
+              {enProceso === "nomina" ? "Importando…" : "Importar nómina"}
+              <input type="file" accept=".xlsx,.xls,.csv" aria-label="Importar nómina de trabajadores" disabled={!!enProceso} className="absolute inset-0 h-full w-full cursor-pointer opacity-0" onChange={(e) => void importarNomina(e)} />
+            </label>
+          </div>
           {portal.recursosBase.filter((r) => !portal.recursos.some((actual) => actual.recursoBaseId === r.id)).length > 0 && <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 sm:p-5">
             <div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-emerald-700"/><h3 className="text-sm font-bold text-slate-900">Reutiliza tus recursos registrados</h3></div>
             <p className="mt-1 text-xs text-slate-600">Los trabajadores, vehículos y equipos de otras obras se pueden asociar aquí sin volver a ingresarlos. Sus documentos se revisarán para este nuevo contrato.</p>
@@ -391,7 +500,15 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
                   onChange={(e) =>
                     setRecurso({ ...recurso, identificador: formatRutChile(e.target.value) })
                   }
-                /></label><label className="space-y-2"><Label className="text-xs font-semibold">Cargo</Label><Input className={textoInput} value={recurso.cargo} onChange={(e) => setRecurso({ ...recurso, cargo: e.target.value })}/></label></>}
+                /></label><label className="space-y-2"><Label className="text-xs font-semibold">Cargo del contratista *</Label>
+  <Input required list="cargos-contratista-sugeridos" className={textoInput} value={recurso.cargo} placeholder="Selecciona o escribe un cargo propio"
+    onChange={(e) => setRecurso({ ...recurso, cargo: e.target.value })}/>
+  <datalist id="cargos-contratista-sugeridos">
+    {cargosPropiosContratista.map((cargo) => <option key={"previo:" + cargo} value={cargo}/>)}
+    {CARGOS_SUGERIDOS_CONTRATISTAS.map((cargo) => <option key={cargo.nombre} value={cargo.nombre}/>)}
+  </datalist>
+  <span className="text-[11px] text-slate-500">Catálogo independiente de la mandante. Puedes usar un cargo que no esté en la lista.</span>
+</label></>}
             {recurso.tipo === "vehiculo" && <label className="space-y-2"><Label className="text-xs font-semibold">Patente *</Label><Input required className={textoInput} value={recurso.patente} onChange={(e) => setRecurso({ ...recurso, patente: e.target.value })}/></label>}
             {recurso.tipo === "equipo" && <label className="space-y-2"><Label className="text-xs font-semibold">N° serie o identificación</Label><Input className={textoInput} value={recurso.identificador} onChange={(e) => setRecurso({ ...recurso, identificador: e.target.value })}/></label>}
             <div className="flex flex-wrap items-end gap-2 sm:col-span-2"><Button type="submit" disabled={!!enProceso} className={botonPrincipal}>{enProceso === "recurso" ? "Guardando…" : "Incorporar recurso"}</Button><Button type="button" variant="outline" onClick={() => setFormVisible(false)}>Cancelar</Button></div>
@@ -405,7 +522,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
               return <div key={r.id} className="min-w-0 rounded-2xl border border-slate-200 p-4">
                 <div className="flex justify-between"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600"><Icon className="h-5 w-5"/></span><button type="button" aria-label={"Eliminar " + r.nombre} disabled={!!enProceso} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-red-600" onClick={() => { if (window.confirm("¿Eliminar " + r.nombre + "?")) void ejecutar(r.id, () => eliminarRecursoPortal(token, r.id), "Recurso eliminado."); }}><Trash2 className="h-4 w-4"/></button></div>
                 <p className="mt-3 break-words text-sm font-bold text-slate-900">{r.nombre}</p><p className="mt-1 break-all text-xs text-slate-500">{r.tipo} · {r.patente || r.identificador || r.cargo || "Sin identificador"}</p>
-                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3"><span className="text-xs text-slate-500">{aprobadosRecurso}/{docs.length} aprobados</span><button type="button" onClick={() => irA("documentos", r.tipo as typeof categoria)} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">Documentos <ArrowUpRight className="h-3.5 w-3.5"/></button></div>
+                <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3"><span className="text-xs text-slate-500">{aprobadosRecurso}/{docs.length} aprobados</span><button type="button" onClick={() => { if (r.tipo === "trabajador") setTrabajadorSeleccionado(r.id); irA("documentos", r.tipo as typeof categoria); }} className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700">Documentos <ArrowUpRight className="h-3.5 w-3.5"/></button></div>
               </div>;
             })}
           </div>
@@ -423,17 +540,36 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
             </div>
             <div className="space-y-3">
               <div className="flex justify-between gap-2"><h3 className="text-base font-extrabold text-slate-900">{grupos.find((g) => g.key === categoria)?.label}</h3><span className="text-xs text-slate-500">{documentosCategoria.length} documentos</span></div>
+              {categoria === "trabajador" && trabajadores.length > 0 && <div className="rounded-xl border border-sky-200 bg-white p-4">
+                <label className="block text-xs font-bold text-slate-700" htmlFor="carpeta-trabajador">Selecciona la carpeta de un trabajador</label>
+                <select id="carpeta-trabajador" className={textoInput + " mt-2"} value={trabajadorActivoId} onChange={(e) => { setTrabajadorSeleccionado(e.target.value); setExpandido(null); }}>
+                  {trabajadores.map((r) => {
+                    const docs = portal.requisitos.filter((d) => d.recursoId === r.id && d.obligatorio);
+                    const completos = docs.filter((d) => d.archivoNombre && d.estadoEfectivo !== "vencido").length;
+                    return <option key={r.id} value={r.id}>{r.nombre} · {r.identificador || "Sin RUT"} · {completos}/{docs.length} entregados</option>;
+                  })}
+                </select>
+              </div>}
+              {categoria === "empresa" && <p className="rounded-xl bg-sky-50 px-4 py-3 text-xs text-sky-900">Documentos corporativos, de faena y SST. Se pueden enviar a revisión aunque todavía no exista la nómina de trabajadores.</p>}
               {documentosCategoria.length === 0 && <div className="flex flex-col items-center rounded-2xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"><FolderOpen className="h-10 w-10 text-slate-300"/><p className="mt-3 text-sm font-semibold text-slate-700">No hay documentos en esta categoría.</p>{categoria !== "empresa" && <button type="button" onClick={() => irA("recursos")} className="mt-2 text-xs font-semibold text-emerald-700">Agregar un recurso <ArrowRight className="inline h-3.5 w-3.5"/></button>}</div>}
-              {documentosCategoria.map((r) => bloqueRequisito(r))}
+              {categoria === "empresa"
+                ? [
+                    { label: "01 · Empresa — documentos corporativos", docs: documentosCategoria.filter((r) => r.alcance === "empresa") },
+                    { label: "02 · Contrato, faena y prevención SST", docs: documentosCategoria.filter((r) => r.alcance !== "empresa") },
+                  ].filter((grupo) => grupo.docs.length).map((grupo) => <div key={grupo.label} className="space-y-3">
+                    <h4 className="border-b border-slate-200 pb-2 text-sm font-bold text-slate-700">{grupo.label}</h4>
+                    {grupo.docs.map((r) => bloqueRequisito(r))}
+                  </div>)
+                : documentosCategoria.map((r) => bloqueRequisito(r))}
             </div>
           </section>
           <aside className="space-y-4 lg:sticky lg:top-5 lg:self-start">
-            <section className={tarjeta}><h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><ShieldCheck className="h-5 w-5 text-emerald-600"/>Control de entrega</h3><div className="mt-5 flex justify-between gap-2"><strong className="text-3xl font-extrabold text-slate-900">{porcentaje}%</strong><span className="self-end text-xs text-slate-500">{entregados}/{total} obligatorios</span></div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: porcentaje + "%" }}/></div>
-              <p className="mt-4 text-xs leading-relaxed text-slate-500">{faltantes ? "Faltan " + faltantes + " documentos obligatorios por entregar o actualizar." : "Todos los documentos obligatorios están entregados."}</p>
+            <section className={tarjeta}><h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><ShieldCheck className="h-5 w-5 text-emerald-600"/>Control de entrega</h3><div className="mt-5 flex justify-between gap-2"><strong className="text-3xl font-extrabold text-slate-900">{obligatoriosCategoria.length ? Math.round(entregadosCategoria.length / obligatoriosCategoria.length * 100) : 0}%</strong><span className="self-end text-xs text-slate-500">{entregadosCategoria.length}/{obligatoriosCategoria.length} entregados de este grupo</span></div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: (obligatoriosCategoria.length ? Math.round(entregadosCategoria.length / obligatoriosCategoria.length * 100) : 0) + "%" }}/></div>
+              <p className="mt-4 text-xs leading-relaxed text-slate-500">{pendientesCategoria > 0 ? `${pendientesCategoria} documentos obligatorios pendientes. Puedes enviar lo ya cargado.` : "Todos los documentos obligatorios de este grupo están entregados."}</p>
               {!datosCompletos && <button type="button" onClick={() => irA("empresa")} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-amber-700"><AlertCircle className="h-4 w-4"/>Completa primero tus datos de empresa</button>}
-              <Button disabled={!puedeEnviar} onClick={() => void ejecutar("enviar", () => enviarCarpetaContratista(token), "Carpeta enviada a revisión de la empresa mandante.")} className={"mt-5 w-full " + botonPrincipal}><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : "Enviar a revisión"}</Button>
-              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-400">La empresa mandante revisará tus documentos y te informará cualquier corrección.</p>
+              <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={"mt-5 w-full " + botonPrincipal}><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : categoria === "empresa" ? "Enviar empresa/faena a revisión" : categoria === "trabajador" ? "Enviar este trabajador" : "Enviar grupo a revisión"}</Button>
+              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-400">Cada grupo se revisa por separado y puedes continuar adjuntando documentos de otras carpetas.</p>
             </section>
             <section className="rounded-3xl border border-sky-100 bg-sky-50 p-5"><p className="flex gap-2 text-xs leading-relaxed text-slate-600"><LockKeyhole className="h-4 w-4 shrink-0 text-emerald-600"/> Tus archivos se guardan de manera privada. No compartas tu enlace de acceso.</p></section>
           </aside>
@@ -443,7 +579,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       </div>
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_35px_-25px_rgba(15,23,42,0.5)] backdrop-blur-xl [padding-bottom:max(12px,env(safe-area-inset-bottom))] sm:hidden">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Tu carpeta</p><p className="text-sm font-extrabold text-slate-900">{entregados}/{total} <span className="text-xs font-medium text-slate-500">entregados</span></p></div>
-          {paso === "documentos" ? <Button disabled={!puedeEnviar} onClick={() => void ejecutar("enviar", () => enviarCarpetaContratista(token), "Carpeta enviada a revisión.")} className={botonPrincipal}><Send className="mr-2 h-4 w-4"/>Enviar a revisión</Button> : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
+          {paso === "documentos" ? <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={botonPrincipal}><Send className="mr-2 h-4 w-4"/>Enviar a revisión</Button> : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
         </div>
       </div>
     </main>

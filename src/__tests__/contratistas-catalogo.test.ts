@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CATALOGO_CONTRATISTAS, CATALOGO_EMPRESA, CATALOGO_FAENA, normalizarClaveDocumento } from "@/lib/contratistas/catalogo";
+import { CATALOGO_CONTRATISTAS, CATALOGO_EMPRESA, CATALOGO_FAENA, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS, normalizarClaveDocumento } from "@/lib/contratistas/catalogo";
 
 describe("Catálogo documental contratistas NextPrev", () => {
   it("separa documentos corporativos y de faena", () => {
@@ -9,6 +9,12 @@ describe("Catálogo documental contratistas NextPrev", () => {
     expect(CATALOGO_FAENA.every((doc) => doc.alcance === "faena" && doc.categoria === "empresa")).toBe(true);
   });
 
+  it("cubre los antecedentes integrales de empresa, faena y prevención", () => {
+    for (const clave of ["f30", "f301", "afiliacion", "cronograma", "subcontratistas", "experto_prevencion", "responsable_sst", "protocolos_minsal", "reglamento_recepcion", "contacto_responsable", "contrato_servicios"]) {
+      expect(CATALOGO_CONTRATISTAS.some((r) => r.clave === clave)).toBe(true);
+      expect(CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS).toContain(clave);
+    }
+  });
   it("no repite claves de catálogo para el mismo ámbito", () => {
     const keys = CATALOGO_CONTRATISTAS.map((doc) => doc.alcance + ":" + doc.clave);
     expect(new Set(keys).size).toBe(keys.length);

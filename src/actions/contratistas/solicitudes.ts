@@ -4,9 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
 import { estadoEfectivo, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
-import { CATALOGO_CONTRATISTAS } from "@/lib/contratistas/catalogo";
+import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
+import { normalizarNombreRequisitoContratista } from "@/lib/contratistas/estandarizar-requisitos";
+import { claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
 const DIAS_ENLACE = 60;
 
@@ -76,7 +78,7 @@ export async function crearSolicitudContratista(input: {
     })),
   ];
   const selected = catalogo.filter((r) => input.requisitos === undefined
-    ? r.alcance === "faena" && r.obligatorio
+    ? (CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS as readonly string[]).includes(r.clave)
     : input.requisitos.includes(r.clave));
   const centro = input.centroTrabajoId
     ? await prisma.centroTrabajo.findFirst({ where: { id: input.centroTrabajoId, empresaId }, select: { id: true, nombre: true } })
@@ -97,6 +99,13 @@ export async function crearSolicitudContratista(input: {
       fechaTermino: fecha(input.fechaTermino),
       requisitos: { create: selected.map((r) => ({
         empresaId, nombre: r.nombre, categoria: r.categoria, alcance: r.alcance, obligatorio: r.obligatorio,
+      })) },
+      // La pauta se crea antes de incorporar trabajadores: se asignará a todos los futuros.
+      reglasTrabajadores: { create: PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => ({
+        empresaId, nombre: r.nombre, obligatorio: r.obligatorio,
+        // La plantilla general no inventa una vigencia legal uniforme:
+        // períodos específicos se configuran por faena/mandante cuando correspondan.
+        condicional: r.condicional, vigenciaMeses: null,
       })) },
     },
     select: { id: true },
@@ -119,7 +128,7 @@ export async function agregarRequisitoContratista(input: {
   const solicitud = await prisma.contratistaSolicitud.findFirst({ where: { id: input.solicitudId, empresaId, estado: { not: "cerrada" } }, select: { id: true } });
   if (!solicitud) throw new Error("Expediente no encontrado o cerrado");
   if (!input.nombre?.trim()) throw new Error("Nombre del requisito obligatorio");
-  const nombre = input.nombre.trim().slice(0, 220);
+  const nombre = normalizarNombreRequisitoContratista(input.nombre, input.categoria).slice(0, 220);
   if (input.aplicaATodosTrabajadores) {
     if (input.categoria !== "trabajador" || input.recursoId) throw new Error("El alcance general es exclusivo de trabajadores");
     await prisma.$transaction(async (tx) => {
@@ -292,6 +301,43 @@ export async function eliminarReglaRequisitosTrabajadores(reglaId: string) {
   });
   await recalcularEstado(solicitudId, empresaId);
   return { ok: true };
+}
+
+/**
+ * Marca requisitos obligatorios/condicionales de forma masiva para todo un cargo
+ * en esta faena. No altera archivos, versiones ni revisiones ya realizadas.
+ */
+export async function configurarRequisitoPorCargoContratista(input: {
+  solicitudId: string;
+  reglaId: string;
+  cargo: string;
+  obligatorio: boolean;
+}) {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+  const cargo = input.cargo?.trim().slice(0, 160);
+  if (!cargo) throw new Error("Selecciona un cargo.");
+  return prisma.$transaction(async (tx) => {
+    const regla = await tx.contratistaRequisitoRegla.findFirst({
+      where: { id: input.reglaId, solicitudId: input.solicitudId, empresaId, activo: true,
+        solicitud: { estado: { not: "cerrada" } } },
+      select: { id: true, nombre: true },
+    });
+    if (!regla) throw new Error("Requisito no encontrado en la faena.");
+    const candidatos = await tx.contratistaRecurso.findMany({
+      where: { solicitudId: input.solicitudId, empresaId, tipo: "trabajador" },
+      select: { id: true, cargo: true },
+    });
+    // Incluye variantes previas como "maestro eléctrico" y "electricista".
+    const grupo = claveAgrupacionCargoContratista(cargo);
+    const personas = candidatos.filter((p) => claveAgrupacionCargoContratista(p.cargo || "") === grupo);
+    if (!personas.length) throw new Error("No hay trabajadores con ese cargo.");
+    const actualizados = await tx.contratistaRequisito.updateMany({
+      where: { solicitudId: input.solicitudId, empresaId, reglaTrabajadorId: regla.id,
+        recursoId: { in: personas.map((p) => p.id) } },
+      data: { obligatorio: input.obligatorio },
+    });
+    return { trabajadores: personas.length, requisitos: actualizados.count, nombre: regla.nombre };
+  });
 }
 
 export async function cambiarObligatoriedadContratista(requisitoId: string, obligatorio: boolean) {
