@@ -118,6 +118,9 @@ export async function aplicarPlantillaInicialEmpresa(
   modo: PlantillaModo,
 ): Promise<AplicarPlantillaResult> {
   const { empresaId } = await requirePermission("canManageEmpresa");
+  if (modo !== "agregar") {
+    throw new Error("Reemplazar la estructura no está disponible: podrían eliminarse cargos o áreas asociadas a registros reales.");
+  }
   const plantilla = getPlantilla(tipo);
   let areasCreadas = 0;
   let cargosCreados = 0;
