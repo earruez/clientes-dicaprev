@@ -126,10 +126,6 @@ export async function aplicarPlantillaInicialEmpresa(
   let cargosCreados = 0;
   const areaIdByTemplateId = new Map<string, string>();
 
-  if (modo === "reemplazar") {
-    await eliminarCargosSinUso(empresaId);
-    await eliminarAreasSinUso(empresaId);
-  }
 
   for (const area of plantilla.areas) {
     const existing = await prisma.area.findFirst({
