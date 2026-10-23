@@ -433,8 +433,8 @@ export default function TabCalendario() {
       )}
 
       {/* Modal crear/editar */}
-      <Dialog open={!!modal} onOpenChange={() => setModal(null)}>
-        <DialogContent className="max-w-lg rounded-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+      <Dialog open={!!modal} onOpenChange={(open) => { if (!open && !saving) setModal(null); }}>
+        <DialogContent className="max-w-lg rounded-2xl max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]" onPointerDownOutside={(event) => event.preventDefault()}>
           <DialogHeader>
             <DialogTitle className="text-base font-semibold">
               {modal === "crear" ? "Nueva sesión" : "Editar sesión"}
@@ -444,8 +444,8 @@ export default function TabCalendario() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4 pt-1">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 space-y-1">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2 space-y-1">
                 <Label className="text-xs font-medium text-slate-600">Capacitación</Label>
                 <Select value={form.capacitacionId} onValueChange={(v) => {
                   const c = catalogo.find((x) => x.id === v);
@@ -461,7 +461,7 @@ export default function TabCalendario() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-2 space-y-1">
+              <div className="sm:col-span-2 space-y-1">
                 <Label className="text-xs font-medium text-slate-600">Título de la sesión</Label>
                 <Input
                   value={form.titulo}
@@ -521,11 +521,11 @@ export default function TabCalendario() {
                 </Select>
               </div>
 
-              <div className="col-span-2 mt-2 border-t border-slate-200 pt-3">
+              <div className="sm:col-span-2 mt-2 border-t border-slate-200 pt-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Contenido virtual</p>
               </div>
 
-              <div className="col-span-2 space-y-1">
+              <div className="sm:col-span-2 space-y-1">
                 <Label className="text-xs font-medium text-slate-600">URL video</Label>
                 <Input
                   value={form.videoUrl}
@@ -558,11 +558,11 @@ export default function TabCalendario() {
                 />
               </div>
 
-              <div className="col-span-2 mt-2 border-t border-slate-200 pt-3">
+              <div className="sm:col-span-2 mt-2 border-t border-slate-200 pt-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Mini test (4 preguntas)</p>
               </div>
 
-              <div className="col-span-2 space-y-1">
+              <div className="sm:col-span-2 space-y-1">
                 <Label className="text-xs font-medium text-slate-600">% mínimo aprobación</Label>
                 <Input
                   type="number"
@@ -575,7 +575,7 @@ export default function TabCalendario() {
               </div>
 
               {form.preguntas.map((pregunta, idx) => (
-                <div key={pregunta.id} className="col-span-2 rounded-xl border border-slate-200 p-3 space-y-2">
+                <div key={pregunta.id} className="sm:col-span-2 rounded-xl border border-slate-200 p-3 space-y-2">
                   <Label className="text-xs font-medium text-slate-600">Pregunta {idx + 1}</Label>
                   <Input
                     value={pregunta.texto}
@@ -589,7 +589,7 @@ export default function TabCalendario() {
                     placeholder="Escribe la pregunta"
                     className="rounded-xl border-slate-200 text-sm"
                   />
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {pregunta.opciones.map((opcion, optIdx) => (
                       <Input
                         key={`${pregunta.id}-${optIdx}`}
