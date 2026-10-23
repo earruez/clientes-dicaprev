@@ -488,7 +488,7 @@ function DocumentacionVencimientosContent() {
             onValueChange={(value: string) => setTabActiva(value)}
             className="w-full mt-2"
           >
-            <TabsList className="bg-slate-100/80 rounded-full p-1 h-10 flex flex-wrap">
+            <TabsList className="bg-slate-100/80 rounded-2xl p-1 min-h-11 flex flex-wrap">
               <AnyTabsTrigger
                 value="general"
                 className="rounded-full px-4 py-1 text-xs data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"

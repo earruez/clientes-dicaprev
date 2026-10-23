@@ -251,7 +251,7 @@ export default function DetalleTrabajador({
       <Card className="border-slate-200 bg-white/95 p-0 shadow-sm">
         <Tabs defaultValue="empresa" className="w-full">
           <div className="border-b border-slate-100 px-4 pt-3">
-            <TabsList className="h-9 bg-slate-50/80">
+            <TabsList className="min-h-11 bg-slate-50/80">
               <TabsTrigger value="empresa" className="text-xs">
                 Documentos en empresa
               </TabsTrigger>

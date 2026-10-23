@@ -60,7 +60,7 @@ export const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed z-50 grid w-[calc(100%-1rem)] max-h-[calc(100dvh-1rem)] gap-4 overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 sm:w-full sm:max-h-[calc(100dvh-2rem)] [-webkit-overflow-scrolling:touch]",
+        "fixed z-50 grid min-h-0 min-w-0 w-[calc(100%-1rem)] max-h-[calc(100dvh-1rem)] gap-4 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200/60 bg-white p-4 sm:p-6 sm:w-[calc(100%-2rem)] sm:max-h-[calc(100dvh-2rem)] [-webkit-overflow-scrolling:touch] [&>*]:min-w-0",
         "shadow-2xl outline-none",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0",
@@ -79,7 +79,7 @@ export const DialogContent = React.forwardRef<
       {withClose && (
         <DialogPrimitive.Close
           className={cn(
-            "absolute right-3 top-3 rounded-full p-1",
+            "absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full",
             "text-slate-500 hover:text-slate-700",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600/70 focus-visible:ring-offset-2",
             "transition-colors"
@@ -96,12 +96,12 @@ export const DialogContent = React.forwardRef<
 DialogContent.displayName = DialogPrimitive.Content.displayName
 
 export const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col space-y-1.5 text-left", className)} {...props} />
+  <div className={cn("flex min-w-0 flex-col space-y-1.5 pr-10 text-left", className)} {...props} />
 )
 DialogHeader.displayName = "DialogHeader"
 
 export const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex items-center gap-2 justify-end", className)} {...props} />
+  <div className={cn("flex shrink-0 flex-wrap items-center justify-end gap-2 [&>button]:min-h-11", className)} {...props} />
 )
 DialogFooter.displayName = "DialogFooter"
 

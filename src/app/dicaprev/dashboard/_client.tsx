@@ -32,6 +32,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
   const kpis = [
     {
       label: "Cumplimiento general",
+      href: "/dicaprev/cumplimiento",
       value:
         resumen.kpis.cumplimientoGeneral === null ? "—" : `${resumen.kpis.cumplimientoGeneral}%`,
       detail: "Estado consolidado de cumplimiento",
@@ -40,6 +41,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
     },
     {
       label: "Trabajadores activos",
+      href: "/dicaprev/trabajadores",
       value: resumen.kpis.trabajadoresActivos,
       detail: `${resumen.kpis.totalTrabajadores} registrados`,
       icon: <Users className="h-5 w-5" />,
@@ -47,6 +49,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
     },
     {
       label: "Vehículos",
+      href: "/dicaprev/empresa/vehiculos",
       value: resumen.kpis.totalVehiculos,
       detail: "Flota y equipos en sistema",
       icon: <Car className="h-5 w-5" />,
@@ -54,6 +57,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
     },
     {
       label: "Acreditaciones activas",
+      href: "/dicaprev/acreditaciones",
       value: resumen.kpis.acreditacionesActivas,
       detail: `${resumen.acreditaciones.enPreparacion} en preparación`,
       icon: <FileCheck2 className="h-5 w-5" />,
@@ -61,6 +65,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
     },
     {
       label: "Documentos pendientes",
+      href: "/dicaprev/dashboard/documentos?estado=pendientes",
       value: resumen.kpis.documentosPendientes,
       detail: "Empresa, trabajadores y vehículos",
       icon: <ClipboardList className="h-5 w-5" />,
@@ -68,6 +73,7 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
     },
     {
       label: "Documentos vencidos",
+      href: "/dicaprev/dashboard/documentos?estado=vencidos",
       value: resumen.kpis.documentosVencidos,
       detail: "Requieren regularización",
       icon: <AlertTriangle className="h-5 w-5" />,
@@ -144,13 +150,12 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {kpis.map((kpi) => (
-          <Card
-            key={kpi.label}
-            className={cn(
-              "rounded-2xl border bg-gradient-to-br p-5 shadow-sm",
+          <Link key={kpi.label} href={kpi.href} aria-label={`Ver ${kpi.label}`}
+            className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">
+            <Card className={cn(
+              "h-full rounded-2xl border bg-gradient-to-br p-5 shadow-sm transition-all duration-150 group-hover:-translate-y-0.5 group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-blue-600",
               kpi.tone,
-            )}
-          >
+            )}>
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.18em] opacity-80">{kpi.label}</p>
@@ -161,7 +166,8 @@ export default function DashboardClient({ resumenInicial }: DashboardClientProps
                 {kpi.icon}
               </div>
             </div>
-          </Card>
+            </Card>
+          </Link>
         ))}
       </div>
 

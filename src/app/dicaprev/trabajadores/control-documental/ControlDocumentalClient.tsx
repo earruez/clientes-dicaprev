@@ -35,15 +35,17 @@ type ControlDocumentalClientProps = {
   initialData: ControlDocumentalTrabajadoresPayload;
   workerId?: string;
   centro?: string;
+  tabInicial?: "pendientes" | "vencimientos";
 };
 
 export default function ControlDocumentalClient({
   initialData,
   workerId,
   centro,
+  tabInicial,
 }: ControlDocumentalClientProps) {
 
-  const [activeTab, setActiveTab] = useState<TabId>("pendientes");
+  const [activeTab, setActiveTab] = useState<TabId>(tabInicial ?? "pendientes");
   const [bulkOpen,  setBulkOpen]  = useState(false);
   const [evaluandoReglas, setEvaluandoReglas] = useState(false);
   const [evaluacionMsg, setEvaluacionMsg] = useState<string | null>(null);

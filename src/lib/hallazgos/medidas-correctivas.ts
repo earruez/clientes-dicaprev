@@ -1,15 +1,19 @@
-/**
- * Persistencia compatible con EvidenciaCumplimiento: estado (enum actual)
- * + origen para indicar "en proceso" sin migración ni pérdida de historial.
+/** El estado operativo vive en el historial, sin alterar la procedencia de la evidencia.
+ * El marcador de origen se mantiene solo como fallback de registros históricos.
  */
 export const ORIGEN_MEDIDA_EN_PROCESO = "hallazgo_medida_en_proceso";
 
 export type EstadoMedidaHallazgo = "pendiente" | "en_proceso" | "completada" | "descartada";
 
-export function estadoMedidaHallazgo(estado: string | null | undefined, origen?: string | null): EstadoMedidaHallazgo {
+export function estadoMedidaHallazgo(
+  estado: string | null | undefined,
+  origen?: string | null,
+  ultimoEstadoOperativo?: string | null,
+): EstadoMedidaHallazgo {
   const valor = (estado || "").trim().toLowerCase();
   if (valor === "valida" || valor === "completada" || valor === "cerrada") return "completada";
   if (valor === "rechazada" || valor === "descartada") return "descartada";
+  if (ultimoEstadoOperativo === "en_proceso" || ultimoEstadoOperativo === "pendiente") return ultimoEstadoOperativo;
   if (origen === ORIGEN_MEDIDA_EN_PROCESO || valor === "en_proceso") return "en_proceso";
   return "pendiente";
 }

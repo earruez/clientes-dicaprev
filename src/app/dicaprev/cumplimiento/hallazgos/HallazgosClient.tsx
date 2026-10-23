@@ -130,6 +130,32 @@ const PRIORIDAD_CFG: Record<PrioridadHallazgo, { label: string; cls: string }> =
   baja: { label: "Baja", cls: "bg-sky-100 text-sky-700 border border-sky-200" },
 };
 
+const COLUMNAS_HALLAZGOS = [
+  { key: "estado", label: "Estado" },
+  { key: "tipo", label: "Tipo" },
+  { key: "descripcion", label: "Hallazgo" },
+  { key: "centro", label: "Centro" },
+  { key: "trabajador", label: "Trabajador" },
+  { key: "prioridad", label: "Prioridad" },
+  { key: "fechaCreacion", label: "Fecha hallazgo" },
+  { key: "fechaCompromiso", label: "Compromiso" },
+] as const;
+type ColumnaHallazgos = (typeof COLUMNAS_HALLAZGOS)[number]["key"];
+const COLUMNAS_TEXTO: ColumnaHallazgos[] = ["descripcion"];
+const COLUMNAS_FECHA: ColumnaHallazgos[] = ["fechaCreacion", "fechaCompromiso"];
+function valorColumnaHallazgo(h: Hallazgo, columna: ColumnaHallazgos): string {
+  switch (columna) {
+    case "estado": return ESTADO_CFG[h.estado]?.label ?? h.estado;
+    case "tipo": return TIPO_CFG[h.tipo]?.label ?? h.tipo;
+    case "descripcion": return h.descripcion;
+    case "centro": return h.centroNombre;
+    case "trabajador": return h.trabajadorNombre || "Sin trabajador";
+    case "prioridad": return PRIORIDAD_CFG[h.prioridad]?.label ?? h.prioridad;
+    case "fechaCreacion": return fechaChile(h.fechaCreacion);
+    case "fechaCompromiso": return h.fechaCompromiso.slice(0, 10);
+  }
+}
+
 type HallazgoFormData = {
   plantillaClave: string;
   tipo: string;
@@ -257,10 +283,14 @@ export default function HallazgosClient({
   const [filtroCentro, setFiltroCentro] = useState<string>("todos");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
   const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
+  const [columnaAbierta, setColumnaAbierta] = useState<ColumnaHallazgos | null>(null);
+  const [filtrosColumnas, setFiltrosColumnas] = useState<Partial<Record<ColumnaHallazgos, string>>>({});
+  const [ordenColumna, setOrdenColumna] = useState<{ columna: ColumnaHallazgos; sentido: "asc" | "desc" } | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [actualizacionError, setActualizacionError] = useState<string | null>(null);
   const [form, setForm] = useState<HallazgoFormData>(FORM_EMPTY());
   const [soloIncumplidas, setSoloIncumplidas] = useState(true);
   const [modalIAOpen, setModalIAOpen] = useState(false);
@@ -414,10 +444,11 @@ export default function HallazgosClient({
   }
 
   async function onSubmit() {
-    if (!form.descripcion.trim() || !form.centroTrabajoId || !form.fechaCompromiso) return;
+    if (saving || !form.descripcion.trim() || !form.centroTrabajoId || !form.fechaCompromiso) return;
+    setSaving(true);
+    setFormError(null);
+    setActualizacionError(null);
     try {
-      setSaving(true);
-      setFormError(null);
       if (!editId) {
         await crearHallazgo({
           centroTrabajoId: form.centroTrabajoId,
@@ -443,11 +474,16 @@ export default function HallazgosClient({
           fechaCompromiso: form.fechaCompromiso,
         });
       }
-      const actuales = await reloadHallazgos();
+      // El guardado fue confirmado: cerrar el formulario antes de recargar evita duplicados.
       setModalOpen(false);
-      if (editId) {
-        const actualizado = actuales.find((item) => item.id === editId);
-        if (actualizado) void openDetalle(actualizado);
+      try {
+        const actuales = await reloadHallazgos();
+        if (editId) {
+          const actualizado = actuales.find((item) => item.id === editId);
+          if (actualizado) void openDetalle(actualizado);
+        }
+      } catch {
+        setActualizacionError("El hallazgo se guardó, pero no se pudo actualizar la lista. Recarga la página para verlo.");
       }
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "No se pudo guardar el hallazgo.");
@@ -814,12 +850,15 @@ export default function HallazgosClient({
   const resueltos = hallazgos.filter((h) => h.estado === "resuelto").length;
   const cerrados = hallazgos.filter((h) => h.estado === "cerrado").length;
 
+  const valoresColumna = useMemo(() => {
+    if (!columnaAbierta || COLUMNAS_TEXTO.includes(columnaAbierta) || COLUMNAS_FECHA.includes(columnaAbierta)) return [];
+    return [...new Set(hallazgos.map((h) => valorColumnaHallazgo(h, columnaAbierta)))].sort((a,b) => a.localeCompare(b, "es"));
+  }, [hallazgos, columnaAbierta]);
+
   const hallazgosFiltrados = useMemo(() => {
     const txt = search.toLowerCase();
-    return hallazgos.filter((h) => {
-      const matchText =
-        txt.length === 0 ||
-        h.descripcion.toLowerCase().includes(txt) ||
+    const filtrados = hallazgos.filter((h) => {
+      const matchText = txt.length === 0 || h.descripcion.toLowerCase().includes(txt) ||
         h.centroNombre.toLowerCase().includes(txt) ||
         (h.trabajadorNombre?.toLowerCase().includes(txt) ?? false);
       const matchEstado = coincideFiltroEstadoHallazgo(h.estado, filtroEstado) && coincideTarjetaHallazgo(h.estado, tarjetaActiva);
@@ -827,9 +866,24 @@ export default function HallazgosClient({
       const matchCentro = filtroCentro === "todos" || h.centroId === filtroCentro || h.centroTrabajoId === filtroCentro;
       const matchFechaDesde = !filtroFechaDesde || h.fechaCompromiso >= filtroFechaDesde;
       const matchFechaHasta = !filtroFechaHasta || h.fechaCompromiso <= filtroFechaHasta;
-      return matchText && matchEstado && matchTipo && matchCentro && matchFechaDesde && matchFechaHasta;
+      const matchColumnas = COLUMNAS_HALLAZGOS.every(({ key }) => {
+        const filtro = filtrosColumnas[key]?.trim();
+        if (!filtro) return true;
+        const valor = valorColumnaHallazgo(h, key);
+        return COLUMNAS_TEXTO.includes(key) ? valor.toLocaleLowerCase("es").includes(filtro.toLocaleLowerCase("es")) : valor === filtro;
+      });
+      return matchText && matchEstado && matchTipo && matchCentro && matchFechaDesde && matchFechaHasta && matchColumnas;
     });
-  }, [hallazgos, search, filtroEstado, tarjetaActiva, filtroTipo, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
+    if (ordenColumna) {
+      const { columna, sentido } = ordenColumna;
+      filtrados.sort((a, b) => {
+        const vA = valorColumnaHallazgo(a, columna), vB = valorColumnaHallazgo(b, columna);
+        const comparacion = vA.localeCompare(vB, "es", { numeric: true, sensitivity: "base" });
+        return sentido === "asc" ? comparacion : -comparacion;
+      });
+    }
+    return filtrados;
+  }, [hallazgos, search, filtroEstado, tarjetaActiva, filtroTipo, filtroCentro, filtroFechaDesde, filtroFechaHasta, filtrosColumnas, ordenColumna]);
 
   const referenciaValida = /^\d{4}-\d{2}-\d{2}$/.test(fechaReferenciaInforme)
     ? fechaReferenciaInforme : fechaChile(new Date());
@@ -948,6 +1002,7 @@ export default function HallazgosClient({
           </CardContent>
         </Card>
 
+        {actualizacionError ? <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{actualizacionError}</div> : null}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {([
             { estado: "abierto", label: "Abiertos", value: abiertos, cls: "from-amber-50 to-amber-100 text-amber-700" },
@@ -976,6 +1031,8 @@ export default function HallazgosClient({
                   setFiltroCentro("todos");
                   setFiltroFechaDesde("");
                   setFiltroFechaHasta("");
+                  setFiltrosColumnas({});
+                  setOrdenColumna(null);
                   window.requestAnimationFrame(() => {
                     document.getElementById("tabla-hallazgos")?.scrollIntoView({ behavior: "smooth", block: "start" });
                   });
@@ -1068,7 +1125,12 @@ export default function HallazgosClient({
           opciones={{ empresaId: opciones.empresaId, centros: opciones.centros, areas: opciones.areas }}
           iaConfigurada={iaConfigurada}
           onConfirmed={async () => {
-            await reloadHallazgos();
+            try {
+              await reloadHallazgos();
+              setActualizacionError(null);
+            } catch {
+              setActualizacionError("Los hallazgos se guardaron, pero no se pudo actualizar la lista. Recarga la página para verlos.");
+            }
           }}
         />
 
@@ -1151,6 +1213,34 @@ export default function HallazgosClient({
 
         <Card className="border-none shadow-sm bg-white">
           <CardContent className="pt-4">
+            {columnaAbierta && (
+              <div className="mb-3 flex flex-wrap items-end gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-slate-800">
+                <div className="min-w-[180px] flex-1 space-y-1">
+                  <label className="text-xs font-semibold" htmlFor="filtro-columna-hallazgos">
+                    Filtrar por {COLUMNAS_HALLAZGOS.find((c) => c.key === columnaAbierta)?.label}
+                  </label>
+                  {COLUMNAS_TEXTO.includes(columnaAbierta) || COLUMNAS_FECHA.includes(columnaAbierta) ? (
+                    <Input id="filtro-columna-hallazgos"
+                      type={COLUMNAS_FECHA.includes(columnaAbierta) ? "date" : "search"}
+                      placeholder="Escribe para filtrar…"
+                      value={filtrosColumnas[columnaAbierta] ?? ""}
+                      onChange={(e) => setFiltrosColumnas((prev) => ({ ...prev, [columnaAbierta]: e.target.value }))}
+                      className="h-9 bg-white" />
+                  ) : (
+                    <select id="filtro-columna-hallazgos" value={filtrosColumnas[columnaAbierta] ?? ""}
+                      onChange={(e) => setFiltrosColumnas((prev) => ({ ...prev, [columnaAbierta]: e.target.value }))}
+                      className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+                      <option value="">Todos</option>
+                      {valoresColumna.map((valor) => <option key={valor} value={valor}>{valor}</option>)}
+                    </select>
+                  )}
+                </div>
+                <Button size="sm" variant="outline" className="h-9" onClick={() => setOrdenColumna({ columna: columnaAbierta, sentido: "asc" })}>A → Z</Button>
+                <Button size="sm" variant="outline" className="h-9" onClick={() => setOrdenColumna({ columna: columnaAbierta, sentido: "desc" })}>Z → A</Button>
+                <Button size="sm" variant="ghost" className="h-9" onClick={() => { setFiltrosColumnas((prev) => ({ ...prev, [columnaAbierta]: "" })); if (ordenColumna?.columna === columnaAbierta) setOrdenColumna(null); }}>Limpiar</Button>
+                <Button size="sm" variant="ghost" className="h-9" aria-label="Cerrar filtro de columna" onClick={() => setColumnaAbierta(null)}><X className="h-4 w-4" /></Button>
+              </div>
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -1167,14 +1257,21 @@ export default function HallazgosClient({
                         }}
                       />
                     </th>
-                    <th className="py-3 text-left pl-2">Estado</th>
-                    <th className="py-3 text-left">Tipo</th>
-                    <th className="py-3 text-left">Hallazgo</th>
-                    <th className="py-3 text-left">Centro</th>
-                    <th className="py-3 text-left">Trabajador</th>
-                    <th className="py-3 text-left">Prioridad</th>
-                    <th className="py-3 text-left">Fecha hallazgo</th>
-                    <th className="py-3 text-left">Compromiso</th>
+                    {COLUMNAS_HALLAZGOS.map(({ key, label }) => (
+                      <th key={key} className="py-2 text-left whitespace-nowrap">
+                        <button type="button" aria-label={`Filtrar y ordenar por ${label}`}
+                          aria-expanded={columnaAbierta === key}
+                          onClick={() => {
+                            setColumnaAbierta(key);
+                            setOrdenColumna((prev) => ({ columna: key, sentido: prev?.columna === key && prev.sentido === "asc" ? "desc" : "asc" }));
+                          }}
+                          className={cn("inline-flex items-center gap-1 rounded-md px-2 py-2 text-left transition hover:bg-blue-50 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600",
+                            filtrosColumnas[key] || ordenColumna?.columna === key ? "bg-blue-50 text-blue-800" : "")}>
+                          {label}<Search className="h-3 w-3" />
+                          {ordenColumna?.columna === key && <span aria-hidden="true">{ordenColumna.sentido === "asc" ? "↑" : "↓"}</span>}
+                        </button>
+                      </th>
+                    ))}
                     <th className="py-3 text-right pr-2">Detalle</th>
                   </tr>
                 </thead>
@@ -1243,9 +1340,9 @@ export default function HallazgosClient({
         </Card>
       </div>
 
-      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+      <Dialog open={modalOpen} onOpenChange={(open) => { if (!saving) setModalOpen(open); }}>
         <DialogContent
-          className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[calc(100dvh-3rem)]"
+          className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:p-0 sm:max-h-[calc(100dvh-3rem)]"
           onPointerDownOutside={(event) => event.preventDefault()}
         >
           <DialogHeader className="shrink-0 border-b border-slate-200 px-6 py-5 dark:border-slate-800">
@@ -1451,10 +1548,10 @@ export default function HallazgosClient({
       }}>
         <DialogContent
           withClose={false}
-          className="h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
+          className="flex flex-col h-[100dvh] max-h-[100dvh] w-screen max-w-none gap-0 overflow-hidden rounded-none border-0 bg-[#071225] p-0 sm:p-0 text-white sm:h-[92dvh] sm:max-h-[92dvh] sm:w-[calc(100%-2rem)] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-700/70"
           onPointerDownOutside={(event) => event.preventDefault()}
         >
-          <div className="flex h-full min-h-0 flex-col">
+          <div className="flex min-h-0 flex-1 flex-col">
             <header className="shrink-0 border-b border-slate-800/90 bg-[#071225]/95 px-4 pb-3 pt-[max(0.9rem,env(safe-area-inset-top))] backdrop-blur sm:px-6 sm:pt-5">
               <div className="grid grid-cols-[44px_1fr_44px] items-center gap-3">
                 <button

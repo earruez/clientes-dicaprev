@@ -262,8 +262,8 @@ export default function NuevoTrabajadorWizard({
 
         {/* STEP INDICATOR */}
         <div className="mt-3 space-y-3">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-600">
               <StepPill label="Datos generales" number={1} current={step} />
               <StepPill label="Condiciones & riesgos" number={2} current={step} />
               <StepPill label="Vestimenta & EPP" number={3} current={step} />
