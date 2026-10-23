@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 import { useRouter } from "next/navigation";
 import {
   X,
@@ -52,7 +53,7 @@ interface FormState {
 
 type Phase = "form" | "submitting" | "success";
 
-const TODAY = "2026-04-08";
+const TODAY = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Santiago" });
 
 const EMPTY_FORM: FormState = {
   trabajadorId:    "",
@@ -161,7 +162,7 @@ export function DocumentUploadDrawer({
   const isValid =
     form.trabajadorId.trim()    !== "" &&
     form.tipoDocumentoId.trim() !== "" &&
-    form.nombreArchivo.trim()   !== "" &&
+    selectedFile !== null &&
     form.fechaCarga             !== "" &&
     form.cargadoPor.trim()      !== "";
 
@@ -172,29 +173,50 @@ export function DocumentUploadDrawer({
     setSubmitError(null);
 
     try {
-      const fileName = selectedFile?.name || form.nombreArchivo;
+      if (!selectedFile) throw new Error("Debes seleccionar un archivo real.");
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      const response = await fetch("/api/dicaprev/documentacion/upload", {
+        method: "POST",
+        credentials: "same-origin",
+        body: formData,
+      });
+      const uploaded = await response.json().catch(() => null) as {
+        archivoNombre?: string;
+        archivoNombreOriginal?: string;
+        archivoUrl?: string;
+        archivoTipo?: string | null;
+        archivoPeso?: number;
+        error?: string;
+      } | null;
+      if (!response.ok || !uploaded?.archivoNombre || !uploaded.archivoUrl) {
+        throw new Error(uploaded?.error || "No fue posible almacenar el archivo adjunto.");
+      }
       const commonPayload = {
         estado: form.estadoInicial,
         fechaEmision: form.fechaEmision || undefined,
         fechaVencimiento: form.fechaVencimiento || undefined,
         observaciones: form.observaciones || undefined,
         cargadoPor: form.cargadoPor,
-        archivoNombre: fileName || undefined,
-        archivoNombreOriginal: selectedFile?.name || undefined,
-        archivoTipo: selectedFile?.type || undefined,
-        archivoPeso: selectedFile?.size,
+        archivoNombre: uploaded.archivoNombre,
+        archivoNombreOriginal: uploaded.archivoNombreOriginal || selectedFile.name,
+        archivoUrl: uploaded.archivoUrl,
+        archivoTipo: uploaded.archivoTipo || selectedFile.type,
+        archivoPeso: uploaded.archivoPeso ?? selectedFile.size,
       };
 
-      if (context?.documentoId) {
+      if (context?.documentoId && !isReenviar) {
         await updateTrabajadorDocumento({
           documentoId: context.documentoId,
           ...commonPayload,
         });
       } else {
+        // Reenvíos crean una versión y conservan el archivo/historial anterior.
         await createTrabajadorDocumento({
           trabajadorId: form.trabajadorId,
           tipoDocumentoId: form.tipoDocumentoId,
           ...commonPayload,
+          ...(isReenviar ? { motivoReemplazo: "Nueva versión del documento" } : {}),
         });
       }
 
@@ -369,39 +391,41 @@ export function DocumentUploadDrawer({
             )}
           </div>
 
-          {/* ── Nombre del archivo ── */}
+          {/* ── Selección de archivo real ── */}
           <div>
-            <FieldLabel required>Nombre del archivo</FieldLabel>
-            <FieldInput
-              type="text"
-              placeholder="ej. contrato_firmado_pedro_soto.pdf"
-              value={form.nombreArchivo}
-              onChange={(e) => patch({ nombreArchivo: e.target.value })}
-            />
-            <input
-              type="file"
-              className="mt-2 block w-full cursor-pointer text-xs text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
-              onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                setSelectedFile(file);
-                if (file && !form.nombreArchivo) {
-                  patch({ nombreArchivo: file.name });
-                }
-              }}
-            />
-            <p className="mt-1.5 text-[11px] text-slate-400">
-              Se registra metadato del archivo. El almacenamiento real se implementara en una fase posterior.
+            <FieldLabel required>Archivo del documento</FieldLabel>
+            <label className="relative flex min-h-28 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/40 px-4 py-4 text-center hover:border-blue-400 hover:bg-blue-50">
+              <UploadCloud className="h-6 w-6 text-blue-600" />
+              <span className="max-w-full break-all text-sm font-semibold text-slate-700">
+                {selectedFile?.name || "Seleccionar archivo del dispositivo"}
+              </span>
+              <span className="text-xs text-slate-500">PDF, Word, Excel o imagen. Máximo 10 MB.</span>
+              <input
+                type="file"
+                accept={DOCUMENTO_ACCEPT}
+                aria-label="Seleccionar archivo del trabajador"
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                onChange={(e) => {
+                  const file = e.currentTarget.files?.[0] ?? null;
+                  setSelectedFile(file);
+                  patch({ nombreArchivo: file?.name ?? "" });
+                  setSubmitError(null);
+                }}
+              />
+            </label>
+            <p className="mt-2 text-xs text-slate-500">
+              El archivo original se guarda en el almacenamiento privado de NextPrev y queda asociado al trabajador.
             </p>
           </div>
 
           {/* ── Fecha de carga + Fecha de emisión ── */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <FieldLabel required>Fecha de carga</FieldLabel>
+              <FieldLabel required>Fecha de carga (automática)</FieldLabel>
               <FieldInput
                 type="date"
                 value={form.fechaCarga}
-                onChange={(e) => patch({ fechaCarga: e.target.value })}
+                readOnly
               />
             </div>
             <div>
@@ -518,7 +542,7 @@ export function DocumentUploadDrawer({
           </div>
           {!isValid && phase === "form" && (
             <p className="mt-2 text-center text-[11px] text-slate-400">
-              Completa los campos obligatorios para continuar
+              Selecciona un archivo y completa los campos obligatorios para continuar
             </p>
           )}
           {submitError && (

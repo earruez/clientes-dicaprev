@@ -15,6 +15,7 @@ import {
 } from "@/lib/documentacion/documento-estructurado";
 import { REGLAS_DOCUMENTALES, type ReglaDocumentalNextPrev } from "@/lib/documentacion/reglas-documentales";
 import { prisma } from "@/lib/prisma";
+import { construirArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 import { crearFirmaDocumento } from "@/actions/firmas";
 import { requirePermission } from "@/server/auth/permissions";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
@@ -86,6 +87,7 @@ export type CreateTrabajadorDocumentoInput = {
   cargadoPor?: string;
   archivoNombre?: string;
   archivoNombreOriginal?: string;
+  archivoUrl?: string;
   archivoTipo?: string;
   archivoPeso?: number;
   motivoReemplazo?: string;
@@ -100,6 +102,7 @@ export type UpdateTrabajadorDocumentoInput = {
   cargadoPor?: string | null;
   archivoNombre?: string | null;
   archivoNombreOriginal?: string | null;
+  archivoUrl?: string | null;
   archivoTipo?: string | null;
   archivoPeso?: number | null;
 };
@@ -2272,12 +2275,22 @@ export async function getVersionesTrabajadorDocumento(
   }));
 }
 
+function validarArchivoTrabajadorSeguro(archivoNombre?: string | null, archivoUrl?: string | null) {
+  if (!archivoNombre && !archivoUrl) return;
+  if (!archivoNombre || !archivoUrl ||
+    !/^[a-f0-9-]{36}\.(pdf|doc|docx|xlsx|jpg|jpeg|png)$/i.test(archivoNombre) ||
+    archivoUrl !== construirArchivoSeguroUrl(archivoNombre)) {
+    throw new Error("Debes adjuntar un archivo real mediante el selector de NextPrev.");
+  }
+}
+
 export async function createTrabajadorDocumento(
   data: CreateTrabajadorDocumentoInput,
 ): Promise<{ id: string }> {
   const { empresaId, usuarioId, email } = await requirePermission("canManageDocumentacion");
 
   const estado = normalizeEstadoForStorage(data.estado);
+  validarArchivoTrabajadorSeguro(data.archivoNombre, data.archivoUrl);
   const { tipoDocumento } = await getTrabajadorAndTipoInEmpresa(
     empresaId,
     data.trabajadorId,
@@ -2330,7 +2343,7 @@ export async function createTrabajadorDocumento(
         origen: "manual",
         archivoNombre: data.archivoNombre?.trim() || null,
         archivoNombreOriginal: data.archivoNombreOriginal?.trim() || null,
-        archivoUrl: null,
+        archivoUrl: data.archivoUrl?.trim() || null,
         archivoTipo: data.archivoTipo?.trim() || null,
         archivoPeso: data.archivoPeso ?? null,
         tieneVencimiento: tipoDocumento.requiereVencimiento,
@@ -2355,6 +2368,7 @@ export async function createTrabajadorDocumento(
         origen: "manual",
         archivoNombre: data.archivoNombre?.trim() || null,
         archivoNombreOriginal: data.archivoNombreOriginal?.trim() || null,
+        archivoUrl: data.archivoUrl?.trim() || null,
         archivoTipo: data.archivoTipo?.trim() || null,
         archivoPeso: data.archivoPeso ?? null,
       },
@@ -2759,6 +2773,9 @@ export async function updateTrabajadorDocumento(
 
   const documento = await getTrabajadorDocumentoInEmpresa(empresaId, data.documentoId);
   await validateDocumentoReferencesInEmpresa(empresaId, documento);
+  if (data.archivoNombre !== undefined || data.archivoUrl !== undefined) {
+    validarArchivoTrabajadorSeguro(data.archivoNombre, data.archivoUrl);
+  }
 
   const normalizedEstado = data.estado ? normalizeEstadoForStorage(data.estado) : undefined;
   const updated = await prisma.trabajadorDocumento.update({
@@ -2774,13 +2791,31 @@ export async function updateTrabajadorDocumento(
         data.archivoNombreOriginal === undefined
           ? undefined
           : data.archivoNombreOriginal?.trim() || null,
-      // TODO(Fase 15.8): actualizar archivoUrl cuando exista integración de storage.
+      archivoUrl: data.archivoUrl === undefined ? undefined : data.archivoUrl?.trim() || null,
       archivoTipo: data.archivoTipo === undefined ? undefined : data.archivoTipo?.trim() || null,
       archivoPeso: data.archivoPeso,
       subidoPorId: usuarioId,
     },
     select: { id: true, estado: true, version: true },
   });
+
+  if (data.archivoUrl && data.archivoNombre) {
+    await prisma.trabajadorDocumentoHistorial.create({
+      data: {
+        documentoId: updated.id,
+        usuarioId,
+        accion: "DOCUMENTO_CARGADO",
+        detalle: "Archivo privado adjuntado y vinculado al trabajador",
+        version: updated.version,
+        origen: "manual",
+        archivoNombre: data.archivoNombre,
+        archivoNombreOriginal: data.archivoNombreOriginal || null,
+        archivoUrl: data.archivoUrl,
+        archivoTipo: data.archivoTipo || null,
+        archivoPeso: data.archivoPeso ?? null,
+      },
+    });
+  }
 
   if (normalizedEstado && normalizedEstado !== documento.estado) {
     await prisma.trabajadorDocumentoHistorial.create({

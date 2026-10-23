@@ -229,7 +229,7 @@ export const MOCK_DOCUMENTOS: DocumentoTrabajador[] = [
 
 // ─── Utility functions ────────────────────────────────────────────────────────
 
-const REF_DATE = new Date(); // use actual current date for expiration calculations
+// La comparación se hace en fechas calendario, no contra un instante en otra zona horaria.
 
 function matchesCondicion(worker: Worker, cond: ReglaDocumental["condicion"]): boolean {
   const entries = Object.entries(cond).filter(([, v]) => v !== undefined && v !== "");
@@ -271,9 +271,9 @@ export function getWorkerDocs(
 
         if (tipo.requiereVencimiento) {
           if (up.fechaVencimiento) {
-            const diff = Math.floor(
-              (new Date(up.fechaVencimiento).getTime() - REF_DATE.getTime()) / 86400000
-            );
+            const hoy = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Santiago" });
+            const vence = up.fechaVencimiento.slice(0, 10);
+            const diff = Math.round((Date.parse(`${vence}T00:00:00Z`) - Date.parse(`${hoy}T00:00:00Z`)) / 86400000);
             diasParaVencer = diff;
             if (estado === "completo" || estado === "vencido") {
               estado = diff < 0 ? "vencido" : "completo";

@@ -37,6 +37,15 @@ export default function TrabajadoresPage() {
   const [editWorker, setEditWorker]  = useState<Worker | null>(null);
 
   const filtered = useMemo(() => applyFilters(workers, filters), [workers, filters]);
+  // Combina el catálogo real con los valores persistidos para no ocultar asignaciones históricas.
+  const areas = useMemo(() => [...new Set([
+    ...(opciones?.areas.map((a) => a.nombre) ?? []),
+    ...workers.map((w) => w.area).filter((a) => a && a !== "Sin área"),
+  ])].sort((a, b) => a.localeCompare(b, "es")), [opciones?.areas, workers]);
+  const centros = useMemo(() => [...new Set([
+    ...(opciones?.centros.map((c) => c.nombre) ?? []),
+    ...workers.map((w) => w.centroTrabajo).filter((c) => c && c !== "Sin centro"),
+  ])].sort((a, b) => a.localeCompare(b, "es")), [opciones?.centros, workers]);
 
   const handleKpiClick = useCallback((id: KpiId) => {
     const KPI_FILTERS: Record<KpiId, Partial<FilterConfig>> = {
@@ -69,6 +78,7 @@ export default function TrabajadoresPage() {
 
   const handleSaveWorker = async (w: Worker) => {
     await guardarTrabajador(w);
+    void getOpcionesTrabajador().then(setOpciones).catch(() => undefined);
   };
 
   const handleDelete = async (id: string) => {
@@ -134,6 +144,8 @@ export default function TrabajadoresPage() {
             onChange={(f) => { setFilters(f); setActiveKpiId(null); }}
             totalCount={workers.length}
             filteredCount={filtered.length}
+            areas={areas}
+            centros={centros}
           />
           <WorkersTable
             workers={filtered}

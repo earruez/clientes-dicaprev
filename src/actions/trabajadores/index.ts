@@ -1,6 +1,7 @@
 "use server";
 
-import { evaluarDocumentosPendientesPorEvento } from "@/actions/trabajadores/documentos";
+import { evaluarDocumentosPendientesPorEvento, getControlDocumentalTrabajadores } from "@/actions/trabajadores/documentos";
+import { getWorkerDocs } from "@/components/trabajadores-v2/documental/types";
 import { generarDocumentosInduccionDesdePlantillasTx } from "@/actions/inducciones/documentos-generados";
 import { evaluarCapacitacionesPorEvento } from "@/lib/capacitacion/evaluar-capacitaciones";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
@@ -20,7 +21,7 @@ async function fetchTrabajadorById(id: string, empresaId: string) {
       area: { select: { id: true, nombre: true } },
       cargo: { select: { id: true, nombre: true, esCritico: true } },
       posicionDotacion: { select: { id: true } },
-      documentos: { select: { estado: true } },
+      documentos: { where: { esVigente: true }, select: { estado: true } },
     },
   });
 }
@@ -79,7 +80,7 @@ async function assertRutDisponible(input: { empresaId: string; rut: string | nul
 }
 
 function normalizeWorker(row: NonNullable<DbTrabajador>): Worker {
-  const documentosPendientes = row.documentos.filter((d) => d.estado !== "completo").length;
+  const documentosPendientes = row.documentos.filter((d) => !["completo", "firmado", "validado", "no_aplica"].includes(d.estado)).length;
 
   return {
     id: row.id,
@@ -214,7 +215,8 @@ async function crearInduccionAutomaticaSiCorresponde(input: {
 export async function getTrabajadores(): Promise<Worker[]> {
   const { empresaId } = await requirePermission("canReadTrabajadores");
 
-  const rows = await prisma.trabajador.findMany({
+  const [rows, documental] = await Promise.all([
+    prisma.trabajador.findMany({
     where: {
       empresaId,
       estado: {
@@ -226,12 +228,28 @@ export async function getTrabajadores(): Promise<Worker[]> {
       area: { select: { id: true, nombre: true } },
       cargo: { select: { id: true, nombre: true, esCritico: true } },
       posicionDotacion: { select: { id: true } },
-      documentos: { select: { estado: true } },
+      documentos: { where: { esVigente: true }, select: { estado: true } },
     },
     orderBy: { createdAt: "desc" },
-  });
+  }),
+    getControlDocumentalTrabajadores(),
+  ]);
 
-  return rows.map(normalizeWorker);
+  const pendientesPorTrabajador = new Map(documental.workers.map((worker) => {
+    const requisitos = getWorkerDocs(worker, documental.reglas, documental.tipos, documental.documentos);
+    const pendientes = requisitos.filter((doc) =>
+      !["completo", "firmado", "validado", "no_aplica"].includes(doc.estado)).length;
+    return [worker.id, pendientes] as const;
+  }));
+
+  return rows.map((row) => {
+    const worker = normalizeWorker(row);
+    // Considera tanto los requisitos no materializados como los documentos pendientes reales.
+    return {
+      ...worker,
+      documentosPendientes: Math.max(worker.documentosPendientes, pendientesPorTrabajador.get(row.id) ?? 0),
+    };
+  });
 }
 
 export async function createTrabajador(worker: Worker): Promise<Worker> {
@@ -246,8 +264,6 @@ export async function createTrabajador(worker: Worker): Promise<Worker> {
     },
     select: { id: true },
   });
-
-  const row = await fetchTrabajadorById(created.id, empresaId);
 
   await evaluarDocumentosPendientesPorEvento({
     empresaId,
@@ -271,7 +287,9 @@ export async function createTrabajador(worker: Worker): Promise<Worker> {
     usuarioId,
   });
 
-  return normalizeWorker(row);
+  const trabajadores = await getTrabajadores();
+  return trabajadores.find((item) => item.id === created.id)
+    ?? normalizeWorker(await fetchTrabajadorById(created.id, empresaId));
 }
 
 export async function updateTrabajador(worker: Worker): Promise<Worker> {
@@ -283,8 +301,6 @@ export async function updateTrabajador(worker: Worker): Promise<Worker> {
     where: { id: worker.id, empresaId },
     data: payload,
   });
-
-  const row = await fetchTrabajadorById(worker.id, empresaId);
 
   await evaluarDocumentosPendientesPorEvento({
     empresaId,
@@ -302,7 +318,9 @@ export async function updateTrabajador(worker: Worker): Promise<Worker> {
     centroTrabajoId: payload.centroTrabajoId ?? null,
   }).catch(() => {});
 
-  return normalizeWorker(row);
+  const trabajadores = await getTrabajadores();
+  return trabajadores.find((item) => item.id === worker.id)
+    ?? normalizeWorker(await fetchTrabajadorById(worker.id, empresaId));
 }
 
 export async function deleteTrabajador(id: string): Promise<Worker> {
