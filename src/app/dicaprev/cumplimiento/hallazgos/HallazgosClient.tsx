@@ -36,6 +36,7 @@ import {
   ImageIcon,
   Layers3,
   Plus,
+  Pencil,
   Search,
   Sparkles,
   User,
@@ -253,6 +254,7 @@ export default function HallazgosClient({
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState<HallazgoFormData>(FORM_EMPTY());
   const [soloIncumplidas, setSoloIncumplidas] = useState(true);
   const [modalIAOpen, setModalIAOpen] = useState(false);
@@ -376,11 +378,17 @@ export default function HallazgosClient({
 
   function openCreate() {
     setEditId(null);
+    setFormError(null);
     setForm(FORM_EMPTY());
     setModalOpen(true);
   }
 
   function openEdit(h: Hallazgo) {
+    // No apilar diálogos Radix: cerrar el detalle para que la edición
+    // quede visible y accesible tanto en escritorio como en móvil.
+    setSelected(null);
+    setDetalle(null);
+    setFormError(null);
     setEditId(h.id);
     setForm({
       plantillaClave: "manual",
@@ -391,7 +399,7 @@ export default function HallazgosClient({
       responsableId: h.responsableId ?? "none",
       obligacionClave: h.obligacionClave ?? h.obligacionId ?? "none",
       prioridad: h.prioridad,
-      fechaCompromiso: h.fechaCompromiso,
+      fechaCompromiso: h.fechaCompromiso.slice(0, 10),
       medidaCorrectivaSugerida: "",
     });
     setModalOpen(true);
@@ -401,6 +409,7 @@ export default function HallazgosClient({
     if (!form.descripcion.trim() || !form.centroTrabajoId || !form.fechaCompromiso) return;
     try {
       setSaving(true);
+      setFormError(null);
       if (!editId) {
         await crearHallazgo({
           centroTrabajoId: form.centroTrabajoId,
@@ -425,8 +434,14 @@ export default function HallazgosClient({
           fechaCompromiso: form.fechaCompromiso,
         });
       }
-      await reloadHallazgos();
+      const actuales = await reloadHallazgos();
       setModalOpen(false);
+      if (editId) {
+        const actualizado = actuales.find((item) => item.id === editId);
+        if (actualizado) void openDetalle(actualizado);
+      }
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "No se pudo guardar el hallazgo.");
     } finally {
       setSaving(false);
     }
@@ -1134,9 +1149,15 @@ export default function HallazgosClient({
                       <td className="py-3 text-slate-600 whitespace-nowrap">{fmtFecha(h.fechaCreacion)}</td>
                       <td className="py-3 text-slate-600 whitespace-nowrap">{fmtFecha(h.fechaCompromiso)}</td>
                       <td className="py-3 pr-2 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => void openDetalle(h)}>
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          {opciones.puedeEditar && <Button variant="outline" size="sm" onClick={() => openEdit(h)}
+                            className="gap-1 border-slate-200 text-xs" aria-label={"Editar hallazgo: " + h.descripcion.slice(0, 60)}>
+                            <Pencil className="h-3.5 w-3.5" /><span className="hidden sm:inline">Editar</span>
+                          </Button>}
+                          <Button variant="ghost" size="sm" onClick={() => void openDetalle(h)} aria-label="Ver detalle del hallazgo">
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1314,6 +1335,7 @@ export default function HallazgosClient({
             </div>
           </div>
 
+          {formError && <p role="alert" className="mx-6 my-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{formError}</p>}
           <DialogFooter className="shrink-0 border-t border-slate-200 bg-white px-6 py-4 dark:border-slate-800 dark:bg-slate-900">
             <Button variant="outline" onClick={() => setModalOpen(false)}>
               Cancelar
@@ -1527,24 +1549,34 @@ export default function HallazgosClient({
                   ) : null}
 
                   <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
-                    <h3 className="mb-3 text-base font-semibold text-white">Medidas correctivas</h3>
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-base font-semibold text-white">Medidas correctivas</h3>
+                      <span className="rounded-full bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-200">
+                        {detalle?.medidasCorrectivas?.length ?? 0} registradas
+                      </span>
+                    </div>
                     {detalle?.medidasCorrectivas?.length ? (
                       <div className="space-y-3">
-                        {detalle.medidasCorrectivas.map((medida) => (
+                        {detalle.medidasCorrectivas.map((medida, index) => (
                           <div key={medida.id} className="rounded-xl border border-slate-700 bg-slate-950/35 p-3">
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-slate-200">Medida {index + 1}</span>
+                              {medida.estado === "completada" ? <span className="text-xs text-emerald-300">Completada</span> : null}
+                            </div>
                             <p className="text-sm leading-5 text-slate-200">{medida.descripcion}</p>
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               <span className="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-300">
-                                {medida.estado}
+                                {medida.estado.replace(/_/g, " ")}
                               </span>
                               <span className="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-300">
-                                {fmtFecha(medida.fechaCompromiso)}
+                                Compromiso: {fmtFecha(medida.fechaCompromiso)}
                               </span>
                             </div>
                             {opciones.puedeEditar && selected.estado !== "cerrado" ? (
                               <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
                                 <Select
                                   value={medida.estado}
+                                  disabled={saving}
                                   onValueChange={(v) => void onActualizarEstadoMedida(selected.id, medida.id, v as "pendiente" | "en_proceso" | "completada" | "descartada")}
                                 >
                                   <SelectTrigger className="h-10 border-slate-600 bg-slate-900 text-xs text-white">
@@ -1571,30 +1603,33 @@ export default function HallazgosClient({
                           </div>
                         ))}
                       </div>
-                    ) : (
-                      <div className="rounded-xl border border-slate-700 bg-slate-950/35 p-3">
-                        <p className="text-sm text-slate-400">Sin medida correctiva registrada.</p>
-                        {opciones.puedeEditar && selected.estado !== "cerrado" ? (
-                          <div className="mt-3 space-y-2">
-                            <Textarea
-                              rows={3}
-                              value={medidaCorrectivaTexto}
-                              onChange={(e) => setMedidaCorrectivaTexto(e.target.value)}
-                              placeholder="Describe la medida correctiva"
-                              className="resize-none border-slate-600 bg-slate-900 text-white placeholder:text-slate-500"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={() => void onRegistrarMedidaCorrectiva(selected.id)}
-                              disabled={saving || !medidaCorrectivaTexto.trim()}
-                              className="bg-emerald-500 text-white hover:bg-emerald-600"
-                            >
-                              Registrar medida
-                            </Button>
-                          </div>
-                        ) : null}
+                    ) : <p className="rounded-xl border border-dashed border-slate-700 p-3 text-sm text-slate-400">Sin medidas correctivas registradas.</p>}
+                    {opciones.puedeEditar && selected.estado !== "cerrado" ? (
+                      <div className="mt-4 space-y-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
+                        <label htmlFor="nueva-medida-correctiva" className="block text-sm font-semibold text-emerald-200">
+                          Añadir otra medida correctiva
+                        </label>
+                        <Textarea
+                          id="nueva-medida-correctiva"
+                          rows={3}
+                          value={medidaCorrectivaTexto}
+                          onChange={(event) => setMedidaCorrectivaTexto(event.target.value)}
+                          placeholder="Describe una nueva acción correctiva independiente…"
+                          className="resize-none border-slate-600 bg-slate-900 text-white placeholder:text-slate-500"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void onRegistrarMedidaCorrectiva(selected.id)}
+                          disabled={saving || !medidaCorrectivaTexto.trim()}
+                          className="w-full bg-emerald-500 text-white hover:bg-emerald-600 sm:w-auto"
+                        >
+                          <Plus className="mr-2 h-4 w-4" /> {saving ? "Guardando…" : "Agregar medida correctiva"}
+                        </Button>
+                        <p className="text-xs text-slate-400">Puedes registrar todas las medidas necesarias. Cada una conserva su estado independiente y el hallazgo solo se podrá cerrar cuando estén gestionadas.</p>
                       </div>
-                    )}
+                    ) : null}
+                    {cierreError && <p role="alert" className="mt-3 rounded-lg border border-red-400/30 bg-red-950/35 p-3 text-sm text-red-200">{cierreError}</p>}
                   </section>
 
                   <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
@@ -1712,16 +1747,14 @@ export default function HallazgosClient({
 
                   {opciones.puedeEditar ? (
                     <div className="flex items-center justify-between gap-3 px-1 pb-2">
-                      {selected.estado !== "cerrado" ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => openEdit(selected)}
-                          className="text-slate-300 hover:bg-slate-800 hover:text-white"
-                        >
-                          Editar hallazgo
-                        </Button>
-                      ) : <span />}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openEdit(selected)}
+                        className="gap-2 border-slate-500 bg-slate-900 text-white hover:bg-slate-800 hover:text-white"
+                      >
+                        <Pencil className="h-4 w-4" /> Editar hallazgo
+                      </Button>
                       <Button
                         size="sm"
                         variant="ghost"
