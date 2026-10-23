@@ -8,7 +8,7 @@ type Estado = "pendientes" | "vencidos";
 type PageProps = { searchParams?: Promise<{ estado?: string | string[] }> };
 
 export default async function EstadoDocumentalDashboardPage({ searchParams }: PageProps) {
-  const params = searchParams ? await searchParams : {};
+  const params: { estado?: string | string[] } = searchParams ? await searchParams : {};
   const valor = Array.isArray(params.estado) ? params.estado[0] : params.estado;
   const estado: Estado = valor === "vencidos" ? "vencidos" : "pendientes";
   const resumen = await getDashboardEjecutivo();
