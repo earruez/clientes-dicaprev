@@ -231,7 +231,7 @@ export default function CompanyPage() {
         <HeaderSection
           title="Empresa"
           subtitle="Gestión de información general y cumplimiento SST"
-          onEdit={() => openEditModal("Configuración SST")}
+          onEdit={() => router.push("/dicaprev/empresa/informacion-general")}
         />
 
         {datosError && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">No fue posible cargar los datos reales de la empresa. Actualiza la pantalla.</p>}
@@ -243,11 +243,7 @@ export default function CompanyPage() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
                   {stat.icon}
                 </div>
-                {stat.statusLabel ? (
-                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                    {stat.statusLabel}
-                  </span>
-                ) : null}
+
               </div>
               <p className="mt-5 text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
                 {stat.title}
@@ -381,35 +377,24 @@ export default function CompanyPage() {
                   </div>
                 </InfoCard>
 
-                <SSTConfigCard
-                  comiteParitario={companyData.comiteParitario}
-                  expertoPrevencion={companyData.expertoPrevencion}
-                  departamentoPrevencion={companyData.departamentoPrevencion}
-                  organismoAdministrador={companyData.organismoAdministrador}
-                  clasificacionRiesgo="Bajo"
-                  cantidadTrabajadores={companyData.cantidadTrabajadores}
-                  onEdit={() => openEditModal("Configuración SST")}
-                  className="xl:col-span-3"
-                />
-
-                <EstructurasObligatoriasCard
-                  cantidadTrabajadores={companyData.cantidadTrabajadores}
-                  estadoActual={{
-                    reglamentoInterno:       companyData.departamentoPrevencion || companyData.comiteParitario,
-                    comiteParitario:         companyData.comiteParitario,
-                    departamentoPrevencion:  companyData.departamentoPrevencion,
-                    programaAnual:           companyData.expertoPrevencion,
-                    expertoPrevencion:       companyData.expertoPrevencion,
-                    investigacionAccidentes: true,
-                    planCapacitacion:        companyData.expertoPrevencion,
-                  }}
-                  className="xl:col-span-3"
-                />
+                <div className="xl:col-span-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
+                  <h3 className="text-base font-semibold text-slate-900">Gestión preventiva y documentación</h3>
+                  <p className="mt-2 text-sm text-slate-600">El estado de las obligaciones SST requiere evidencias, no supuestos según la dotación. Consulta los documentos y la configuración real de la empresa.</p>
+                  <div className="mt-4 flex flex-wrap gap-3 text-sm font-semibold">
+                    <Link href="/dicaprev/empresa/indicadores-sst" className="rounded-lg border bg-white px-4 py-2 text-blue-800 hover:bg-blue-50">Indicadores SST</Link>
+                    <Link href="/dicaprev/documentacion" className="rounded-lg border bg-white px-4 py-2 text-blue-800 hover:bg-blue-50">Documentación de empresa</Link>
+                    <Link href="/dicaprev/ds44" className="rounded-lg border bg-white px-4 py-2 text-blue-800 hover:bg-blue-50">DS 44</Link>
+                  </div>
+                </div>
               </div>
             )}
 
             {activeTab === "sst" && (
-              <SSTIndicatorsTab onEdit={() => openEditModal("Indicadores SST")} values={sstValues} />
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-6">
+                <h3 className="text-lg font-semibold text-slate-900">Indicadores SST verificables</h3>
+                <p className="mt-2 text-sm text-slate-600">Los índices requieren registros de accidentes, días perdidos, dotación y horas trabajadas. Se retiraron los números de demostración.</p>
+                <Link href="/dicaprev/empresa/indicadores-sst" className="mt-4 inline-block rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-white">Ver indicadores SST</Link>
+              </div>
             )}
 
             {activeTab === "plantilla" && (
@@ -569,7 +554,7 @@ export default function CompanyPage() {
                       { label: "Áreas", href: "/dicaprev/empresa/areas", icon: <Building2 className="h-4 w-4" />, description: "Unidades organizacionales" },
                       { label: "Cargos", href: "/dicaprev/empresa/cargos", icon: <Users className="h-4 w-4" />, description: "Roles y perfiles" },
                       { label: "Trabajadores", href: "/dicaprev/trabajadores", icon: <Users className="h-4 w-4" />, description: "Personas y asignación" },
-                      { label: "Centros de trabajo", href: "/dicaprev/empresa/centrotrabajo", icon: <MapPin className="h-4 w-4" />, description: "Vista ejecutiva por centro", featured: true },
+                      { label: "Centros de trabajo", href: "/dicaprev/empresa/centros", icon: <MapPin className="h-4 w-4" />, description: "Vista ejecutiva por centro", featured: true },
                       { label: "Organigrama", href: "/dicaprev/empresa/organigrama", icon: <UserCheck className="h-4 w-4" />, description: "Estructura jerárquica" },
                     ].map((item) => (
                       <Link
@@ -598,7 +583,7 @@ export default function CompanyPage() {
                 <InfoCard
                   title="Centros de Trabajo"
                   icon={<Building2 className="h-5 w-5 text-emerald-600" />}
-                  onEdit={() => openEditModal("Centros de Trabajo")}
+                  onEdit={() => router.push("/dicaprev/empresa/centros")}
                 >
                   <div className="grid gap-6">
                     <div>
@@ -611,7 +596,7 @@ export default function CompanyPage() {
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Última actualización</p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">Q1 2026</p>
+                      <p className="mt-2 text-sm text-slate-500">Consultar registro en Centros</p>
                     </div>
                   </div>
                 </InfoCard>
@@ -619,16 +604,16 @@ export default function CompanyPage() {
                 <InfoCard
                   title="Equipo SST"
                   icon={<Users className="h-5 w-5 text-emerald-600" />}
-                  onEdit={() => openEditModal("Equipo SST")}
+                  onEdit={() => router.push("/dicaprev/trabajadores")}
                 >
                   <div className="grid gap-6">
                     <div>
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Colaboradores SST</p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">6 personas</p>
+                      <p className="mt-2 text-sm text-slate-500">Consultar personal de SST</p>
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Estructura</p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">Proceso definido</p>
+                      <p className="mt-2 text-sm text-slate-500">No verificado</p>
                     </div>
                   </div>
                 </InfoCard>
@@ -636,16 +621,16 @@ export default function CompanyPage() {
                 <InfoCard
                   title="Organigrama"
                   icon={<UserCheck className="h-5 w-5 text-emerald-600" />}
-                  onEdit={() => openEditModal("Organigrama")}
+                  onEdit={() => router.push("/dicaprev/empresa/organigrama")}
                 >
                   <div className="grid gap-6">
                     <div>
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Estado</p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">Actualizado</p>
+                      <p className="mt-2 text-sm text-slate-500">Consultar organigrama actual</p>
                     </div>
                     <div>
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Última revisión</p>
-                      <p className="mt-2 text-lg font-semibold text-slate-900">Marzo 2026</p>
+                      <p className="mt-2 text-sm text-slate-500">Fecha no registrada</p>
                     </div>
                   </div>
                 </InfoCard>
