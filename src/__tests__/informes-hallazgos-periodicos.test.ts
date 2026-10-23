@@ -59,6 +59,16 @@ describe("Informes NextPrev de hallazgos", () => {
     expect(doc.output("arraybuffer").byteLength).toBeGreaterThan(1_000);
   });
 
+  it("incluye ambos logos sin desbordar el encabezado en informes multipágina", () => {
+    const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFUlEQVR4nGNkiNrynwEJMDGgAcICAIX8AhXDjxzgAAAAAElFTkSuQmCC";
+    const items = Array.from({ length: 35 }, (_, i) => fila("abierto", i));
+    const basePdf = construirInformeHallazgosPdf({ empresaNombre: "Empresa demo", tipo: "seleccion", referencia: "2026-10-23", hallazgos: items });
+    const conLogos = construirInformeHallazgosPdf({ empresaNombre: "Empresa demo", tipo: "seleccion", referencia: "2026-10-23", hallazgos: items, nextprevLogoDataUrl: png, empresaLogoDataUrl: png });
+    expect(conLogos.getNumberOfPages()).toBeGreaterThan(1);
+    expect(conLogos.getNumberOfPages()).toBe(basePdf.getNumberOfPages());
+    expect(conLogos.output("arraybuffer").byteLength).toBeGreaterThan(basePdf.output("arraybuffer").byteLength);
+  });
+
   it("genera un PDF vectorial paginado y compacto con múltiples estados", () => {
     const rows: Hallazgo[] = Array.from({ length: 80 }, (_, i) =>
       fila((["abierto", "en_proceso", "resuelto", "cerrado"] as const)[i % 4], i),

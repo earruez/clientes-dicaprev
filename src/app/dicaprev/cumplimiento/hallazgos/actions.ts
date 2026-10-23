@@ -109,6 +109,7 @@ const PLANTILLAS_HALLAZGO: PlantillaHallazgo[] = [
 export type OpcionesHallazgo = {
   empresaId: string;
   empresaNombre: string;
+  empresaLogoUrl: string | null;
   puedeEditar: boolean;
   puedeMoverEmpresa: boolean;
   empresasDestino: Array<{ id: string; nombre: string }>;
@@ -552,7 +553,7 @@ export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
   const context = await requirePermission("canReadCumplimiento");
 
   const [empresa, centros, areas, trabajadores, obligacionesPayload, empresasDestino] = await Promise.all([
-    prisma.empresa.findUnique({ where: { id: context.empresaId }, select: { nombre: true, razonSocial: true } }),
+    prisma.empresa.findUnique({ where: { id: context.empresaId }, select: { nombre: true, razonSocial: true, logoUrl: true } }),
     prisma.centroTrabajo.findMany({
       where: { empresaId: context.empresaId, estado: "activo" },
       select: { id: true, nombre: true },
@@ -582,6 +583,7 @@ export async function getOpcionesHallazgo(): Promise<OpcionesHallazgo> {
   return {
     empresaId: context.empresaId,
     empresaNombre: empresa?.razonSocial || empresa?.nombre || "Empresa activa",
+    empresaLogoUrl: empresa?.logoUrl ?? null,
     puedeEditar: canManageCumplimiento(context.rol),
     puedeMoverEmpresa: empresasDestino.length > 0,
     empresasDestino,

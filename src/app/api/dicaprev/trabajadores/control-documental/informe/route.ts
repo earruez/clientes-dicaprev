@@ -13,14 +13,29 @@ export const runtime = "nodejs";
 type Filtros = { centro?: string; area?: string; cargo?: string; trabajadorId?: string; estado?: string };
 const value = (input: unknown) => typeof input === "string" ? input.trim().slice(0, 160) : "";
 
-async function logoDataUrl(logoUrl: string | null) {
+async function logoDataUrl(logoUrl: string | null, empresaId: string) {
   if (!logoUrl) return null;
   if (logoUrl.startsWith("data:image/")) return logoUrl;
-  if (!logoUrl.startsWith("/") || logoUrl.includes("..")) return null;
+  const logoPrivado = /^\/api\/dicaprev\/empresa\/logo\/([a-f0-9-]{36}\.(png|jpg|webp))$/.exec(logoUrl);
+  if (logoPrivado) {
+    const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+    const storeId = token?.split("_")[3];
+    if (!token || !storeId) return null;
+    const url = `https://${storeId}.private.blob.vercel-storage.com/empresas/${empresaId}/logos/${logoPrivado[1]}`;
+    try {
+      const result = await fetch(url, { headers: { authorization: `Bearer ${token}` }, cache: "no-store" });
+      if (!result.ok) return null;
+      const bytes = Buffer.from(await result.arrayBuffer());
+      const mime = logoPrivado[2] === "jpg" ? "image/jpeg" : logoPrivado[2] === "webp" ? "image/webp" : "image/png";
+      return `data:${mime};base64,${bytes.toString("base64")}`;
+    } catch { return null; }
+  }
+  // Compatibilidad con logos legados, si el archivo local todavía existe.
+  if (!/^\/uploads\/empresa-logos\/[a-zA-Z0-9._-]+$/.test(logoUrl)) return null;
   try {
     const file = await readFile(path.join(process.cwd(), "public", logoUrl));
     const ext = path.extname(logoUrl).toLowerCase();
-    const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".svg" ? "image/svg+xml" : "image/png";
+    const mime = ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : ext === ".webp" ? "image/webp" : "image/png";
     return `data:${mime};base64,${file.toString("base64")}`;
   } catch { return null; }
 }
@@ -53,7 +68,7 @@ export async function POST(request: Request) {
     const filtrosTexto = Object.entries(filtros).filter(([,v]) => v).map(([k,v]) => `${k}: ${v}`).join(", ") || "Sin filtros";
     const baseId = `${context.empresaId}|${generadoEn.toISOString()}|${filtrosTexto}|${randomUUID()}`;
     const id = `ICDT-${createHash("sha256").update(baseId).digest("hex").slice(0, 16).toUpperCase()}`;
-    const pdf = generarInformeControlTrabajadoresPdf({ id, version: "1.0", generadoEn: generadoEn.toISOString(), generadoPor: context.email, empresa: { nombre: empresa.razonSocial || empresa.nombre, rut: empresa.rut || "Sin RUT", logoDataUrl: await logoDataUrl(empresa.logoUrl) }, alcance, filtros: filtrosTexto, filas: informe.filas, resumen: informe.resumen });
+    const pdf = generarInformeControlTrabajadoresPdf({ id, version: "1.0", generadoEn: generadoEn.toISOString(), generadoPor: context.email, empresa: { nombre: empresa.razonSocial || empresa.nombre, rut: empresa.rut || "Sin RUT", logoDataUrl: await logoDataUrl(empresa.logoUrl, context.empresaId) }, alcance, filtros: filtrosTexto, filas: informe.filas, resumen: informe.resumen });
     const slug = (empresa.razonSocial || empresa.nombre).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "empresa";
     const filename = `informe-control-documental-${slug}-${generadoEn.toISOString().slice(0,10)}.pdf`;
     return new Response(Buffer.from(pdf), { status: 200, headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="${filename}"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" } });

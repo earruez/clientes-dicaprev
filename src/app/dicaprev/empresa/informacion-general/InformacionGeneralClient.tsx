@@ -290,7 +290,7 @@ export default function InformacionGeneralClient({
 
       setEmpresa((prev) => ({ ...prev, logoUrl }));
       setForm((prev) => ({ ...prev, logoUrl }));
-      setFeedback({ type: "success", message: "Logo corporativo actualizado correctamente." });
+      setFeedback({ type: "success", message: "Logo guardado correctamente. Se utilizará en los próximos informes PDF." });
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo subir el logo corporativo.";
       setFeedback({ type: "error", message });
@@ -378,6 +378,7 @@ export default function InformacionGeneralClient({
               {empresa.logoUrl ? (
                 <Image
                   src={empresa.logoUrl}
+                  unoptimized
                   alt="Logo corporativo"
                   width={128}
                   height={64}
