@@ -54,7 +54,14 @@ async function validarArchivoEmpresaAutorizada(empresaId: string, archivoNombre:
         select: { id: true },
       }),
       prisma.evidenciaCumplimiento.findFirst({
-        where: { empresaId, archivoNombre },
+        where: {
+          empresaId,
+          OR: [
+            { archivoNombre },
+            { archivoUrl: { endsWith: "/" + archivoNombre } },
+            { archivoUrl: { endsWith: "/" + encodeURIComponent(archivoNombre) } },
+          ],
+        },
         select: { id: true },
       }),
       prisma.permisoInstalacion.findFirst({
