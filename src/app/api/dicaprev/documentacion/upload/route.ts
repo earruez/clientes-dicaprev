@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getDocumentoExtension, validarArchivoDocumento } from "@/lib/documentacion/archivo-documento";
 import { construirArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 import { requireAuth } from "@/server/auth/permissions";
+import { PERMISSIONS } from "@/lib/permissions-matrix";
 
 function getBlobConfig() {
   const token = process.env.BLOB_READ_WRITE_TOKEN?.trim();
@@ -24,6 +25,10 @@ export async function POST(request: Request) {
     context = await requireAuth();
   } catch {
     return NextResponse.json({ error: "No autenticado" }, { status: 401 });
+  }
+
+  if (context.rol !== "SUPERADMIN" && !PERMISSIONS.canManageDocumentacion.some((role) => role === context.rol)) {
+    return NextResponse.json({ error: "No autorizado para cargar documentos." }, { status: 403 });
   }
 
   const formData = await request.formData();

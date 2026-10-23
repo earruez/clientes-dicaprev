@@ -190,24 +190,27 @@ export function getInitials(nombre: string, apellido: string): string {
   return `${nombre.charAt(0)}${apellido.charAt(0)}`.toUpperCase();
 }
 
+/** Formatea fechas calendario sin trasladarlas a la zona horaria del navegador. */
 export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("es-CL", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(dateStr);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  const date = new Date(dateStr);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("es-CL", {
+    day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC",
   });
 }
 
 export function formatMonthYear(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("es-CL", {
-    month: "short",
-    year: "numeric",
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(dateStr);
+  const date = match ? new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))) : new Date(dateStr);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("es-CL", {
+    month: "short", year: "numeric", timeZone: "UTC",
   });
 }
 
 export function antiguedad(fechaIngreso: string): string {
   const start = new Date(fechaIngreso);
-  const now = new Date("2026-04-07"); // stable reference date
+  const now = new Date();
   const diffMs = now.getTime() - start.getTime();
   const dias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   const anos = Math.floor(dias / 365);

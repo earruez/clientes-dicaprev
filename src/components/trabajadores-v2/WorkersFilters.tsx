@@ -1,13 +1,15 @@
 "use client";
 
 import { Search, X, SlidersHorizontal, AlertTriangle, Clock } from "lucide-react";
-import { type FilterConfig, AREAS, ESTADOS, CONTRATOS, CENTROS } from "./types";
+import { type FilterConfig, ESTADOS, CONTRATOS } from "./types";
 
 interface WorkersFiltersProps {
   filters: FilterConfig;
   onChange: (f: FilterConfig) => void;
   totalCount: number;
   filteredCount: number;
+  areas: string[];
+  centros: string[];
 }
 
 const selectCls =
@@ -18,6 +20,8 @@ export function WorkersFilters({
   onChange,
   totalCount,
   filteredCount,
+  areas,
+  centros,
 }: WorkersFiltersProps) {
   const set = <K extends keyof FilterConfig>(key: K, val: FilterConfig[K]) =>
     onChange({ ...filters, [key]: val });
@@ -69,7 +73,7 @@ export function WorkersFilters({
 
           <select value={filters.area}          onChange={(e) => set("area", e.target.value)}          className={selectCls}>
             <option value="">Todas las áreas</option>
-            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+            {areas.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
 
           <select value={filters.estado}        onChange={(e) => set("estado", e.target.value)}        className={selectCls}>
@@ -84,7 +88,7 @@ export function WorkersFilters({
 
           <select value={filters.centroTrabajo} onChange={(e) => set("centroTrabajo", e.target.value)} className={selectCls}>
             <option value="">Todos los centros</option>
-            {CENTROS.map((c) => <option key={c} value={c}>{c}</option>)}
+            {centros.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
 
           {hasActive && (
