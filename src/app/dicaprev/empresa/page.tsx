@@ -6,17 +6,7 @@ import { useRouter } from "next/navigation";
 import { Users, Building2, ShieldCheck, TriangleAlert, MapPin, UserCheck, Activity, Sparkles, CheckCircle2, ChevronRight } from "lucide-react";
 import { calcularTamañoEmpresa, type TamanoEmpresa } from "@/lib/cumplimiento/cumplimiento-engine";
 import { cn } from "@/lib/utils";
-import {
-  HeaderSection,
-  InfoCard,
-  EditCompanyModal,
-  SSTIndicatorsTab,
-  SSTConfigCard,
-  EditSSTIndicatorsModal,
-  EstructurasObligatoriasCard,
-} from "@/components/company";
-import type { SSTIndicatorValues } from "@/components/company";
-import { DEFAULT_SST_VALUES } from "@/components/company/EditSSTIndicatorsModal";
+import { HeaderSection, InfoCard } from "@/components/company";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +14,6 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  PrimaryAction,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,11 +22,6 @@ import {
   type TipoEmpresa,
   type PlantillaModo,
 } from "@/lib/empresa/plantillas";
-import {
-  empresaStore,
-  applyEmpresaTemplate,
-  clearEmpresaTemplate,
-} from "@/lib/empresa/empresa-store";
 import { aplicarPlantillaInicialEmpresa } from "@/app/dicaprev/empresa/plantilla/actions";
 import { getEmpresaActual, getEmpresaKpisActual } from "@/app/dicaprev/empresa/informacion-general/actions";
 import { getDashboardEjecutivo, type DashboardEjecutivoResponse } from "@/app/dicaprev/dashboard/actions";
@@ -95,9 +79,6 @@ const TAMANO_CFG: Record<TamanoEmpresa, { label: string; cls: string }> = {
   grande:  { label: "Grande",   cls: "bg-violet-100 text-violet-700" },
 };
 
-const GENERAL_EDIT_SECTIONS = [
-  "Configuración SST",
-] as const;
 
 export default function CompanyPage() {
   const router = useRouter();
@@ -107,31 +88,11 @@ export default function CompanyPage() {
   const [dashboard, setDashboard] = useState<DashboardEjecutivoResponse | null>(null);
   const [datosCargados, setDatosCargados] = useState(false);
   const [datosError, setDatosError] = useState(false);
-  const [sstValues, setSstValues] = useState<SSTIndicatorValues[]>(DEFAULT_SST_VALUES);
-  const [openEdit, setOpenEdit] = useState(false);
-  const [editingSection, setEditingSection] = useState<string | null>(null);
-  const isGeneralEditSection = editingSection ? GENERAL_EDIT_SECTIONS.includes(editingSection as typeof GENERAL_EDIT_SECTIONS[number]) : false;
 
   // ── Plantilla Inicial ──────────────────────────────────────────────── //
   const [selectedTipo, setSelectedTipo] = useState<TipoEmpresa | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [plantillaAplicada, setPlantillaAplicada] = useState<TipoEmpresa | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadTemplateState() {
-      await empresaStore.init();
-      if (!mounted) return;
-      setPlantillaAplicada(empresaStore.getActivePlantillaTipo());
-    }
-
-    void loadTemplateState();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -167,55 +128,31 @@ export default function CompanyPage() {
     };
   }, []);
 
+  const [aplicandoPlantilla, setAplicandoPlantilla] = useState(false);
+  const [plantillaError, setPlantillaError] = useState<string | null>(null);
   const handleAplicarPlantilla = async (modo: PlantillaModo) => {
-    if (!selectedTipo) return;
-
-    applyEmpresaTemplate(selectedTipo, modo);
-    setPlantillaAplicada(selectedTipo);
-    setConfirmOpen(false);
-    setSelectedTipo(null);
-
+    if (!selectedTipo || aplicandoPlantilla) return;
+    setPlantillaError(null);
+    setAplicandoPlantilla(true);
     try {
+      // Solo marcar como aplicada después del guardado real en Prisma.
       await aplicarPlantillaInicialEmpresa(selectedTipo, modo);
-      window.location.reload();
+      setPlantillaAplicada(selectedTipo);
+      setConfirmOpen(false);
+      setSelectedTipo(null);
+      router.refresh();
     } catch (error) {
-      console.error("No se pudo aplicar la plantilla inicial en Prisma:", error);
-      window.alert("No se pudo aplicar la plantilla inicial en la estructura real de la empresa.");
+      setPlantillaError(error instanceof Error ? error.message : "No se pudo cargar la plantilla.");
+    } finally {
+      setAplicandoPlantilla(false);
     }
   };
-
   const handleCambiarPlantilla = () => {
-    clearEmpresaTemplate();
     setPlantillaAplicada(null);
     setSelectedTipo(null);
     setConfirmOpen(false);
   };
 
-  const openEditModal = (section: string) => {
-    setEditingSection(section);
-    setOpenEdit(true);
-  };
-
-  const closeEditModal = () => {
-    setOpenEdit(false);
-    setEditingSection(null);
-  };
-
-  const handleSaveCompany = (data: CompanyData) => {
-    setCompanyData(data);
-    console.log("Guardando datos de empresa:", data);
-  };
-
-  const handleSaveSSTValues = (values: SSTIndicatorValues[]) => {
-    setSstValues(values);
-  };
-
-  const handleSave = () => {
-    setOpenEdit(false);
-    setEditingSection(null);
-  };
-
-  const cumpl = dashboard?.kpis.cumplimientoGeneral;
   const companyStats = [
     { id: "trabajadores", title: "Trabajadores activos", value: datosCargados && !datosError ? kpis.trabajadores : "Sin datos", icon: <Users className="h-6 w-6 text-emerald-600" />, description: "Dotación registrada", href: "/dicaprev/trabajadores" },
     { id: "centros", title: "Centros de trabajo", value: datosCargados && !datosError ? kpis.centros : "Sin datos", icon: <Building2 className="h-6 w-6 text-slate-700" />, description: "Centros registrados", href: "/dicaprev/empresa/centros" },
@@ -713,10 +650,10 @@ export default function CompanyPage() {
 
               {/* Mode explanation */}
               <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-xs text-slate-500 leading-relaxed">
-                <strong className="text-slate-700">Reemplazar:</strong> elimina la estructura actual y carga solo la plantilla.{" "}
-                <strong className="text-slate-700">Agregar:</strong> incorpora las áreas y cargos nuevos sin tocar los que ya existen.
+                <strong className="text-slate-700">Agregar:</strong> incorpora las áreas y cargos que faltan sin reemplazar los existentes. La sustitución masiva está deshabilitada para proteger las relaciones con trabajadores y documentos.
               </div>
 
+              {plantillaError && <p role="alert" className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800">{plantillaError}</p>}
               <DialogFooter className="flex-wrap gap-2">
                 <Button
                   type="button"
@@ -728,60 +665,19 @@ export default function CompanyPage() {
                 </Button>
                 <button
                   type="button"
-                  onClick={() => handleAplicarPlantilla("agregar")}
+                  onClick={() => void handleAplicarPlantilla("agregar")}
+                  disabled={aplicandoPlantilla}
                   className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
-                  Agregar a la actual
+                  {aplicandoPlantilla ? "Guardando..." : "Agregar a la actual"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => handleAplicarPlantilla("reemplazar")}
-                  className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-                >
-                  Reemplazar estructura
-                </button>
+
               </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
 
-        <EditCompanyModal
-          open={openEdit && isGeneralEditSection}
-          editingSection={editingSection ?? "Empresa"}
-          onClose={closeEditModal}
-          onSave={handleSaveCompany}
-          initialData={companyData}
-        />
 
-        <EditSSTIndicatorsModal
-          open={openEdit && editingSection === "Indicadores SST"}
-          onClose={closeEditModal}
-          onSave={handleSaveSSTValues}
-          initialValues={sstValues}
-        />
-
-        <Dialog open={openEdit && !isGeneralEditSection && editingSection !== "Indicadores SST"} onOpenChange={setOpenEdit}>
-          <DialogContent size="md" withClose>
-            <DialogHeader>
-              <DialogTitle>{editingSection ? `Editar ${editingSection}` : "Editar sección"}</DialogTitle>
-              <DialogDescription>
-                Funcionalidad adicional próximamente.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter className="mt-4 flex items-center justify-end gap-3">
-              <Button
-                type="button"
-                onClick={closeEditModal}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Cancelar
-              </Button>
-              <PrimaryAction type="button" onClick={handleSave}>
-                Guardar cambios
-              </PrimaryAction>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     </main>
   );
