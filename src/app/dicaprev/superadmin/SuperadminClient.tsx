@@ -470,7 +470,7 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
       {/* Confirmation Dialog */}
       {confirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-lg max-w-sm">
+          <div className="max-h-[calc(100dvh-2rem)] w-full overflow-y-auto overscroll-contain rounded-lg border border-slate-200 bg-white p-4 sm:p-6 shadow-lg max-w-sm">
             <h3 className="text-lg font-semibold text-slate-900">{confirm.title}</h3>
             <p className="mt-2 text-sm text-slate-600">{confirm.description}</p>
             <div className="mt-6 flex gap-3">
@@ -500,7 +500,7 @@ export default function SuperadminClient({ data, appUrl }: { data: SuperadminDat
 
       {deleteModalOpen && deletePreview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-rose-200 bg-white p-6 shadow-lg">
+          <div className="max-h-[calc(100dvh-2rem)] w-full max-w-2xl overflow-y-auto overscroll-contain rounded-lg border border-rose-200 bg-white p-4 sm:p-6 shadow-lg">
             <h3 className="text-lg font-semibold text-rose-900">Eliminar definitivamente empresa</h3>
             <p className="mt-1 text-sm text-slate-600">
               Empresa objetivo: <span className="font-semibold">{deletePreview.nombre}</span>
