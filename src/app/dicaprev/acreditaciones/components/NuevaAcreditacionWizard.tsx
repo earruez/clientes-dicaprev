@@ -11,23 +11,26 @@ interface Props {
   onCrear: (data: {
     mandanteId: string;
     plantillaId: string;
+    contratistaId?: string;
     nombreProyecto?: string;
     obraFaena?: string;
     trabajadorIds: string[];
     vehiculoIds: string[];
   }) => void;
   mandantes: Array<{ id: string; nombre: string; rut: string; tipo: string }>;
+  contratistas: Array<{ id: string; nombre: string; rut: string }>;
   plantillas: Array<{ id: string; nombre: string; descripcion: string; mandanteId: string | null; requisitosCount: number }>;
   trabajadores: Array<{ id: string; nombre: string; rut: string; cargo: string }>;
   vehiculos: Array<{ id: string; etiqueta: string; patente: string }>;
 }
 
-export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, plantillas, trabajadores, vehiculos }: Props) {
+export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, contratistas, plantillas, trabajadores, vehiculos }: Props) {
   const [paso, setPaso] = useState(0);
   const [search, setSearch] = useState("");
   const [data, setData] = useState({
     mandanteId: "",
     plantillaId: "",
+    contratistaId: "",
     nombreProyecto: "",
     obraFaena: "",
     trabajadorIds: [] as string[],
@@ -190,6 +193,14 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
               <p className="mb-3 text-sm font-semibold text-slate-700">Confirmación</p>
               <MiniRow label="Mandante" value={mandantes.find((m) => m.id === data.mandanteId)?.nombre ?? "-"} icon={<Building2 className="h-3.5 w-3.5" />} />
               <MiniRow label="Plantilla" value={plantillas.find((p) => p.id === data.plantillaId)?.nombre ?? "-"} icon={<CheckCircle2 className="h-3.5 w-3.5" />} />
+              <label className="mt-3 block text-xs font-medium text-slate-600">
+                Contratista asociado (opcional)
+                <select className="mt-1 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm"
+                  value={data.contratistaId} onChange={(e) => setData((prev) => ({ ...prev, contratistaId: e.target.value }))}>
+                  <option value="">Acreditación de la empresa, sin contratista asociado</option>
+                  {contratistas.map((c) => <option key={c.id} value={c.id}>{c.nombre}{c.rut ? " · " + c.rut : ""}</option>)}
+                </select>
+              </label>
               <MiniRow label="Trabajadores" value={String(data.trabajadorIds.length)} icon={<Users className="h-3.5 w-3.5" />} />
               <MiniRow label="Vehículos" value={String(data.vehiculoIds.length)} icon={<Car className="h-3.5 w-3.5" />} />
               <MiniRow label="Requisitos" value={String(reqTotal)} icon={<CheckCircle2 className="h-3.5 w-3.5" />} />
@@ -236,6 +247,7 @@ export default function NuevaAcreditacionWizard({ onClose, onCrear, mandantes, p
                 onCrear({
                   mandanteId: data.mandanteId,
                   plantillaId: data.plantillaId,
+                  contratistaId: data.contratistaId || undefined,
                   nombreProyecto: data.nombreProyecto || undefined,
                   obraFaena: data.obraFaena || undefined,
                   trabajadorIds: data.trabajadorIds,

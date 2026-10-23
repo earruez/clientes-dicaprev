@@ -1116,6 +1116,7 @@ export async function activarDesactivarPlantillaAcreditacion(id: string, activa:
 export async function crearAcreditacion(data: {
   mandanteId: string;
   plantillaId: string;
+  contratistaId?: string;
   nombreProyecto?: string;
   obraFaena?: string;
   trabajadorIds?: string[];
@@ -1140,6 +1141,14 @@ export async function crearAcreditacion(data: {
     include: { requisitos: true },
   });
   if (!plantilla) throw new Error("Plantilla not found");
+
+  if (data.contratistaId) {
+    const contratista = await prisma.contratista.findFirst({
+      where: { id: data.contratistaId, empresaId, activo: true },
+      select: { id: true },
+    });
+    if (!contratista) throw new Error("Contratista no encontrado para esta empresa");
+  }
 
   const trabajadorIds = Array.from(new Set(data.trabajadorIds ?? []));
   const vehiculoIds = Array.from(new Set(data.vehiculoIds ?? []));
@@ -1511,6 +1520,7 @@ export async function crearAcreditacion(data: {
       empresaId,
       mandanteId: data.mandanteId,
       plantillaId: data.plantillaId,
+      contratistaId: data.contratistaId || null,
       nombreProyecto: data.nombreProyecto,
       obraFaena: data.obraFaena,
       estado: "en_preparacion",
