@@ -1374,6 +1374,69 @@ export default function OrganigramaPage() {
     setSelectedNode((prev) => (prev?.id === node.id ? null : node));
   }, []);
 
+  async function exportarOrganigramaPdf() {
+    try {
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4", compress: true });
+      const ancho = pdf.internal.pageSize.getWidth();
+      const alto = pdf.internal.pageSize.getHeight();
+      const margen = 36;
+      const limite = alto - 52;
+      let y = 88;
+      const encabezado = () => {
+        pdf.setFillColor(5, 42, 87);
+        pdf.rect(0, 0, ancho, 65, "F");
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(18);
+        pdf.text("NextPrev · Organigrama", margen, 30);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+        pdf.text(empresaNombre, margen, 49, { maxWidth: ancho - 2 * margen });
+        pdf.setTextColor(24, 39, 59);
+        y = 88;
+      };
+      encabezado();
+      const vistos = new Set<string>();
+      const recorrer = (nodo: OrgNode, nivel: number) => {
+        if (vistos.has(nodo.id)) return;
+        vistos.add(nodo.id);
+        const margenNivel = Math.min(nivel, 10) * 15;
+        const etiqueta = [nodo.label, nodo.subtitle].filter(Boolean).join(" — ");
+        const lineas = pdf.splitTextToSize(etiqueta, ancho - 2 * margen - margenNivel - 8) as string[];
+        if (y + lineas.length * 13 + 8 > limite) {
+          pdf.addPage();
+          encabezado();
+        }
+        pdf.setFont("helvetica", nivel === 0 ? "bold" : "normal");
+        pdf.setFontSize(nivel === 0 ? 12 : 9);
+        for (const linea of lineas) {
+          if (y + 13 > limite) { pdf.addPage(); encabezado(); }
+          pdf.text(linea, margen + margenNivel, y);
+          y += 13;
+        }
+        y += 5;
+        for (const hijo of nodo.children) recorrer(hijo, nivel + 1);
+      };
+      recorrer(tree, 0);
+      const total = pdf.getNumberOfPages();
+      for (let i = 1; i <= total; i += 1) {
+        pdf.setPage(i);
+        pdf.setDrawColor(224, 231, 239);
+        pdf.line(margen, alto - 36, ancho - margen, alto - 36);
+        pdf.setTextColor(96, 109, 126);
+        pdf.setFontSize(8);
+        pdf.text("Generado por NextPrev | Estructura de empresa | Uso interno SST", margen, alto - 21);
+        pdf.text(`Página ${i} de ${total}`, ancho - margen, alto - 21, { align: "right" });
+      }
+      const slug = empresaNombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").slice(0, 40);
+      pdf.save(`NextPrev_Organigrama_${slug || "Empresa"}.pdf`);
+    } catch (error) {
+      console.error("Error al exportar organigrama", error);
+      window.alert("No se pudo exportar el organigrama. Reintenta la descarga.");
+    }
+  }
+
   const switchView = (mode: ViewMode) => {
     setViewMode(mode);
     setSelectedNode(null);
@@ -1400,10 +1463,10 @@ export default function OrganigramaPage() {
             variant="outline"
             size="sm"
             className="rounded-xl border-slate-200 text-slate-600 gap-2 flex-shrink-0"
-            onClick={() => window.print()}
+            onClick={() => void exportarOrganigramaPdf()}
           >
             <Download size={14} />
-            Imprimir / PDF
+            Exportar PDF
           </Button>
         </div>
 
@@ -1472,10 +1535,6 @@ export default function OrganigramaPage() {
           </div>
         </div>
       </div>
-
-      <footer className="hidden print:block print:mt-6 print:border-t print:border-slate-300 print:pt-3 print:text-xs print:text-slate-600">
-        Generado por NextPrev | Organigrama de empresa | Uso interno SST
-      </footer>
 
       {/* ── Drawer ── */}
       <NodeDrawer
