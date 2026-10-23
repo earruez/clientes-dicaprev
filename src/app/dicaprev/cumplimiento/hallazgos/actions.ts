@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import { PERMISSIONS } from "@/lib/permissions-matrix";
 import { requireAuth, requirePermission } from "@/server/auth/permissions";
+import { extraerNombreArchivoSeguro } from "@/lib/documentacion/archivo-seguro";
 import type {
   EstadoHallazgo,
   Hallazgo,
@@ -1066,6 +1067,8 @@ export async function agregarEvidenciaCierreHallazgo(
   }
 
   const obs = observacion.trim();
+  const archivoNombre = extraerNombreArchivoSeguro(archivoUrl);
+  if (archivoUrl && !archivoNombre) throw new Error("La referencia del archivo adjunto no es válida.");
   if (!obs) {
     throw new Error("Debes ingresar una observacion para la evidencia de cierre.");
   }
@@ -1094,6 +1097,7 @@ export async function agregarEvidenciaCierreHallazgo(
       estado: "valida",
       fechaEvidencia: new Date(),
       descripcion: obs,
+      archivoNombre,
       archivoUrl: archivoUrl || null,
       hallazgoId: hallazgo.id,
       centroTrabajoId: hallazgo.centroTrabajoId,

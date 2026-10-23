@@ -26,3 +26,19 @@ export function normalizarArchivoSeguroUrl(archivoUrl: string | null | undefined
 
   return raw;
 }
+
+/** Devuelve el nombre de un archivo servido por el proxy privado de NextPrev. */
+export function extraerNombreArchivoSeguro(archivoUrl: string | null | undefined): string | null {
+  if (!archivoUrl) return null;
+  const ruta = archivoUrl.trim().split("?")[0];
+  if (!ruta.startsWith(DOCUMENTOS_API_PATH)) return null;
+  const encoded = ruta.slice(DOCUMENTOS_API_PATH.length);
+  if (!encoded || encoded.includes("/")) return null;
+  try {
+    const nombre = decodeURIComponent(encoded);
+    if (!/^[a-zA-Z0-9._-]{1,255}$/.test(nombre) || nombre.includes("..") || !nombre.includes(".")) return null;
+    return nombre;
+  } catch {
+    return null;
+  }
+}
