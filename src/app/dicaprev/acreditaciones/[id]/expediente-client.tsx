@@ -653,7 +653,7 @@ export default function ExpedienteClient({
   const [sincronizando, setSincronizando] = useState(false);
   const [guardandoEstado, setGuardandoEstado] = useState(false);
   const [estadoActual, setEstadoActual] = useState<EstadoAcreditacion>(acreditacion.estado ?? "en_preparacion");
-  const [, setHistorialEstados] = useState<HistorialEstadoAcreditacion[]>(acreditacion.historialEstados ?? []);
+  const [historialEstados, setHistorialEstados] = useState<HistorialEstadoAcreditacion[]>(acreditacion.historialEstados ?? []);
   const [modalCambioEstado, setModalCambioEstado] = useState<EstadoAcreditacion | null>(null);
   const { toasts, push } = useToast();
 
@@ -751,10 +751,10 @@ export default function ExpedienteClient({
     try {
       await actualizarEstadoAcreditacion(acId, nuevoEstado, comentario);
       setEstadoActual(nuevoEstado);
-      setHistorialEstados((prev) => [...prev, {
+      setHistorialEstados((prev) => [{
         estado: nuevoEstado, fecha: new Date().toISOString(), usuario: "Usuario actual",
         ...(comentario ? { comentario } : {}),
-      }]);
+      }, ...prev]);
       setModalCambioEstado(null);
       push("success", "Estado guardado en NextPrev.");
       router.refresh();
@@ -777,6 +777,15 @@ export default function ExpedienteClient({
     } finally {
       setSincronizando(false);
     }
+  }
+
+  function estadoTitular(tipo: "trabajador" | "vehiculo", id: string) {
+    const requeridos = docs.filter((d) => d.aplicaA === tipo && d.titularId === id && d.obligatorio);
+    if (!requeridos.length) return { label: "Sin requisitos", ok: false };
+    const ok = requeridos.every((d) => d.estado === "completo"
+      && Boolean(d.archivoUrl || d.archivoNombre)
+      && (!d.fechaVencimiento || new Date(d.fechaVencimiento).getTime() >= Date.now()));
+    return { label: ok ? "Documentación completa" : "Documentación pendiente", ok };
   }
 
   function enfocarDocumentos(filtro: EstadoDocumentoFiltro) {
@@ -889,6 +898,9 @@ export default function ExpedienteClient({
                     <div>
                       <p className="text-sm font-medium text-slate-800 leading-tight">{t.nombre}</p>
                       <p className="text-[11px] text-slate-500">{t.rut ?? "—"} · {t.cargo}</p>
+                      <span className={cn("text-[10px] font-semibold", estadoTitular("trabajador", t.id).ok ? "text-emerald-700" : "text-amber-700")}>
+                        {estadoTitular("trabajador", t.id).label}
+                      </span>
                     </div>
                   </li>
                 ))}
@@ -911,6 +923,9 @@ export default function ExpedienteClient({
                     <div>
                       <p className="text-sm font-medium text-slate-800">{v.modelo}</p>
                       <p className="text-[11px] text-slate-500">{v.patente}</p>
+                      <span className={cn("text-[10px] font-semibold", estadoTitular("vehiculo", v.id).ok ? "text-emerald-700" : "text-amber-700")}>
+                        {estadoTitular("vehiculo", v.id).label}
+                      </span>
                     </div>
                   </li>
                 ))}
@@ -930,6 +945,20 @@ export default function ExpedienteClient({
                       <span className="block font-semibold">{sol.nombre}</span>
                       <span className="text-slate-500">{sol.estado} · {sol.completos}/{sol.total} obligatorios aprobados{sol.relacionados ? " · Posible coincidencia con faena" : ""}</span>
                     </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {historialEstados.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Historial de estados y envíos</p>
+              <ul className="space-y-3">
+                {historialEstados.map((h, i) => (
+                  <li key={`${h.fecha}-${i}`} className="border-l-2 border-sky-200 pl-3 text-xs">
+                    <p className="font-semibold text-slate-800">{ESTADO_AC_CFG[h.estado]?.label ?? h.estado}</p>
+                    <p className="text-slate-500">{fmtDatetime(h.fecha)} · {h.usuario}</p>
+                    {h.comentario && <p className="mt-1 break-words text-slate-600">{h.comentario}</p>}
                   </li>
                 ))}
               </ul>
