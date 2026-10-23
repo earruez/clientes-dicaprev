@@ -7,7 +7,7 @@ import { requireAuth, requirePermission } from "@/server/auth/permissions";
 import { after } from "next/server";
 import { avisarNuevoHallazgo } from "@/lib/hallazgos/avisos-correo";
 import { extraerNombreArchivoSeguro } from "@/lib/documentacion/archivo-seguro";
-import { ORIGEN_MEDIDA_EN_PROCESO, estadoMedidaHallazgo, requisitosCierreMedidas, type EstadoMedidaHallazgo } from "@/lib/hallazgos/medidas-correctivas";
+import { estadoMedidaHallazgo, requisitosCierreMedidas, type EstadoMedidaHallazgo } from "@/lib/hallazgos/medidas-correctivas";
 import { esNivelJerarquiaControlDs44, leerJerarquiaControlDs44, tituloMedidaJerarquiaControlDs44, type NivelJerarquiaControlDs44 } from "@/lib/hallazgos/jerarquia-control-ds44";
 import type {
   EstadoHallazgo,
@@ -478,6 +478,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
           tipo: true,
           estado: true,
           origen: true,
+          historial: { where: { accion: "estado_medida_hallazgo" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1, select: { estadoNuevo: true } },
           validadoAt: true,
           descripcion: true,
           observacionRevision: true,
@@ -497,7 +498,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
   const medidasCorrectivas = hallazgo.evidenciasCumplimiento
     .filter((ev) => normalizeToken(ev.tipo) === "accion_correctiva")
     .map((ev) => {
-      const estado = estadoMedidaHallazgo(ev.estado, ev.origen);
+      const estado = estadoMedidaHallazgo(ev.estado, ev.origen, ev.historial[0]?.estadoNuevo);
       return {
         id: ev.id,
         descripcion: ev.descripcion || "Sin descripcion",
@@ -754,6 +755,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
           tipo: true,
           estado: true,
           origen: true,
+          historial: { where: { accion: "estado_medida_hallazgo" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1, select: { estadoNuevo: true } },
           descripcion: true,
           observacionRevision: true,
         },
@@ -771,7 +773,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
     return tipo === "cierre" || normalizeToken(ev.descripcion).includes("cierre");
   });
   const validacionCierre = requisitosCierreMedidas(
-    medidas.map((medida) => estadoMedidaHallazgo(medida.estado, medida.origen)),
+    medidas.map((medida) => estadoMedidaHallazgo(medida.estado, medida.origen, medida.historial[0]?.estadoNuevo)),
     evidenciaCierre || Boolean(comentario),
   );
   if (!validacionCierre.permitido) throw new Error(validacionCierre.mensaje);
@@ -988,39 +990,49 @@ export async function actualizarEstadoMedidaCorrectiva(
   estado: EstadoMedidaCorrectiva,
 ): Promise<void> {
   const context = await requireAuth();
-  if (!canManageCumplimiento(context.rol)) {
-    throw new Error("No autorizado para gestionar medidas correctivas.");
+  if (!canManageCumplimiento(context.rol)) throw new Error("No autorizado para gestionar medidas correctivas.");
+  if (!(["pendiente", "en_proceso", "completada", "descartada"] as string[]).includes(estado)) {
+    throw new Error("Estado de medida correctiva inválido.");
   }
-
   const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
-    where: {
-      id: hallazgoId,
-      empresaId: context.empresaId,
-    },
+    where: { id: hallazgoId, empresaId: context.empresaId },
     select: { id: true, estado: true },
   });
-
-  if (!hallazgo) {
-    throw new Error("Hallazgo no encontrado para la empresa activa.");
-  }
-
+  if (!hallazgo) throw new Error("Hallazgo no encontrado para la empresa activa.");
   if (hallazgo.estado === "cerrado") throw new Error("No se pueden cambiar medidas de un hallazgo cerrado.");
 
+  const medida = await prisma.evidenciaCumplimiento.findFirst({
+    where: { id: medidaId, hallazgoId, empresaId: context.empresaId, tipo: "accion_correctiva" },
+    select: {
+      id: true, estado: true, origen: true,
+      historial: { where: { accion: "estado_medida_hallazgo" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1, select: { estadoNuevo: true } },
+    },
+  });
+  if (!medida) throw new Error("Medida correctiva no encontrada.");
+  const anterior = estadoMedidaHallazgo(medida.estado, medida.origen, medida.historial[0]?.estadoNuevo);
+  if (anterior === estado) return;
   const estadoEvidencia = estado === "completada" ? "valida" : estado === "descartada" ? "rechazada" : "pendiente";
-
-  await prisma.evidenciaCumplimiento.updateMany({
-    where: {
-      id: medidaId,
-      hallazgoId,
-      empresaId: context.empresaId,
-      tipo: "accion_correctiva",
-    },
-    data: {
-      estado: estadoEvidencia,
-      origen: estado === "en_proceso" ? ORIGEN_MEDIDA_EN_PROCESO : "manual",
-      validadoAt: estado === "completada" ? new Date() : null,
-      validadoPorId: estado === "completada" ? context.usuarioId : null,
-    },
+  await prisma.$transaction(async (tx) => {
+    const actualizado = await tx.evidenciaCumplimiento.updateMany({
+      where: { id: medidaId, hallazgoId, empresaId: context.empresaId, tipo: "accion_correctiva" },
+      data: {
+        estado: estadoEvidencia,
+        // Nunca cambiar origen: pertenece a la trazabilidad de procedencia de evidencia.
+        validadoAt: estado === "completada" ? new Date() : null,
+        validadoPorId: estado === "completada" ? context.usuarioId : null,
+      },
+    });
+    if (actualizado.count !== 1) throw new Error("No se pudo actualizar la medida correctiva.");
+    await tx.evidenciaCumplimientoHistorial.create({
+      data: {
+        evidenciaId: medidaId,
+        usuarioId: context.usuarioId,
+        accion: "estado_medida_hallazgo",
+        estadoAnterior: anterior,
+        estadoNuevo: estado,
+        detalle: "Actualización del estado de la medida correctiva",
+      },
+    });
   });
 }
 
