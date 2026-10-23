@@ -1,5 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getAcreditacionById, getSolicitudesContratistaAcreditacion } from "@/actions/acreditaciones";
+import { requireAuth } from "@/server/auth/permissions";
+import { PERMISSIONS } from "@/lib/permissions-matrix";
 import ExpedienteClient from "./expediente-client";
 
 type EstadoAcreditacion =
@@ -76,7 +78,11 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     notFound();
   }
 
-  const solicitudesContratista = await getSolicitudesContratistaAcreditacion(id);
+  const [{ rol }, solicitudesContratista] = await Promise.all([
+    requireAuth(),
+    getSolicitudesContratistaAcreditacion(id),
+  ]);
+  const canManageDocumentacion = rol === "SUPERADMIN" || PERMISSIONS.canManageDocumentacion.some((r) => r === rol);
 
   const workers = acreditacion.trabajadores
     .filter((item) => Boolean(item.trabajador))
@@ -161,6 +167,7 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
       initialDocs={docs}
       initialHistorial={historial}
       solicitudesContratista={solicitudesContratista}
+      canManageDocumentacion={canManageDocumentacion}
     />
   );
 }

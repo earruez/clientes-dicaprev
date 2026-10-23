@@ -616,11 +616,13 @@ export default function ExpedienteClient({
   initialDocs,
   initialHistorial,
   solicitudesContratista,
+  canManageDocumentacion,
 }: {
   acreditacion: AcreditacionExpediente;
   initialDocs: DocumentoInstancia[];
   initialHistorial: HistorialExpediente[];
   solicitudesContratista: SolicitudContratista[];
+  canManageDocumentacion: boolean;
 }) {
   const router = useRouter();
   const acId = acreditacion.id;
@@ -840,7 +842,7 @@ export default function ExpedienteClient({
               <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium", ESTADO_AC_CFG[estadoActual]?.cls ?? "")}>
                 {ESTADO_AC_CFG[estadoActual]?.label}
               </span>
-              {TRANSICIONES[estadoActual]?.length > 0 && (
+              {canManageDocumentacion && TRANSICIONES[estadoActual]?.length > 0 && (
                 <SidebarEstadoSelector
                   estadoActual={estadoActual}
                   onSelect={setModalCambioEstado}
@@ -1179,11 +1181,13 @@ export default function ExpedienteClient({
           {/* Acciones */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-2.5">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Acciones</p>
-            <Button variant="outline" onClick={() => void sincronizar()} disabled={sincronizando || generando} className="w-full rounded-xl text-sm h-10 justify-start">
-              <Sparkles className="mr-2 h-4 w-4 text-sky-600" />
-              {sincronizando ? "Actualizando documentos…" : "Actualizar desde NextPrev"}
-            </Button>
-            <p className="text-[11px] text-slate-500">Sincroniza los documentos de empresa, trabajadores y vehículos antes de generar el expediente.</p>
+            {canManageDocumentacion && (<>
+              <Button variant="outline" onClick={() => void sincronizar()} disabled={sincronizando || generando} className="w-full rounded-xl text-sm h-10 justify-start">
+                <Sparkles className="mr-2 h-4 w-4 text-sky-600" />
+                {sincronizando ? "Actualizando documentos…" : "Actualizar desde NextPrev"}
+              </Button>
+              <p className="text-[11px] text-slate-500">Sincroniza los documentos de empresa, trabajadores y vehículos antes de generar el expediente.</p>
+            </>)}
 
             <Button
               variant="outline"
@@ -1203,6 +1207,7 @@ export default function ExpedienteClient({
               <AlertTriangle className="h-4 w-4 mr-1.5 text-amber-500" />Ver documentos vencidos
             </Button>
 
+            {canManageDocumentacion && (<>
             <Button
               onClick={async () => { if (await handleZip()) await handlePDF(); }}
               disabled={generando || validacion.bloqueado}
@@ -1222,10 +1227,12 @@ export default function ExpedienteClient({
               </Button>
             </div>
 
+            </>)}
             <Button variant="outline" onClick={handleEmail} className="w-full rounded-xl text-sm h-9 justify-start">
               <Mail className="h-4 w-4 mr-1.5 text-slate-500" />Copiar texto correo
             </Button>
 
+            {canManageDocumentacion && (<>
             <Button
               variant="outline"
               onClick={() => setModalCambioEstado(TRANSICIONES[estadoActual]?.[0] ?? null)}
@@ -1256,6 +1263,7 @@ export default function ExpedienteClient({
                 })}
               </div>
             )}
+            </>)}
           </div>
 
           {/* Info rápida */}

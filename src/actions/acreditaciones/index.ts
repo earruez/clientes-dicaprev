@@ -1619,7 +1619,7 @@ export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcr
     where: { id },
     data: {
       estado,
-      ...(estado === "enviado" ? { fechaEnvio: new Date() } : {}),
+      ...(estado === "enviado" ? { fechaEnvio: new Date(), fechaRespuesta: null } : {}),
       ...(["aprobado", "observada", "rechazado"].includes(estado) ? { fechaRespuesta: new Date() } : {}),
       ...(nota ? { observaciones: nota } : {}),
       historial: {
@@ -1647,7 +1647,7 @@ export async function getOpcionesVinculacionAcreditacion() {
 }
 
 export async function generarDocumentosAcreditacion(acreditacionId: string) {
-  const empresaId = await getEmpresaId();
+  const { empresaId } = await requirePermission("canManageDocumentacion");
 
   const acreditacion = await prisma.acreditacion.findFirst({
     where: { id: acreditacionId, empresaId },
