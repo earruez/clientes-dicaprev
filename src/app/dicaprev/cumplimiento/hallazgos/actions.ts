@@ -5,6 +5,7 @@ import type { Prisma } from "@prisma/client";
 import { PERMISSIONS } from "@/lib/permissions-matrix";
 import { requireAuth, requirePermission } from "@/server/auth/permissions";
 import { extraerNombreArchivoSeguro } from "@/lib/documentacion/archivo-seguro";
+import { ORIGEN_MEDIDA_EN_PROCESO, estadoMedidaHallazgo, requisitosCierreMedidas, type EstadoMedidaHallazgo } from "@/lib/hallazgos/medidas-correctivas";
 import type {
   EstadoHallazgo,
   Hallazgo,
@@ -170,19 +171,7 @@ export type HallazgoDetalle = {
   } | null;
 };
 
-type EstadoMedidaCorrectiva = "pendiente" | "en_proceso" | "completada" | "descartada";
-
-function normalizeEstadoMedida(value: string | null | undefined): EstadoMedidaCorrectiva {
-  const token = normalizeToken(value);
-  if (token === "completada" || token === "valida" || token === "cerrada") return "completada";
-  if (token === "descartada") return "descartada";
-  if (token === "en_proceso") return "en_proceso";
-  return "pendiente";
-}
-
-function medidaGestionada(estado: EstadoMedidaCorrectiva): boolean {
-  return estado === "completada" || estado === "descartada";
-}
+type EstadoMedidaCorrectiva = EstadoMedidaHallazgo;
 
 function canManageCumplimiento(rol: string): boolean {
   if (rol === "SUPERADMIN") return true;
@@ -482,6 +471,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
           titulo: true,
           tipo: true,
           estado: true,
+          origen: true,
           descripcion: true,
           observacionRevision: true,
           archivoUrl: true,
@@ -500,7 +490,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
   const medidasCorrectivas = hallazgo.evidenciasCumplimiento
     .filter((ev) => normalizeToken(ev.tipo) === "accion_correctiva")
     .map((ev) => {
-      const estado = normalizeEstadoMedida(ev.estado);
+      const estado = estadoMedidaHallazgo(ev.estado, ev.origen);
       return {
         id: ev.id,
         descripcion: ev.descripcion || "Sin descripcion",
@@ -738,6 +728,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
           id: true,
           tipo: true,
           estado: true,
+          origen: true,
           descripcion: true,
           observacionRevision: true,
         },
@@ -750,20 +741,15 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
   }
 
   const medidas = hallazgo.evidenciasCumplimiento.filter((ev) => normalizeToken(ev.tipo) === "accion_correctiva");
-  const medidaPrincipal = medidas[0] ?? null;
-  const estadoMedidaPrincipal = medidaPrincipal ? normalizeEstadoMedida(medidaPrincipal.estado) : null;
-
-  const tieneMedidaRegistrada = medidas.length > 0;
-  const medidaCompleta = estadoMedidaPrincipal ? medidaGestionada(estadoMedidaPrincipal) : false;
-
   const evidenciaCierre = hallazgo.evidenciasCumplimiento.some((ev) => {
     const tipo = normalizeToken(ev.tipo);
     return tipo === "cierre" || normalizeToken(ev.descripcion).includes("cierre");
   });
-
-  if (!tieneMedidaRegistrada || !medidaCompleta || (!evidenciaCierre && !comentario)) {
-    throw new Error("Para cerrar el hallazgo debes registrar y completar una medida correctiva, además de dejar evidencia o comentario de cierre.");
-  }
+  const validacionCierre = requisitosCierreMedidas(
+    medidas.map((medida) => estadoMedidaHallazgo(medida.estado, medida.origen)),
+    evidenciaCierre || Boolean(comentario),
+  );
+  if (!validacionCierre.permitido) throw new Error(validacionCierre.mensaje);
 
   await prisma.$transaction(async (tx) => {
     if (comentario) {
@@ -986,12 +972,14 @@ export async function actualizarEstadoMedidaCorrectiva(
       id: hallazgoId,
       empresaId: context.empresaId,
     },
-    select: { id: true },
+    select: { id: true, estado: true },
   });
 
   if (!hallazgo) {
     throw new Error("Hallazgo no encontrado para la empresa activa.");
   }
+
+  if (hallazgo.estado === "cerrado") throw new Error("No se pueden cambiar medidas de un hallazgo cerrado.");
 
   const estadoEvidencia = estado === "completada" ? "valida" : estado === "descartada" ? "rechazada" : "pendiente";
 
@@ -1004,6 +992,7 @@ export async function actualizarEstadoMedidaCorrectiva(
     },
     data: {
       estado: estadoEvidencia,
+      origen: estado === "en_proceso" ? ORIGEN_MEDIDA_EN_PROCESO : "manual",
       validadoAt: estado === "completada" ? new Date() : null,
       validadoPorId: estado === "completada" ? context.usuarioId : null,
     },
@@ -1031,6 +1020,7 @@ export async function registrarMedidaCorrectivaHallazgo(
     },
     select: {
       id: true,
+      estado: true,
       centroTrabajoId: true,
       trabajadorId: true,
     },
@@ -1039,6 +1029,8 @@ export async function registrarMedidaCorrectivaHallazgo(
   if (!hallazgo) {
     throw new Error("Hallazgo no encontrado para la empresa activa.");
   }
+
+  if (hallazgo.estado === "cerrado") throw new Error("No se pueden agregar medidas a un hallazgo cerrado.");
 
   await prisma.evidenciaCumplimiento.create({
     data: {
