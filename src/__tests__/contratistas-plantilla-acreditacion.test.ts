@@ -5,7 +5,7 @@ import { estadoEfectivo, vencimientoEfectivoRequisito, vencimientoMaximoPorMeses
 describe("Pauta de acreditación de trabajadores", () => {
   it("incluye 12 documentos por trabajador sin duplicados de nombre", () => {
     expect(PLANTILLA_ACREDITACION_TRABAJADORES).toHaveLength(12);
-    expect(new Set(PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => r.nombre)).size).toBe(9);
+    expect(new Set(PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => r.nombre)).size).toBe(12);
   });
   it("establece los límites específicos y las excepciones condicionales", () => {
     const porClave = Object.fromEntries(PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => [r.clave, r]));
