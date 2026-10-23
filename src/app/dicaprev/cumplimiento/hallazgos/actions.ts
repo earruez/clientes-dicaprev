@@ -159,6 +159,7 @@ export type HallazgoDetalle = {
     descripcion: string;
     responsable: string;
     fechaCompromiso: string;
+    fechaCompletada: string | null;
     estado: "pendiente" | "en_proceso" | "completada" | "descartada";
     evidenciaCierre: boolean;
   }>;
@@ -472,6 +473,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
           tipo: true,
           estado: true,
           origen: true,
+          validadoAt: true,
           descripcion: true,
           observacionRevision: true,
           archivoUrl: true,
@@ -496,6 +498,8 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
         descripcion: ev.descripcion || "Sin descripcion",
         responsable: ev.creadoPor?.nombre ?? "Por asignar",
         fechaCompromiso: hallazgo.fechaCompromiso.toISOString().slice(0, 10),
+        // Momento real en que se marcó completada: no confundir con fecha compromiso.
+        fechaCompletada: estado === "completada" ? ev.validadoAt?.toISOString() ?? null : null,
         estado,
         evidenciaCierre: hallazgo.evidenciasCumplimiento.some((cierre) => {
           const tipo = normalizeToken(cierre.tipo);

@@ -383,7 +383,8 @@ export function guardarFichaHallazgoPdf(data: DatosFichaHallazgoPdf) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       const lines = doc.splitTextToSize(m.descripcion, CONTENT - 32) as string[];
-      const alto = Math.max(64, lines.length * 11 + 38);
+      const mostrarFechaCompletada = m.estado === "completada";
+      const alto = Math.max(mostrarFechaCompletada ? 76 : 64, lines.length * 11 + (mostrarFechaCompletada ? 53 : 38));
       ensure(alto + 8);
       fondo(doc, i % 2 ? PALE : WHITE);
       doc.setDrawColor(...LINE);
@@ -397,7 +398,11 @@ export function guardarFichaHallazgoPdf(data: DatosFichaHallazgoPdf) {
       doc.text(lines, M + 12, y + 29);
       doc.setFontSize(8);
       colorear(doc, MUTED);
-      doc.text("Responsable: " + limpia(m.responsable) + "  |  Compromiso: " + dia(m.fechaCompromiso), M + 12, y + alto - 9);
+      doc.text("Responsable: " + limpia(m.responsable) + "  |  Compromiso: " + dia(m.fechaCompromiso), M + 12, y + alto - (mostrarFechaCompletada ? 23 : 9));
+      if (mostrarFechaCompletada) {
+        colorear(doc, GREEN);
+        doc.text(m.fechaCompletada ? "Fecha de finalización: " + dia(fechaChile(m.fechaCompletada)) : "Fecha de finalización: no registrada", M + 12, y + alto - 9);
+      }
       y += alto + 8;
     }
   }

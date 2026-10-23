@@ -1571,6 +1571,13 @@ export default function HallazgosClient({
                               <span className="rounded-full bg-slate-800 px-2 py-1 text-[11px] text-slate-300">
                                 Compromiso: {fmtFecha(medida.fechaCompromiso)}
                               </span>
+                              {medida.estado === "completada" ? (
+                                <span className="rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-1 text-[11px] font-semibold text-emerald-200">
+                                  {medida.fechaCompletada
+                                    ? "Completada el " + fmtFecha(medida.fechaCompletada)
+                                    : "Completada · fecha de finalización no registrada"}
+                                </span>
+                              ) : null}
                             </div>
                             {opciones.puedeEditar && selected.estado !== "cerrado" ? (
                               <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
