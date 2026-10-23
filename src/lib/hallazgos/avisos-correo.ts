@@ -63,13 +63,13 @@ function claveAviso(hallazgoId: string, tipo: TipoAviso, email: string) {
 
 async function notificarHallazgo(
   hallazgo: HallazgoAviso, tipo: TipoAviso, ahora: Date, maxEmails: number,
-): Promise<{ enviados: number; omitidos: number; errores: number; sinCorreo: boolean }> {
+): Promise<{ enviados: number; omitidos: number; errores: number; intentos: number; sinCorreo: boolean }> {
   const candidatos = await obtenerDestinatarios(hallazgo);
-  const resultado = { enviados: 0, omitidos: 0, errores: 0, sinCorreo: candidatos.length === 0 };
+  const resultado = { enviados: 0, omitidos: 0, errores: 0, intentos: 0, sinCorreo: candidatos.length === 0 };
   const cutoff = tipo === "nuevo" ? new Date(0) : new Date(ahora.getTime() - FRECUENCIA_REAVISO_MS);
   const responsable = hallazgo.responsableTrabajador;
   for (const destinatario of candidatos) {
-    if (resultado.enviados >= maxEmails) break;
+    if (resultado.intentos >= maxEmails) break;
     const evento = claveAviso(hallazgo.id, tipo, destinatario.email);
     const yaEnviado = await prisma.activacionEvento.findFirst({
       where: { empresaId: hallazgo.empresaId, evento, createdAt: { gte: cutoff } },
@@ -92,6 +92,7 @@ async function notificarHallazgo(
       appUrl: appUrl(),
     });
     try {
+      resultado.intentos += 1;
       await sendEmail({ to: destinatario.email, ...correo });
       await prisma.activacionEvento.create({
         data: {
@@ -115,7 +116,7 @@ export async function avisarNuevoHallazgo(id: string, empresaId: string) {
   const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
     where: { id, empresaId }, select: seleccionHallazgo,
   });
-  if (!hallazgo) return { enviados: 0, omitidos: 0, errores: 0, sinCorreo: true };
+  if (!hallazgo) return { enviados: 0, omitidos: 0, errores: 0, intentos: 0, sinCorreo: true };
   return notificarHallazgo(hallazgo, "nuevo", new Date(), 15);
 }
 
@@ -143,10 +144,12 @@ export async function procesarAvisosVencimientoHallazgos(): Promise<ResultadoAvi
   };
   // Límite operativo de correos por ejecución para evitar timeouts en serverless.
   const maxEmailsPorEjecucion = 60;
+  let intentos = 0;
   for (const hallazgo of hallazgos) {
-    if (resultado.enviados >= maxEmailsPorEjecucion) break;
+    if (intentos >= maxEmailsPorEjecucion) break;
     if (!correspondeAvisarHallazgo(hallazgo.estado, hallazgo.fechaCompromiso, hoy)) continue;
-    const aviso = await notificarHallazgo(hallazgo, "vencimiento", ahora, maxEmailsPorEjecucion - resultado.enviados);
+    const aviso = await notificarHallazgo(hallazgo, "vencimiento", ahora, maxEmailsPorEjecucion - intentos);
+    intentos += aviso.intentos;
     resultado.enviados += aviso.enviados;
     resultado.omitidos += aviso.omitidos;
     resultado.errores += aviso.errores;
