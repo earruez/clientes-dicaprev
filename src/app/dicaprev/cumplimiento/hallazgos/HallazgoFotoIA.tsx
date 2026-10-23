@@ -17,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { JERARQUIA_CONTROL_DS44, type NivelJerarquiaControlDs44 } from "@/lib/hallazgos/jerarquia-control-ds44";
 import type { OpcionesHallazgo } from "./actions";
 import {
   analizarFotoHallazgoIA,
@@ -87,6 +88,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   const [observacion, setObservacion] = useState("");
   const [sugerencias, setSugerencias] = useState<SugerenciaAnalizada[]>([]);
   const [sugerenciasSeleccionadas, setSugerenciasSeleccionadas] = useState<Set<string>>(new Set());
+  const [jerarquiasPorSugerencia, setJerarquiasPorSugerencia] = useState<Record<string, NivelJerarquiaControlDs44>>({});
   const [error, setError] = useState<string | null>(null);
   const [analizando, setAnalizando] = useState(false);
   const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
@@ -124,6 +126,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     setObservacion("");
     setSugerencias([]);
     setSugerenciasSeleccionadas(new Set());
+    setJerarquiasPorSugerencia({});
     setModoResultados(false);
     setError(null);
     setConfirmingKey(null);
@@ -540,6 +543,10 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
   }
 
   async function handleConfirmar(item: SugerenciaAnalizada) {
+    if (!jerarquiasPorSugerencia[item.id]) {
+      setError("Selecciona la jerarquía de control DS44 antes de crear este hallazgo.");
+      return;
+    }
     const confirmationKey = item.id;
     setConfirmingKey(confirmationKey);
     setError(null);
@@ -547,6 +554,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     try {
       await confirmarHallazgoDesdeFotoIA({
         sugerencia: item.sugerencia,
+        jerarquiaControl: jerarquiasPorSugerencia[item.id],
         archivoUrl: item.archivo.url,
         archivoNombre: item.archivo.nombre,
         archivoTipo: item.archivo.tipo,
@@ -584,6 +592,10 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
     }
 
     const seleccionadas = sugerencias.filter((item) => sugerenciasSeleccionadas.has(item.id));
+    if (seleccionadas.some((item) => !jerarquiasPorSugerencia[item.id])) {
+      setError("Selecciona la jerarquía de control DS44 en cada hallazgo seleccionado antes de crearlos.");
+      return;
+    }
     const conBajaConfianza = seleccionadas.some((item) => item.sugerencia.confianza < 20);
     if (conBajaConfianza) {
       const ok = window.confirm(
@@ -599,6 +611,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
       for (const item of seleccionadas) {
         await confirmarHallazgoDesdeFotoIA({
           sugerencia: item.sugerencia,
+          jerarquiaControl: jerarquiasPorSugerencia[item.id],
           archivoUrl: item.archivo.url,
           archivoNombre: item.archivo.nombre,
           archivoTipo: item.archivo.tipo,
@@ -1015,6 +1028,28 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                           <div className="rounded-xl bg-slate-950/35 p-3">
                             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Acción sugerida</p>
                             <p className="mt-1 text-xs leading-5 text-slate-300">{item.sugerencia.accionSugerida}</p>
+                            <div className="mt-3 space-y-1">
+                              <Label className="text-xs font-semibold text-emerald-200">Jerarquía de control DS44</Label>
+                              <Select
+                                value={jerarquiasPorSugerencia[item.id] ?? "none"}
+                                disabled={bloqueandoResultados}
+                                onValueChange={(nivel) => setJerarquiasPorSugerencia((prev) => ({
+                                  ...prev, [item.id]: nivel as NivelJerarquiaControlDs44,
+                                }))}
+                              >
+                                <SelectTrigger className="h-10 w-full border-slate-600 bg-slate-900 text-xs text-white">
+                                  <SelectValue placeholder="Seleccionar nivel" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none" disabled>Seleccionar nivel</SelectItem>
+                                  {JERARQUIA_CONTROL_DS44.map((nivel) => (
+                                    <SelectItem key={nivel.codigo} value={nivel.codigo}>
+                                      {nivel.orden}. {nivel.nombre}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         </div>
 
@@ -1088,7 +1123,7 @@ export default function HallazgoFotoIA({ open, onOpenChange, opciones, iaConfigu
                 </Button>
                 <Button
                   onClick={() => void handleConfirmarSeleccionadas()}
-                  disabled={confirmingBatch || confirmingKey !== null || sugerenciasSeleccionadas.size === 0}
+                  disabled={confirmingBatch || confirmingKey !== null || sugerenciasSeleccionadas.size === 0 || sugerencias.some((item) => sugerenciasSeleccionadas.has(item.id) && !jerarquiasPorSugerencia[item.id])}
                   className="h-12 bg-emerald-500 px-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400"
                 >
                   {confirmingBatch ? (

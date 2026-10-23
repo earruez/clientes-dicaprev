@@ -8,6 +8,7 @@ import { after } from "next/server";
 import { avisarNuevoHallazgo } from "@/lib/hallazgos/avisos-correo";
 import { extraerNombreArchivoSeguro } from "@/lib/documentacion/archivo-seguro";
 import { ORIGEN_MEDIDA_EN_PROCESO, estadoMedidaHallazgo, requisitosCierreMedidas, type EstadoMedidaHallazgo } from "@/lib/hallazgos/medidas-correctivas";
+import { esNivelJerarquiaControlDs44, leerJerarquiaControlDs44, tituloMedidaJerarquiaControlDs44, type NivelJerarquiaControlDs44 } from "@/lib/hallazgos/jerarquia-control-ds44";
 import type {
   EstadoHallazgo,
   Hallazgo,
@@ -140,6 +141,7 @@ export type HallazgoInput = {
   descripcion: string;
   fechaCompromiso: string;
   medidaCorrectivaSugerida?: string | null;
+  medidaCorrectivaNivel?: NivelJerarquiaControlDs44 | null;
 };
 
 export type HallazgoDetalle = {
@@ -159,6 +161,7 @@ export type HallazgoDetalle = {
   medidasCorrectivas: Array<{
     id: string;
     descripcion: string;
+    jerarquiaControl: NivelJerarquiaControlDs44 | null;
     responsable: string;
     fechaCompromiso: string;
     fechaCompletada: string | null;
@@ -498,6 +501,7 @@ export async function getHallazgoDetalle(id: string): Promise<HallazgoDetalle | 
       return {
         id: ev.id,
         descripcion: ev.descripcion || "Sin descripcion",
+        jerarquiaControl: leerJerarquiaControlDs44(ev.titulo),
         responsable: ev.creadoPor?.nombre ?? "Por asignar",
         fechaCompromiso: hallazgo.fechaCompromiso.toISOString().slice(0, 10),
         // Momento real en que se marcó completada: no confundir con fecha compromiso.
@@ -614,6 +618,9 @@ export async function crearHallazgo(data: HallazgoInput): Promise<{ id: string }
   if (!data.fechaCompromiso) {
     throw new Error("La fecha compromiso es obligatoria.");
   }
+  if (data.medidaCorrectivaSugerida?.trim() && !esNivelJerarquiaControlDs44(data.medidaCorrectivaNivel)) {
+    throw new Error("Selecciona el nivel de jerarquía de control DS44 para la medida correctiva inicial.");
+  }
 
   const created = await prisma.$transaction(async (tx) => {
     const responsable = await resolverResponsableHallazgo(tx, context.empresaId, data);
@@ -640,7 +647,7 @@ export async function crearHallazgo(data: HallazgoInput): Promise<{ id: string }
       await tx.evidenciaCumplimiento.create({
         data: {
           empresaId: context.empresaId,
-          titulo: "Medida correctiva inicial",
+          titulo: tituloMedidaJerarquiaControlDs44(data.medidaCorrectivaNivel!),
           tipo: "accion_correctiva",
           estado: "pendiente",
           fechaEvidencia: new Date(),
@@ -1020,6 +1027,7 @@ export async function actualizarEstadoMedidaCorrectiva(
 export async function registrarMedidaCorrectivaHallazgo(
   hallazgoId: string,
   descripcion: string,
+  jerarquiaControl: NivelJerarquiaControlDs44,
 ): Promise<void> {
   const context = await requireAuth();
   if (!canManageCumplimiento(context.rol)) {
@@ -1029,6 +1037,9 @@ export async function registrarMedidaCorrectivaHallazgo(
   const descripcionNormalizada = descripcion.trim();
   if (!descripcionNormalizada) {
     throw new Error("Debes ingresar una descripcion para la medida correctiva.");
+  }
+  if (!esNivelJerarquiaControlDs44(jerarquiaControl)) {
+    throw new Error("Selecciona uno de los cuatro niveles de jerarquía del DS44.");
   }
 
   const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
@@ -1053,7 +1064,7 @@ export async function registrarMedidaCorrectivaHallazgo(
   await prisma.evidenciaCumplimiento.create({
     data: {
       empresaId: context.empresaId,
-      titulo: "Medida correctiva",
+      titulo: tituloMedidaJerarquiaControlDs44(jerarquiaControl),
       tipo: "accion_correctiva",
       estado: "pendiente",
       fechaEvidencia: new Date(),
@@ -1063,6 +1074,49 @@ export async function registrarMedidaCorrectivaHallazgo(
       trabajadorId: hallazgo.trabajadorId,
       creadoPorId: context.usuarioId,
     },
+  });
+}
+
+/** Permite clasificar medidas históricas, sin modificar su estado ni fecha de cierre. */
+export async function actualizarJerarquiaMedidaCorrectiva(
+  hallazgoId: string,
+  medidaId: string,
+  jerarquiaControl: NivelJerarquiaControlDs44,
+): Promise<void> {
+  const context = await requireAuth();
+  if (!canManageCumplimiento(context.rol)) {
+    throw new Error("No autorizado para actualizar medidas correctivas.");
+  }
+  if (!esNivelJerarquiaControlDs44(jerarquiaControl)) {
+    throw new Error("Selecciona un nivel válido de jerarquía de controles.");
+  }
+  const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
+    where: { id: hallazgoId, empresaId: context.empresaId },
+    select: { estado: true },
+  });
+  if (!hallazgo) throw new Error("Hallazgo no encontrado en la empresa activa.");
+  if (hallazgo.estado === "cerrado") throw new Error("No se puede cambiar una medida de un hallazgo cerrado.");
+
+  const medida = await prisma.evidenciaCumplimiento.findFirst({
+    where: { id: medidaId, empresaId: context.empresaId, hallazgoId, tipo: "accion_correctiva" },
+    select: { id: true, titulo: true },
+  });
+  if (!medida) throw new Error("Medida correctiva no encontrada.");
+  const nuevoTitulo = tituloMedidaJerarquiaControlDs44(jerarquiaControl);
+  if (medida.titulo === nuevoTitulo) return;
+  await prisma.$transaction(async (tx) => {
+    await tx.evidenciaCumplimiento.update({
+      where: { id: medida.id },
+      data: { titulo: nuevoTitulo },
+    });
+    await tx.evidenciaCumplimientoHistorial.create({
+      data: {
+        evidenciaId: medida.id,
+        usuarioId: context.usuarioId,
+        accion: "clasificacion_jerarquia_ds44",
+        detalle: "Jerarquía de control DS44: " + (leerJerarquiaControlDs44(medida.titulo) ?? "sin_clasificar") + " -> " + jerarquiaControl,
+      },
+    });
   });
 }
 
