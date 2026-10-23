@@ -144,6 +144,64 @@ export async function agregarRecursoPortal(token: string, input: {
 }
 
 
+/** Importación atómica: cada fila crea un recurso individual y todos sus requisitos documentales. */
+export async function importarNominaContratistaPortal(
+  token: string,
+  filas: { nombre: string; rut: string; cargo?: string }[],
+) {
+  const s = await resolverPortalContratista(token);
+  if (!s) throw new Error("Invitación inválida o vencida");
+  if (!Array.isArray(filas) || filas.length === 0 || filas.length > 150) {
+    throw new Error("La nómina debe contener entre 1 y 150 trabajadores.");
+  }
+  const normalizadas = filas.map((fila, index) => {
+    const nombre = valido(String(fila.nombre || ""));
+    const rut = formatRutChile(String(fila.rut || ""));
+    const cargo = valido(String(fila.cargo || ""));
+    const clave = rut.replace(/[^0-9K]/gi, "").toUpperCase();
+    if (!nombre || !/^\d{7,8}[0-9K]$/.test(clave)) {
+      throw new Error(`Fila ${index + 2}: nombre o RUT de trabajador no válido.`);
+    }
+    return { nombre, rut, cargo, clave };
+  });
+  const claves = normalizadas.map((r) => r.clave);
+  if (new Set(claves).size !== claves.length) throw new Error("La nómina contiene RUT duplicados.");
+  const existentes = new Set(s.recursos.filter((r) => r.tipo === "trabajador")
+    .map((r) => (r.identificador || "").replace(/[^0-9K]/gi, "").toUpperCase()));
+  const nuevos = normalizadas.filter((r) => !existentes.has(r.clave));
+  if (!nuevos.length) return { creados: 0, omitidos: normalizadas.length };
+  await prisma.$transaction(async (tx) => {
+    const reglas = await tx.contratistaRequisitoRegla.findMany({
+      where: { solicitudId: s.id, empresaId: s.empresaId, activo: true },
+      select: { id: true, nombre: true, obligatorio: true, vigenciaMeses: true, condicional: true },
+    });
+    const requisitos = requisitosParaNuevoRecurso("trabajador", reglas);
+    for (const item of nuevos) {
+      const base = await tx.contratistaRecursoBase.upsert({
+        where: { contratistaId_tipo_clave: { contratistaId: s.contratistaId, tipo: "trabajador", clave: item.clave } },
+        update: { nombre: item.nombre, identificador: item.rut, cargo: item.cargo || null },
+        create: {
+          empresaId: s.empresaId, contratistaId: s.contratistaId, tipo: "trabajador",
+          clave: item.clave, nombre: item.nombre, identificador: item.rut, cargo: item.cargo || null,
+        },
+      });
+      await tx.contratistaRecurso.create({
+        data: {
+          empresaId: s.empresaId, solicitudId: s.id, recursoBaseId: base.id,
+          tipo: "trabajador", nombre: item.nombre, identificador: item.rut, cargo: item.cargo || null,
+          requisitos: { create: requisitos.map((d) => ({
+            empresaId: s.empresaId, solicitudId: s.id, nombre: d.nombre,
+            categoria: d.categoria, obligatorio: d.obligatorio,
+            vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
+            ...(d.reglaTrabajadorId ? { reglaTrabajadorId: d.reglaTrabajadorId } : {}),
+          })) },
+        },
+      });
+    }
+  }, { timeout: 60000 });
+  return { creados: nuevos.length, omitidos: normalizadas.length - nuevos.length };
+}
+
 export async function incorporarRecursoBasePortal(token: string, recursoBaseId: string) {
   const s = await resolverPortalContratista(token);
   if (!s) throw new Error("Invitación inválida o vencida");
@@ -187,19 +245,42 @@ export async function eliminarRecursoPortal(token: string, recursoId: string) {
   return { ok: true };
 }
 
-export async function enviarCarpetaContratista(token: string) {
+/**
+ * Entregas parciales e independientes: la documentación empresarial no espera
+ * la nómina ni los documentos de cada persona. Los pendientes permanecen visibles.
+ */
+export async function enviarCarpetaContratista(
+  token: string,
+  categoria?: "empresa" | "trabajador" | "vehiculo" | "equipo",
+  recursoId?: string,
+) {
   const s = await resolverPortalContratista(token);
   if (!s) throw new Error("Invitación inválida o vencida");
-  const pendientes = s.requisitos.filter((r) => r.obligatorio && (!r.archivoNombre || estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "vencido"));
-  if (!s.contratista.rut || !s.contratista.razonSocial) throw new Error("Completa los datos de la empresa contratista antes de enviar");
-  if (pendientes.length) throw new Error(`Faltan ${pendientes.length} documentos obligatorios o hay documentos vencidos`);
-  if (!s.requisitos.some((r) => r.archivoNombre && r.estado !== "aprobado" && r.estado !== "en_revision")) throw new Error("No hay documentos nuevos pendientes de envío");
+  if (!s.contratista.rut || !s.contratista.razonSocial) {
+    throw new Error("Completa razón social y RUT de la empresa antes de enviar.");
+  }
+  const tipos = ["empresa", "trabajador", "vehiculo", "equipo"];
+  if (categoria && !tipos.includes(categoria)) throw new Error("Categoría inválida");
+  if (recursoId && (!categoria || categoria === "empresa" ||
+    !s.recursos.some((r) => r.id === recursoId && r.tipo === categoria))) {
+    throw new Error("El recurso no pertenece a esta solicitud.");
+  }
+  const seleccionados = s.requisitos.filter((r) =>
+    (!categoria || r.categoria === categoria) &&
+    (!recursoId || r.recursoId === recursoId) &&
+    Boolean(r.archivoNombre) &&
+    !["aprobado", "en_revision"].includes(r.estado) &&
+    estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) !== "vencido",
+  );
+  if (!seleccionados.length) throw new Error("No hay documentos nuevos vigentes que enviar en esta carpeta.");
   await prisma.$transaction([
     prisma.contratistaRequisito.updateMany({
-      where: { solicitudId: s.id, archivoNombre: { not: null }, estado: { not: "aprobado" } },
+      where: { empresaId: s.empresaId, solicitudId: s.id, id: { in: seleccionados.map((r) => r.id) } },
       data: { estado: "en_revision", observacionRevision: null },
     }),
-    prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "en_revision" } }),
+    prisma.contratistaSolicitud.update({
+      where: { id: s.id }, data: { estado: "en_revision" },
+    }),
   ]);
-  return { ok: true };
+  return { ok: true, enviados: seleccionados.length };
 }

@@ -45,6 +45,21 @@ export const PLANTILLA_ACREDITACION_TRABAJADORES = [
     detalle: "Certificaciones habilitantes exigibles para la especialidad o el cargo del trabajador.",
     obligatorio: false, condicional: true, vigenciaMeses: null,
   },
+  {
+    clave: "induccion-ingreso", nombre: "Registro de inducción de ingreso a la obra o faena",
+    detalle: "Constancia de inducción del trabajador antes del inicio de las actividades.",
+    obligatorio: true, condicional: false, vigenciaMeses: null,
+  },
+  {
+    clave: "difusion-pts", nombre: "Registro de difusión de procedimientos de trabajo seguro aplicables",
+    detalle: "Registro individual del procedimiento de la tarea informado y difundido.",
+    obligatorio: true, condicional: false, vigenciaMeses: null,
+  },
+  {
+    clave: "licencias-especificas", nombre: "Licencias y autorizaciones para conducir u operar equipos (si aplica)",
+    detalle: "Licencias vigentes y acreditaciones del cargo, según conducción, maquinaria o especialidad.",
+    obligatorio: false, condicional: true, vigenciaMeses: null,
+  },
 ] as const;
 
 export function describeRequisitoTrabajador(regla: {

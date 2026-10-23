@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
 import { estadoEfectivo, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
-import { CATALOGO_CONTRATISTAS } from "@/lib/contratistas/catalogo";
+import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
 
@@ -76,7 +76,7 @@ export async function crearSolicitudContratista(input: {
     })),
   ];
   const selected = catalogo.filter((r) => input.requisitos === undefined
-    ? r.alcance === "faena" && r.obligatorio
+    ? (CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS as readonly string[]).includes(r.clave)
     : input.requisitos.includes(r.clave));
   const centro = input.centroTrabajoId
     ? await prisma.centroTrabajo.findFirst({ where: { id: input.centroTrabajoId, empresaId }, select: { id: true, nombre: true } })
@@ -97,6 +97,11 @@ export async function crearSolicitudContratista(input: {
       fechaTermino: fecha(input.fechaTermino),
       requisitos: { create: selected.map((r) => ({
         empresaId, nombre: r.nombre, categoria: r.categoria, alcance: r.alcance, obligatorio: r.obligatorio,
+      })) },
+      // La pauta se crea antes de incorporar trabajadores: se asignará a todos los futuros.
+      reglasTrabajadores: { create: PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => ({
+        empresaId, nombre: r.nombre, obligatorio: r.obligatorio,
+        condicional: r.condicional, vigenciaMeses: r.vigenciaMeses,
       })) },
     },
     select: { id: true },

@@ -21,7 +21,7 @@ export const REQUISITOS_EMPRESA: RequisitoModelo[] = [
 
 export const REQUISITOS_RECURSO: Record<Exclude<CategoriaContratista, "empresa">, RequisitoModelo[]> = {
   trabajador: [
-    { clave: "contrato", nombre: "Contrato o acreditación de vínculo laboral", categoria: "trabajador", obligatorio: true },
+    { clave: "contrato", nombre: "Contrato de trabajo vigente y anexo de vinculación al proyecto", categoria: "trabajador", obligatorio: true },
     { clave: "irl", nombre: "Información de riesgos laborales (IRL)", categoria: "trabajador", obligatorio: true },
     { clave: "epp", nombre: "Registro de entrega de elementos de protección personal", categoria: "trabajador", obligatorio: true },
     { clave: "capacitaciones", nombre: "Capacitaciones exigidas para el cargo", categoria: "trabajador", obligatorio: true },

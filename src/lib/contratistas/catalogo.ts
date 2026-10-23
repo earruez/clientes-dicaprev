@@ -17,6 +17,16 @@ export type CatalogoContratistaItem = {
 };
 
 export const CATALOGO_CONTRATISTAS: CatalogoContratistaItem[] = [
+  // Plantilla integral de antecedentes para acreditación previa al inicio del servicio.
+  { clave: "contacto_responsable", nombre: "Designación y contacto del responsable del contratista en la faena", alcance: "faena", categoria: "empresa", grupo: "Identificación", obligatorio: true, requiereVencimiento: false },
+  { clave: "cronograma", nombre: "Cronograma o planificación de actividades a ejecutar", alcance: "faena", categoria: "empresa", grupo: "Contrato", obligatorio: true, requiereVencimiento: false },
+  { clave: "subcontratistas", nombre: "Identificación de empresas subcontratistas participantes (si aplica)", alcance: "faena", categoria: "empresa", grupo: "Contrato", obligatorio: false, requiereVencimiento: false },
+  { clave: "responsable_sst", nombre: "Identificación del responsable de Seguridad y Salud en el Trabajo", alcance: "faena", categoria: "empresa", grupo: "Prevención", obligatorio: true, requiereVencimiento: false },
+  { clave: "experto_prevencion", nombre: "Currículum y acreditación del experto en prevención de riesgos (si corresponde)", alcance: "empresa", categoria: "empresa", grupo: "Prevención", obligatorio: false, requiereVencimiento: false },
+  { clave: "reglamento_recepcion", nombre: "Registro de entrega y recepción del Reglamento Interno por trabajadores", alcance: "faena", categoria: "empresa", grupo: "Prevención", obligatorio: true, requiereVencimiento: false },
+  { clave: "capacitacion_riesgos", nombre: "Registros de capacitación e información de riesgos de las tareas", alcance: "faena", categoria: "empresa", grupo: "Prevención", obligatorio: true, requiereVencimiento: false },
+  { clave: "protocolos_minsal", nombre: "Registros de protocolos MINSAL aplicables a exposiciones y actividades (si aplica)", alcance: "faena", categoria: "empresa", grupo: "Prevención", obligatorio: false, requiereVencimiento: false },
+  { clave: "autorizaciones_especiales", nombre: "Permisos, autorizaciones y certificaciones especiales de la actividad (si aplica)", alcance: "faena", categoria: "empresa", grupo: "Permisos", obligatorio: false, requiereVencimiento: true },
   { clave: "rut_electronico", nombre: "e-RUT / identificación tributaria de la empresa", alcance: "empresa", categoria: "empresa", grupo: "Identificación", obligatorio: false, requiereVencimiento: false },
   { clave: "inicio_actividades", nombre: "Inicio de actividades ante el SII", alcance: "empresa", categoria: "empresa", grupo: "Identificación", obligatorio: false, requiereVencimiento: false },
   { clave: "escritura", nombre: "Escritura de constitución o estatutos", alcance: "empresa", categoria: "empresa", grupo: "Legal", obligatorio: false, requiereVencimiento: false },
@@ -59,6 +69,15 @@ export const CATALOGO_CONTRATISTAS: CatalogoContratistaItem[] = [
   { clave: "operador", nombre: "Competencia y autorización del operador", alcance: "faena", categoria: "equipo", grupo: "Equipos", obligatorio: true, requiereVencimiento: true },
   { clave: "certificado_equipo", nombre: "Certificado de inspección o pruebas del equipo", alcance: "faena", categoria: "equipo", grupo: "Equipos", obligatorio: false, requiereVencimiento: true },
 ];
+/** Pauta sugerida: la mandante puede desmarcar requisitos no aplicables antes de invitar. */
+export const CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS = [
+  "rut_electronico", "personeria", "afiliacion", "reglamento", "f30", "f301",
+  "contacto_responsable", "nomina", "cronograma", "subcontratistas",
+  "contrato_servicios", "responsable_sst", "experto_prevencion", "reglamento_recepcion",
+  "miper", "pts", "programa", "capacitacion_riesgos", "protocolos_minsal",
+  "autorizaciones_especiales", "permisos_trabajo",
+] as const;
+
 export const CATALOGO_EMPRESA = CATALOGO_CONTRATISTAS.filter((x) => x.alcance === "empresa");
 export const CATALOGO_FAENA = CATALOGO_CONTRATISTAS.filter((x) => x.alcance === "faena" && x.categoria === "empresa");
 export function normalizarClaveDocumento(value: string): string {

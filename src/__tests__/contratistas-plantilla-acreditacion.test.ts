@@ -3,13 +3,16 @@ import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantill
 import { estadoEfectivo, vencimientoEfectivoRequisito, vencimientoMaximoPorMeses } from "@/lib/contratistas/requisitos";
 
 describe("Pauta de acreditación de trabajadores", () => {
-  it("incluye 9 documentos sin duplicados de nombre", () => {
-    expect(PLANTILLA_ACREDITACION_TRABAJADORES).toHaveLength(9);
+  it("incluye 12 documentos por trabajador sin duplicados de nombre", () => {
+    expect(PLANTILLA_ACREDITACION_TRABAJADORES).toHaveLength(12);
     expect(new Set(PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => r.nombre)).size).toBe(9);
   });
   it("establece los límites específicos y las excepciones condicionales", () => {
     const porClave = Object.fromEntries(PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => [r.clave, r]));
     expect(porClave["irl-ds44"].vigenciaMeses).toBe(24);
+    expect(porClave["induccion-ingreso"].obligatorio).toBe(true);
+    expect(porClave["difusion-pts"].obligatorio).toBe(true);
+    expect(porClave["licencias-especificas"].condicional).toBe(true);
     expect(porClave["reglamento-interno"].vigenciaMeses).toBe(24);
     expect(porClave.epp.vigenciaMeses).toBe(12);
     expect(porClave.epp.condicional).toBe(true);
