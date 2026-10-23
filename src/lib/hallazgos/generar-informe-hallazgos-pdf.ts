@@ -97,6 +97,10 @@ function encabezado(doc: jsPDF, titulo: string, subtitulo: string, empresa: stri
     doc.roundedRect(boxX, 10, 91, 52, 5, 5, "F");
     if (insertarLogoEnCaja(doc, logos.empresaLogoDataUrl, boxX + 5, 15, 81, 42)) {
       empresaTextoX = boxX - 10;
+    } else {
+      // Evitar panel blanco vacío si la imagen es inválida; restaurar encabezado azul.
+      fondo(doc, NAVY);
+      doc.roundedRect(boxX, 10, 91, 52, 5, 5, "F");
     }
   }
   colorear(doc, WHITE);
