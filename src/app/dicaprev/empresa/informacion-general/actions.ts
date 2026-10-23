@@ -179,7 +179,7 @@ export async function subirLogoEmpresa(formData: FormData): Promise<string> {
       "x-add-random-suffix": "0",
       "x-content-type": logo.type,
     },
-    body: bytes,
+    body: await logo.arrayBuffer(),
   });
   if (!response.ok) throw new Error("No fue posible guardar el logo en el almacenamiento permanente.");
 
