@@ -102,7 +102,9 @@ export async function crearSolicitudContratista(input: {
       // La pauta se crea antes de incorporar trabajadores: se asignará a todos los futuros.
       reglasTrabajadores: { create: PLANTILLA_ACREDITACION_TRABAJADORES.map((r) => ({
         empresaId, nombre: r.nombre, obligatorio: r.obligatorio,
-        condicional: r.condicional, vigenciaMeses: r.vigenciaMeses,
+        // La plantilla general no inventa una vigencia legal uniforme:
+        // períodos específicos se configuran por faena/mandante cuando correspondan.
+        condicional: r.condicional, vigenciaMeses: null,
       })) },
     },
     select: { id: true },
