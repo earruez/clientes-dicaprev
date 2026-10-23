@@ -84,8 +84,9 @@ function encabezado(doc: jsPDF, titulo: string, subtitulo: string, empresa: stri
     doc.setFontSize(17);
     doc.text("NextPrev", M + 44, 41);
   }
+  colorear(doc, WHITE);
   doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
+  doc.setFontSize(14);
   doc.text(titulo, M, 69);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
