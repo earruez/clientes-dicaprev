@@ -153,6 +153,7 @@ export default function CompanyPage() {
     setConfirmOpen(false);
   };
 
+  const cumpl = dashboard?.kpis.cumplimientoGeneral;
   const companyStats = [
     { id: "trabajadores", title: "Trabajadores activos", value: datosCargados && !datosError ? kpis.trabajadores : "Sin datos", icon: <Users className="h-6 w-6 text-emerald-600" />, description: "Dotación registrada", href: "/dicaprev/trabajadores" },
     { id: "centros", title: "Centros de trabajo", value: datosCargados && !datosError ? kpis.centros : "Sin datos", icon: <Building2 className="h-6 w-6 text-slate-700" />, description: "Centros registrados", href: "/dicaprev/empresa/centros" },
