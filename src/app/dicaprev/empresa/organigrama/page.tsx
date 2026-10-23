@@ -1306,13 +1306,14 @@ export default function OrganigramaPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("areas");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(["empresa-root"]));
   const [selectedNode, setSelectedNode] = useState<OrgNode | null>(null);
-  const [empresaNombre, setEmpresaNombre] = useState("DICAPREV");
+  const [empresaNombre, setEmpresaNombre] = useState("Cargando empresa…");
 
   const [areas, setAreas] = useState<EmpresaArea[]>([]);
   const [cargos, setCargos] = useState<EmpresaCargo[]>([]);
   const [centros, setCentros] = useState<CentroAdmin[]>([]);
   const [posiciones, setPosiciones] = useState<PosicionDotacionNode[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
+  const [cargaError, setCargaError] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -1320,7 +1321,8 @@ export default function OrganigramaPage() {
     getOrganigramaEmpresa()
       .then((data) => {
         if (!mounted) return;
-        setEmpresaNombre(data.empresaNombre || "DICAPREV");
+        setEmpresaNombre(data.empresaNombre || "Empresa activa");
+        setCargaError(false);
         setAreas(data.areas);
         setCargos(data.cargos);
         setCentros(data.centros);
@@ -1329,7 +1331,8 @@ export default function OrganigramaPage() {
       })
       .catch(() => {
         if (!mounted) return;
-        setEmpresaNombre("DICAPREV");
+        setCargaError(true);
+        setEmpresaNombre("Empresa no disponible");
         setAreas([]);
         setCargos([]);
         setCentros([]);
@@ -1379,7 +1382,8 @@ export default function OrganigramaPage() {
 
   return (
     <div className="w-full min-h-screen bg-slate-50">
-      {/* ── Header ── */}
+      {cargaError && <p role="alert" className="mx-6 mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">No se pudo cargar el organigrama. Recarga la página para consultar los datos reales de la empresa.</p>}
+      {/* ── Header ── */
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 px-8 py-5">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -1389,17 +1393,17 @@ export default function OrganigramaPage() {
             </div>
             <p className="text-sm text-slate-500 max-w-xl">
               Generado automáticamente a partir de áreas, cargos, centros y trabajadores del
-              sistema. Refleja los cambios en tiempo real.
+              sistema. Refleja los datos registrados al abrir esta página.
             </p>
           </div>
           <Button
             variant="outline"
             size="sm"
             className="rounded-xl border-slate-200 text-slate-600 gap-2 flex-shrink-0"
-            onClick={() => {}}
+            onClick={() => window.print()}
           >
             <Download size={14} />
-            Exportar
+            Imprimir / PDF
           </Button>
         </div>
 
