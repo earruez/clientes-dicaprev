@@ -49,6 +49,16 @@ describe("Informes NextPrev de hallazgos", () => {
     expect(estaVencidoInforme(rows[4], "2026-10-23")).toBe(false);
   });
 
+  it("pagina sin recortar una descripción excesivamente larga", () => {
+    const item = { ...fila("abierto", 123), descripcion: ("Descripción de riesgo y acción correctiva extensa con detalles técnicos. ").repeat(260) };
+    const doc = construirInformeHallazgosPdf({
+      empresaNombre: "Empresa de pruebas", tipo: "seleccion",
+      referencia: "2026-10-23", hallazgos: [item],
+    });
+    expect(doc.getNumberOfPages()).toBeGreaterThan(2);
+    expect(doc.output("arraybuffer").byteLength).toBeGreaterThan(1_000);
+  });
+
   it("genera un PDF vectorial paginado y compacto con múltiples estados", () => {
     const rows: Hallazgo[] = Array.from({ length: 80 }, (_, i) =>
       fila((["abierto", "en_proceso", "resuelto", "cerrado"] as const)[i % 4], i),

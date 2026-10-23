@@ -245,27 +245,48 @@ export function construirInformeHallazgosPdf(data: DatosInformeHallazgosPdf): js
       doc.setFontSize(8.25);
       const lineas = valores.map((v, index) => doc.splitTextToSize(v, COLS[index].w - 13) as string[]);
       const maxLineas = Math.max(...lineas.map((v) => v.length));
-      const alto = Math.max(37, maxLineas * 10.5 + 12);
-      if (y + alto > LOWER) {
+      const altoTotal = Math.max(37, maxLineas * 10.5 + 12);
+      // Una fila normal se conserva íntegra; descripciones largas se dividen
+      // en bloques para no exceder el pie de página ni perder información.
+      if (y + altoTotal > LOWER && altoTotal <= LOWER - 173) {
         crearPagina();
         tituloSeccion(doc, y, grupo.nombre + " (continuación)", grupo.hallazgos.length, colorGrupo);
         y += 31;
         encabezadoTabla(doc, y);
         y += 29;
       }
-      fondo(doc, i % 2 === 0 ? WHITE : PALE);
-      doc.rect(M, y, CONTENT, alto, "F");
-      doc.setDrawColor(...LINE);
-      doc.line(M, y + alto, W - M, y + alto);
-      let x = M;
-      for (let c = 0; c < valores.length; c += 1) {
-        doc.setFont("helvetica", c === 1 || c === 4 || (c === 6 && estadoVencido) ? "bold" : "normal");
-        doc.setFontSize(c === 1 ? 8.2 : 8);
-        colorear(doc, c === 4 ? colorPrioridad(h) : c === 6 && estadoVencido ? RED : INK);
-        doc.text(lineas[c], x + 7, y + 13, { lineHeightFactor: 1.15 });
-        x += COLS[c].w;
+      const restantes = lineas.map((grupoLineas) => [...grupoLineas]);
+      let parte = 0;
+      while (restantes.some((grupoLineas) => grupoLineas.length > 0)) {
+        if (y + 37 > LOWER) {
+          crearPagina();
+          tituloSeccion(doc, y, grupo.nombre + " (continuación)", grupo.hallazgos.length, colorGrupo);
+          y += 31;
+          encabezadoTabla(doc, y);
+          y += 29;
+        }
+        const capacidad = Math.max(1, Math.floor((LOWER - y - 12) / 10.5));
+        const segmento = restantes.map((grupoLineas) => grupoLineas.splice(0, capacidad));
+        const altoSegmento = Math.max(37, Math.max(...segmento.map((lineasCol) => lineasCol.length)) * 10.5 + 12);
+        fondo(doc, i % 2 === 0 ? WHITE : PALE);
+        doc.rect(M, y, CONTENT, altoSegmento, "F");
+        doc.setDrawColor(...LINE);
+        doc.line(M, y + altoSegmento, W - M, y + altoSegmento);
+        let x = M;
+        for (let c = 0; c < valores.length; c += 1) {
+          doc.setFont("helvetica", c === 1 || c === 4 || (c === 6 && estadoVencido) ? "bold" : "normal");
+          doc.setFontSize(c === 1 ? 8.2 : 8);
+          colorear(doc, c === 4 ? colorPrioridad(h) : c === 6 && estadoVencido ? RED : INK);
+          if (parte > 0 && c === 1 && !segmento[c].length) {
+            doc.text("ID " + h.id.slice(0, 8) + " · continuación", x + 7, y + 13);
+          } else if (segmento[c].length) {
+            doc.text(segmento[c], x + 7, y + 13, { lineHeightFactor: 1.15 });
+          }
+          x += COLS[c].w;
+        }
+        y += altoSegmento;
+        parte += 1;
       }
-      y += alto;
     }
     y += 17;
   }
