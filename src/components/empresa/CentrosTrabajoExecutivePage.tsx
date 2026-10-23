@@ -433,7 +433,7 @@ export default function CentrosTrabajoExecutivePage() {
             className="flex h-[100dvh] max-h-[100dvh] min-h-0 w-full max-w-2xl flex-col overflow-hidden border-l border-slate-200 bg-white"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch]">
               <div className="mb-6 flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">Detalle centro</p>
