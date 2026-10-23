@@ -1522,6 +1522,15 @@ export default function HallazgosClient({
                       </div>
                       <div className="flex items-center justify-between gap-4 py-2.5">
                         <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <User className="h-4 w-4" />
+                          Creado por
+                        </div>
+                        <span className="max-w-[55%] text-right text-sm font-medium text-slate-100">
+                          {selected.creadoPor || "Sistema"}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4 py-2.5">
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
                           <CalendarDays className="h-4 w-4" />
                           Compromiso
                         </div>

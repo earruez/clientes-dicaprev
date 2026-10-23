@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
 import { estadoEfectivo, faltaMigracionContratistas } from "@/lib/contratistas/requisitos";
+import { correspondeAvisarHallazgo, fechaHoyChile, fechaCompromisoHallazgo } from "@/lib/hallazgos/avisos-utils";
 import {
   getAlertasCumplimiento,
   type AlertaCumplimiento,
@@ -19,7 +20,7 @@ export type AlertasEmpresaResponse = {
 export async function getAlertasEmpresa(): Promise<AlertasEmpresaResponse> {
   const { empresaId } = await requirePermission("canReadAlertas");
 
-  const [totalTrabajadores, requeridos, documentos, documentosVehiculo, documentosContratistas] = await Promise.all([
+  const [totalTrabajadores, requeridos, documentos, documentosVehiculo, documentosContratistas, hallazgos] = await Promise.all([
     prisma.trabajador.count({ where: { empresaId, estado: "activo" } }),
     prisma.documentoRequeridoEmpresa.findMany({
       where: { activo: true },
@@ -80,6 +81,15 @@ export async function getAlertasEmpresa(): Promise<AlertasEmpresaResponse> {
       if (faltaMigracionContratistas(error)) return [];
       throw error;
     }),
+    prisma.hallazgoCumplimiento.findMany({
+      where: { empresaId, estado: { not: "cerrado" } },
+      select: {
+        id: true, descripcion: true, estado: true, fechaCompromiso: true, prioridad: true,
+        responsableNombre: true,
+      },
+      orderBy: { fechaCompromiso: "asc" },
+      take: 200,
+    }),
   ]);
 
   const alertas = getAlertasCumplimiento(requeridos, documentos, totalTrabajadores);
@@ -135,6 +145,24 @@ export async function getAlertasEmpresa(): Promise<AlertasEmpresaResponse> {
       prioridad: requiereCorreccion || requiereRevision || (dias !== null && dias <= 15) ? "alta" : "media",
       fecha: (documento.fechaVencimiento || new Date()).toISOString().slice(0, 10),
       href: "/dicaprev/contratistas/solicitudes",
+    });
+  }
+
+  // Vencimientos de hallazgos: visibilidad en campanita, incluso si no
+  // hay remitente de correo configurado en producción.
+  const hoyHallazgos = fechaHoyChile();
+  for (const hallazgo of hallazgos) {
+    if (!correspondeAvisarHallazgo(hallazgo.estado, hallazgo.fechaCompromiso, hoyHallazgos)) continue;
+    const fecha = fechaCompromisoHallazgo(hallazgo.fechaCompromiso);
+    alertas.push({
+      id: "hallazgo-" + hallazgo.id,
+      tipo: "vencido",
+      documento: "Hallazgo pendiente de cierre · " + hallazgo.id.slice(0, 8),
+      mensaje: "Compromiso " + fecha + ". " + hallazgo.descripcion.slice(0, 160)
+        + (hallazgo.responsableNombre ? " · Responsable: " + hallazgo.responsableNombre : ""),
+      prioridad: hallazgo.prioridad === "baja" ? "media" : "alta",
+      fecha,
+      href: "/dicaprev/cumplimiento/hallazgos",
     });
   }
 
