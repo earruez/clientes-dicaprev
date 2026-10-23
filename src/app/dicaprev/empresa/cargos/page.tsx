@@ -18,7 +18,6 @@ import {
   MapPin, Layers, Tag, SlidersHorizontal, CheckCircle2,
 } from "lucide-react";
 import {
-  empresaStore,
   type EmpresaCargo,
   type CargoEstado,
   type CargoTipoUI,
@@ -243,7 +242,6 @@ export default function CargosPage() {
   const [deleteTarget, setDeleteTarget] = useState<Cargo | null>(null);
   const [deleteResolution, setDeleteResolution] = useState<DeleteResolution | null>(null);
   const [deleteLoadingId, setDeleteLoadingId] = useState<string | null>(null);
-  const [plantillaActiva, setPlantillaActiva] = useState<string | null>(null);
 
   // Initialise store on client mount and sync state
   useEffect(() => {
@@ -253,11 +251,6 @@ export default function CargosPage() {
 
     async function loadData() {
       try {
-        await empresaStore.init();
-        if (mounted) {
-          setPlantillaActiva(empresaStore.getActiveStructure().tipoPlantilla);
-        }
-
         const [cargoRows, areaRows] = await Promise.allSettled([getCargos(), getAreas()]);
         if (!mounted) return;
 
@@ -792,20 +785,6 @@ export default function CargosPage() {
         )}
 
         {/* ── PLANTILLA BANNER ── */}
-        {plantillaActiva && (
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-violet-600" />
-            <span className="flex-1">
-              Estructura cargada desde plantilla: <strong>{plantillaActiva}</strong>. Edita libremente desde aquí.
-            </span>
-            <a
-              href="/dicaprev/empresa"
-              className="text-xs font-semibold underline underline-offset-2 hover:text-violet-600 transition"
-            >
-              Cambiar plantilla
-            </a>
-          </div>
-        )}
 
         {/* ── FILTROS ── */}
         <Card className="border border-slate-200 rounded-2xl shadow-sm">
