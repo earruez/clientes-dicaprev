@@ -1234,7 +1234,7 @@ function NodeDrawer({
         </div>
 
         {/* Scrollable content */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pb-[calc(env(safe-area-inset-bottom)+24px)] [-webkit-overflow-scrolling:touch]">
           {node.type === "empresa" && <EmpresaDetail node={node} workers={allWorkers} />}
           {node.type === "area" &&
             (node.areaData ? (
