@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import {
-  agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, cerrarExpedienteContratista,
+  agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, configurarRequisitoPorCargoContratista, cerrarExpedienteContratista,
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
   invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
 } from "@/actions/contratistas/solicitudes";
@@ -76,6 +76,9 @@ export default function SolicitudesContratistasClient() {
   const [seleccionados, setSeleccionados] = useState<string[]>([...CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS]);
   const [descargandoZip, setDescargandoZip] = useState(false);
   const [filtroTrabajador, setFiltroTrabajador] = useState("");
+  const [cargoMasivo, setCargoMasivo] = useState("");
+  const [reglaMasiva, setReglaMasiva] = useState("");
+  const [obligatorioMasivo, setObligatorioMasivo] = useState(true);
   const [agregando, setAgregando] = useState(false);
   const [extra, setExtra] = useState({ nombre: "", alcance: "faena" as "empresa" | "faena", categoria: "empresa", recursoId: "", aplicaATodosTrabajadores: false, obligatorio: true });
   const [motivos, setMotivos] = useState<Record<string, string>>({});
@@ -401,6 +404,34 @@ export default function SolicitudesContratistasClient() {
                   <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={extra.obligatorio} onChange={(e) => setExtra({ ...extra, obligatorio: e.target.checked })}/>Obligatorio</label>
                   <Button type="submit" disabled={procesando} className="bg-sky-700 text-white">Guardar requisito</Button>
                 </form>}
+                {puedeEditar && actual.reglasTrabajadores.length > 0 && actual.recursos.some((r) => r.tipo === "trabajador" && r.cargo) && <section className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                  <h4 className="text-sm font-bold text-emerald-900">Configuración masiva por cargo</h4>
+                  <p className="mt-1 text-xs text-emerald-800">Para 100 trabajadores, selecciona un cargo y marca en bloque si un requisito aplica. No cambia los nombres de documentos ni elimina archivos o historial.</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <label className="space-y-1 text-xs font-semibold text-slate-700">Cargo
+                      <select className={CAMPO} value={cargoMasivo} onChange={(e) => setCargoMasivo(e.target.value)}>
+                        <option value="">Seleccionar cargo</option>
+                        {[...new Set(actual.recursos.filter((r) => r.tipo === "trabajador").map((r) => r.cargo?.trim()).filter((v): v is string => Boolean(v)))].sort((a,b)=>a.localeCompare(b,"es")).map((cargo) => <option key={cargo} value={cargo}>{cargo} ({actual.recursos.filter((r)=>r.tipo==="trabajador" && r.cargo?.trim().toLowerCase()===cargo.toLowerCase()).length})</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-semibold text-slate-700">Documento estándar
+                      <select className={CAMPO} value={reglaMasiva} onChange={(e) => setReglaMasiva(e.target.value)}>
+                        <option value="">Seleccionar requisito</option>
+                        {actual.reglasTrabajadores.map((r)=><option key={r.id} value={r.id}>{r.nombre}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1 text-xs font-semibold text-slate-700">Aplicabilidad
+                      <select className={CAMPO} value={obligatorioMasivo ? "si" : "no"} onChange={(e) => setObligatorioMasivo(e.target.value === "si")}>
+                        <option value="si">Aplica / obligatorio</option>
+                        <option value="no">No aplica / no exigible</option>
+                      </select>
+                    </label>
+                  </div>
+                  <Button className="mt-3 bg-emerald-700 text-white" disabled={procesando || !cargoMasivo || !reglaMasiva} onClick={()=>void ejecutar(
+                    () => configurarRequisitoPorCargoContratista({ solicitudId: actual.id, reglaId: reglaMasiva, cargo: cargoMasivo, obligatorio: obligatorioMasivo }),
+                    "Requisitos actualizados para todos los trabajadores de ese cargo. La documentación permanece intacta."
+                  )}>Aplicar a todo el cargo</Button>
+                </section>}
                 {actual.reglasTrabajadores.length > 0 && <div className="mt-5 space-y-2">
                   <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">Requisitos para todos los trabajadores actuales y futuros ({actual.reglasTrabajadores.length})</h4>
                   {actual.reglasTrabajadores.map((regla) => <div key={regla.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3 sm:p-4">

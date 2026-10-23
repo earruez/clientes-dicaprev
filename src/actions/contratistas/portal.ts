@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
 import { REQUISITOS_RECURSO, estadoEfectivo, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
-import { formatRutChile } from "@/lib/rut";
+import { formatRutChile, validarRutChile } from "@/lib/rut";
 
 function valido(input: string) {
   return input.trim().slice(0, 160);
@@ -34,6 +34,29 @@ function requisitosParaNuevoRecurso(
     vigenciaMeses: r.vigenciaMeses, condicional: r.condicional,
   }));
   return [...basicos, ...adicionales];
+}
+
+/**
+ * Hereda una configuración de aplicabilidad cuando todos los trabajadores
+ * existentes del mismo cargo comparten ese valor. No sobreescribe excepciones.
+ */
+function heredarPerfilCargo<T extends { reglaTrabajadorId: string | null; obligatorio: boolean }>(
+  documentos: T[],
+  expediente: Awaited<ReturnType<typeof resolverPortalContratista>>,
+  cargo: string,
+): T[] {
+  const etiqueta = cargo.trim().toLocaleLowerCase("es");
+  if (!expediente || !etiqueta) return documentos;
+  const trabajadores = expediente.recursos.filter((r) => r.tipo === "trabajador" &&
+    r.cargo?.trim().toLocaleLowerCase("es") === etiqueta);
+  if (!trabajadores.length) return documentos;
+  return documentos.map((doc) => {
+    if (!doc.reglaTrabajadorId) return doc;
+    const estados = trabajadores.map((worker) => expediente.requisitos.find((r) =>
+      r.recursoId === worker.id && r.reglaTrabajadorId === doc.reglaTrabajadorId));
+    if (estados.some((r) => !r) || estados.some((r) => r?.obligatorio !== estados[0]?.obligatorio)) return doc;
+    return { ...doc, obligatorio: estados[0]!.obligatorio };
+  });
 }
 
 export async function obtenerPortalContratista(token: string) {
@@ -96,7 +119,7 @@ export async function agregarRecursoPortal(token: string, input: {
       ? formatRutChile(identificadorBase)
       : identificadorBase;
   const patente = valido(input.patente || "");
-  if (input.tipo === "trabajador" && !identificador) throw new Error("Indica el RUT del trabajador");
+  if (input.tipo === "trabajador" && !validarRutChile(identificador)) throw new Error("El RUT del trabajador no es válido.");
   if (input.tipo === "vehiculo" && !patente) throw new Error("Indica la patente del vehículo");
   const existe = await prisma.contratistaRecurso.findFirst({
     where: {
@@ -129,7 +152,7 @@ export async function agregarRecursoPortal(token: string, input: {
         empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
         recursoBase: { connect: { id: base.id } }, tipo: input.tipo, nombre,
         identificador: identificador || null, cargo: valido(input.cargo || "") || null, patente: patente || null,
-        requisitos: { create: requisitosParaNuevoRecurso(input.tipo, reglas).map((d) => ({
+        requisitos: { create: heredarPerfilCargo(requisitosParaNuevoRecurso(input.tipo, reglas), s, input.cargo || "").map((d) => ({
           empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
           vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
           solicitud: { connect: { id: s.id } },
@@ -159,7 +182,7 @@ export async function importarNominaContratistaPortal(
     const rut = formatRutChile(String(fila.rut || ""));
     const cargo = valido(String(fila.cargo || ""));
     const clave = rut.replace(/[^0-9K]/gi, "").toUpperCase();
-    if (!nombre || !/^\d{7,8}[0-9K]$/.test(clave)) {
+    if (!nombre || !validarRutChile(rut)) {
       throw new Error(`Fila ${index + 2}: nombre o RUT de trabajador no válido.`);
     }
     return { nombre, rut, cargo, clave };
@@ -176,29 +199,51 @@ export async function importarNominaContratistaPortal(
       select: { id: true, nombre: true, obligatorio: true, vigenciaMeses: true, condicional: true },
     });
     const requisitos = requisitosParaNuevoRecurso("trabajador", reglas);
-    for (const item of nuevos) {
-      const base = await tx.contratistaRecursoBase.upsert({
-        where: { contratistaId_tipo_clave: { contratistaId: s.contratistaId, tipo: "trabajador", clave: item.clave } },
-        update: { nombre: item.nombre, identificador: item.rut, cargo: item.cargo || null },
-        create: {
-          empresaId: s.empresaId, contratistaId: s.contratistaId, tipo: "trabajador",
-          clave: item.clave, nombre: item.nombre, identificador: item.rut, cargo: item.cargo || null,
-        },
-      });
-      await tx.contratistaRecurso.create({
-        data: {
-          empresaId: s.empresaId, solicitudId: s.id, recursoBaseId: base.id,
-          tipo: "trabajador", nombre: item.nombre, identificador: item.rut, cargo: item.cargo || null,
-          requisitos: { create: requisitos.map((d) => ({
-            empresaId: s.empresaId, solicitudId: s.id, nombre: d.nombre,
-            categoria: d.categoria, obligatorio: d.obligatorio,
-            vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
-            ...(d.reglaTrabajadorId ? { reglaTrabajadorId: d.reglaTrabajadorId } : {}),
-          })) },
-        },
-      });
-    }
-  }, { timeout: 60000 });
+
+    // Batch único: escala a 100+ trabajadores sin 100 transacciones ni N consultas.
+    await tx.contratistaRecursoBase.createMany({
+      data: nuevos.map((item) => ({
+        empresaId: s.empresaId, contratistaId: s.contratistaId,
+        tipo: "trabajador", clave: item.clave, nombre: item.nombre,
+        identificador: item.rut, cargo: item.cargo || null,
+      })),
+      skipDuplicates: true,
+    });
+    const bases = await tx.contratistaRecursoBase.findMany({
+      where: { contratistaId: s.contratistaId, tipo: "trabajador",
+        clave: { in: nuevos.map((item) => item.clave) } },
+      select: { id: true, clave: true },
+    });
+    const basePorClave = new Map(bases.map((base) => [base.clave, base.id]));
+    if (basePorClave.size !== nuevos.length) throw new Error("No se pudo registrar toda la nómina.");
+    await tx.contratistaRecurso.createMany({
+      data: nuevos.map((item) => ({
+        empresaId: s.empresaId, solicitudId: s.id, recursoBaseId: basePorClave.get(item.clave),
+        tipo: "trabajador", nombre: item.nombre, identificador: item.rut,
+        cargo: item.cargo || null,
+      })),
+    });
+    const personas = await tx.contratistaRecurso.findMany({
+      where: { empresaId: s.empresaId, solicitudId: s.id, tipo: "trabajador",
+        identificador: { in: nuevos.map((item) => item.rut) } },
+      select: { id: true, identificador: true },
+    });
+    const idsPorRut = new Map(personas.map((persona) => [persona.identificador, persona.id]));
+    if (idsPorRut.size !== nuevos.length) throw new Error("No se pudieron crear todas las carpetas.");
+    await tx.contratistaRequisito.createMany({
+      data: nuevos.flatMap((item) => heredarPerfilCargo(requisitos, s, item.cargo).map((req) => ({
+        empresaId: s.empresaId, solicitudId: s.id,
+        recursoId: idsPorRut.get(item.rut) as string,
+        nombre: req.nombre, categoria: req.categoria,
+        obligatorio: req.obligatorio, condicional: req.condicional,
+        vigenciaMeses: req.vigenciaMeses,
+        reglaTrabajadorId: req.reglaTrabajadorId,
+      }))),
+    });
+    await tx.contratistaSolicitud.update({
+      where: { id: s.id }, data: { estado: "enviada" },
+    });
+  }, { timeout: 20000 });
   return { creados: nuevos.length, omitidos: normalizadas.length - nuevos.length };
 }
 
@@ -222,7 +267,7 @@ export async function incorporarRecursoBasePortal(token: string, recursoBaseId: 
         empresaId: s.empresaId, solicitud: { connect: { id: s.id } },
         recursoBase: { connect: { id: base.id } }, tipo, nombre: base.nombre,
         identificador: base.identificador, cargo: base.cargo, patente: base.patente,
-        requisitos: { create: requisitosParaNuevoRecurso(tipo, reglas).map((d) => ({
+        requisitos: { create: heredarPerfilCargo(requisitosParaNuevoRecurso(tipo, reglas), s, base.cargo || "").map((d) => ({
           empresaId: s.empresaId, nombre: d.nombre, categoria: d.categoria, obligatorio: d.obligatorio,
           vigenciaMeses: d.vigenciaMeses, condicional: d.condicional,
           solicitud: { connect: { id: s.id } },
