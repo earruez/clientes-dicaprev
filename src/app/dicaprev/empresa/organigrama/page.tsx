@@ -1383,7 +1383,7 @@ export default function OrganigramaPage() {
   return (
     <div className="w-full min-h-screen bg-slate-50">
       {cargaError && <p role="alert" className="mx-6 mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">No se pudo cargar el organigrama. Recarga la página para consultar los datos reales de la empresa.</p>}
-      {/* ── Header ── */
+      {/* ── Header ── */}
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 px-8 py-5">
         <div className="flex items-start justify-between gap-4">
           <div>
