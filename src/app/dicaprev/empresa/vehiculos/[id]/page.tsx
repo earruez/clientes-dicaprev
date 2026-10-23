@@ -551,7 +551,7 @@ export default function VehiculoDetailPage() {
               <DialogTitle>Editar vehículo</DialogTitle>
             </DialogHeader>
             <form onSubmit={guardarEdicion} className="space-y-4 pt-1">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Tipo</Label>
                   <Select value={form.tipo} onValueChange={(v) => handleChange("tipo", v)}>
@@ -579,7 +579,7 @@ export default function VehiculoDetailPage() {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Patente</Label>
                   <Input className="rounded-xl" value={form.patente} onChange={(e) => handleChange("patente", e.target.value)} required />
@@ -589,7 +589,7 @@ export default function VehiculoDetailPage() {
                   <Input className="rounded-xl" value={form.codigoInterno} onChange={(e) => handleChange("codigoInterno", e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label>Marca</Label>
                   <Input className="rounded-xl" value={form.marca} onChange={(e) => handleChange("marca", e.target.value)} required />
@@ -603,7 +603,7 @@ export default function VehiculoDetailPage() {
                   <Input className="rounded-xl" type="number" min={1990} max={2030} value={form.anio} onChange={(e) => handleChange("anio", Number(e.target.value) || new Date().getFullYear())} required />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Centro de trabajo</Label>
                   <Select value={form.centroTrabajoId || NO_CENTRO_VALUE} onValueChange={(v) => handleChange("centroTrabajoId", v)}>
@@ -623,7 +623,7 @@ export default function VehiculoDetailPage() {
                   <Input className="rounded-xl" value={form.responsable} onChange={(e) => handleChange("responsable", e.target.value)} />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label>Próxima revisión</Label>
                   <Input className="rounded-xl" type="date" value={form.proximaRevision} onChange={(e) => handleChange("proximaRevision", e.target.value)} />
