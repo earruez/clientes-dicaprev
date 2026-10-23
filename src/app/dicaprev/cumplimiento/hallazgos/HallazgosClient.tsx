@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import { guardarFichaHallazgoPdf, guardarInformeHallazgosPdf } from "@/lib/hallazgos/generar-informe-hallazgos-pdf";
 import { fechaChile, filtrarHallazgosInforme, rangoInformeHallazgos, type PeriodicidadInformeHallazgos } from "@/lib/hallazgos/informe-periodico";
+import { coincideTarjetaHallazgo, type TarjetaEstadoHallazgo } from "@/lib/hallazgos/filtro-tarjetas";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { cn } from "@/lib/utils";
 import type {
@@ -247,6 +248,7 @@ export default function HallazgosClient({
 
   const [search, setSearch] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<EstadoHallazgo | "todos">("todos");
+  const [tarjetaActiva, setTarjetaActiva] = useState<TarjetaEstadoHallazgo>("todos");
   const [filtroTipo, setFiltroTipo] = useState<string | "todos">("todos");
   const [filtroCentro, setFiltroCentro] = useState<string>("todos");
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
@@ -796,14 +798,14 @@ export default function HallazgosClient({
         h.descripcion.toLowerCase().includes(txt) ||
         h.centroNombre.toLowerCase().includes(txt) ||
         (h.trabajadorNombre?.toLowerCase().includes(txt) ?? false);
-      const matchEstado = filtroEstado === "todos" || h.estado === filtroEstado;
+      const matchEstado = (filtroEstado === "todos" || h.estado === filtroEstado) && coincideTarjetaHallazgo(h.estado, tarjetaActiva);
       const matchTipo = filtroTipo === "todos" || h.tipo === filtroTipo;
       const matchCentro = filtroCentro === "todos" || h.centroId === filtroCentro || h.centroTrabajoId === filtroCentro;
       const matchFechaDesde = !filtroFechaDesde || h.fechaCompromiso >= filtroFechaDesde;
       const matchFechaHasta = !filtroFechaHasta || h.fechaCompromiso <= filtroFechaHasta;
       return matchText && matchEstado && matchTipo && matchCentro && matchFechaDesde && matchFechaHasta;
     });
-  }, [hallazgos, search, filtroEstado, filtroTipo, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
+  }, [hallazgos, search, filtroEstado, tarjetaActiva, filtroTipo, filtroCentro, filtroFechaDesde, filtroFechaHasta]);
 
   const referenciaValida = /^\d{4}-\d{2}-\d{2}$/.test(fechaReferenciaInforme)
     ? fechaReferenciaInforme : fechaChile(new Date());
@@ -923,17 +925,46 @@ export default function HallazgosClient({
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { label: "Abiertos", value: abiertos, cls: "from-amber-50 to-amber-100 text-amber-700" },
-            { label: "En proceso", value: enProceso, cls: "from-blue-50 to-blue-100 text-blue-700" },
-            { label: "Resueltos", value: resueltos, cls: "from-teal-50 to-teal-100 text-teal-700" },
-            { label: "Cerrados", value: cerrados, cls: "from-emerald-50 to-emerald-100 text-emerald-700" },
-          ].map((kpi) => (
-            <Card key={kpi.label} className={`border-none shadow-sm bg-gradient-to-br ${kpi.cls}`}>
-              <CardContent className="pt-5 pb-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide">{kpi.label}</p>
-                <p className="mt-1 text-3xl font-semibold">{kpi.value}</p>
-              </CardContent>
+          {([
+            { estado: "abierto", label: "Abiertos", value: abiertos, cls: "from-amber-50 to-amber-100 text-amber-700" },
+            { estado: "en_proceso", label: "En proceso", value: enProceso, cls: "from-blue-50 to-blue-100 text-blue-700" },
+            { estado: "resuelto", label: "Resueltos", value: resueltos, cls: "from-teal-50 to-teal-100 text-teal-700" },
+            { estado: "cerrado", label: "Cerrados", value: cerrados, cls: "from-emerald-50 to-emerald-100 text-emerald-700" },
+          ] satisfies Array<{ estado: TarjetaEstadoHallazgo; label: string; value: number; cls: string }>).map((kpi) => (
+            <Card key={kpi.estado} className={cn(
+              "overflow-hidden border bg-gradient-to-br shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md",
+              kpi.cls,
+              tarjetaActiva === kpi.estado ? "border-blue-700 ring-2 ring-blue-700 ring-offset-2" : "border-transparent",
+            )}>
+              <button
+                type="button"
+                aria-label={`Filtrar hallazgos: ${kpi.label}`}
+                aria-pressed={tarjetaActiva === kpi.estado}
+                className="w-full cursor-pointer rounded-xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-blue-800"
+                onClick={() => {
+                  const siguiente = tarjetaActiva === kpi.estado ? "todos" : kpi.estado;
+                  setTarjetaActiva(siguiente);
+                  // La cantidad mostrada debe corresponder a las filas de la tabla
+                  // al seleccionar una tarjeta, sin filtros previos ocultos.
+                  setFiltroEstado("todos");
+                  setSearch("");
+                  setFiltroTipo("todos");
+                  setFiltroCentro("todos");
+                  setFiltroFechaDesde("");
+                  setFiltroFechaHasta("");
+                  window.requestAnimationFrame(() => {
+                    document.getElementById("tabla-hallazgos")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  });
+                }}
+              >
+                <CardContent className="pt-5 pb-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide">{kpi.label}</p>
+                  <p className="mt-1 text-3xl font-semibold">{kpi.value}</p>
+                  <p className="mt-1 text-[11px] font-medium opacity-80">
+                    {tarjetaActiva === kpi.estado ? "Filtrando tabla · pulsar para ver todos" : "Ver hallazgos en la tabla"}
+                  </p>
+                </CardContent>
+              </button>
             </Card>
           ))}
         </div>
@@ -1017,8 +1048,14 @@ export default function HallazgosClient({
           }}
         />
 
-        <Card className="border-none shadow-sm bg-white">
+        <Card id="tabla-hallazgos" className="scroll-mt-4 border-none bg-white shadow-sm">
           <CardContent className="pt-5 flex flex-col gap-3">
+            {tarjetaActiva !== "todos" && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                <span className="font-semibold">Filtro de tarjeta activo: {tarjetaActiva === "abierto" ? "Abiertos" : tarjetaActiva === "en_proceso" ? "En proceso y en seguimiento" : tarjetaActiva === "resuelto" ? "Resueltos" : "Cerrados"} · {hallazgosFiltrados.length} hallazgo(s)</span>
+                <Button size="sm" variant="outline" className="h-8 border-blue-300 bg-white text-blue-800" onClick={() => setTarjetaActiva("todos")}>Mostrar todos</Button>
+              </div>
+            )}
             <div className="relative w-full sm:max-w-sm">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <Input
@@ -1029,7 +1066,7 @@ export default function HallazgosClient({
               />
             </div>
             <div className="flex flex-wrap gap-2">
-              <Select value={filtroEstado} onValueChange={(v) => setFiltroEstado(v as typeof filtroEstado)}>
+              <Select value={filtroEstado} onValueChange={(v) => { setTarjetaActiva("todos"); setFiltroEstado(v as typeof filtroEstado); }}>
                 <SelectTrigger className="w-40 text-sm"><SelectValue placeholder="Estado" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todos">Todos</SelectItem>
