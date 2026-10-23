@@ -151,7 +151,7 @@ function valorColumnaHallazgo(h: Hallazgo, columna: ColumnaHallazgos): string {
     case "centro": return h.centroNombre;
     case "trabajador": return h.trabajadorNombre || "Sin trabajador";
     case "prioridad": return PRIORIDAD_CFG[h.prioridad]?.label ?? h.prioridad;
-    case "fechaCreacion": return h.fechaCreacion.slice(0, 10);
+    case "fechaCreacion": return fechaChile(h.fechaCreacion);
     case "fechaCompromiso": return h.fechaCompromiso.slice(0, 10);
   }
 }
