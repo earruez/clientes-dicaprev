@@ -40,6 +40,7 @@ import {
 } from "@/lib/empresa/empresa-store";
 import { aplicarPlantillaInicialEmpresa } from "@/app/dicaprev/empresa/plantilla/actions";
 import { getEmpresaActual, getEmpresaKpisActual } from "@/app/dicaprev/empresa/informacion-general/actions";
+import { getDashboardEjecutivo, type DashboardEjecutivoResponse } from "@/app/dicaprev/dashboard/actions";
 
 interface CompanyData {
   razonSocial: string;
@@ -103,6 +104,9 @@ export default function CompanyPage() {
   const [activeTab, setActiveTab] = useState("general");
   const [companyData, setCompanyData] = useState<CompanyData>(INITIAL_COMPANY_DATA);
   const [kpis, setKpis] = useState<EmpresaKpisView>({ trabajadores: 0, centros: 0 });
+  const [dashboard, setDashboard] = useState<DashboardEjecutivoResponse | null>(null);
+  const [datosCargados, setDatosCargados] = useState(false);
+  const [datosError, setDatosError] = useState(false);
   const [sstValues, setSstValues] = useState<SSTIndicatorValues[]>(DEFAULT_SST_VALUES);
   const [openEdit, setOpenEdit] = useState(false);
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -132,8 +136,8 @@ export default function CompanyPage() {
   useEffect(() => {
     let mounted = true;
 
-    Promise.all([getEmpresaActual(), getEmpresaKpisActual()])
-      .then(([empresa, resumen]) => {
+    Promise.all([getEmpresaActual(), getEmpresaKpisActual(), getDashboardEjecutivo().catch(() => null)])
+      .then(([empresa, resumen, metricas]) => {
         if (!mounted) return;
 
         setCompanyData((prev) => ({
@@ -151,14 +155,12 @@ export default function CompanyPage() {
           cantidadTrabajadores: resumen.totalTrabajadores,
         }));
 
-        setKpis({
-          trabajadores: resumen.totalTrabajadores,
-          centros: resumen.totalCentros,
-        });
+        setKpis({ trabajadores: resumen.totalTrabajadores, centros: resumen.totalCentros });
+        setDashboard(metricas);
+        setDatosCargados(true);
+        setDatosError(false);
       })
-      .catch(() => {
-        // Keep fallback local data if remote read fails.
-      });
+      .catch(() => { if (mounted) { setDatosError(true); setDatosCargados(true); } });
 
     return () => {
       mounted = false;
@@ -213,52 +215,14 @@ export default function CompanyPage() {
     setEditingSection(null);
   };
 
+  const cumpl = dashboard?.kpis.cumplimientoGeneral;
   const companyStats = [
-    {
-      id: "trabajadores",
-      title: "Trabajadores",
-      value: kpis.trabajadores,
-      icon: <Users className="h-6 w-6 text-emerald-600" />,
-      description: "Personal activo en la compañía",
-    },
-    {
-      id: "centros",
-      title: "Centros de trabajo",
-      value: kpis.centros,
-      icon: <Building2 className="h-6 w-6 text-slate-700" />,
-      description: "Centros operativos actualmente",
-    },
-    {
-      id: "cumplimiento",
-      title: "Cumplimiento",
-      value: "82%",
-      icon: <ShieldCheck className="h-6 w-6 text-emerald-600" />,
-      description: "Meta de seguridad en curso",
-      progress: 82,
-    },
-    {
-      id: "riesgo",
-      title: "Nivel de riesgo",
-      value: "Bajo",
-      icon: <TriangleAlert className="h-6 w-6 text-amber-500" />,
-      description: "Categoría asignada SST",
-      statusLabel: "Bajo",
-      statusColor: "bg-emerald-500",
-    },
-    {
-      id: "accidentabilidad",
-      title: "Tasa accidentabilidad",
-      value: "0.82%",
-      icon: <Activity className="h-6 w-6 text-blue-600" />,
-      description: "Últimos 12 meses",
-    },
-    {
-      id: "siniestralidad",
-      title: "Tasa siniestralidad",
-      value: "1.55%",
-      icon: <Activity className="h-6 w-6 text-orange-600" />,
-      description: "Incidentes por 100 trabajadores",
-    },
+    { id: "trabajadores", title: "Trabajadores activos", value: datosCargados && !datosError ? kpis.trabajadores : "Sin datos", icon: <Users className="h-6 w-6 text-emerald-600" />, description: "Dotación registrada", href: "/dicaprev/trabajadores" },
+    { id: "centros", title: "Centros de trabajo", value: datosCargados && !datosError ? kpis.centros : "Sin datos", icon: <Building2 className="h-6 w-6 text-slate-700" />, description: "Centros registrados", href: "/dicaprev/empresa/centros" },
+    { id: "cumplimiento", title: "Cumplimiento documental", value: cumpl == null ? "Sin cálculo" : `${cumpl}%`, icon: <ShieldCheck className="h-6 w-6 text-emerald-600" />, description: "Calculado a partir de documentación", href: "/dicaprev/cumplimiento", progress: cumpl ?? undefined },
+    { id: "pendientes", title: "Documentos pendientes", value: dashboard?.kpis.documentosPendientes ?? "Sin datos", icon: <TriangleAlert className="h-6 w-6 text-amber-500" />, description: "Requieren documentos", href: "/dicaprev/dashboard/documentos?estado=pendientes" },
+    { id: "vencidos", title: "Documentos vencidos", value: dashboard?.kpis.documentosVencidos ?? "Sin datos", icon: <TriangleAlert className="h-6 w-6 text-red-600" />, description: "Requieren regularización", href: "/dicaprev/dashboard/documentos?estado=vencidos" },
+    { id: "hallazgos", title: "Hallazgos abiertos", value: dashboard?.hallazgos?.abiertos ?? "Sin datos", icon: <Activity className="h-6 w-6 text-blue-600" />, description: "Abiertos o en seguimiento", href: "/dicaprev/cumplimiento/hallazgos" },
   ];
 
   return (
@@ -270,13 +234,11 @@ export default function CompanyPage() {
           onEdit={() => openEditModal("Configuración SST")}
         />
 
+        {datosError && <p role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">No fue posible cargar los datos reales de la empresa. Actualiza la pantalla.</p>}
         {/* KPIs Superiores */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
           {companyStats.map((stat) => (
-            <div
-              key={stat.id}
-              className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
-            >
+            <Link href={stat.href} key={stat.id} aria-label={`Abrir ${stat.title}`} className="block rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700">
               <div className="flex items-center justify-between gap-4">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
                   {stat.icon}
@@ -308,7 +270,7 @@ export default function CompanyPage() {
                   <p className="mt-5 text-sm text-slate-500">{stat.description}</p>
                 ) : null
               )}
-            </div>
+            </Link>
           ))}
         </div>
 
