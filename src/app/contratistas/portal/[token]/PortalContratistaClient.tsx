@@ -159,6 +159,26 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
         }));
       const resultado = await importarNominaContratistaPortal(token, trabajadoresArchivo);
       if (!resultado.creados) throw new Error("Todos estos trabajadores ya se encontraban incorporados.");
+
+      // La nómina original es evidencia del expediente; no se solicita una segunda carga.
+      const requisitoNomina = portal.requisitos.find((r) =>
+        r.categoria === "empresa" &&
+        r.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase().includes("nomina de trabajadores"));
+      if (requisitoNomina) {
+        const evidencia = file.name.toLowerCase().endsWith(".csv")
+          ? new File([XLSX.write(workbook, { type: "array", bookType: "xlsx" })],
+              "nomina_trabajadores.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+          : file;
+        const formulario = new FormData();
+        formulario.set("requisitoId", requisitoNomina.id);
+        formulario.set("file", evidencia);
+        const subida = await fetch(`/api/contratistas/portal/${token}/archivo`, { method: "POST", body: formulario });
+        if (!subida.ok) {
+          const dato = await subida.json().catch(() => null) as { error?: string } | null;
+          throw new Error(`Los trabajadores se registraron, pero la nómina no se adjuntó: ${dato?.error || "error de almacenamiento"}. Puedes adjuntarla desde Empresa.`);
+        }
+      }
       setCategoria("trabajador"); setTrabajadorSeleccionado("");
     }, "Nómina importada; cada persona tiene una carpeta documental independiente.");
   }
