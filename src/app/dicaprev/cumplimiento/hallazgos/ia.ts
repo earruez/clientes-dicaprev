@@ -7,6 +7,7 @@ import { requireAuth, requirePermission } from "@/server/auth/permissions";
 import { after } from "next/server";
 import { avisarNuevoHallazgo } from "@/lib/hallazgos/avisos-correo";
 import type { PrioridadHallazgo } from "../types";
+import { esNivelJerarquiaControlDs44, tituloMedidaJerarquiaControlDs44, type NivelJerarquiaControlDs44 } from "@/lib/hallazgos/jerarquia-control-ds44";
 
 export type TipoHallazgoIA =
   | "condicion_insegura"
@@ -49,6 +50,7 @@ export type AnalisisFotoHallazgoIAResultado =
 
 type ConfirmarHallazgoFotoIAInput = {
   sugerencia: SugerenciaHallazgoIA;
+  jerarquiaControl: NivelJerarquiaControlDs44;
   archivoUrl: string;
   archivoNombre?: string | null;
   archivoTipo?: string | null;
@@ -456,6 +458,9 @@ export async function confirmarHallazgoDesdeFotoIA(
   if (!input.archivoUrl.trim()) {
     throw new Error("La foto es obligatoria para confirmar el hallazgo.");
   }
+  if (!esNivelJerarquiaControlDs44(input.jerarquiaControl)) {
+    throw new Error("Selecciona el nivel de jerarquía de control DS44 para la medida sugerida por IA.");
+  }
   if (context.rol !== "SUPERADMIN") {
     const manageCumplimiento = await requirePermission("canManageCumplimiento");
     if (!manageCumplimiento) {
@@ -544,11 +549,12 @@ export async function confirmarHallazgoDesdeFotoIA(
     const accionCorrectiva = await tx.evidenciaCumplimiento.create({
       data: {
         empresaId: context.empresaId,
-        titulo: "Medida correctiva sugerida",
+        titulo: tituloMedidaJerarquiaControlDs44(input.jerarquiaControl),
         tipo: "accion_correctiva",
         estado: "pendiente",
         fechaEvidencia: new Date(),
         observacion: accionCorrectivaFinal,
+        descripcion: accionCorrectivaFinal,
         hallazgoId: hallazgo.id,
         centroTrabajoId: centro?.id ?? null,
         creadoPorId: context.usuarioId,
