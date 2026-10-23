@@ -92,8 +92,6 @@ interface TrabajadorAsignado {
   nombre: string;
   rut: string;
   estado: "Al día" | "Pendiente" | "Crítico";
-  completitudDoc: number;
-  capacitaciones: number;
 }
 
 interface TrabajadorDisponible {
@@ -191,8 +189,6 @@ function mapDbPosicionToUi(row: DotacionRow): Posicion {
     nombre: `${trabajador.nombres} ${trabajador.apellidos}`.trim(),
     rut: trabajador.rut ?? "Sin RUT",
     estado: (trabajador.estado === "activo" ? "Al día" : trabajador.estado === "inactivo" ? "Pendiente" : "Crítico") as TrabajadorAsignado["estado"],
-    completitudDoc: trabajador.estado === "activo" ? 100 : trabajador.estado === "inactivo" ? 60 : 35,
-    capacitaciones: trabajador.estado === "activo" ? 8 : trabajador.estado === "inactivo" ? 4 : 2,
   }));
 
   return {
@@ -823,20 +819,7 @@ export default function DotacionPage() {
                 )}
               </div>
 
-              {/* Cumplimiento mock */}
-              <div className="rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4 space-y-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Cumplimiento (posición)</p>
-                <ComplianceBar
-                  icon={<FileCheck className="h-4 w-4 text-sky-500" />}
-                  label="Documental promedio"
-                  pct={drawerWorkers.length > 0 ? Math.round(drawerWorkers.reduce((s, w) => s + w.completitudDoc, 0) / drawerWorkers.length) : 0}
-                />
-                <ComplianceBar
-                  icon={<BookOpen className="h-4 w-4 text-indigo-500" />}
-                  label="Capacitaciones promedio"
-                  pct={drawerWorkers.length > 0 ? Math.min(100, Math.round((drawerWorkers.reduce((s, w) => s + w.capacitaciones, 0) / drawerWorkers.length / 10) * 100)) : 0}
-                />
-              </div>
+
             </div>
 
             {/* Footer */}
@@ -1025,23 +1008,6 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
       <span className="shrink-0 mt-0.5">{icon}</span>
       <span className="text-slate-500 min-w-[80px] shrink-0">{label}</span>
       <span className="text-slate-800 font-medium">{value}</span>
-    </div>
-  );
-}
-
-function ComplianceBar({ icon, label, pct }: { icon: React.ReactNode; label: string; pct: number }) {
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-xs text-slate-500">
-        <span className="flex items-center gap-1.5">{icon}{label}</span>
-        <span className={`font-semibold ${pct >= 80 ? "text-emerald-600" : pct >= 50 ? "text-amber-600" : "text-rose-600"}`}>{pct}%</span>
-      </div>
-      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-        <div
-          className={`h-full rounded-full ${pct >= 80 ? "bg-emerald-500" : pct >= 50 ? "bg-amber-400" : "bg-rose-500"}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
     </div>
   );
 }
