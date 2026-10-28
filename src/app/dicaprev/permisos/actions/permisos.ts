@@ -11,40 +11,92 @@ import {
   PermisoResponsableFormData,
 } from "../types";
 import { calcularFechaEstimadaResolucion, calcularNivelRiesgo } from "../utils/calculos";
-import { sendEmail } from "@/lib/email/send-email";
+import { sendEmail, type SendEmailAttachment } from "@/lib/email/send-email";
+import { obtenerAdjuntoMunicipal, validarArchivoPermisoAprobado, type ArchivoPermisoAprobadoInput } from "@/lib/permisos/adjunto-aprobado";
 import { generarAsuntoEmailPermiso, generarEmailPermiso } from "../utils/email-templates";
 import { construirArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 
 type DestinatarioNotificacion = { email: string };
+type ResumenEnvio = { enviados: number; fallidos: number; omitidos: number; error?: string };
 
 const ESTADOS_CON_NOTIFICACION = new Set(["SOLICITADO", "APROBADO", "CANCELADO"]);
 
 async function enviarNotificacionATodos(
   permisoId: string,
   destinatarios: DestinatarioNotificacion[],
-  tipo: "PERMISO_CREADO" | "CAMBIO_ESTADO",
+  tipo: "PERMISO_CREADO" | "CAMBIO_ESTADO" | "APROBADO_ADJUNTO",
   subject: string,
   html: string,
-) {
-  const emailsUnicos = Array.from(new Set(destinatarios.map((d) => d.email).filter(Boolean)));
+  opciones?: { adjuntos?: SendEmailAttachment[]; soloPendientes?: boolean },
+): Promise<ResumenEnvio> {
+  const emailsUnicos = Array.from(new Set(destinatarios.map((d) => d.email?.trim().toLowerCase()).filter(Boolean)));
+  const enviadosAntes = opciones?.soloPendientes
+    ? await prisma.permisoNotificacion.findMany({
+        where: { permisoId, tipo, estado: "ENVIADO" },
+        select: { destinatario: true },
+      })
+    : [];
+  const yaEnviados = new Set(enviadosAntes.map((item) => item.destinatario.toLowerCase()));
+  const resumen: ResumenEnvio = { enviados: 0, fallidos: 0, omitidos: 0 };
   for (const email of emailsUnicos) {
+    if (yaEnviados.has(email)) { resumen.omitidos++; continue; }
     try {
-      const emailResult = await sendEmail({ to: email, subject, html });
+      const emailResult = await sendEmail({ to: email, subject, html, attachments: opciones?.adjuntos });
       await prisma.permisoNotificacion.create({
         data: { permisoId, tipo, destinatario: email, estado: "ENVIADO", providerMessageId: emailResult.messageId },
       });
+      resumen.enviados++;
     } catch (error) {
+      resumen.fallidos++;
       await prisma.permisoNotificacion.create({
         data: {
-          permisoId,
-          tipo,
-          destinatario: email,
-          estado: "ERROR",
+          permisoId, tipo, destinatario: email, estado: "ERROR",
           error: error instanceof Error ? error.message : "Error desconocido",
         },
       });
       console.error(`Error enviando email (${tipo}) a ${email}:`, error);
     }
+  }
+  return resumen;
+}
+
+/** Notifica la aprobación con un adjunto real; omite destinatarios con entrega exitosa previa. */
+async function notificarAprobacionConDocumento(
+  permisoId: string, empresaId: string, forzarReenvio = false,
+): Promise<ResumenEnvio> {
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId, estado: "APROBADO" },
+    include: {
+      organismo: true, cliente: true, responsable: true,
+      responsablesAdicionales: { include: { responsable: true } },
+    },
+  });
+  if (!permiso) throw new Error("Permiso aprobado no encontrado.");
+  if (!permiso.fechaTrabajoAutorizadoDesde || !permiso.fechaTrabajoAutorizadoHasta) {
+    return { enviados: 0, fallidos: 0, omitidos: 0 };
+  }
+  if (!permiso.permisoAprobadoArchivoNombre || !permiso.permisoAprobadoArchivoNombreOriginal ||
+      !permiso.permisoAprobadoArchivoPeso) {
+    return { enviados: 0, fallidos: 0, omitidos: 0 };
+  }
+  const destinatarios = [permiso.responsable, ...permiso.responsablesAdicionales.map((x) => x.responsable)];
+  try {
+    const adjunto = await obtenerAdjuntoMunicipal(empresaId, {
+      archivoNombre: permiso.permisoAprobadoArchivoNombre,
+      archivoNombreOriginal: permiso.permisoAprobadoArchivoNombreOriginal,
+      archivoTipo: permiso.permisoAprobadoArchivoTipo,
+      archivoPeso: permiso.permisoAprobadoArchivoPeso,
+    });
+    return enviarNotificacionATodos(
+      permiso.id, destinatarios, "APROBADO_ADJUNTO",
+      generarAsuntoEmailPermiso(permiso),
+      generarEmailPermiso(permiso, permiso.responsable, "CAMBIO_ESTADO"),
+      { adjuntos: [adjunto], soloPendientes: !forzarReenvio },
+    );
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : "No fue posible recuperar el documento.";
+    console.error("Error al preparar correo con permiso municipal:", error);
+    return { enviados: 0, fallidos: destinatarios.length, omitidos: 0, error: mensaje };
   }
 }
 
