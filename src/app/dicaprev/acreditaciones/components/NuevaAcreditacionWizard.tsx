@@ -85,7 +85,7 @@ export default function NuevaAcreditacionWizard(props: Props) {
         </header>
         <nav aria-label="Progreso de la nueva acreditación" className="grid shrink-0 grid-cols-3 gap-2 px-5 py-4">
           {PASOS.map((nombre, i) => (
-            <div key={nombre} aria-current={paso === i ? "step" : undefined} className={\`rounded-xl p-2 text-center text-xs font-semibold \${i === paso ? "bg-blue-700 text-white" : i < paso ? "bg-green-50 text-green-800" : "bg-slate-100 text-slate-500"}\`}>
+            <div key={nombre} aria-current={paso === i ? "step" : undefined} className={`rounded-xl p-2 text-center text-xs font-semibold ${i === paso ? "bg-blue-700 text-white" : i < paso ? "bg-green-50 text-green-800" : "bg-slate-100 text-slate-500"}`}>
               {i + 1}. {nombre}
             </div>
           ))}
@@ -145,7 +145,7 @@ export default function NuevaAcreditacionWizard(props: Props) {
               <p className="text-sm font-semibold text-blue-800">{trabajadorIds.length} trabajadores seleccionados</p>
               {props.trabajadores.length === 0 ? <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">No hay trabajadores en esta empresa. Agrégalos primero desde el módulo Trabajadores.</p> : (
                 <div className="max-h-72 space-y-1 overflow-y-auto rounded-xl border p-2">
-                  {props.trabajadores.filter((t) => \`\${t.nombre} \${t.rut}\`.toLowerCase().includes(busqueda.toLowerCase())).map((t) => (
+                  {props.trabajadores.filter((t) => `${t.nombre} ${t.rut}`.toLowerCase().includes(busqueda.toLowerCase())).map((t) => (
                     <label key={t.id} className="flex cursor-pointer items-center gap-3 rounded-lg p-3 hover:bg-slate-50">
                       <input type="checkbox" checked={trabajadorIds.includes(t.id)} onChange={() => toggle(t.id, trabajadorIds, setTrabajadorIds)} className="h-4 w-4 accent-blue-700" />
                       <span className="text-sm"><strong className="block text-slate-900">{t.nombre}</strong><span className="text-xs text-slate-500">{t.rut} · {t.cargo}</span></span>
