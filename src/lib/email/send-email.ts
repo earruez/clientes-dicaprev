@@ -1,8 +1,16 @@
+export type SendEmailAttachment = {
+  filename: string;
+  /** Contenido del adjunto en base64, nunca una URL privada. */
+  content: string;
+  contentType?: string;
+};
+
 export type SendEmailInput = {
   to: string;
   subject: string;
   html: string;
   text?: string;
+  attachments?: SendEmailAttachment[];
 };
 
 export type SendEmailResult = {
@@ -62,6 +70,11 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       subject: input.subject,
       html: input.html,
       text: input.text,
+      ...(input.attachments?.length ? { attachments: input.attachments.map((item) => ({
+        filename: item.filename,
+        content: item.content,
+        ...(item.contentType ? { content_type: item.contentType } : {}),
+      })) } : {}),
     }),
   });
 

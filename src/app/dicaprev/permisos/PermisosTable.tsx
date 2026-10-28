@@ -49,6 +49,10 @@ function CambiarEstadoInline({ permiso }: { permiso: PermisoConRelaciones }) {
 
   const handleGuardar = async () => {
     setError(null);
+    if (nuevoEstado === "APROBADO") {
+      router.push(`/dicaprev/permisos/${permiso.id}`);
+      return;
+    }
 
     if (requiereComentario && !comentario.trim()) {
       setError("Indica una observación/motivo para este estado.");
@@ -85,7 +89,7 @@ function CambiarEstadoInline({ permiso }: { permiso: PermisoConRelaciones }) {
           ))}
         </select>
       </div>
-      <div>
+      {nuevoEstado !== "APROBADO" && <div>
         <label className="block text-xs font-medium text-slate-600 mb-1">Fecha de presentación</label>
         <input
           type="date"
@@ -93,7 +97,7 @@ function CambiarEstadoInline({ permiso }: { permiso: PermisoConRelaciones }) {
           onChange={(e) => setFecha(e.target.value)}
           className="px-2 py-1.5 border border-slate-300 rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-      </div>
+      </div>}
       {requiereComentario && (
         <div className="flex-1 min-w-[220px]">
           <label className="block text-xs font-medium text-slate-600 mb-1">
@@ -107,9 +111,18 @@ function CambiarEstadoInline({ permiso }: { permiso: PermisoConRelaciones }) {
           />
         </div>
       )}
-      <Button type="button" size="sm" onClick={handleGuardar} disabled={loading}>
-        {loading ? "Guardando..." : "Guardar"}
-      </Button>
+      {nuevoEstado === "APROBADO" ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-xs text-amber-800">Para aprobar es obligatorio informar las fechas y adjuntar la resolución municipal.</p>
+          <Link href={`/dicaprev/permisos/${permiso.id}`} className="rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800">
+            Abrir aprobación con documento
+          </Link>
+        </div>
+      ) : (
+        <Button type="button" size="sm" onClick={handleGuardar} disabled={loading}>
+          {loading ? "Guardando..." : "Guardar"}
+        </Button>
+      )}
       {error && <p className="text-xs text-red-600 w-full">{error}</p>}
     </div>
   );

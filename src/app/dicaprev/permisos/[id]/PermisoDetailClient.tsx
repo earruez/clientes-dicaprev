@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, ExternalLink, FileText, Save, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ExternalLink, FileText, Mail, Save, Upload } from "lucide-react";
 import type { PermisoInstalacion, PermisoOrganismo, PermisoResponsable, PermisoCliente, PermisoHistorial } from "@prisma/client";
-import { actualizarFechaPresentacion, cambiarEstadoPermiso, guardarPermisoAprobado, guardarPeriodoTrabajosAprobado, enviarCorreoPruebaPermisoAprobado } from "../actions/permisos";
+import { actualizarFechaPresentacion, cambiarEstadoPermiso, guardarPermisoAprobado, guardarPeriodoTrabajosAprobado, enviarCorreoPruebaPermisoAprobado, reenviarAprobacionMunicipalConAdjunto } from "../actions/permisos";
 import { ESTADO_COLORS, PERMISO_ESTADOS, ESTADOS_REQUIEREN_COMENTARIO, PermisoEstado } from "../types";
 import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE } from "@/lib/documentacion/archivo-documento";
 
@@ -72,6 +72,9 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
   const [estadoError, setEstadoError] = useState<string | null>(null);
 
   const [archivoAprobado, setArchivoAprobado] = useState<File | null>(null);
+  const [archivoParaAprobar, setArchivoParaAprobar] = useState<File | null>(null);
+  const [reenviandoAprobacion, setReenviandoAprobacion] = useState(false);
+  const [mensajeEnvioAprobacion, setMensajeEnvioAprobacion] = useState("");
   const [savingArchivo, setSavingArchivo] = useState(false);
   const [archivoError, setArchivoError] = useState<string | null>(null);
   const [archivoMensaje, setArchivoMensaje] = useState<string | null>(null);
@@ -92,6 +95,24 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
     }
   };
 
+  async function subirArchivoMunicipal(file: File): Promise<ArchivoSubido> {
+    if (!file.size || file.size > MAX_DOCUMENTO_FILE_SIZE) {
+      throw new Error("El permiso municipal debe contener un archivo de máximo 10 MB.");
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch("/api/dicaprev/documentacion/upload", {
+      method: "POST", body: formData,
+    });
+    const payload = (await response.json()) as ArchivoSubido | { error?: string };
+    if (!response.ok) {
+      throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el documento.");
+    }
+    const result = payload as ArchivoSubido;
+    if (!result.archivoNombre) throw new Error("No se recibió confirmación del archivo guardado.");
+    return result;
+  }
+
   const handleCambiarEstado = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setEstadoError(null);
@@ -106,13 +127,33 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
       return;
     }
 
+    if (nuevoEstado === "APROBADO" && !archivoParaAprobar) {
+      setEstadoError("Adjunta la resolución municipal aprobada antes de enviar el correo.");
+      return;
+    }
     setSavingEstado(true);
     try {
-      await cambiarEstadoPermiso(
+      const documento = nuevoEstado === "APROBADO" && archivoParaAprobar
+        ? await subirArchivoMunicipal(archivoParaAprobar)
+        : undefined;
+      const resultado = await cambiarEstadoPermiso(
         permiso.id, nuevoEstado, comentario.trim() || undefined,
         nuevoEstado === "APROBADO" ? { desde: periodoDesde, hasta: periodoHasta } : undefined,
+        documento ? {
+          archivoNombre: documento.archivoNombre,
+          archivoNombreOriginal: documento.archivoNombreOriginal,
+          archivoTipo: documento.archivoTipo,
+          archivoPeso: documento.archivoPeso,
+        } : undefined,
       );
       setComentario("");
+      setArchivoParaAprobar(null);
+      if (resultado.resumenEnvio) {
+        const envio = resultado.resumenEnvio;
+        setMensajeEnvioAprobacion(envio.fallidos
+          ? `Permiso aprobado y documento guardado. ${envio.enviados} correo(s) enviado(s), ${envio.fallidos} con error. Puedes reintentar desde esta ficha.`
+          : `Permiso aprobado. Correo enviado con el documento adjunto a ${envio.enviados} responsable(s).`);
+      }
       router.refresh();
     } catch (err) {
       setEstadoError(err instanceof Error ? err.message : "Error al cambiar el estado del permiso");
@@ -137,7 +178,12 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         throw new Error("No se pudo confirmar el período guardado. Inténtalo nuevamente.");
       }
       setPeriodoGuardado({ desde: resultado.desde, hasta: resultado.hasta });
-      setMensajePeriodo("Período autorizado guardado correctamente. Las fechas ya están registradas en NextPrev.");
+      const envio = resultado.resumenEnvio;
+      setMensajePeriodo(envio.fallidos
+        ? `Fechas guardadas. ${envio.enviados} correo(s) con documento enviados y ${envio.fallidos} pendiente(s). Puedes reintentar el envío.`
+        : envio.enviados > 0
+          ? `Fechas guardadas y permiso enviado con adjunto a ${envio.enviados} responsable(s).`
+          : "Período autorizado guardado correctamente. Las fechas ya están registradas en NextPrev.");
       router.refresh();
     } catch (error) {
       setErrorPeriodo(true);
@@ -177,19 +223,8 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
 
     setSavingArchivo(true);
     try {
-      const formData = new FormData();
-      formData.append("file", archivoAprobado);
-      const response = await fetch("/api/dicaprev/documentacion/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = (await response.json()) as ArchivoSubido | { error?: string };
-      if (!response.ok) {
-        throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el archivo.");
-      }
-
-      const subido = payload as ArchivoSubido;
-      await guardarPermisoAprobado(permiso.id, {
+      const subido = await subirArchivoMunicipal(archivoAprobado);
+      const resultado = await guardarPermisoAprobado(permiso.id, {
         archivoNombre: subido.archivoNombre,
         archivoNombreOriginal: subido.archivoNombreOriginal,
         archivoTipo: subido.archivoTipo,
@@ -197,12 +232,37 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
       });
 
       setArchivoAprobado(null);
-      setArchivoMensaje(permiso.permisoAprobadoArchivoNombre ? "Permiso aprobado reemplazado correctamente." : "Permiso aprobado adjuntado correctamente.");
+      const envio = resultado.resumenEnvio;
+      const guardado = permiso.permisoAprobadoArchivoNombre
+        ? "Permiso aprobado reemplazado correctamente."
+        : "Permiso municipal adjuntado correctamente.";
+      setArchivoMensaje(envio.fallidos
+        ? `${guardado} ${envio.enviados} correo(s) enviados y ${envio.fallidos} con error. Puedes reintentar el envío.`
+        : envio.enviados > 0
+          ? `${guardado} Enviado automáticamente con adjunto a ${envio.enviados} responsable(s).`
+          : `${guardado} Si aún no se había notificado con documento, revisa que el período esté guardado para completar el envío.`);
       router.refresh();
     } catch (err) {
       setArchivoError(err instanceof Error ? err.message : "No se pudo adjuntar el permiso aprobado.");
     } finally {
       setSavingArchivo(false);
+    }
+  };
+
+  const handleReenviarAprobacion = async () => {
+    if (!window.confirm("¿Enviar nuevamente a todos los responsables el correo de aprobación con la resolución municipal adjunta?")) return;
+    setReenviandoAprobacion(true);
+    setMensajeEnvioAprobacion("");
+    try {
+      const resumen = await reenviarAprobacionMunicipalConAdjunto(permiso.id);
+      setMensajeEnvioAprobacion(resumen.fallidos
+        ? `${resumen.enviados} correo(s) enviados, ${resumen.fallidos} con error. Revisa la configuración del correo.`
+        : `Correo de aprobación con documento adjunto reenviado a ${resumen.enviados} responsable(s).`);
+      router.refresh();
+    } catch (error) {
+      setMensajeEnvioAprobacion(error instanceof Error ? error.message : "No se pudo reenviar el correo.");
+    } finally {
+      setReenviandoAprobacion(false);
     }
   };
 
@@ -332,6 +392,17 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
                     <input type="date" required min={periodoDesde || undefined} value={periodoHasta} onChange={(e) => setPeriodoHasta(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
                   </label>
                 </div>
+                <label className="block space-y-1 text-sm font-medium text-green-900">
+                  Permiso aprobado emitido por la municipalidad *
+                  <input
+                    type="file"
+                    required
+                    accept={DOCUMENTO_ACCEPT}
+                    onChange={(e) => setArchivoParaAprobar(e.target.files?.[0] || null)}
+                    className="block w-full rounded-lg border border-green-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-blue-100 file:px-3 file:py-2 file:font-semibold file:text-blue-800"
+                  />
+                </label>
+                <p className="text-xs text-green-900">Se enviará esta resolución como archivo adjunto junto con las fechas Desde y Hasta a los responsables. Máximo 10 MB.</p>
               </div>
             )}
             <div>
@@ -358,14 +429,14 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
               />
               {["SOLICITADO", "APROBADO", "CANCELADO"].includes(nuevoEstado) && (
                 <p className="text-xs text-slate-500 mt-1">
-                  Se enviará un correo automático a los coordinadores asignados informando este cambio.
+                  Se enviará un correo automático a los coordinadores asignados. Si está aprobado, incluirá el permiso municipal adjunto.
                 </p>
               )}
             </div>
             {estadoError && <p className="text-red-600 text-sm">{estadoError}</p>}
             <div className="flex justify-end">
-              <Button type="submit" disabled={savingEstado}>
-                {savingEstado ? "Actualizando..." : "Actualizar estado"}
+              <Button type="submit" disabled={savingEstado || (nuevoEstado === "APROBADO" && !archivoParaAprobar)} className="bg-blue-700 text-white hover:bg-blue-800">
+                {savingEstado ? "Guardando y enviando..." : nuevoEstado === "APROBADO" ? "Aprobar y notificar con documento" : "Actualizar estado"}
               </Button>
             </div>
           </form>
@@ -376,7 +447,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         <section className="rounded-lg border border-green-200 bg-white p-6 space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Período autorizado de trabajo</h2>
-            <p className="mt-1 text-sm text-slate-600">Registra o corrige las fechas indicadas en la aprobación municipal. El cambio se guarda en el historial sin reenviar la notificación original.</p>
+            <p className="mt-1 text-sm text-slate-600">Registra o corrige las fechas indicadas en la aprobación municipal. Si ya adjuntaste la resolución y aún no se envió un correo con el documento, NextPrev notificará a los responsables. No repetirá envíos completados.</p>
           </div>
           <form onSubmit={handleGuardarPeriodoAprobado} className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -407,9 +478,10 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
               <label className="flex-1 min-w-[220px] space-y-1 text-sm text-slate-700">Correo de prueba
                 <input type="email" required value={correoPrueba} onChange={(e) => setCorreoPrueba(e.target.value)} placeholder="correo@ejemplo.com" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"/>
               </label>
-              <Button type="submit" variant="outline" disabled={enviandoPrueba || !periodoDesde || !periodoHasta || periodoHasta < periodoDesde || periodoDesde !== (periodoGuardado?.desde ?? toDateInputValue(permiso.fechaTrabajoAutorizadoDesde)) || periodoHasta !== (periodoGuardado?.hasta ?? toDateInputValue(permiso.fechaTrabajoAutorizadoHasta))}>{enviandoPrueba ? "Enviando..." : "Enviar prueba"}</Button>
+              <Button type="submit" variant="outline" disabled={enviandoPrueba || !permiso.permisoAprobadoArchivoNombre || !periodoDesde || !periodoHasta || periodoHasta < periodoDesde || periodoDesde !== (periodoGuardado?.desde ?? toDateInputValue(permiso.fechaTrabajoAutorizadoDesde)) || periodoHasta !== (periodoGuardado?.hasta ?? toDateInputValue(permiso.fechaTrabajoAutorizadoHasta))}>{enviandoPrueba ? "Enviando..." : "Enviar prueba"}</Button>
             </form>
             {mensajePrueba && <p role="status" className="text-sm text-slate-700">{mensajePrueba}</p>}
+            <p className="text-xs text-slate-500">La prueba envía el correo completo con el permiso municipal adjunto. Requiere un documento guardado.</p>
           </div>
         </section>
       )}
@@ -420,7 +492,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Permiso aprobado</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Adjunta el documento final emitido por la municipalidad. Quedará asociado a este permiso y protegido por empresa.
+                Adjunta el documento final emitido por la municipalidad. Se guardará en NextPrev y se enviará por correo a los responsables si aún no recibieron la aprobación con adjunto. Al reemplazar un archivo, usa el botón de reenvío si quieres notificarlo.
               </p>
             </div>
             {permiso.permisoAprobadoArchivoNombre && (
@@ -478,7 +550,8 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
               </p>
             </div>
             {archivoError && <p className="text-sm text-red-600">{archivoError}</p>}
-            {archivoMensaje && <p className="text-sm text-emerald-700">{archivoMensaje}</p>}
+            {archivoMensaje && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{archivoMensaje}</p>}
+            {mensajeEnvioAprobacion && <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">{mensajeEnvioAprobacion}</p>}
             <div className="flex justify-end">
               <Button type="submit" disabled={savingArchivo || !archivoAprobado} className="gap-2">
                 <Upload className="h-4 w-4" />
@@ -490,6 +563,16 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
               </Button>
             </div>
           </form>
+          {permiso.permisoAprobadoArchivoNombre && permiso.fechaTrabajoAutorizadoDesde && permiso.fechaTrabajoAutorizadoHasta && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+              <p className="max-w-xl text-sm text-slate-600">Para permisos antiguos o resoluciones reemplazadas, puedes reenviar a los responsables la aprobación con el documento adjunto y las fechas autorizadas. El reenvío queda registrado en el historial.</p>
+              <button type="button" disabled={reenviandoAprobacion} onClick={() => void handleReenviarAprobacion()}
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
+                <Mail className="h-4 w-4" />
+                {reenviandoAprobacion ? "Enviando correo..." : "Reenviar aprobación con adjunto"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
