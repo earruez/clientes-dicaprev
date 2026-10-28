@@ -44,10 +44,6 @@ async function getEmpresaId(): Promise<string> {
   return context.empresaId;
 }
 
-async function getContext() {
-  return requireAuth();
-}
-
 function toDateOnly(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
