@@ -478,9 +478,10 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
               <label className="flex-1 min-w-[220px] space-y-1 text-sm text-slate-700">Correo de prueba
                 <input type="email" required value={correoPrueba} onChange={(e) => setCorreoPrueba(e.target.value)} placeholder="correo@ejemplo.com" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"/>
               </label>
-              <Button type="submit" variant="outline" disabled={enviandoPrueba || !periodoDesde || !periodoHasta || periodoHasta < periodoDesde || periodoDesde !== (periodoGuardado?.desde ?? toDateInputValue(permiso.fechaTrabajoAutorizadoDesde)) || periodoHasta !== (periodoGuardado?.hasta ?? toDateInputValue(permiso.fechaTrabajoAutorizadoHasta))}>{enviandoPrueba ? "Enviando..." : "Enviar prueba"}</Button>
+              <Button type="submit" variant="outline" disabled={enviandoPrueba || !permiso.permisoAprobadoArchivoNombre || !periodoDesde || !periodoHasta || periodoHasta < periodoDesde || periodoDesde !== (periodoGuardado?.desde ?? toDateInputValue(permiso.fechaTrabajoAutorizadoDesde)) || periodoHasta !== (periodoGuardado?.hasta ?? toDateInputValue(permiso.fechaTrabajoAutorizadoHasta))}>{enviandoPrueba ? "Enviando..." : "Enviar prueba"}</Button>
             </form>
             {mensajePrueba && <p role="status" className="text-sm text-slate-700">{mensajePrueba}</p>}
+            <p className="text-xs text-slate-500">La prueba envía el correo completo con el permiso municipal adjunto. Requiere un documento guardado.</p>
           </div>
         </section>
       )}
@@ -549,7 +550,8 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
               </p>
             </div>
             {archivoError && <p className="text-sm text-red-600">{archivoError}</p>}
-            {archivoMensaje && <p className="text-sm text-emerald-700">{archivoMensaje}</p>}
+            {archivoMensaje && <p role="status" className="rounded-lg bg-green-50 p-3 text-sm text-green-800">{archivoMensaje}</p>}
+            {mensajeEnvioAprobacion && <p role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">{mensajeEnvioAprobacion}</p>}
             <div className="flex justify-end">
               <Button type="submit" disabled={savingArchivo || !archivoAprobado} className="gap-2">
                 <Upload className="h-4 w-4" />
@@ -561,6 +563,16 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
               </Button>
             </div>
           </form>
+          {permiso.permisoAprobadoArchivoNombre && permiso.fechaTrabajoAutorizadoDesde && permiso.fechaTrabajoAutorizadoHasta && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+              <p className="max-w-xl text-sm text-slate-600">Para permisos antiguos o resoluciones reemplazadas, puedes reenviar a los responsables la aprobación con el documento adjunto y las fechas autorizadas. El reenvío queda registrado en el historial.</p>
+              <button type="button" disabled={reenviandoAprobacion} onClick={() => void handleReenviarAprobacion()}
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50">
+                <Mail className="h-4 w-4" />
+                {reenviandoAprobacion ? "Enviando correo..." : "Reenviar aprobación con adjunto"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
