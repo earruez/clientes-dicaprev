@@ -438,7 +438,7 @@ export async function guardarPeriodoTrabajosAprobado(
 export async function enviarCorreoPruebaPermisoAprobado(permisoId: string, destino: string) {
   const { empresaId } = await requirePermission("canManagePermisos");
   const email = destino.trim();
-  if (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error("Indica un correo electrónico de destino válido");
   }
   const permiso = await prisma.permisoInstalacion.findFirst({
