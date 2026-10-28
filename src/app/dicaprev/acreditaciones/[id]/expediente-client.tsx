@@ -367,8 +367,8 @@ async function generarZip(docs: DocumentoInstancia[], ac: { empresaNombre: strin
     if (!contenido.size || contenido.type.includes("text/html") || contenido.type.includes("application/json")) {
       throw new Error(`El archivo de ${doc.nombreDocumento} está vacío o no es válido`);
     }
-    const nombreSeguro = (doc.archivoNombre || doc.nombreArchivo || doc.nombreDocumento + ".pdf")
-      .replace(/[^a-zA-Z0-9._-]/g, "_");
+    const extension = doc.archivoNombre?.slice(doc.archivoNombre.lastIndexOf(".")) || ".pdf";
+    const nombreSeguro = doc.nombreDocumento.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 70) + extension;
     const nombre = `${doc.id.slice(0, 8)}_${nombreSeguro}`;
     if (doc.categoria === "trabajador") {
       const key = doc.titularId ?? doc.id;
