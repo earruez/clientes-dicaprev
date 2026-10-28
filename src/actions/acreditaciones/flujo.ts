@@ -62,12 +62,12 @@ export async function crearPlantillaAcreditacionBase(mandanteId: string) {
   if (existente) return existente;
   const plantilla = await prisma.plantillaAcreditacion.create({
     data: {
-      empresaId, mandanteId, nombre: \`Acreditación de trabajadores · \${mandante.nombre}\`,
+      empresaId, mandanteId, nombre: `Acreditación de trabajadores · ${mandante.nombre}`,
       tipo: "ingreso_faena", descripcion: "Pauta inicial sugerida. Revisar y ajustar según el mandante antes de usar.",
       activa: true, origen: "nextprev",
       requisitos: {
         create: REQUISITOS_BASE.map((r, i) => ({
-          nombreDocumento: r.nombre, codigoDocumento: \`BASE_TRAB_\${i + 1}\`,
+          nombreDocumento: r.nombre, codigoDocumento: `BASE_TRAB_${i + 1}`,
           categoria: "trabajador", aplicaA: "trabajador",
           obligatorio: r.obligatorio, orden: i + 1, activo: true,
         })),
@@ -92,11 +92,11 @@ export async function getPersonalDisponibleAcreditacion() {
   ]);
   return {
     trabajadores: trabajadores.map((t) => ({
-      id: t.id, nombre: \`\${t.nombres} \${t.apellidos}\`.trim(),
+      id: t.id, nombre: `${t.nombres} ${t.apellidos}`.trim(),
       rut: t.rut, cargo: t.cargo?.nombre ?? "Sin cargo",
     })),
     vehiculos: vehiculos.map((v) => ({
-      id: v.id, nombre: \`\${v.patente} · \${v.marca} \${v.modelo}\`.trim(),
+      id: v.id, nombre: `${v.patente} · ${v.marca} ${v.modelo}`.trim(),
     })),
   };
 }
@@ -138,7 +138,7 @@ export async function actualizarPersonalAcreditacion(
       }, select: { nombreDocumento: true, titularNombre: true },
     });
     if (evidencia) {
-      throw new Error(\`No puedes quitar a \${evidencia.titularNombre ?? "este recurso"} porque tiene documentación o revisiones. Conserva el historial.\`);
+      throw new Error(`No puedes quitar a ${evidencia.titularNombre ?? "este recurso"} porque tiene documentación o revisiones. Conserva el historial.`);
     }
   }
   await prisma.$transaction(async (tx) => {
@@ -166,7 +166,7 @@ export async function actualizarPersonalAcreditacion(
     });
     await tx.historialAcreditacion.create({
       data: { acreditacionId, usuarioId, accion: "actualizar_nomina",
-        detalle: \`Nómina: \${idsT.length} trabajadores y \${idsV.length} vehículos\` },
+        detalle: `Nómina: ${idsT.length} trabajadores y ${idsV.length} vehículos` },
     });
     if (a.estado === "listo_para_enviar") {
       await tx.acreditacion.update({ where: { id: acreditacionId }, data: { estado: "en_preparacion" } });
@@ -178,7 +178,7 @@ export async function actualizarPersonalAcreditacion(
 function fechaInput(fecha?: string | null) {
   if (!fecha) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new Error("Fecha inválida");
-  const result = new Date(\`\${fecha}T12:00:00Z\`);
+  const result = new Date(`${fecha}T12:00:00Z`);
   if (Number.isNaN(result.getTime()) || result.toISOString().slice(0, 10) !== fecha) throw new Error("Fecha inválida");
   return result;
 }
@@ -212,7 +212,7 @@ export async function adjuntarDocumentoAcreditacion(data: {
     });
     await tx.historialAcreditacion.create({ data: {
       acreditacionId: documento.acreditacionId, usuarioId, accion: "adjuntar_documento",
-      detalle: \`\${documento.nombreDocumento} · \${documento.titularNombre ?? "Empresa"} · \${data.nombreOriginal.slice(0, 140)}\`,
+      detalle: `${documento.nombreDocumento} · ${documento.titularNombre ?? "Empresa"} · ${data.nombreOriginal.slice(0, 140)}`,
     } });
     if (documento.acreditacion.estado === "listo_para_enviar") {
       await tx.acreditacion.update({ where: { id: documento.acreditacionId }, data: { estado: "en_preparacion" } });
@@ -243,7 +243,7 @@ export async function revisarDocumentoAcreditacion(
     } }),
     prisma.historialAcreditacion.create({ data: {
       acreditacionId: documento.acreditacionId, usuarioId, accion: "revisar_documento",
-      detalle: \`\${documento.nombreDocumento}: \${estado}\${comentario ? " · " + comentario.slice(0, 800) : ""}\`,
+      detalle: `${documento.nombreDocumento}: ${estado}${comentario ? " · " + comentario.slice(0, 800) : ""}`,
     } }),
   ]);
   return { ok: true };
@@ -267,7 +267,7 @@ export async function registrarEntregaAcreditacion(
     d.archivoUrl?.startsWith("/demo/") || d.archivoNombre?.includes("demo-")
   )) throw new Error("Completa primero los requisitos obligatorios con archivos reales y vigentes.");
   if (!detalle.destinatario.trim() || !detalle.referencia.trim()) throw new Error("Ingresa destinatario y comprobante o referencia del envío");
-  const comentario = \`Envío externo por \${detalle.medio}. Destinatario: \${detalle.destinatario.trim().slice(0, 150)}. Referencia: \${detalle.referencia.trim().slice(0, 450)}\`;
+  const comentario = `Envío externo por ${detalle.medio}. Destinatario: ${detalle.destinatario.trim().slice(0, 150)}. Referencia: ${detalle.referencia.trim().slice(0, 450)}`;
   return prisma.acreditacion.update({
     where: { id: a.id },
     data: {
