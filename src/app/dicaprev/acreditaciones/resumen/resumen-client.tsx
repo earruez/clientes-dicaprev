@@ -121,7 +121,7 @@ export default function ResumenAcreditacionesClient({
                 Plantillas
               </button>
               <button
-                onClick={() => router.push("/dicaprev/acreditaciones/solicitudes")}
+                onClick={() => router.push("/dicaprev/acreditaciones/solicitudes?nuevo=1")}
                 className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800"
               >
                 <Plus className="h-4 w-4" />
