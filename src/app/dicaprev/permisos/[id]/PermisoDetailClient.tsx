@@ -240,7 +240,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         ? `${guardado} ${envio.enviados} correo(s) enviados y ${envio.fallidos} con error. Puedes reintentar el envío.`
         : envio.enviados > 0
           ? `${guardado} Enviado automáticamente con adjunto a ${envio.enviados} responsable(s).`
-          : `${guardado} Si falta el período autorizado, guárdalo para que NextPrev envíe el correo con el adjunto.`);
+          : `${guardado} Si aún no se había notificado con documento, revisa que el período esté guardado para completar el envío.`);
       router.refresh();
     } catch (err) {
       setArchivoError(err instanceof Error ? err.message : "No se pudo adjuntar el permiso aprobado.");
@@ -447,7 +447,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         <section className="rounded-lg border border-green-200 bg-white p-6 space-y-4">
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Período autorizado de trabajo</h2>
-            <p className="mt-1 text-sm text-slate-600">Registra o corrige las fechas indicadas en la aprobación municipal. El cambio se guarda en el historial sin reenviar la notificación original.</p>
+            <p className="mt-1 text-sm text-slate-600">Registra o corrige las fechas indicadas en la aprobación municipal. Si ya adjuntaste la resolución y aún no se envió un correo con el documento, NextPrev notificará a los responsables. No repetirá envíos completados.</p>
           </div>
           <form onSubmit={handleGuardarPeriodoAprobado} className="space-y-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -492,7 +492,7 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Permiso aprobado</h2>
               <p className="mt-1 text-sm text-slate-500">
-                Adjunta el documento final emitido por la municipalidad. Quedará asociado a este permiso y protegido por empresa.
+                Adjunta el documento final emitido por la municipalidad. Se guardará en NextPrev y se enviará por correo a los responsables si aún no recibieron la aprobación con adjunto. Al reemplazar un archivo, usa el botón de reenvío si quieres notificarlo.
               </p>
             </div>
             {permiso.permisoAprobadoArchivoNombre && (
