@@ -4,9 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, ExternalLink, FileText, Save, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ExternalLink, FileText, Mail, Save, Upload } from "lucide-react";
 import type { PermisoInstalacion, PermisoOrganismo, PermisoResponsable, PermisoCliente, PermisoHistorial } from "@prisma/client";
-import { actualizarFechaPresentacion, cambiarEstadoPermiso, guardarPermisoAprobado, guardarPeriodoTrabajosAprobado, enviarCorreoPruebaPermisoAprobado } from "../actions/permisos";
+import { actualizarFechaPresentacion, cambiarEstadoPermiso, guardarPermisoAprobado, guardarPeriodoTrabajosAprobado, enviarCorreoPruebaPermisoAprobado, reenviarAprobacionMunicipalConAdjunto } from "../actions/permisos";
 import { ESTADO_COLORS, PERMISO_ESTADOS, ESTADOS_REQUIEREN_COMENTARIO, PermisoEstado } from "../types";
 import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE } from "@/lib/documentacion/archivo-documento";
 
@@ -72,6 +72,9 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
   const [estadoError, setEstadoError] = useState<string | null>(null);
 
   const [archivoAprobado, setArchivoAprobado] = useState<File | null>(null);
+  const [archivoParaAprobar, setArchivoParaAprobar] = useState<File | null>(null);
+  const [reenviandoAprobacion, setReenviandoAprobacion] = useState(false);
+  const [mensajeEnvioAprobacion, setMensajeEnvioAprobacion] = useState("");
   const [savingArchivo, setSavingArchivo] = useState(false);
   const [archivoError, setArchivoError] = useState<string | null>(null);
   const [archivoMensaje, setArchivoMensaje] = useState<string | null>(null);
@@ -92,6 +95,24 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
     }
   };
 
+  async function subirArchivoMunicipal(file: File): Promise<ArchivoSubido> {
+    if (!file.size || file.size > MAX_DOCUMENTO_FILE_SIZE) {
+      throw new Error("El permiso municipal debe contener un archivo de máximo 10 MB.");
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    const response = await fetch("/api/dicaprev/documentacion/upload", {
+      method: "POST", body: formData,
+    });
+    const payload = (await response.json()) as ArchivoSubido | { error?: string };
+    if (!response.ok) {
+      throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el documento.");
+    }
+    const result = payload as ArchivoSubido;
+    if (!result.archivoNombre) throw new Error("No se recibió confirmación del archivo guardado.");
+    return result;
+  }
+
   const handleCambiarEstado = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setEstadoError(null);
@@ -106,13 +127,33 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
       return;
     }
 
+    if (nuevoEstado === "APROBADO" && !archivoParaAprobar) {
+      setEstadoError("Adjunta la resolución municipal aprobada antes de enviar el correo.");
+      return;
+    }
     setSavingEstado(true);
     try {
-      await cambiarEstadoPermiso(
+      const documento = nuevoEstado === "APROBADO" && archivoParaAprobar
+        ? await subirArchivoMunicipal(archivoParaAprobar)
+        : undefined;
+      const resultado = await cambiarEstadoPermiso(
         permiso.id, nuevoEstado, comentario.trim() || undefined,
         nuevoEstado === "APROBADO" ? { desde: periodoDesde, hasta: periodoHasta } : undefined,
+        documento ? {
+          archivoNombre: documento.archivoNombre,
+          archivoNombreOriginal: documento.archivoNombreOriginal,
+          archivoTipo: documento.archivoTipo,
+          archivoPeso: documento.archivoPeso,
+        } : undefined,
       );
       setComentario("");
+      setArchivoParaAprobar(null);
+      if (resultado.resumenEnvio) {
+        const envio = resultado.resumenEnvio;
+        setMensajeEnvioAprobacion(envio.fallidos
+          ? `Permiso aprobado y documento guardado. ${envio.enviados} correo(s) enviado(s), ${envio.fallidos} con error. Puedes reintentar desde esta ficha.`
+          : `Permiso aprobado. Correo enviado con el documento adjunto a ${envio.enviados} responsable(s).`);
+      }
       router.refresh();
     } catch (err) {
       setEstadoError(err instanceof Error ? err.message : "Error al cambiar el estado del permiso");
