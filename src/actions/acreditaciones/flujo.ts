@@ -190,7 +190,7 @@ export async function adjuntarDocumentoAcreditacion(data: {
   const { empresaId, usuarioId } = await contexto();
   const documento = await prisma.documentoAcreditacion.findFirst({
     where: { id: data.documentoId, acreditacion: { empresaId } },
-    include: { acreditacion: { select: { id: true, estado: true } } },
+    include: { acreditacion: { select: { id: true, estado: true } }, requisito: { select: { requiereVencimiento: true } } },
   });
   if (!documento) throw new Error("Documento de acreditación no encontrado");
   if (["cerrada", "aprobado", "enviado"].includes(documento.acreditacion.estado)) throw new Error("Este expediente no acepta cambios documentales");
@@ -199,6 +199,9 @@ export async function adjuntarDocumentoAcreditacion(data: {
   }
   const vencimiento = fechaInput(data.fechaVencimiento);
   const emision = fechaInput(data.fechaEmision);
+  if (documento.requisito.requiereVencimiento && !vencimiento) {
+    throw new Error("Esta pauta exige ingresar la fecha de vencimiento del documento.");
+  }
   if (emision && vencimiento && vencimiento < emision) throw new Error("El vencimiento no puede ser anterior a la emisión");
   await prisma.$transaction(async (tx) => {
     await tx.documentoAcreditacion.update({
@@ -256,7 +259,7 @@ export async function registrarEntregaAcreditacion(
   const { empresaId, usuarioId } = await contexto();
   const a = await prisma.acreditacion.findFirst({
     where: { id: acreditacionId, empresaId },
-    include: { documentos: true },
+    include: { documentos: { include: { requisito: { select: { requiereVencimiento: true } } } } },
   });
   if (!a) throw new Error("Acreditación no encontrada");
   if (!["en_preparacion", "listo_para_enviar", "observada", "rechazado", "vencido"].includes(a.estado)) throw new Error("No puedes registrar un envío desde este estado");
@@ -264,7 +267,8 @@ export async function registrarEntregaAcreditacion(
   if (!docs.length || docs.some((d) =>
     d.estado !== "completo" || !(d.archivoNombre || d.archivoUrl) ||
     (d.fechaVencimiento && d.fechaVencimiento.getTime() < Date.now()) ||
-    d.archivoUrl?.startsWith("/demo/") || d.archivoNombre?.includes("demo-")
+    d.archivoUrl?.startsWith("/demo/") || d.archivoNombre?.includes("demo-") ||
+    (d.requisito.requiereVencimiento && !d.fechaVencimiento)
   )) throw new Error("Completa primero los requisitos obligatorios con archivos reales y vigentes.");
   if (!detalle.destinatario.trim() || !detalle.referencia.trim()) throw new Error("Ingresa destinatario y comprobante o referencia del envío");
   const comentario = `Envío externo por ${detalle.medio}. Destinatario: ${detalle.destinatario.trim().slice(0, 150)}. Referencia: ${detalle.referencia.trim().slice(0, 450)}`;
