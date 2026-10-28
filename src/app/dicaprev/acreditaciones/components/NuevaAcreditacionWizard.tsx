@@ -39,7 +39,6 @@ export default function NuevaAcreditacionWizard(props: Props) {
   const [busqueda, setBusqueda] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [error, setError] = useState("");
-  const [mostrarVehiculos, setMostrarVehiculos] = useState(false);
   const opcionesPlantilla = useMemo(
     () => plantillas.filter((p) => p.mandanteId === mandanteId || p.mandanteId === null),
     [plantillas, mandanteId],
@@ -155,7 +154,7 @@ export default function NuevaAcreditacionWizard(props: Props) {
                 </div>
               )}
               <details className="rounded-xl border p-4">
-                <summary onClick={() => setMostrarVehiculos((x) => !x)} className="cursor-pointer text-sm font-semibold text-slate-900">Agregar vehículos o equipos (opcional) · {vehiculoIds.length} seleccionados</summary>
+                <summary className="cursor-pointer text-sm font-semibold text-slate-900">Agregar vehículos o equipos (opcional) · {vehiculoIds.length} seleccionados</summary>
                 <div className="mt-3 max-h-48 space-y-1 overflow-y-auto">
                   {props.vehiculos.map((v) => <label key={v.id} className="flex cursor-pointer items-center gap-2 rounded-lg p-2 text-sm hover:bg-slate-50">
                     <input type="checkbox" checked={vehiculoIds.includes(v.id)} onChange={() => toggle(v.id, vehiculoIds, setVehiculoIds)} />
