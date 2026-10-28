@@ -720,7 +720,7 @@ export async function getAcreditaciones(filters?: {
         mandante: true,
         plantilla: true,
         responsable: { select: { nombre: true } },
-        documentos: { select: { estado: true, fechaVencimiento: true } },
+        documentos: { select: { estado: true, fechaVencimiento: true, archivoUrl: true } },
         trabajadores: { include: { trabajador: true } },
         vehiculos: { include: { vehiculo: true } },
       },
