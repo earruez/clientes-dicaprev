@@ -222,7 +222,7 @@ export async function adjuntarDocumentoAcreditacion(data: {
 }
 
 export async function revisarDocumentoAcreditacion(
-  documentoId: string, estado: "rechazado" | "en_revision" | "no_aplica" | "completo",
+  documentoId: string, estado: "faltante" | "rechazado" | "en_revision" | "no_aplica" | "completo",
   comentario?: string,
 ) {
   const { empresaId, usuarioId } = await contexto();
