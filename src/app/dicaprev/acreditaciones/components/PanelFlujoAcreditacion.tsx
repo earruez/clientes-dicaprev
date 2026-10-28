@@ -7,7 +7,7 @@ import DocumentoAccion from "./DocumentoAccion";
 import { actualizarPersonalAcreditacion, registrarEntregaAcreditacion } from "@/actions/acreditaciones/flujo";
 
 type Doc = {
-  id: string; nombreDocumento: string; estado: string; obligatorio: boolean;
+  id: string; nombreDocumento: string; estado: string; obligatorio: boolean; requiereVencimiento?: boolean;
   archivoUrl?: string; archivoNombre?: string; fechaEmision?: string;
   fechaVencimiento?: string; titularTipo: string; titularNombre: string; observaciones?: string;
 };
@@ -41,6 +41,7 @@ export default function PanelFlujoAcreditacion({
   const correcto = (d: Doc) => d.estado === "completo"
     && Boolean(d.archivoNombre || d.archivoUrl)
     && !d.archivoUrl?.startsWith("/demo/")
+    && (!d.requiereVencimiento || Boolean(d.fechaVencimiento))
     && (!d.fechaVencimiento || new Date(d.fechaVencimiento).getTime() >= Date.now());
   const pendientes = totalObligatorios.filter((d) => !correcto(d));
   const completos = totalObligatorios.length - pendientes.length;
