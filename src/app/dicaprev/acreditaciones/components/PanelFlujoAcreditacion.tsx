@@ -49,7 +49,7 @@ export default function PanelFlujoAcreditacion({
   const bloqueada = estado === "cerrada" || estado === "aprobado";
   const listo = totalObligatorios.length > 0 && pendientes.length === 0;
   const etapa = acreditacion.trabajadores.length === 0 ? 1 : !listo ? 2
-    : ["enviado", "observada", "rechazado", "aprobado", "cerrada", "vencido"].includes(estado) ? 4 : 3;
+    : ["enviado", "observada", "rechazado", "aprobado", "cerrada"].includes(estado) ? 4 : 3;
   const siguiente = etapa === 1 ? "Agregar trabajadores" : etapa === 2 ? "Completar documentos"
     : etapa === 3 ? "Preparar y registrar el envío" : "Registrar la respuesta del mandante";
   const grupos = useMemo(() => {
