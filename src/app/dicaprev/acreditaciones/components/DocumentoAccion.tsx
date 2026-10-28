@@ -81,7 +81,7 @@ export default function DocumentoAccion({ documento, puedeEditar }: { documento:
       {abierto && puedeEditar && (
         <div className="mt-3 space-y-3 rounded-xl bg-slate-50 p-3">
           <label className="block text-sm font-semibold text-slate-700">Adjuntar archivo real
-            <input aria-label={`Archivo de ${documento.nombreDocumento}`} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xlsx" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="mt-1 block w-full text-sm" />
+            <input aria-label={`Archivo de ${documento.nombreDocumento}`} type="file" accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.xlsx" onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="mt-1 block w-full text-sm" />
           </label>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="text-xs text-slate-700">Fecha de emisión
