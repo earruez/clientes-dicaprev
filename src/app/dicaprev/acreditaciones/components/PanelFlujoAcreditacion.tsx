@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CheckCircle2, Download, FileText, Send, Users, AlertTriangle, FolderCheck, RefreshCw } from "lucide-react";
+import { ArrowRight, CheckCircle2, Download, FileText, Mail, Send, Users, AlertTriangle, FolderCheck, RefreshCw } from "lucide-react";
 import DocumentoAccion from "./DocumentoAccion";
 import { actualizarPersonalAcreditacion, registrarEntregaAcreditacion } from "@/actions/acreditaciones/flujo";
 
@@ -19,10 +19,10 @@ type Ac = { id: string; mandante: string; plantillaNombre: string; empresaNombre
 type Estado = "en_preparacion" | "listo_para_enviar" | "enviado" | "observada" | "aprobado" | "rechazado" | "cerrada" | "vencido";
 
 export default function PanelFlujoAcreditacion({
-  acreditacion, estado, documentos, recursos, puedeEditar, onZip, onPdf, onSincronizar, onCambiarEstado,
+  acreditacion, estado, documentos, recursos, puedeEditar, onZip, onPdf, onCopiarEmail, onSincronizar, onCambiarEstado,
 }: {
   acreditacion: Ac; estado: Estado; documentos: Doc[]; recursos: Personal; puedeEditar: boolean;
-  onZip: () => Promise<boolean>; onPdf: () => Promise<void>;
+  onZip: () => Promise<boolean>; onPdf: () => Promise<void>; onCopiarEmail: () => void;
   onSincronizar: () => Promise<void>; onCambiarEstado: (estado: Estado) => void;
 }) {
   const router = useRouter();
@@ -169,6 +169,7 @@ export default function PanelFlujoAcreditacion({
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" disabled={!listo || ocupado} onClick={() => void onZip()} className="inline-flex items-center gap-1 rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"><Download className="h-4 w-4" />Descargar expediente ZIP</button>
           <button type="button" onClick={() => void onPdf()} className="inline-flex items-center gap-1 rounded-xl border px-4 py-2.5 text-sm font-semibold"><FileText className="h-4 w-4" />Descargar índice PDF</button>
+          <button type="button" onClick={onCopiarEmail} className="inline-flex items-center gap-1 rounded-xl border px-4 py-2.5 text-sm font-semibold"><Mail className="h-4 w-4" />Copiar texto para el correo</button>
         </div>
         {puedeEditar && !bloqueada && !["enviado"].includes(estado) && listo && <>
           <button type="button" onClick={() => setMostrarEnvio(!mostrarEnvio)} className="mt-4 rounded-xl border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-800"><Send className="mr-1 inline h-4 w-4" />Ya entregué los documentos al mandante</button>
