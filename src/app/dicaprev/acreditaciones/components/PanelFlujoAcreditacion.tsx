@@ -148,13 +148,13 @@ export default function PanelFlujoAcreditacion({
             <h2 className="text-lg font-bold text-slate-900">2. Completar documentos</h2>
             <p className="mt-1 text-sm text-slate-500">{pendientes.length === 0 && totalObligatorios.length ? "Todos los documentos obligatorios están listos." : `${pendientes.length} documentos obligatorios requieren atención.`} Selecciona «Resolver» en cada fila.</p>
           </div>
-          {puedeEditar && !bloqueada && <button type="button" disabled={ocupado} onClick={() => void onSincronizar()} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-slate-700"><RefreshCw className="h-4 w-4" />Buscar archivos actualizados en NextPrev</button>}
+          {puedeEditar && !bloqueada && estado !== "enviado" && <button type="button" disabled={ocupado} onClick={() => void onSincronizar()} className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold text-slate-700"><RefreshCw className="h-4 w-4" />Buscar archivos actualizados en NextPrev</button>}
         </div>
         <div className="mt-4 grid gap-4">
           {grupos.map((g) => <details key={g.titulo} open className="rounded-xl border bg-slate-50/50 p-3">
             <summary className="cursor-pointer px-1 py-2 text-sm font-bold text-slate-900">{g.titulo} · {g.docs.filter(correcto).length}/{g.docs.length} archivos vigentes</summary>
             <div className="mt-2 space-y-2">
-              {g.docs.map((d) => <DocumentoAccion key={d.id} documento={d} puedeEditar={puedeEditar && !bloqueada} />)}
+              {g.docs.map((d) => <DocumentoAccion key={d.id} documento={d} puedeEditar={puedeEditar && !bloqueada && estado !== "enviado"} />)}
             </div>
           </details>)}
           {documentos.length === 0 && <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">No hay requisitos configurados. Revisa la plantilla documental del mandante.</p>}
