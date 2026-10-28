@@ -178,7 +178,12 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
         throw new Error("No se pudo confirmar el período guardado. Inténtalo nuevamente.");
       }
       setPeriodoGuardado({ desde: resultado.desde, hasta: resultado.hasta });
-      setMensajePeriodo("Período autorizado guardado correctamente. Las fechas ya están registradas en NextPrev.");
+      const envio = resultado.resumenEnvio;
+      setMensajePeriodo(envio.fallidos
+        ? `Fechas guardadas. ${envio.enviados} correo(s) con documento enviados y ${envio.fallidos} pendiente(s). Puedes reintentar el envío.`
+        : envio.enviados > 0
+          ? `Fechas guardadas y permiso enviado con adjunto a ${envio.enviados} responsable(s).`
+          : "Período autorizado guardado correctamente. Las fechas ya están registradas en NextPrev.");
       router.refresh();
     } catch (error) {
       setErrorPeriodo(true);
@@ -218,19 +223,8 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
 
     setSavingArchivo(true);
     try {
-      const formData = new FormData();
-      formData.append("file", archivoAprobado);
-      const response = await fetch("/api/dicaprev/documentacion/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const payload = (await response.json()) as ArchivoSubido | { error?: string };
-      if (!response.ok) {
-        throw new Error("error" in payload && payload.error ? payload.error : "No se pudo guardar el archivo.");
-      }
-
-      const subido = payload as ArchivoSubido;
-      await guardarPermisoAprobado(permiso.id, {
+      const subido = await subirArchivoMunicipal(archivoAprobado);
+      const resultado = await guardarPermisoAprobado(permiso.id, {
         archivoNombre: subido.archivoNombre,
         archivoNombreOriginal: subido.archivoNombreOriginal,
         archivoTipo: subido.archivoTipo,
@@ -238,12 +232,37 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
       });
 
       setArchivoAprobado(null);
-      setArchivoMensaje(permiso.permisoAprobadoArchivoNombre ? "Permiso aprobado reemplazado correctamente." : "Permiso aprobado adjuntado correctamente.");
+      const envio = resultado.resumenEnvio;
+      const guardado = permiso.permisoAprobadoArchivoNombre
+        ? "Permiso aprobado reemplazado correctamente."
+        : "Permiso municipal adjuntado correctamente.";
+      setArchivoMensaje(envio.fallidos
+        ? `${guardado} ${envio.enviados} correo(s) enviados y ${envio.fallidos} con error. Puedes reintentar el envío.`
+        : envio.enviados > 0
+          ? `${guardado} Enviado automáticamente con adjunto a ${envio.enviados} responsable(s).`
+          : `${guardado} Si falta el período autorizado, guárdalo para que NextPrev envíe el correo con el adjunto.`);
       router.refresh();
     } catch (err) {
       setArchivoError(err instanceof Error ? err.message : "No se pudo adjuntar el permiso aprobado.");
     } finally {
       setSavingArchivo(false);
+    }
+  };
+
+  const handleReenviarAprobacion = async () => {
+    if (!window.confirm("¿Enviar nuevamente a todos los responsables el correo de aprobación con la resolución municipal adjunta?")) return;
+    setReenviandoAprobacion(true);
+    setMensajeEnvioAprobacion("");
+    try {
+      const resumen = await reenviarAprobacionMunicipalConAdjunto(permiso.id);
+      setMensajeEnvioAprobacion(resumen.fallidos
+        ? `${resumen.enviados} correo(s) enviados, ${resumen.fallidos} con error. Revisa la configuración del correo.`
+        : `Correo de aprobación con documento adjunto reenviado a ${resumen.enviados} responsable(s).`);
+      router.refresh();
+    } catch (error) {
+      setMensajeEnvioAprobacion(error instanceof Error ? error.message : "No se pudo reenviar el correo.");
+    } finally {
+      setReenviandoAprobacion(false);
     }
   };
 
