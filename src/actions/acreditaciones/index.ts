@@ -1595,7 +1595,7 @@ export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcr
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
   const acreditacion = await prisma.acreditacion.findFirst({
     where: { id, empresaId },
-    include: { documentos: true },
+    include: { documentos: { include: { requisito: { select: { requiereVencimiento: true } } } } },
   });
   if (!acreditacion) throw new Error("Acreditación no encontrada");
   const actual = acreditacion.estado as EstadoAcreditacion;
@@ -1614,7 +1614,8 @@ export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcr
       d.estado !== "completo" ||
       !(d.archivoNombre || d.archivoUrl) ||
       (d.fechaVencimiento && d.fechaVencimiento.getTime() < Date.now()) ||
-      d.archivoUrl?.startsWith("/demo/")
+      d.archivoUrl?.startsWith("/demo/") ||
+      (d.requisito.requiereVencimiento && !d.fechaVencimiento)
     )) {
       throw new Error("Faltan documentos obligatorios completos, vigentes y con archivo");
     }
