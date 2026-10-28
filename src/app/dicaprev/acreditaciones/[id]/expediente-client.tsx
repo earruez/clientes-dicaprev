@@ -31,6 +31,7 @@ import JSZip from "jszip";
 import { jsPDF } from "jspdf";
 import { cn } from "@/lib/utils";
 import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
+import PanelFlujoAcreditacion from "../components/PanelFlujoAcreditacion";
 import {
   guardarDocumentoGeneradoPDF,
   persistirDocumentoGenerado,
@@ -66,6 +67,8 @@ type DocumentoInstancia = {
   titularNombre: string;
   obligatorio: boolean;
   estado: EstadoDocumento;
+  estadoReal?: string;
+  titularTipo?: string;
   archivoUrl?: string;
   archivoNombre?: string;
   nombreArchivo?: string;
@@ -169,12 +172,12 @@ function calcularCompletitud(docs: DocumentoInstancia[], soloObligatorios = true
   const base = soloObligatorios ? docs.filter((d) => d.obligatorio) : docs;
   if (base.length === 0) return 0;
   return Math.round((base.filter((d) => d.estado === "completo" && Boolean(d.archivoNombre || d.archivoUrl)
-    && (!d.fechaVencimiento || new Date(d.fechaVencimiento).getTime() >= Date.now())).length / base.length) * 100);
+    && (!d.fechaVencimiento || new Date(d.fechaVencimiento).getTime() >= Date.now()) && !d.archivoUrl?.startsWith("/demo/")).length / base.length) * 100);
 }
 
 function evaluarEstadoExpediente(docs: DocumentoInstancia[]) {
   const faltantesOblig = docs.filter((d) => d.obligatorio &&
-    (d.estado !== "completo" && d.estado !== "vencido" || !(d.archivoUrl || d.archivoNombre)));
+    (d.estado !== "completo" || !(d.archivoUrl || d.archivoNombre) || d.archivoUrl?.startsWith("/demo/")));
   const vencidosOblig = docs.filter((d) => d.obligatorio &&
     (d.estado === "vencido" || Boolean(d.fechaVencimiento && new Date(d.fechaVencimiento).getTime() < Date.now())));
   const bloqueado = !docs.some((d) => d.obligatorio) || faltantesOblig.length > 0 || vencidosOblig.length > 0;
@@ -617,12 +620,17 @@ export default function ExpedienteClient({
   initialHistorial,
   solicitudesContratista,
   canManageDocumentacion,
+  recursosDisponibles,
 }: {
   acreditacion: AcreditacionExpediente;
   initialDocs: DocumentoInstancia[];
   initialHistorial: HistorialExpediente[];
   solicitudesContratista: SolicitudContratista[];
   canManageDocumentacion: boolean;
+  recursosDisponibles: {
+    trabajadores: Array<{ id: string; nombre: string; rut: string | null; cargo: string }>;
+    vehiculos: Array<{ id: string; nombre: string }>;
+  };
 }) {
   const router = useRouter();
   const acId = acreditacion.id;
@@ -827,8 +835,36 @@ export default function ExpedienteClient({
         </div>
       </div>
 
-      {/* Layout 3 columnas */}
-      <div className="max-w-screen-xl mx-auto px-4 lg:px-6 py-6 grid gap-5 lg:grid-cols-[260px_1fr_270px]">
+      <PanelFlujoAcreditacion
+        acreditacion={acreditacion}
+        estado={estadoActual}
+        documentos={docs.map((d) => ({
+          id: d.id,
+          nombreDocumento: d.nombreDocumento,
+          estado: d.estadoReal ?? d.estado,
+          obligatorio: d.obligatorio,
+          archivoUrl: d.archivoUrl,
+          archivoNombre: d.archivoNombre,
+          fechaEmision: d.fechaEmision,
+          fechaVencimiento: d.fechaVencimiento,
+          titularTipo: d.titularTipo ?? d.aplicaA,
+          titularNombre: d.titularNombre,
+          observaciones: d.observaciones,
+        }))}
+        recursos={recursosDisponibles}
+        puedeEditar={canManageDocumentacion}
+        onZip={handleZip}
+        onPdf={handlePDF}
+        onSincronizar={sincronizar}
+        onCambiarEstado={setModalCambioEstado}
+      />
+
+      <details className="mx-auto max-w-screen-xl px-4 pb-8">
+        <summary className="cursor-pointer rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+          Ver detalles técnicos y herramientas avanzadas del expediente
+        </summary>
+      {/* Vista avanzada original: se conserva para no perder ninguna funcionalidad. */}
+      <div className="max-w-screen-xl mx-auto px-0 lg:px-2 py-6 grid gap-5 lg:grid-cols-[260px_1fr_270px]">
 
         {/* ── Columna izquierda ── */}
         <aside className="flex flex-col gap-4">
@@ -1280,6 +1316,7 @@ export default function ExpedienteClient({
           </div>
         </aside>
       </div>
+      </details>
 
       <Toasts toasts={toasts} />
 
