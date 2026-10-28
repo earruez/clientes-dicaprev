@@ -500,10 +500,12 @@ export async function guardarPeriodoTrabajosAprobado(
         comentario: `Período autorizado actualizado: ${periodo.desde} a ${periodo.hasta}`, usuarioId },
     }),
   ]);
+  const resumenEnvio = await notificarAprobacionConDocumento(permiso.id, empresaId);
   return {
     ok: true,
     desde: actualizado.fechaTrabajoAutorizadoDesde?.toISOString().slice(0, 10) ?? "",
     hasta: actualizado.fechaTrabajoAutorizadoHasta?.toISOString().slice(0, 10) ?? "",
+    resumenEnvio,
   };
 }
 
@@ -524,20 +526,46 @@ export async function enviarCorreoPruebaPermisoAprobado(permisoId: string, desti
   if (!permiso.fechaTrabajoAutorizadoDesde || !permiso.fechaTrabajoAutorizadoHasta) {
     throw new Error("Guarda primero el período autorizado de trabajo");
   }
+  if (!permiso.permisoAprobadoArchivoNombre || !permiso.permisoAprobadoArchivoNombreOriginal || !permiso.permisoAprobadoArchivoPeso) {
+    throw new Error("Adjunta el documento de permiso aprobado antes de enviar la prueba.");
+  }
+  const adjunto = await obtenerAdjuntoMunicipal(empresaId, {
+    archivoNombre: permiso.permisoAprobadoArchivoNombre,
+    archivoNombreOriginal: permiso.permisoAprobadoArchivoNombreOriginal,
+    archivoTipo: permiso.permisoAprobadoArchivoTipo,
+    archivoPeso: permiso.permisoAprobadoArchivoPeso,
+  });
   const resultado = await sendEmail({
     to: email,
     subject: `[PRUEBA] ${generarAsuntoEmailPermiso(permiso)}`,
     html: generarEmailPermiso(permiso, permiso.responsable, "CAMBIO_ESTADO"),
+    attachments: [adjunto],
   });
   return { ok: true, messageId: resultado.messageId };
 }
 
-type PermisoAprobadoArchivoInput = {
-  archivoNombre: string;
-  archivoNombreOriginal: string;
-  archivoTipo: string | null;
-  archivoPeso: number;
-};
+export async function reenviarAprobacionMunicipalConAdjunto(permisoId: string) {
+  const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId, estado: "APROBADO" },
+    select: { id: true, fechaTrabajoAutorizadoDesde: true, fechaTrabajoAutorizadoHasta: true, permisoAprobadoArchivoNombre: true },
+  });
+  if (!permiso) throw new Error("Permiso aprobado no encontrado.");
+  if (!permiso.fechaTrabajoAutorizadoDesde || !permiso.fechaTrabajoAutorizadoHasta || !permiso.permisoAprobadoArchivoNombre) {
+    throw new Error("Completa el período autorizado y adjunta la resolución antes de enviar.");
+  }
+  const resumenEnvio = await notificarAprobacionConDocumento(permiso.id, empresaId, true);
+  await prisma.permisoHistorial.create({
+    data: {
+      permisoId: permiso.id, estadoAnterior: "APROBADO", estadoNuevo: "APROBADO",
+      comentario: `Reenvío manual de aprobación con documento: ${resumenEnvio.enviados} enviado(s), ${resumenEnvio.fallidos} error(es).`,
+      usuarioId,
+    },
+  });
+  return resumenEnvio;
+}
+
+type PermisoAprobadoArchivoInput = ArchivoPermisoAprobadoInput;
 
 export async function guardarPermisoAprobado(permisoId: string, archivo: PermisoAprobadoArchivoInput) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
@@ -553,13 +581,9 @@ export async function guardarPermisoAprobado(permisoId: string, archivo: Permiso
 
   const archivoNombre = archivo.archivoNombre.trim();
   const archivoNombreOriginal = archivo.archivoNombreOriginal.trim();
-  if (!/^[a-f0-9-]{36}\.(pdf|doc|docx|xlsx|jpg|jpeg|png)$/i.test(archivoNombre)) {
-    throw new Error("El archivo adjunto no es válido.");
-  }
-  if (!archivoNombreOriginal) throw new Error("El archivo debe tener un nombre válido.");
-  if (!Number.isInteger(archivo.archivoPeso) || archivo.archivoPeso <= 0 || archivo.archivoPeso > 10 * 1024 * 1024) {
-    throw new Error("El archivo adjunto supera el tamaño permitido o no es válido.");
-  }
+  validarArchivoPermisoAprobado(archivo);
+  // Comprobar que el archivo existe en el Blob privado de esta empresa.
+  await obtenerAdjuntoMunicipal(empresaId, archivo);
 
   const reemplazaArchivo = Boolean(permiso.permisoAprobadoArchivoNombre);
   const permisoActualizado = await prisma.permisoInstalacion.update({
@@ -585,7 +609,10 @@ export async function guardarPermisoAprobado(permisoId: string, archivo: Permiso
     },
   });
 
-  return permisoActualizado;
+  // En permisos antiguos, avisar con adjunto solo si aún no hubo un envío correcto.
+  // Los reemplazos posteriores no generan correos repetidos automáticamente.
+  const resumenEnvio = await notificarAprobacionConDocumento(permiso.id, empresaId);
+  return { ...permisoActualizado, resumenEnvio };
 }
 
 export async function obtenerHistorialPermiso(permisoId: string) {
