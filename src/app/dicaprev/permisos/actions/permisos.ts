@@ -179,9 +179,32 @@ export async function desactivarCliente(id: string) {
   return prisma.permisoCliente.update({ where: { id: cliente.id }, data: { activo: false } });
 }
 
+/** Convierte fechas de calendario sin asumir la zona horaria del navegador. */
+function fechaCalendario(input?: string | null): Date | null {
+  if (!input) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) throw new Error("Fecha del período autorizado inválida");
+  const date = new Date(`${input}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== input) {
+    throw new Error("Fecha del período autorizado inválida");
+  }
+  return date;
+}
+
+function comprobarPeriodoAutorizado(desde: Date | null, hasta: Date | null, requerido: boolean): void {
+  if (Boolean(desde) !== Boolean(hasta) || (requerido && (!desde || !hasta))) {
+    throw new Error("Indica las fechas Desde y Hasta del período autorizado de trabajo");
+  }
+  if (desde && hasta && hasta.getTime() < desde.getTime()) {
+    throw new Error("La fecha Hasta no puede ser anterior a la fecha Desde");
+  }
+}
+
 export async function crearPermiso(data: PermisoFormData) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
-  const { responsableIds, clienteNombre, clienteContactoEmail, clienteContactoTelefono, ...permisoData } = data;
+  const { responsableIds, clienteNombre, clienteContactoEmail, clienteContactoTelefono, fechaTrabajoAutorizadoDesde: desdeInput, fechaTrabajoAutorizadoHasta: hastaInput, ...permisoData } = data;
+  const periodoDesde = fechaCalendario(desdeInput);
+  const periodoHasta = fechaCalendario(hastaInput);
+  comprobarPeriodoAutorizado(periodoDesde, periodoHasta, false);
   const fechaInstalacion = new Date(permisoData.fechaInstalacion);
   const fechaSolicitud = new Date(permisoData.fechaRecepcionSolicitud);
   const hoy = new Date();
@@ -251,6 +274,8 @@ export async function crearPermiso(data: PermisoFormData) {
       fechaInstalacion,
       fechaRecepcionSolicitud: fechaSolicitud,
       fechaPresentacion: permisoData.fechaPresentacion ? new Date(permisoData.fechaPresentacion) : null,
+      fechaTrabajoAutorizadoDesde: periodoDesde,
+      fechaTrabajoAutorizadoHasta: periodoHasta,
       fechaEstimadaResolucion,
       plazoDiasSnapshot: organismo.plazoDias,
       tipoPlazoSnapshot: organismo.tipoPlazo,
@@ -329,7 +354,10 @@ export async function eliminarPermiso(permisoId: string) {
   await prisma.permisoInstalacion.delete({ where: { id: permiso.id } });
 }
 
-export async function cambiarEstadoPermiso(permisoId: string, nuevoEstado: string, comentario?: string) {
+export async function cambiarEstadoPermiso(
+  permisoId: string, nuevoEstado: string, comentario?: string,
+  periodoAutorizado?: { desde: string; hasta: string },
+) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
   if (ESTADOS_REQUIEREN_COMENTARIO.includes(nuevoEstado as (typeof ESTADOS_REQUIEREN_COMENTARIO)[number]) && !comentario?.trim()) {
     throw new Error("Debes indicar una observación/motivo para cambiar el permiso a este estado");
@@ -341,6 +369,13 @@ export async function cambiarEstadoPermiso(permisoId: string, nuevoEstado: strin
   });
   if (!permiso) throw new Error("Permiso no encontrado");
   if (permiso.estado === "APROBADO") throw new Error("Este permiso ya fue aprobado y no admite más cambios de estado");
+  const periodoDesde = nuevoEstado === "APROBADO"
+    ? (periodoAutorizado ? fechaCalendario(periodoAutorizado.desde) : permiso.fechaTrabajoAutorizadoDesde)
+    : null;
+  const periodoHasta = nuevoEstado === "APROBADO"
+    ? (periodoAutorizado ? fechaCalendario(periodoAutorizado.hasta) : permiso.fechaTrabajoAutorizadoHasta)
+    : null;
+  if (nuevoEstado === "APROBADO") comprobarPeriodoAutorizado(periodoDesde, periodoHasta, true);
 
   const estadoAnterior = permiso.estado;
   const tokenRespuestaObservacion = nuevoEstado === "OBSERVADO" ? randomBytes(32).toString("hex") : undefined;
@@ -348,6 +383,7 @@ export async function cambiarEstadoPermiso(permisoId: string, nuevoEstado: strin
     where: { id: permiso.id },
     data: {
       estado: nuevoEstado,
+      ...(nuevoEstado === "APROBADO" ? { fechaTrabajoAutorizadoDesde: periodoDesde, fechaTrabajoAutorizadoHasta: periodoHasta } : {}),
       updatedAt: new Date(),
       ...(tokenRespuestaObservacion ? { tokenRespuestaObservacion, tokenRespuestaUsado: false } : {}),
     },
