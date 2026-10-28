@@ -58,7 +58,10 @@ export default async function MuestraEmailsPage() {
     },
     {
       titulo: `5. Cambio de estado → ${PERMISO_ESTADOS.APROBADO}`,
-      html: generarEmailPermiso({ ...permiso, estado: "APROBADO" }, permiso.responsable, "CAMBIO_ESTADO", {
+      html: generarEmailPermiso({ ...permiso, estado: "APROBADO",
+        fechaTrabajoAutorizadoDesde: permiso.fechaTrabajoAutorizadoDesde || new Date("2026-11-03T12:00:00.000Z"),
+        fechaTrabajoAutorizadoHasta: permiso.fechaTrabajoAutorizadoHasta || new Date("2026-11-10T12:00:00.000Z"),
+      }, permiso.responsable, "CAMBIO_ESTADO", {
         estadoAnterior: "SOLICITADO",
       }),
     },

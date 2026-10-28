@@ -179,9 +179,32 @@ export async function desactivarCliente(id: string) {
   return prisma.permisoCliente.update({ where: { id: cliente.id }, data: { activo: false } });
 }
 
+/** Convierte fechas de calendario sin asumir la zona horaria del navegador. */
+function fechaCalendario(input?: string | null): Date | null {
+  if (!input) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input)) throw new Error("Fecha del período autorizado inválida");
+  const date = new Date(`${input}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== input) {
+    throw new Error("Fecha del período autorizado inválida");
+  }
+  return date;
+}
+
+function comprobarPeriodoAutorizado(desde: Date | null, hasta: Date | null, requerido: boolean): void {
+  if (Boolean(desde) !== Boolean(hasta) || (requerido && (!desde || !hasta))) {
+    throw new Error("Indica las fechas Desde y Hasta del período autorizado de trabajo");
+  }
+  if (desde && hasta && hasta.getTime() < desde.getTime()) {
+    throw new Error("La fecha Hasta no puede ser anterior a la fecha Desde");
+  }
+}
+
 export async function crearPermiso(data: PermisoFormData) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
-  const { responsableIds, clienteNombre, clienteContactoEmail, clienteContactoTelefono, ...permisoData } = data;
+  const { responsableIds, clienteNombre, clienteContactoEmail, clienteContactoTelefono, fechaTrabajoAutorizadoDesde: desdeInput, fechaTrabajoAutorizadoHasta: hastaInput, ...permisoData } = data;
+  const periodoDesde = fechaCalendario(desdeInput);
+  const periodoHasta = fechaCalendario(hastaInput);
+  comprobarPeriodoAutorizado(periodoDesde, periodoHasta, false);
   const fechaInstalacion = new Date(permisoData.fechaInstalacion);
   const fechaSolicitud = new Date(permisoData.fechaRecepcionSolicitud);
   const hoy = new Date();
@@ -251,6 +274,8 @@ export async function crearPermiso(data: PermisoFormData) {
       fechaInstalacion,
       fechaRecepcionSolicitud: fechaSolicitud,
       fechaPresentacion: permisoData.fechaPresentacion ? new Date(permisoData.fechaPresentacion) : null,
+      fechaTrabajoAutorizadoDesde: periodoDesde,
+      fechaTrabajoAutorizadoHasta: periodoHasta,
       fechaEstimadaResolucion,
       plazoDiasSnapshot: organismo.plazoDias,
       tipoPlazoSnapshot: organismo.tipoPlazo,
@@ -329,7 +354,10 @@ export async function eliminarPermiso(permisoId: string) {
   await prisma.permisoInstalacion.delete({ where: { id: permiso.id } });
 }
 
-export async function cambiarEstadoPermiso(permisoId: string, nuevoEstado: string, comentario?: string) {
+export async function cambiarEstadoPermiso(
+  permisoId: string, nuevoEstado: string, comentario?: string,
+  periodoAutorizado?: { desde: string; hasta: string },
+) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
   if (ESTADOS_REQUIEREN_COMENTARIO.includes(nuevoEstado as (typeof ESTADOS_REQUIEREN_COMENTARIO)[number]) && !comentario?.trim()) {
     throw new Error("Debes indicar una observación/motivo para cambiar el permiso a este estado");
@@ -341,6 +369,13 @@ export async function cambiarEstadoPermiso(permisoId: string, nuevoEstado: strin
   });
   if (!permiso) throw new Error("Permiso no encontrado");
   if (permiso.estado === "APROBADO") throw new Error("Este permiso ya fue aprobado y no admite más cambios de estado");
+  const periodoDesde = nuevoEstado === "APROBADO"
+    ? (periodoAutorizado ? fechaCalendario(periodoAutorizado.desde) : permiso.fechaTrabajoAutorizadoDesde)
+    : null;
+  const periodoHasta = nuevoEstado === "APROBADO"
+    ? (periodoAutorizado ? fechaCalendario(periodoAutorizado.hasta) : permiso.fechaTrabajoAutorizadoHasta)
+    : null;
+  if (nuevoEstado === "APROBADO") comprobarPeriodoAutorizado(periodoDesde, periodoHasta, true);
 
   const estadoAnterior = permiso.estado;
   const tokenRespuestaObservacion = nuevoEstado === "OBSERVADO" ? randomBytes(32).toString("hex") : undefined;
@@ -348,6 +383,7 @@ export async function cambiarEstadoPermiso(permisoId: string, nuevoEstado: strin
     where: { id: permiso.id },
     data: {
       estado: nuevoEstado,
+      ...(nuevoEstado === "APROBADO" ? { fechaTrabajoAutorizadoDesde: periodoDesde, fechaTrabajoAutorizadoHasta: periodoHasta } : {}),
       updatedAt: new Date(),
       ...(tokenRespuestaObservacion ? { tokenRespuestaObservacion, tokenRespuestaUsado: false } : {}),
     },
@@ -369,6 +405,58 @@ export async function cambiarEstadoPermiso(permisoId: string, nuevoEstado: strin
     );
   }
   return permisoActualizado;
+}
+
+/** Permite completar el período de permisos ya aprobados, sin reenviar notificaciones. */
+export async function guardarPeriodoTrabajosAprobado(
+  permisoId: string, periodo: { desde: string; hasta: string },
+) {
+  const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
+  const desde = fechaCalendario(periodo.desde);
+  const hasta = fechaCalendario(periodo.hasta);
+  comprobarPeriodoAutorizado(desde, hasta, true);
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId }, select: { id: true, estado: true },
+  });
+  if (!permiso || permiso.estado !== "APROBADO") {
+    throw new Error("Solo puedes modificar el período de un permiso aprobado de esta empresa");
+  }
+  await prisma.$transaction([
+    prisma.permisoInstalacion.update({
+      where: { id: permiso.id },
+      data: { fechaTrabajoAutorizadoDesde: desde, fechaTrabajoAutorizadoHasta: hasta },
+    }),
+    prisma.permisoHistorial.create({
+      data: { permisoId: permiso.id, estadoAnterior: "APROBADO", estadoNuevo: "APROBADO",
+        comentario: `Período autorizado actualizado: ${periodo.desde} a ${periodo.hasta}`, usuarioId },
+    }),
+  ]);
+  return { ok: true };
+}
+
+/** Envío de prueba real, sin alterar el estado ni notificar a los coordinadores. */
+export async function enviarCorreoPruebaPermisoAprobado(permisoId: string, destino: string) {
+  const { empresaId } = await requirePermission("canManagePermisos");
+  const email = destino.trim();
+  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new Error("Indica un correo electrónico de destino válido");
+  }
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId },
+    include: { organismo: true, responsable: true, cliente: true },
+  });
+  if (!permiso || permiso.estado !== "APROBADO") {
+    throw new Error("Selecciona un permiso aprobado para enviar el correo de prueba");
+  }
+  if (!permiso.fechaTrabajoAutorizadoDesde || !permiso.fechaTrabajoAutorizadoHasta) {
+    throw new Error("Guarda primero el período autorizado de trabajo");
+  }
+  const resultado = await sendEmail({
+    to: email,
+    subject: `[PRUEBA] ${generarAsuntoEmailPermiso(permiso)}`,
+    html: generarEmailPermiso(permiso, permiso.responsable, "CAMBIO_ESTADO"),
+  });
+  return { ok: true, messageId: resultado.messageId };
 }
 
 type PermisoAprobadoArchivoInput = {

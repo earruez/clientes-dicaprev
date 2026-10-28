@@ -2555,6 +2555,10 @@ model PermisoInstalacion {
   // Solicitud
   fechaRecepcionSolicitud   DateTime
   fechaPresentacion         DateTime?
+
+  // Período autorizado para ejecutar trabajos (confirmado al aprobar)
+  fechaTrabajoAutorizadoDesde DateTime?
+  fechaTrabajoAutorizadoHasta DateTime?
   
   // Organismo y plazo
   organismoId               String

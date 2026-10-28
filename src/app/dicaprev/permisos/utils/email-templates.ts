@@ -49,6 +49,14 @@ export function generarEmailPermiso(
   const alertaRiesgo = permiso.nivelRiesgo === "EN_RIESGO"
     ? `<div style="margin-top:24px;padding:16px;background:#fff7d6;border-left:5px solid #f59e0b;border-radius:8px;color:#92400e;font-size:14px;line-height:1.55;"><strong>Atención con la fecha de instalación</strong><br>La municipalidad registra un plazo aproximado de ${permiso.plazoDiasSnapshot || "-"} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}. La resolución se estima para el ${formatearFecha(permiso.fechaEstimadaResolucion)}, posterior a la instalación programada para el ${formatearFecha(permiso.fechaInstalacion)}. Se recomienda revisar la programación.</div>`
     : "";
+  const periodoAprobacion = estado === "APROBADO" && tipo === "CAMBIO_ESTADO" && permiso.fechaTrabajoAutorizadoDesde && permiso.fechaTrabajoAutorizadoHasta
+    ? `<h2 style="margin:28px 0 12px;color:#166534;font-size:17px;font-weight:800;">Período autorizado para trabajar</h2>
+       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;font-size:14px;">
+         <tr><td style="padding:14px 16px;color:#166534;font-weight:700;">Desde</td><td align="right" style="padding:14px 16px;color:#14532d;font-weight:800;">${formatearFecha(permiso.fechaTrabajoAutorizadoDesde)}</td></tr>
+         <tr><td style="padding:14px 16px;border-top:1px solid #bbf7d0;color:#166534;font-weight:700;">Hasta</td><td align="right" style="padding:14px 16px;border-top:1px solid #bbf7d0;color:#14532d;font-weight:800;">${formatearFecha(permiso.fechaTrabajoAutorizadoHasta)}</td></tr>
+       </table>
+       <p style="margin:9px 0 0;color:#64748b;font-size:12px;">Las fechas corresponden al permiso municipal registrado.</p>`
+    : "";
   const detalleOperativo = mostrarDetalleOperativo
     ? `
           <h2 style="margin:28px 0 14px;color:#172033;font-size:16px;font-weight:800;">Seguimiento del permiso</h2>
@@ -98,6 +106,7 @@ export function generarEmailPermiso(
             <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Municipalidad</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${permiso.nombreOrganismoSnapshot || permiso.organismo?.nombre || "-"}</td></tr>
             <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Fecha de instalación</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${formatearFecha(permiso.fechaInstalacion)}</td></tr>
           </table>
+          ${periodoAprobacion}
           ${detalleOperativo}
           <h2 style="margin:28px 0 14px;color:#172033;font-size:16px;font-weight:800;">Coordinador</h2>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e2e8f0;font-size:14px;">

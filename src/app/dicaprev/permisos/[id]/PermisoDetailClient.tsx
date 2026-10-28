@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { ArrowLeft, ExternalLink, FileText, Upload } from "lucide-react";
 import type { PermisoInstalacion, PermisoOrganismo, PermisoResponsable, PermisoCliente, PermisoHistorial } from "@prisma/client";
-import { actualizarFechaPresentacion, cambiarEstadoPermiso, guardarPermisoAprobado } from "../actions/permisos";
+import { actualizarFechaPresentacion, cambiarEstadoPermiso, guardarPermisoAprobado, guardarPeriodoTrabajosAprobado, enviarCorreoPruebaPermisoAprobado } from "../actions/permisos";
 import { ESTADO_COLORS, PERMISO_ESTADOS, ESTADOS_REQUIEREN_COMENTARIO, PermisoEstado } from "../types";
 import { DOCUMENTO_ACCEPT, DOCUMENTO_TIPOS_LABEL, MAX_DOCUMENTO_FILE_SIZE } from "@/lib/documentacion/archivo-documento";
 
@@ -52,8 +52,15 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
   const router = useRouter();
 
   const [fechaPresentacion, setFechaPresentacion] = useState(toDateInputValue(permiso.fechaPresentacion));
+  const [periodoDesde, setPeriodoDesde] = useState(toDateInputValue(permiso.fechaTrabajoAutorizadoDesde));
+  const [periodoHasta, setPeriodoHasta] = useState(toDateInputValue(permiso.fechaTrabajoAutorizadoHasta));
   const [savingFecha, setSavingFecha] = useState(false);
   const [fechaError, setFechaError] = useState<string | null>(null);
+  const [guardandoPeriodo, setGuardandoPeriodo] = useState(false);
+  const [mensajePeriodo, setMensajePeriodo] = useState("");
+  const [correoPrueba, setCorreoPrueba] = useState("");
+  const [enviandoPrueba, setEnviandoPrueba] = useState(false);
+  const [mensajePrueba, setMensajePrueba] = useState("");
 
   const estadoActual = permiso.estado as PermisoEstado;
   const opcionesEstado = (Object.keys(PERMISO_ESTADOS) as PermisoEstado[]).filter((estado) => estado !== estadoActual);
@@ -92,15 +99,56 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
       return;
     }
 
+    if (nuevoEstado === "APROBADO" && (!periodoDesde || !periodoHasta || periodoHasta < periodoDesde)) {
+      setEstadoError("Para aprobar, ingresa las fechas Desde y Hasta del período autorizado de trabajo.");
+      return;
+    }
+
     setSavingEstado(true);
     try {
-      await cambiarEstadoPermiso(permiso.id, nuevoEstado, comentario.trim() || undefined);
+      await cambiarEstadoPermiso(
+        permiso.id, nuevoEstado, comentario.trim() || undefined,
+        nuevoEstado === "APROBADO" ? { desde: periodoDesde, hasta: periodoHasta } : undefined,
+      );
       setComentario("");
       router.refresh();
     } catch (err) {
       setEstadoError(err instanceof Error ? err.message : "Error al cambiar el estado del permiso");
     } finally {
       setSavingEstado(false);
+    }
+  };
+
+  const handleGuardarPeriodoAprobado = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setMensajePeriodo("");
+    if (!periodoDesde || !periodoHasta || periodoHasta < periodoDesde) {
+      setMensajePeriodo("Debes indicar un período válido, con ambas fechas.");
+      return;
+    }
+    setGuardandoPeriodo(true);
+    try {
+      await guardarPeriodoTrabajosAprobado(permiso.id, { desde: periodoDesde, hasta: periodoHasta });
+      setMensajePeriodo("Período autorizado guardado.");
+      router.refresh();
+    } catch (error) {
+      setMensajePeriodo(error instanceof Error ? error.message : "Error al guardar el período");
+    } finally {
+      setGuardandoPeriodo(false);
+    }
+  };
+
+  const handleEnviarCorreoPrueba = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setMensajePrueba("");
+    setEnviandoPrueba(true);
+    try {
+      await enviarCorreoPruebaPermisoAprobado(permiso.id, correoPrueba);
+      setMensajePrueba(`Prueba enviada a ${correoPrueba}. Revisa la bandeja y la carpeta de spam.`);
+    } catch (error) {
+      setMensajePrueba(error instanceof Error ? error.message : "Error al enviar correo");
+    } finally {
+      setEnviandoPrueba(false);
     }
   };
 
@@ -181,6 +229,14 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             <span className="text-slate-900">{permiso.responsable.nombre}</span>
             <span className="text-slate-500">Fecha de instalación</span>
             <span className="text-slate-900">{new Date(permiso.fechaInstalacion).toLocaleDateString("es-CL")}</span>
+            {(permiso.fechaTrabajoAutorizadoDesde && permiso.fechaTrabajoAutorizadoHasta) && (
+              <>
+                <span className="text-slate-500">Trabajo autorizado desde</span>
+                <span className="font-semibold text-slate-900">{new Date(permiso.fechaTrabajoAutorizadoDesde).toLocaleDateString("es-CL", { timeZone: "UTC" })}</span>
+                <span className="text-slate-500">Trabajo autorizado hasta</span>
+                <span className="font-semibold text-slate-900">{new Date(permiso.fechaTrabajoAutorizadoHasta).toLocaleDateString("es-CL", { timeZone: "UTC" })}</span>
+              </>
+            )}
             <span className="text-slate-500">Fecha de solicitud</span>
             <span className="text-slate-900">
               {new Date(permiso.fechaRecepcionSolicitud).toLocaleDateString("es-CL")}
@@ -255,6 +311,20 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
                 ))}
               </select>
             </div>
+            {nuevoEstado === "APROBADO" && (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-4 space-y-3">
+                <p className="font-semibold text-green-900">Período autorizado para trabajar *</p>
+                <p className="text-xs text-green-800">Confirma las fechas según la resolución municipal. Se incluirán en el correo de aprobación a los coordinadores.</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="space-y-1 text-sm text-slate-700">Desde
+                    <input type="date" required value={periodoDesde} onChange={(e) => setPeriodoDesde(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+                  </label>
+                  <label className="space-y-1 text-sm text-slate-700">Hasta
+                    <input type="date" required min={periodoDesde || undefined} value={periodoHasta} onChange={(e) => setPeriodoHasta(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+                  </label>
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 {nuevoEstado === "OBSERVADO"
@@ -291,6 +361,38 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             </div>
           </form>
         </div>
+      )}
+
+      {estadoActual === "APROBADO" && (
+        <section className="rounded-lg border border-green-200 bg-white p-6 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Período autorizado de trabajo</h2>
+            <p className="mt-1 text-sm text-slate-600">Registra o corrige las fechas indicadas en la aprobación municipal. El cambio se guarda en el historial sin reenviar la notificación original.</p>
+          </div>
+          <form onSubmit={handleGuardarPeriodoAprobado} className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="space-y-1 text-sm font-medium text-slate-700">Desde
+                <input type="date" required value={periodoDesde} onChange={(e) => setPeriodoDesde(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"/>
+              </label>
+              <label className="space-y-1 text-sm font-medium text-slate-700">Hasta
+                <input type="date" required min={periodoDesde || undefined} value={periodoHasta} onChange={(e) => setPeriodoHasta(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"/>
+              </label>
+            </div>
+            <Button type="submit" disabled={guardandoPeriodo}>{guardandoPeriodo ? "Guardando..." : "Guardar período autorizado"}</Button>
+            {mensajePeriodo && <p role="status" className="text-sm text-slate-700">{mensajePeriodo}</p>}
+          </form>
+          <div className="border-t border-slate-200 pt-4 space-y-2">
+            <h3 className="text-sm font-semibold text-slate-900">Enviar correo de prueba de aprobación</h3>
+            <p className="text-xs text-slate-600">Usa la plantilla real de NextPrev. El envío de prueba no cambia el estado del permiso ni avisa a los demás coordinadores.</p>
+            <form onSubmit={handleEnviarCorreoPrueba} className="flex flex-wrap items-end gap-2">
+              <label className="flex-1 min-w-[220px] space-y-1 text-sm text-slate-700">Correo de prueba
+                <input type="email" required value={correoPrueba} onChange={(e) => setCorreoPrueba(e.target.value)} placeholder="correo@ejemplo.com" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"/>
+              </label>
+              <Button type="submit" variant="outline" disabled={enviandoPrueba || !periodoDesde || !periodoHasta || periodoHasta < periodoDesde || periodoDesde !== toDateInputValue(permiso.fechaTrabajoAutorizadoDesde) || periodoHasta !== toDateInputValue(permiso.fechaTrabajoAutorizadoHasta)}>{enviandoPrueba ? "Enviando..." : "Enviar prueba"}</Button>
+            </form>
+            {mensajePrueba && <p role="status" className="text-sm text-slate-700">{mensajePrueba}</p>}
+          </div>
+        </section>
       )}
 
       {estadoActual === "APROBADO" && (
