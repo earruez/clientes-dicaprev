@@ -21,6 +21,7 @@ export default async function SolicitudesPage() {
         mandante: a.mandante.nombre,
         proyecto: a.nombreProyecto || a.obraFaena || "Sin proyecto",
         estado: a.estado,
+        documentosDemo: a.documentos.filter((d) => d.archivoUrl?.startsWith("/demo/")).length,
         contratistaId: a.contratistaId,
         trabajadores: a.trabajadores.length,
         vehiculos: a.vehiculos.length,

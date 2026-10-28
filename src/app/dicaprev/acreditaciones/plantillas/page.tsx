@@ -28,6 +28,7 @@ export default async function PlantillasPage() {
           categoria: r.categoria,
           aplicaA: r.aplicaA,
           obligatorio: r.obligatorio,
+          requiereVencimiento: r.requiereVencimiento,
           documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
           documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
           documentoTipoVehiculoId: r.documentoTipoVehiculoId,

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 type Row = {
   id: string;
   estado: string;
+  documentosDemo?: number;
   estadoLabel?: string;
   mandanteId: string;
   mandante: string;
@@ -121,7 +122,7 @@ export default function ResumenAcreditacionesClient({
                 Plantillas
               </button>
               <button
-                onClick={() => router.push("/dicaprev/acreditaciones/solicitudes")}
+                onClick={() => router.push("/dicaprev/acreditaciones/solicitudes?nuevo=1")}
                 className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800"
               >
                 <Plus className="h-4 w-4" />
@@ -153,7 +154,7 @@ export default function ResumenAcreditacionesClient({
                   className="rounded-xl border border-amber-200 bg-white p-3 text-left hover:border-amber-300"
                 >
                   <p className="truncate text-xs font-semibold text-slate-900">{item.mandante}</p>
-                  <p className="truncate text-xs text-slate-500">{item.proyecto}</p>
+                  <p className="truncate text-xs text-slate-500">{item.proyecto}</p>{Boolean(item.documentosDemo) && <span className="text-xs font-bold text-amber-700">Datos de demostración</span>}
                   <p className="mt-2 text-xs text-amber-700">{item.motivo}</p>
                   <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-rose-600">
                     <AlertTriangle className="h-3 w-3" />
@@ -267,7 +268,7 @@ export default function ResumenAcreditacionesClient({
                     >
                       <td className="px-4 py-3">
                         <p className="font-medium text-slate-900">{row.mandante}</p>
-                        <p className="text-xs text-slate-500">{row.proyecto}</p>
+                        <p className="text-xs text-slate-500">{row.proyecto}</p>{Boolean(row.documentosDemo) && <p className="text-xs font-bold text-amber-700">Demostración: {row.documentosDemo} archivos</p>}
                       </td>
                       <td className="px-4 py-3 text-slate-700">{ESTADO_LABEL[row.estado]}</td>
                       <td className="px-4 py-3">

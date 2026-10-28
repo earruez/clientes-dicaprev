@@ -27,7 +27,7 @@ type OpsAcreditacion = {
   obraFaena: string | null;
   responsableId: string | null;
   responsable: { nombre: string } | null;
-  documentos: Array<{ estado: string; fechaVencimiento: Date | null }>;
+  documentos: Array<{ estado: string; fechaVencimiento: Date | null; archivoUrl?: string | null }>;
   trabajadores: unknown[];
   vehiculos: unknown[];
   fechaVencimiento: Date | null;
@@ -42,10 +42,6 @@ type OpsAcreditacion = {
 async function getEmpresaId(): Promise<string> {
   const context = await requireAuth();
   return context.empresaId;
-}
-
-async function getContext() {
-  return requireAuth();
 }
 
 function toDateOnly(date: Date): Date {
@@ -123,6 +119,7 @@ function resolveEstadoDesdeFuente(args: { estado?: string | null; fechaVencimien
 
 function mapAcreditacionRow(a: OpsAcreditacion) {
   const totalDocs = a.documentos.length;
+  const documentosDemo = a.documentos.filter((d) => d.archivoUrl?.startsWith("/demo/")).length;
   const completos = a.documentos.filter((d) => d.estado === "completo").length;
   const faltantes = a.documentos.filter((d) => d.estado === "faltante").length;
   const vencidos = a.documentos.filter((d) => d.estado === "vencido").length;
@@ -152,6 +149,7 @@ function mapAcreditacionRow(a: OpsAcreditacion) {
     vencidos,
     observados,
     totalDocs,
+    documentosDemo,
     progreso,
     urgencia,
     motivo: buildMotivo({
@@ -621,7 +619,7 @@ export async function getAcreditacionesResumen() {
         mandante: true,
         plantilla: true,
         responsable: { select: { nombre: true } },
-        documentos: { select: { estado: true, fechaVencimiento: true } },
+        documentos: { select: { estado: true, fechaVencimiento: true, archivoUrl: true } },
         trabajadores: true,
         vehiculos: true,
       },
@@ -718,7 +716,7 @@ export async function getAcreditaciones(filters?: {
         mandante: true,
         plantilla: true,
         responsable: { select: { nombre: true } },
-        documentos: { select: { estado: true, fechaVencimiento: true } },
+        documentos: { select: { estado: true, fechaVencimiento: true, archivoUrl: true } },
         trabajadores: { include: { trabajador: true } },
         vehiculos: { include: { vehiculo: true } },
       },
@@ -871,6 +869,7 @@ export async function crearPlantillaAcreditacion(data: {
     categoria: string;
     aplicaA: string;
     obligatorio: boolean;
+    requiereVencimiento?: boolean;
     codigoDocumento?: string | null;
     documentoRequeridoEmpresaId?: string | null;
     documentoTipoTrabajadorId?: string | null;
@@ -905,6 +904,7 @@ export async function crearPlantillaAcreditacion(data: {
                 categoria: r.categoria,
                 aplicaA: r.aplicaA,
                 obligatorio: r.obligatorio,
+                requiereVencimiento: r.requiereVencimiento === true,
                 documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
                 documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
                 documentoTipoVehiculoId: r.documentoTipoVehiculoId,
@@ -931,6 +931,7 @@ export async function actualizarPlantillaAcreditacion(data: {
     categoria: string;
     aplicaA: string;
     obligatorio: boolean;
+    requiereVencimiento?: boolean;
     codigoDocumento?: string | null;
     documentoRequeridoEmpresaId?: string | null;
     documentoTipoTrabajadorId?: string | null;
@@ -1011,6 +1012,7 @@ export async function actualizarPlantillaAcreditacion(data: {
             categoria: req.categoria,
             aplicaA: req.aplicaA,
             obligatorio: req.obligatorio,
+            requiereVencimiento: req.requiereVencimiento === true,
             documentoRequeridoEmpresaId: req.documentoRequeridoEmpresaId ?? null,
             documentoTipoTrabajadorId: req.documentoTipoTrabajadorId ?? null,
             documentoTipoVehiculoId: req.documentoTipoVehiculoId ?? null,
@@ -1027,6 +1029,7 @@ export async function actualizarPlantillaAcreditacion(data: {
             categoria: req.categoria,
             aplicaA: req.aplicaA,
             obligatorio: req.obligatorio,
+            requiereVencimiento: req.requiereVencimiento === true,
             documentoRequeridoEmpresaId: req.documentoRequeridoEmpresaId ?? null,
             documentoTipoTrabajadorId: req.documentoTipoTrabajadorId ?? null,
             documentoTipoVehiculoId: req.documentoTipoVehiculoId ?? null,
@@ -1122,7 +1125,7 @@ export async function crearAcreditacion(data: {
   trabajadorIds?: string[];
   vehiculoIds?: string[];
 }) {
-  const context = await getContext();
+  const context = await requirePermission("canManageDocumentacion");
   const empresaId = context.empresaId;
   const usuarioId = context.usuarioId;
 
@@ -1592,7 +1595,7 @@ export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcr
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
   const acreditacion = await prisma.acreditacion.findFirst({
     where: { id, empresaId },
-    include: { documentos: true },
+    include: { documentos: { include: { requisito: { select: { requiereVencimiento: true } } } } },
   });
   if (!acreditacion) throw new Error("Acreditación no encontrada");
   const actual = acreditacion.estado as EstadoAcreditacion;
@@ -1610,7 +1613,9 @@ export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcr
     if (!obligatorios.length || obligatorios.some((d) =>
       d.estado !== "completo" ||
       !(d.archivoNombre || d.archivoUrl) ||
-      (d.fechaVencimiento && d.fechaVencimiento.getTime() < Date.now())
+      (d.fechaVencimiento && d.fechaVencimiento.getTime() < Date.now()) ||
+      d.archivoUrl?.startsWith("/demo/") ||
+      (d.requisito.requiereVencimiento && !d.fechaVencimiento)
     )) {
       throw new Error("Faltan documentos obligatorios completos, vigentes y con archivo");
     }
@@ -2009,8 +2014,11 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
     fechaVencimiento: doc.fechaVencimiento,
   }));
 
+  // Nunca borrar evidencias/observaciones por una sincronización con otra versión de plantilla.
   const deletes = existing
-    .filter((doc) => !expectedKeys.has(toKey(doc)))
+    .filter((doc) => !expectedKeys.has(toKey(doc))
+      && !doc.archivoNombre && !doc.archivoUrl && !doc.fuenteId
+      && doc.estado === "faltante")
     .map((doc) => doc.id);
 
   // No pisar archivos cargados manualmente ni estados de revisión manual.
