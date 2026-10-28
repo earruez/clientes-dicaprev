@@ -27,7 +27,7 @@ type OpsAcreditacion = {
   obraFaena: string | null;
   responsableId: string | null;
   responsable: { nombre: string } | null;
-  documentos: Array<{ estado: string; fechaVencimiento: Date | null }>;
+  documentos: Array<{ estado: string; fechaVencimiento: Date | null; archivoUrl?: string | null }>;
   trabajadores: unknown[];
   vehiculos: unknown[];
   fechaVencimiento: Date | null;
@@ -123,6 +123,7 @@ function resolveEstadoDesdeFuente(args: { estado?: string | null; fechaVencimien
 
 function mapAcreditacionRow(a: OpsAcreditacion) {
   const totalDocs = a.documentos.length;
+  const documentosDemo = a.documentos.filter((d) => d.archivoUrl?.startsWith("/demo/")).length;
   const completos = a.documentos.filter((d) => d.estado === "completo").length;
   const faltantes = a.documentos.filter((d) => d.estado === "faltante").length;
   const vencidos = a.documentos.filter((d) => d.estado === "vencido").length;
@@ -152,6 +153,7 @@ function mapAcreditacionRow(a: OpsAcreditacion) {
     vencidos,
     observados,
     totalDocs,
+    documentosDemo,
     progreso,
     urgencia,
     motivo: buildMotivo({
@@ -621,7 +623,7 @@ export async function getAcreditacionesResumen() {
         mandante: true,
         plantilla: true,
         responsable: { select: { nombre: true } },
-        documentos: { select: { estado: true, fechaVencimiento: true } },
+        documentos: { select: { estado: true, fechaVencimiento: true, archivoUrl: true } },
         trabajadores: true,
         vehiculos: true,
       },
