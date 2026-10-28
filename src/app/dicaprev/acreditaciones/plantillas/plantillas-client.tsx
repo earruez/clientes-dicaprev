@@ -28,6 +28,7 @@ type PlantillaItem = {
     categoria: string;
     aplicaA: string;
     obligatorio: boolean;
+    requiereVencimiento: boolean;
     documentoRequeridoEmpresaId: string | null;
     documentoTipoTrabajadorId: string | null;
     documentoTipoVehiculoId: string | null;
@@ -40,6 +41,7 @@ type FormRequisito = {
   categoria: string;
   aplicaA: string;
   obligatorio: boolean;
+  requiereVencimiento?: boolean;
   codigoDocumento?: string | null;
   documentoRequeridoEmpresaId?: string | null;
   documentoTipoTrabajadorId?: string | null;
@@ -182,6 +184,7 @@ export default function PlantillasClient({
         categoria: r.categoria,
         aplicaA: r.aplicaA,
         obligatorio: r.obligatorio,
+        requiereVencimiento: r.requiereVencimiento,
         codigoDocumento: r.codigoDocumento,
         documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
         documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
@@ -566,6 +569,10 @@ function PlantillaModal({
                   >
                     Quitar
                   </button>
+                  <label className="md:col-span-12 flex items-center gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
+                    <input type="checkbox" checked={Boolean(r.requiereVencimiento)} onChange={(e) => onUpdateReq(index, { requiereVencimiento: e.target.checked })} />
+                    El mandante exige fecha de vencimiento para este documento
+                  </label>
                   <label className="md:col-span-12 flex flex-col gap-1 text-xs text-slate-600">
                     Documento vinculado de NextPrev
                     <select
