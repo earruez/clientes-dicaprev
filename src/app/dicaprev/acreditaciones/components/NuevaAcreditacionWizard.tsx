@@ -10,6 +10,7 @@ type Plantilla = { id: string; nombre: string; descripcion: string; mandanteId: 
 type Persona = { id: string; nombre: string; rut: string; cargo: string };
 type Vehiculo = { id: string; etiqueta: string; patente: string };
 interface Props {
+  errorExterno?: string | null;
   onClose: () => void;
   onCrear: (data: {
     mandanteId: string; plantillaId: string; contratistaId?: string;
@@ -91,7 +92,7 @@ export default function NuevaAcreditacionWizard(props: Props) {
           ))}
         </nav>
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
-          {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
+          {(error || props.errorExterno) && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error || props.errorExterno}</p>}
           {paso === 0 && (
             <>
               <section className="space-y-3">
