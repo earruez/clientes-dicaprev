@@ -52,6 +52,8 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
   const router = useRouter();
 
   const [fechaPresentacion, setFechaPresentacion] = useState(toDateInputValue(permiso.fechaPresentacion));
+  const [periodoDesde, setPeriodoDesde] = useState(toDateInputValue(permiso.fechaTrabajoAutorizadoDesde));
+  const [periodoHasta, setPeriodoHasta] = useState(toDateInputValue(permiso.fechaTrabajoAutorizadoHasta));
   const [savingFecha, setSavingFecha] = useState(false);
   const [fechaError, setFechaError] = useState<string | null>(null);
 
@@ -92,9 +94,17 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
       return;
     }
 
+    if (nuevoEstado === "APROBADO" && (!periodoDesde || !periodoHasta || periodoHasta < periodoDesde)) {
+      setEstadoError("Para aprobar, ingresa las fechas Desde y Hasta del período autorizado de trabajo.");
+      return;
+    }
+
     setSavingEstado(true);
     try {
-      await cambiarEstadoPermiso(permiso.id, nuevoEstado, comentario.trim() || undefined);
+      await cambiarEstadoPermiso(
+        permiso.id, nuevoEstado, comentario.trim() || undefined,
+        nuevoEstado === "APROBADO" ? { desde: periodoDesde, hasta: periodoHasta } : undefined,
+      );
       setComentario("");
       router.refresh();
     } catch (err) {
@@ -181,6 +191,14 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
             <span className="text-slate-900">{permiso.responsable.nombre}</span>
             <span className="text-slate-500">Fecha de instalación</span>
             <span className="text-slate-900">{new Date(permiso.fechaInstalacion).toLocaleDateString("es-CL")}</span>
+            {(permiso.fechaTrabajoAutorizadoDesde && permiso.fechaTrabajoAutorizadoHasta) && (
+              <>
+                <span className="text-slate-500">Trabajo autorizado desde</span>
+                <span className="font-semibold text-slate-900">{new Date(permiso.fechaTrabajoAutorizadoDesde).toLocaleDateString("es-CL", { timeZone: "UTC" })}</span>
+                <span className="text-slate-500">Trabajo autorizado hasta</span>
+                <span className="font-semibold text-slate-900">{new Date(permiso.fechaTrabajoAutorizadoHasta).toLocaleDateString("es-CL", { timeZone: "UTC" })}</span>
+              </>
+            )}
             <span className="text-slate-500">Fecha de solicitud</span>
             <span className="text-slate-900">
               {new Date(permiso.fechaRecepcionSolicitud).toLocaleDateString("es-CL")}
@@ -255,6 +273,20 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
                 ))}
               </select>
             </div>
+            {nuevoEstado === "APROBADO" && (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-4 space-y-3">
+                <p className="font-semibold text-green-900">Período autorizado para trabajar *</p>
+                <p className="text-xs text-green-800">Confirma las fechas según la resolución municipal. Se incluirán en el correo de aprobación a los coordinadores.</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="space-y-1 text-sm text-slate-700">Desde
+                    <input type="date" required value={periodoDesde} onChange={(e) => setPeriodoDesde(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+                  </label>
+                  <label className="space-y-1 text-sm text-slate-700">Hasta
+                    <input type="date" required min={periodoDesde || undefined} value={periodoHasta} onChange={(e) => setPeriodoHasta(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
+                  </label>
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 {nuevoEstado === "OBSERVADO"
