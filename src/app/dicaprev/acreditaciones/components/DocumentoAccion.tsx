@@ -7,7 +7,7 @@ import { adjuntarDocumentoAcreditacion, revisarDocumentoAcreditacion } from "@/a
 import { normalizarArchivoSeguroUrl } from "@/lib/documentacion/archivo-seguro";
 
 type Documento = {
-  id: string; estado: string; obligatorio: boolean; archivoUrl?: string;
+  id: string; estado: string; obligatorio: boolean; requiereVencimiento?: boolean; archivoUrl?: string;
   archivoNombre?: string; observaciones?: string; nombreDocumento: string;
   fechaEmision?: string; fechaVencimiento?: string;
 };
@@ -24,6 +24,7 @@ export default function DocumentoAccion({ documento, puedeEditar }: { documento:
   const demo = Boolean(documento.archivoUrl?.startsWith("/demo/"));
   const url = demo ? null : normalizarArchivoSeguroUrl(documento.archivoUrl);
   const valido = documento.estado === "completo" && !demo && Boolean(url || documento.archivoNombre)
+    && (!documento.requiereVencimiento || Boolean(documento.fechaVencimiento))
     && (!documento.fechaVencimiento || new Date(documento.fechaVencimiento).getTime() >= Date.now());
   const clase = valido ? "bg-green-50 text-green-800 border-green-200" : demo
     ? "bg-orange-50 text-orange-800 border-orange-200"
@@ -87,7 +88,7 @@ export default function DocumentoAccion({ documento, puedeEditar }: { documento:
             <label className="text-xs text-slate-700">Fecha de emisión
               <input type="date" value={emision} onChange={(e) => setEmision(e.target.value)} className="mt-1 w-full rounded-lg border p-2 text-sm" />
             </label>
-            <label className="text-xs text-slate-700">Fecha de vencimiento
+            <label className="text-xs text-slate-700">Fecha de vencimiento {documento.requiereVencimiento ? "(obligatoria)" : "(si corresponde)"}
               <input type="date" value={vencimiento} min={emision || undefined} onChange={(e) => setVencimiento(e.target.value)} className="mt-1 w-full rounded-lg border p-2 text-sm" />
             </label>
           </div>
