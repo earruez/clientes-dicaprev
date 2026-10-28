@@ -87,6 +87,8 @@ export interface PermisoFormData {
   region?: string;
   fechaInstalacion: string;
   fechaRecepcionSolicitud: string;
+  fechaTrabajoAutorizadoDesde?: string;
+  fechaTrabajoAutorizadoHasta?: string;
   organismoId: string;
   responsableId: string;
   responsableIds?: string[];
