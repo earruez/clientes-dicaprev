@@ -421,7 +421,7 @@ export async function guardarPeriodoTrabajosAprobado(
   if (!permiso || permiso.estado !== "APROBADO") {
     throw new Error("Solo puedes modificar el período de un permiso aprobado de esta empresa");
   }
-  await prisma.$transaction([
+  const [actualizado] = await prisma.$transaction([
     prisma.permisoInstalacion.update({
       where: { id: permiso.id },
       data: { fechaTrabajoAutorizadoDesde: desde, fechaTrabajoAutorizadoHasta: hasta },
@@ -431,7 +431,11 @@ export async function guardarPeriodoTrabajosAprobado(
         comentario: `Período autorizado actualizado: ${periodo.desde} a ${periodo.hasta}`, usuarioId },
     }),
   ]);
-  return { ok: true };
+  return {
+    ok: true,
+    desde: actualizado.fechaTrabajoAutorizadoDesde?.toISOString().slice(0, 10) ?? "",
+    hasta: actualizado.fechaTrabajoAutorizadoHasta?.toISOString().slice(0, 10) ?? "",
+  };
 }
 
 /** Envío de prueba real, sin alterar el estado ni notificar a los coordinadores. */
