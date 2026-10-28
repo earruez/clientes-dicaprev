@@ -29,7 +29,7 @@ async function enviarNotificacionATodos(
   html: string,
   opciones?: { adjuntos?: SendEmailAttachment[]; soloPendientes?: boolean },
 ): Promise<ResumenEnvio> {
-  const emailsUnicos = Array.from(new Set(destinatarios.map((d) => d.email?.trim().toLowerCase()).filter(Boolean)));
+  const emailsUnicos = Array.from(new Set(destinatarios.map((d) => d.email.trim().toLowerCase()).filter((email) => email.length > 0)));
   const enviadosAntes = opciones?.soloPendientes
     ? await prisma.permisoNotificacion.findMany({
         where: { permisoId, tipo, estado: "ENVIADO" },
@@ -409,6 +409,7 @@ export async function eliminarPermiso(permisoId: string) {
 export async function cambiarEstadoPermiso(
   permisoId: string, nuevoEstado: string, comentario?: string,
   periodoAutorizado?: { desde: string; hasta: string },
+  archivoAprobado?: ArchivoPermisoAprobadoInput,
 ) {
   const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
   if (ESTADOS_REQUIEREN_COMENTARIO.includes(nuevoEstado as (typeof ESTADOS_REQUIEREN_COMENTARIO)[number]) && !comentario?.trim()) {
@@ -428,6 +429,12 @@ export async function cambiarEstadoPermiso(
     ? (periodoAutorizado ? fechaCalendario(periodoAutorizado.hasta) : permiso.fechaTrabajoAutorizadoHasta)
     : null;
   if (nuevoEstado === "APROBADO") comprobarPeriodoAutorizado(periodoDesde, periodoHasta, true);
+  if (nuevoEstado === "APROBADO" && !archivoAprobado) {
+    throw new Error("Adjunta el permiso emitido por la municipalidad antes de aprobar y notificar.");
+  }
+  const adjuntoAprobacion = nuevoEstado === "APROBADO" && archivoAprobado
+    ? await obtenerAdjuntoMunicipal(empresaId, archivoAprobado)
+    : null;
 
   const estadoAnterior = permiso.estado;
   const tokenRespuestaObservacion = nuevoEstado === "OBSERVADO" ? randomBytes(32).toString("hex") : undefined;
@@ -435,7 +442,15 @@ export async function cambiarEstadoPermiso(
     where: { id: permiso.id },
     data: {
       estado: nuevoEstado,
-      ...(nuevoEstado === "APROBADO" ? { fechaTrabajoAutorizadoDesde: periodoDesde, fechaTrabajoAutorizadoHasta: periodoHasta } : {}),
+      ...(nuevoEstado === "APROBADO" && archivoAprobado ? {
+        fechaTrabajoAutorizadoDesde: periodoDesde, fechaTrabajoAutorizadoHasta: periodoHasta,
+        permisoAprobadoArchivoNombre: archivoAprobado.archivoNombre.trim(),
+        permisoAprobadoArchivoNombreOriginal: archivoAprobado.archivoNombreOriginal.trim(),
+        permisoAprobadoArchivoUrl: construirArchivoSeguroUrl(archivoAprobado.archivoNombre.trim()),
+        permisoAprobadoArchivoTipo: archivoAprobado.archivoTipo,
+        permisoAprobadoArchivoPeso: archivoAprobado.archivoPeso,
+        permisoAprobadoAdjuntadoAt: new Date(),
+      } : {}),
       updatedAt: new Date(),
       ...(tokenRespuestaObservacion ? { tokenRespuestaObservacion, tokenRespuestaUsado: false } : {}),
     },
@@ -446,17 +461,19 @@ export async function cambiarEstadoPermiso(
     data: { permisoId: permiso.id, estadoAnterior, estadoNuevo: nuevoEstado, comentario, usuarioId },
   });
 
+  let resumenEnvio: ResumenEnvio | null = null;
   if (ESTADOS_CON_NOTIFICACION.has(nuevoEstado)) {
     const destinatarios = [permiso.responsable, ...permiso.responsablesAdicionales.map((r) => r.responsable)];
-    await enviarNotificacionATodos(
+    resumenEnvio = await enviarNotificacionATodos(
       permiso.id,
       destinatarios,
-      "CAMBIO_ESTADO",
+      nuevoEstado === "APROBADO" ? "APROBADO_ADJUNTO" : "CAMBIO_ESTADO",
       generarAsuntoEmailPermiso(permisoActualizado),
       generarEmailPermiso(permisoActualizado, permiso.responsable, "CAMBIO_ESTADO", { estadoAnterior, comentario, tokenRespuestaObservacion }),
+      adjuntoAprobacion ? { adjuntos: [adjuntoAprobacion], soloPendientes: true } : undefined,
     );
   }
-  return permisoActualizado;
+  return { ...permisoActualizado, resumenEnvio };
 }
 
 /** Permite completar el período de permisos ya aprobados, sin reenviar notificaciones. */
