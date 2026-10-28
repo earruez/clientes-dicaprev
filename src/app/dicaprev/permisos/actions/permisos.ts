@@ -407,6 +407,58 @@ export async function cambiarEstadoPermiso(
   return permisoActualizado;
 }
 
+/** Permite completar el período de permisos ya aprobados, sin reenviar notificaciones. */
+export async function guardarPeriodoTrabajosAprobado(
+  permisoId: string, periodo: { desde: string; hasta: string },
+) {
+  const { empresaId, usuarioId } = await requirePermission("canManagePermisos");
+  const desde = fechaCalendario(periodo.desde);
+  const hasta = fechaCalendario(periodo.hasta);
+  comprobarPeriodoAutorizado(desde, hasta, true);
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId }, select: { id: true, estado: true },
+  });
+  if (!permiso || permiso.estado !== "APROBADO") {
+    throw new Error("Solo puedes modificar el período de un permiso aprobado de esta empresa");
+  }
+  await prisma.$transaction([
+    prisma.permisoInstalacion.update({
+      where: { id: permiso.id },
+      data: { fechaTrabajoAutorizadoDesde: desde, fechaTrabajoAutorizadoHasta: hasta },
+    }),
+    prisma.permisoHistorial.create({
+      data: { permisoId: permiso.id, estadoAnterior: "APROBADO", estadoNuevo: "APROBADO",
+        comentario: `Período autorizado actualizado: ${periodo.desde} a ${periodo.hasta}`, usuarioId },
+    }),
+  ]);
+  return { ok: true };
+}
+
+/** Envío de prueba real, sin alterar el estado ni notificar a los coordinadores. */
+export async function enviarCorreoPruebaPermisoAprobado(permisoId: string, destino: string) {
+  const { empresaId } = await requirePermission("canManagePermisos");
+  const email = destino.trim();
+  if (email.length > 254 || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    throw new Error("Indica un correo electrónico de destino válido");
+  }
+  const permiso = await prisma.permisoInstalacion.findFirst({
+    where: { id: permisoId, empresaId },
+    include: { organismo: true, responsable: true, cliente: true },
+  });
+  if (!permiso || permiso.estado !== "APROBADO") {
+    throw new Error("Selecciona un permiso aprobado para enviar el correo de prueba");
+  }
+  if (!permiso.fechaTrabajoAutorizadoDesde || !permiso.fechaTrabajoAutorizadoHasta) {
+    throw new Error("Guarda primero el período autorizado de trabajo");
+  }
+  const resultado = await sendEmail({
+    to: email,
+    subject: `[PRUEBA] ${generarAsuntoEmailPermiso(permiso)}`,
+    html: generarEmailPermiso(permiso, permiso.responsable, "CAMBIO_ESTADO"),
+  });
+  return { ok: true, messageId: resultado.messageId };
+}
+
 type PermisoAprobadoArchivoInput = {
   archivoNombre: string;
   archivoNombreOriginal: string;
