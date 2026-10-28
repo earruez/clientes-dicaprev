@@ -193,7 +193,7 @@ export async function adjuntarDocumentoAcreditacion(data: {
     include: { acreditacion: { select: { id: true, estado: true } } },
   });
   if (!documento) throw new Error("Documento de acreditación no encontrado");
-  if (["cerrada", "aprobado"].includes(documento.acreditacion.estado)) throw new Error("Este expediente no acepta cambios documentales");
+  if (["cerrada", "aprobado", "enviado"].includes(documento.acreditacion.estado)) throw new Error("Este expediente no acepta cambios documentales");
   if (!/^[0-9a-f-]{36}\.[a-z0-9]{1,8}$/i.test(data.archivoNombre)) {
     throw new Error("El archivo debe cargarse desde NextPrev");
   }
@@ -230,7 +230,7 @@ export async function revisarDocumentoAcreditacion(
     where: { id: documentoId, acreditacion: { empresaId } },
     include: { acreditacion: { select: { estado: true } } },
   });
-  if (!documento || documento.acreditacion.estado === "cerrada") throw new Error("Documento no disponible");
+  if (!documento || ["cerrada", "aprobado"].includes(documento.acreditacion.estado)) throw new Error("Documento no disponible");
   if (estado === "no_aplica" && documento.obligatorio) {
     throw new Error("Este requisito es obligatorio. Ajusta la plantilla del mandante antes de marcarlo No aplica.");
   }
