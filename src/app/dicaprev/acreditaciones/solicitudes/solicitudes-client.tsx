@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { asignarAcreditacionAContratista } from "@/actions/contratistas";
 import NuevaAcreditacionWizard from "../components/NuevaAcreditacionWizard";
@@ -62,8 +62,9 @@ export default function SolicitudesClient({
   }) => Promise<CrearAcreditacionResult>;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
-  const [openWizard, setOpenWizard] = useState(false);
+  const [openWizard, setOpenWizard] = useState(searchParams.get("nuevo") === "1");
   const [search, setSearch] = useState("");
   const [crearError, setCrearError] = useState<string | null>(null);
   const [relaciones, setRelaciones] = useState<Record<string, string>>({});
@@ -128,8 +129,8 @@ export default function SolicitudesClient({
       <div className="mx-auto max-w-[1300px] space-y-5">
         <div className="flex items-center justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Solicitudes de acreditación</h1>
-            <p className="mt-1 text-sm text-slate-500">Acreditaciones por mandante y proyecto. Vincula el contratista aquí, no en su ficha permanente.</p>
+            <h1 className="text-2xl font-semibold text-slate-900">Carpetas de acreditación</h1>
+            <p className="mt-1 text-sm text-slate-500">Crea una carpeta, completa sus documentos y registra el envío y la aprobación del mandante.</p>
           </div>
           <button
             onClick={() => setOpenWizard(true)}
@@ -216,6 +217,7 @@ export default function SolicitudesClient({
         <NuevaAcreditacionWizard
           onClose={() => setOpenWizard(false)}
           onCrear={handleCrear}
+          errorExterno={crearError}
           mandantes={mandantes}
           contratistas={contratistas}
           plantillas={plantillas}
