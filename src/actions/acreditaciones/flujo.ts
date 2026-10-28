@@ -259,7 +259,7 @@ export async function registrarEntregaAcreditacion(
     include: { documentos: true },
   });
   if (!a) throw new Error("Acreditación no encontrada");
-  if (!["en_preparacion", "listo_para_enviar", "observada", "rechazado"].includes(a.estado)) throw new Error("No puedes registrar un envío desde este estado");
+  if (!["en_preparacion", "listo_para_enviar", "observada", "rechazado", "vencido"].includes(a.estado)) throw new Error("No puedes registrar un envío desde este estado");
   const docs = a.documentos.filter((d) => d.obligatorio && d.estado !== "no_aplica");
   if (!docs.length || docs.some((d) =>
     d.estado !== "completo" || !(d.archivoNombre || d.archivoUrl) ||
