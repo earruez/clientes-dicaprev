@@ -373,6 +373,17 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
                     <input type="date" required min={periodoDesde || undefined} value={periodoHasta} onChange={(e) => setPeriodoHasta(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" />
                   </label>
                 </div>
+                <label className="block space-y-1 text-sm font-medium text-green-900">
+                  Permiso aprobado emitido por la municipalidad *
+                  <input
+                    type="file"
+                    required
+                    accept={DOCUMENTO_ACCEPT}
+                    onChange={(e) => setArchivoParaAprobar(e.target.files?.[0] || null)}
+                    className="block w-full rounded-lg border border-green-200 bg-white px-3 py-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-blue-100 file:px-3 file:py-2 file:font-semibold file:text-blue-800"
+                  />
+                </label>
+                <p className="text-xs text-green-900">Se enviará esta resolución como archivo adjunto junto con las fechas Desde y Hasta a los responsables. Máximo 10 MB.</p>
               </div>
             )}
             <div>
@@ -399,14 +410,14 @@ export function PermisoDetailClient({ permiso, historial }: PermisoDetailProps) 
               />
               {["SOLICITADO", "APROBADO", "CANCELADO"].includes(nuevoEstado) && (
                 <p className="text-xs text-slate-500 mt-1">
-                  Se enviará un correo automático a los coordinadores asignados informando este cambio.
+                  Se enviará un correo automático a los coordinadores asignados. Si está aprobado, incluirá el permiso municipal adjunto.
                 </p>
               )}
             </div>
             {estadoError && <p className="text-red-600 text-sm">{estadoError}</p>}
             <div className="flex justify-end">
-              <Button type="submit" disabled={savingEstado}>
-                {savingEstado ? "Actualizando..." : "Actualizar estado"}
+              <Button type="submit" disabled={savingEstado || (nuevoEstado === "APROBADO" && !archivoParaAprobar)} className="bg-blue-700 text-white hover:bg-blue-800">
+                {savingEstado ? "Guardando y enviando..." : nuevoEstado === "APROBADO" ? "Aprobar y notificar con documento" : "Actualizar estado"}
               </Button>
             </div>
           </form>
