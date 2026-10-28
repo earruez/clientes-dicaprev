@@ -107,6 +107,7 @@ export function generarEmailPermiso(
             <tr><td style="padding:12px 0;color:#64748b;border-bottom:1px solid #e2e8f0;">Fecha de instalación</td><td align="right" style="padding:12px 0;color:#172033;font-weight:700;border-bottom:1px solid #e2e8f0;">${formatearFecha(permiso.fechaInstalacion)}</td></tr>
           </table>
           ${periodoAprobacion}
+          ${estado === "APROBADO" && permiso.permisoAprobadoArchivoNombre ? `<p style="margin:16px 0;padding:14px 16px;background:#eff6ff;border-left:4px solid #2563eb;border-radius:8px;color:#1e3a8a;font-size:14px;"><strong>Resolución municipal adjunta.</strong> El documento aprobado se incluye como archivo en este correo.</p>` : ""}
           ${detalleOperativo}
           <h2 style="margin:28px 0 14px;color:#172033;font-size:16px;font-weight:800;">Coordinador</h2>
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-top:1px solid #e2e8f0;font-size:14px;">
