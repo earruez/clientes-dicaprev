@@ -348,6 +348,7 @@ async function generarZip(docs: DocumentoInstancia[], ac: { empresaNombre: strin
   const tCarpetas: Record<string, JSZip> = {};
   const vCarpetas: Record<string, JSZip> = {};
   const incluidos = docs.filter((d) => d.estado === "completo" && (d.archivoNombre || d.archivoUrl) &&
+    !d.archivoUrl?.startsWith("/demo/") &&
     (!d.fechaVencimiento || new Date(d.fechaVencimiento).getTime() >= Date.now()));
   if (!incluidos.length) throw new Error("No hay archivos válidos para incluir en el expediente.");
 
