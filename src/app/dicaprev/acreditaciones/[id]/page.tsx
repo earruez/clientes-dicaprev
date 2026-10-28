@@ -3,6 +3,7 @@ import { getAcreditacionById, getSolicitudesContratistaAcreditacion } from "@/ac
 import { requireAuth } from "@/server/auth/permissions";
 import { PERMISSIONS } from "@/lib/permissions-matrix";
 import ExpedienteClient from "./expediente-client";
+import { getPersonalDisponibleAcreditacion } from "@/actions/acreditaciones/flujo";
 
 type EstadoAcreditacion =
   | "en_preparacion"
@@ -83,6 +84,7 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     getSolicitudesContratistaAcreditacion(id),
   ]);
   const canManageDocumentacion = rol === "SUPERADMIN" || PERMISSIONS.canManageDocumentacion.some((r) => r === rol);
+  const recursos = canManageDocumentacion ? await getPersonalDisponibleAcreditacion() : { trabajadores: [], vehiculos: [] };
 
   const workers = acreditacion.trabajadores
     .filter((item) => Boolean(item.trabajador))
@@ -112,6 +114,8 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     titularNombre: doc.titularNombre ?? (doc.titularTipo === "empresa" ? (acreditacion.empresa?.nombre ?? "Sin empresa") : "Sin titular"),
     obligatorio: doc.obligatorio,
     estado: mapEstadoDocumento(doc.estado),
+    estadoReal: doc.estado,
+    titularTipo: doc.titularTipo,
     archivoUrl: doc.archivoUrl ?? undefined,
     archivoNombre: doc.archivoNombre ?? undefined,
     nombreArchivo: doc.archivoNombre ?? undefined,
@@ -168,6 +172,7 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
       initialHistorial={historial}
       solicitudesContratista={solicitudesContratista}
       canManageDocumentacion={canManageDocumentacion}
+      recursosDisponibles={recursos}
     />
   );
 }
