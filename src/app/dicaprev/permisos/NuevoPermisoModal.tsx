@@ -37,6 +37,8 @@ const initialForm = {
   comuna: "",
   region: "",
   fechaInstalacion: "",
+  fechaTrabajoAutorizadoDesde: "",
+  fechaTrabajoAutorizadoHasta: "",
   fechaRecepcionSolicitud: hoyISO(),
   organismoId: "",
   responsableId: "",
@@ -91,6 +93,11 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
       return;
     }
 
+    if (Boolean(form.fechaTrabajoAutorizadoDesde) !== Boolean(form.fechaTrabajoAutorizadoHasta) ||
+        (form.fechaTrabajoAutorizadoDesde && form.fechaTrabajoAutorizadoDesde > form.fechaTrabajoAutorizadoHasta)) {
+      setError("Ingresa ambas fechas del período de trabajo y comprueba que 'Hasta' no sea anterior a 'Desde'.");
+      return;
+    }
     setLoading(true);
     try {
       await crearPermiso({
@@ -100,6 +107,8 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
         comuna: form.comuna || undefined,
         region: form.region || undefined,
         fechaInstalacion: form.fechaInstalacion,
+        fechaTrabajoAutorizadoDesde: form.fechaTrabajoAutorizadoDesde || undefined,
+        fechaTrabajoAutorizadoHasta: form.fechaTrabajoAutorizadoHasta || undefined,
         fechaRecepcionSolicitud: form.fechaRecepcionSolicitud,
         organismoId: form.organismoId,
         responsableId: form.responsableId,
@@ -302,6 +311,14 @@ export function NuevoPermisoModal({ clientes, organismos, responsables, comunas 
               />
             </div>
 
+            <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-2">
+              <p className="text-sm font-semibold text-slate-800">Período autorizado para trabajar (opcional)</p>
+              <p className="text-xs text-slate-600">Completa estas fechas si ya las conoces. Podrás confirmarlas o cambiarlas cuando la municipalidad apruebe el permiso; no se informarán como autorización mientras esté pendiente.</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="space-y-1"><span className="text-sm text-slate-700">Desde</span><input type="date" value={form.fechaTrabajoAutorizadoDesde} onChange={(e) => setForm((v) => ({ ...v, fechaTrabajoAutorizadoDesde: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+                <label className="space-y-1"><span className="text-sm text-slate-700">Hasta</span><input type="date" min={form.fechaTrabajoAutorizadoDesde || undefined} value={form.fechaTrabajoAutorizadoHasta} onChange={(e) => setForm((v) => ({ ...v, fechaTrabajoAutorizadoHasta: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" /></label>
+              </div>
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={resetAndClose}>
                 Cancelar
