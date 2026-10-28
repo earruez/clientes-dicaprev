@@ -869,6 +869,7 @@ export async function crearPlantillaAcreditacion(data: {
     categoria: string;
     aplicaA: string;
     obligatorio: boolean;
+    requiereVencimiento?: boolean;
     codigoDocumento?: string | null;
     documentoRequeridoEmpresaId?: string | null;
     documentoTipoTrabajadorId?: string | null;
@@ -903,6 +904,7 @@ export async function crearPlantillaAcreditacion(data: {
                 categoria: r.categoria,
                 aplicaA: r.aplicaA,
                 obligatorio: r.obligatorio,
+                requiereVencimiento: r.requiereVencimiento === true,
                 documentoRequeridoEmpresaId: r.documentoRequeridoEmpresaId,
                 documentoTipoTrabajadorId: r.documentoTipoTrabajadorId,
                 documentoTipoVehiculoId: r.documentoTipoVehiculoId,
@@ -929,6 +931,7 @@ export async function actualizarPlantillaAcreditacion(data: {
     categoria: string;
     aplicaA: string;
     obligatorio: boolean;
+    requiereVencimiento?: boolean;
     codigoDocumento?: string | null;
     documentoRequeridoEmpresaId?: string | null;
     documentoTipoTrabajadorId?: string | null;
@@ -1009,6 +1012,7 @@ export async function actualizarPlantillaAcreditacion(data: {
             categoria: req.categoria,
             aplicaA: req.aplicaA,
             obligatorio: req.obligatorio,
+            requiereVencimiento: req.requiereVencimiento === true,
             documentoRequeridoEmpresaId: req.documentoRequeridoEmpresaId ?? null,
             documentoTipoTrabajadorId: req.documentoTipoTrabajadorId ?? null,
             documentoTipoVehiculoId: req.documentoTipoVehiculoId ?? null,
@@ -1025,6 +1029,7 @@ export async function actualizarPlantillaAcreditacion(data: {
             categoria: req.categoria,
             aplicaA: req.aplicaA,
             obligatorio: req.obligatorio,
+            requiereVencimiento: req.requiereVencimiento === true,
             documentoRequeridoEmpresaId: req.documentoRequeridoEmpresaId ?? null,
             documentoTipoTrabajadorId: req.documentoTipoTrabajadorId ?? null,
             documentoTipoVehiculoId: req.documentoTipoVehiculoId ?? null,
