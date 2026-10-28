@@ -115,6 +115,7 @@ export default async function AcreditacionExpedientePage({ params }: { params: P
     obligatorio: doc.obligatorio,
     estado: mapEstadoDocumento(doc.estado),
     estadoReal: doc.estado,
+    requiereVencimiento: doc.requisito?.requiereVencimiento ?? false,
     titularTipo: doc.titularTipo,
     archivoUrl: doc.archivoUrl ?? undefined,
     archivoNombre: doc.archivoNombre ?? undefined,
