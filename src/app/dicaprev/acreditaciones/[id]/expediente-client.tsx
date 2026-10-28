@@ -858,6 +858,7 @@ export default function ExpedienteClient({
         puedeEditar={canManageDocumentacion}
         onZip={handleZip}
         onPdf={handlePDF}
+        onCopiarEmail={handleEmail}
         onSincronizar={sincronizar}
         onCambiarEstado={setModalCambioEstado}
       />
