@@ -68,6 +68,7 @@ type DocumentoInstancia = {
   obligatorio: boolean;
   estado: EstadoDocumento;
   estadoReal?: string;
+  requiereVencimiento?: boolean;
   titularTipo?: string;
   archivoUrl?: string;
   archivoNombre?: string;
@@ -843,6 +844,7 @@ export default function ExpedienteClient({
           id: d.id,
           nombreDocumento: d.nombreDocumento,
           estado: d.estadoReal ?? d.estado,
+          requiereVencimiento: d.requiereVencimiento,
           obligatorio: d.obligatorio,
           archivoUrl: d.archivoUrl,
           archivoNombre: d.archivoNombre,
