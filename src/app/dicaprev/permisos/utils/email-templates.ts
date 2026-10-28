@@ -49,7 +49,7 @@ export function generarEmailPermiso(
   const alertaRiesgo = permiso.nivelRiesgo === "EN_RIESGO"
     ? `<div style="margin-top:24px;padding:16px;background:#fff7d6;border-left:5px solid #f59e0b;border-radius:8px;color:#92400e;font-size:14px;line-height:1.55;"><strong>Atención con la fecha de instalación</strong><br>La municipalidad registra un plazo aproximado de ${permiso.plazoDiasSnapshot || "-"} días ${permiso.tipoPlazoSnapshot === "HABILES" ? "hábiles" : "corridos"}. La resolución se estima para el ${formatearFecha(permiso.fechaEstimadaResolucion)}, posterior a la instalación programada para el ${formatearFecha(permiso.fechaInstalacion)}. Se recomienda revisar la programación.</div>`
     : "";
-  const periodoAprobacion = estado === "APROBADO" && tipo === "CAMBIO_ESTADO"
+  const periodoAprobacion = estado === "APROBADO" && tipo === "CAMBIO_ESTADO" && permiso.fechaTrabajoAutorizadoDesde && permiso.fechaTrabajoAutorizadoHasta
     ? `<h2 style="margin:28px 0 12px;color:#166534;font-size:17px;font-weight:800;">Período autorizado para trabajar</h2>
        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;font-size:14px;">
          <tr><td style="padding:14px 16px;color:#166534;font-weight:700;">Desde</td><td align="right" style="padding:14px 16px;color:#14532d;font-weight:800;">${formatearFecha(permiso.fechaTrabajoAutorizadoDesde)}</td></tr>
