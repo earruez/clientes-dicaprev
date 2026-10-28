@@ -1122,7 +1122,7 @@ export async function crearAcreditacion(data: {
   trabajadorIds?: string[];
   vehiculoIds?: string[];
 }) {
-  const context = await getContext();
+  const context = await requirePermission("canManageDocumentacion");
   const empresaId = context.empresaId;
   const usuarioId = context.usuarioId;
 
@@ -1610,7 +1610,8 @@ export async function actualizarEstadoAcreditacion(id: string, estado: EstadoAcr
     if (!obligatorios.length || obligatorios.some((d) =>
       d.estado !== "completo" ||
       !(d.archivoNombre || d.archivoUrl) ||
-      (d.fechaVencimiento && d.fechaVencimiento.getTime() < Date.now())
+      (d.fechaVencimiento && d.fechaVencimiento.getTime() < Date.now()) ||
+      d.archivoUrl?.startsWith("/demo/")
     )) {
       throw new Error("Faltan documentos obligatorios completos, vigentes y con archivo");
     }
@@ -2009,8 +2010,11 @@ export async function generarDocumentosAcreditacion(acreditacionId: string) {
     fechaVencimiento: doc.fechaVencimiento,
   }));
 
+  // Nunca borrar evidencias/observaciones por una sincronización con otra versión de plantilla.
   const deletes = existing
-    .filter((doc) => !expectedKeys.has(toKey(doc)))
+    .filter((doc) => !expectedKeys.has(toKey(doc))
+      && !doc.archivoNombre && !doc.archivoUrl && !doc.fuenteId
+      && doc.estado === "faltante")
     .map((doc) => doc.id);
 
   // No pisar archivos cargados manualmente ni estados de revisión manual.
