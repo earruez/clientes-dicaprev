@@ -129,7 +129,7 @@ export default function NuevaAcreditacionWizard(props: Props) {
                 </select>
                 {mandanteId && opcionesPlantilla.length === 0 && <p className="text-sm text-amber-800">No existe una pauta para este mandante.</p>}
                 {mandanteId && <button type="button" disabled={ocupado} onClick={() => void nuevaPauta()} className="rounded-lg border border-blue-200 px-3 py-2 text-sm font-semibold text-blue-700 disabled:opacity-50"><Plus className="mr-1 inline h-4 w-4" />Usar pauta inicial editable de 9 documentos</button>}
-                {plantilla && <p className="text-xs text-slate-500">Pauta seleccionada: {plantilla.nombre}. Puedes editarla en «Plantillas» antes de crear la acreditación.</p>}
+                {plantilla && <p className="text-xs text-slate-500">Pauta seleccionada: {plantilla.nombre}. <a href="/dicaprev/acreditaciones/plantillas" target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 underline">Editar requisitos en Plantillas</a> antes de crear la acreditación.</p>}
               </section>
             </>
           )}
