@@ -19,7 +19,7 @@ const CATEGORIAS = [
   { key: "equipo", label: "Maquinaria y equipos" },
 ] as const;
 const ESTADOS: Record<string, string> = {
-  pendiente: "Pendiente", en_revision: "En revisión", aprobado: "Aprobado",
+  pendiente: "Pendiente", en_revision: "Pendiente de validación", aprobado: "Aprobado",
   observado: "Observado", rechazado: "Rechazado", vencido: "Vencido",
 };
 const COLORES: Record<string, string> = {
@@ -124,7 +124,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       if (!response.ok) throw new Error(json.error || "Error al cargar documento");
       setArchivo((prev) => ({ ...prev, [r.id]: null }));
       setExpandido(null);
-    }, "Documento cargado correctamente. Debes enviarlo a revisión.");
+    }, "Documento recibido. Quedó pendiente de validación por la empresa mandante.");
   }
 
 
@@ -533,7 +533,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
             <div className={tarjeta}>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Etapa 03 · Documentación</p>
               <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">Tu carpeta documental</h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-500">Elige una categoría y adjunta los archivos correspondientes. Si recibes una observación, puedes subir una nueva versión.</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">Al guardar un archivo, se envía automáticamente a validación. La mandante puede aprobarlo, observarlo o rechazarlo. Si recibes observaciones, sube una nueva versión.</p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {grupos.map((grupo) => { const Icon = grupo.icono; const docs = portal.requisitos.filter((d) => d.categoria === grupo.key); return <button key={grupo.key} type="button" aria-pressed={grupo.key === categoria} onClick={() => { setCategoria(grupo.key); setExpandido(null); }} className={"inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition " + (grupo.key === categoria ? "border-slate-900 bg-[#0f1e33] text-white shadow-md" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}><Icon className="h-4 w-4"/>{grupo.label}<span className={"rounded-md px-1.5 py-0.5 text-[10px] " + (grupo.key === categoria ? "bg-white/15" : "bg-slate-100")}>{docs.length}</span></button>; })}
               </div>
@@ -568,8 +568,8 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: (obligatoriosCategoria.length ? Math.round(entregadosCategoria.length / obligatoriosCategoria.length * 100) : 0) + "%" }}/></div>
               <p className="mt-4 text-xs leading-relaxed text-slate-500">{pendientesCategoria > 0 ? `${pendientesCategoria} documentos obligatorios pendientes. Puedes enviar lo ya cargado.` : "Todos los documentos obligatorios de este grupo están entregados."}</p>
               {!datosCompletos && <button type="button" onClick={() => irA("empresa")} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-amber-700"><AlertCircle className="h-4 w-4"/>Completa primero tus datos de empresa</button>}
-              <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={"mt-5 w-full " + botonPrincipal}><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : categoria === "empresa" ? "Enviar empresa/faena a revisión" : categoria === "trabajador" ? "Enviar este trabajador" : "Enviar grupo a revisión"}</Button>
-              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-400">Cada grupo se revisa por separado y puedes continuar adjuntando documentos de otras carpetas.</p>
+              {documentosEnviables.length > 0 && <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={"mt-5 w-full " + botonPrincipal}><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : "Enviar documentos anteriores pendientes"}</Button>}
+              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">Los documentos nuevos se envían a validación al cargarse. Si un archivo antiguo quedó pendiente, utiliza el botón para presentarlo.</p>
             </section>
             <section className="rounded-3xl border border-sky-100 bg-sky-50 p-5"><p className="flex gap-2 text-xs leading-relaxed text-slate-600"><LockKeyhole className="h-4 w-4 shrink-0 text-emerald-600"/> Tus archivos se guardan de manera privada. No compartas tu enlace de acceso.</p></section>
           </aside>
@@ -579,7 +579,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       </div>
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_35px_-25px_rgba(15,23,42,0.5)] backdrop-blur-xl [padding-bottom:max(12px,env(safe-area-inset-bottom))] sm:hidden">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Tu carpeta</p><p className="text-sm font-extrabold text-slate-900">{entregados}/{total} <span className="text-xs font-medium text-slate-500">entregados</span></p></div>
-          {paso === "documentos" ? <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={botonPrincipal}><Send className="mr-2 h-4 w-4"/>Enviar a revisión</Button> : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
+          {paso === "documentos" ? (documentosEnviables.length ? <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={botonPrincipal}><Send className="mr-2 h-4 w-4"/>Enviar pendientes anteriores</Button> : <span className="text-xs font-semibold text-emerald-700">Archivos guardados: revisión automática</span>) : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
         </div>
       </div>
     </main>
