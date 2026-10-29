@@ -103,7 +103,7 @@ export async function reutilizarDocumentoContratista(input: { requisitoId: strin
       data: {
         documentoBaseId: doc.id, archivoNombre, archivoOriginal: doc.nombre,
         archivoTipo: null, archivoPeso: null, fechaEmision: doc.fechaEmision, fechaVencimiento: doc.fechaVencimiento,
-        version: { increment: 1 }, estado: "pendiente", revisadoAt: null, revisadoPorId: null,
+        version: { increment: 1 }, estado: "en_revision", revisadoAt: null, revisadoPorId: null,
         observacionRevision: null, aviso30At: null, aviso15At: null, aviso5At: null,
       },
     });
@@ -115,7 +115,7 @@ export async function reutilizarDocumentoContratista(input: { requisitoId: strin
         fechaEmision: doc.fechaEmision, fechaVencimiento: doc.fechaVencimiento,
       },
     });
-    await tx.contratistaSolicitud.update({ where: { id: req.solicitud.id }, data: { estado: "enviada" } });
+    await tx.contratistaSolicitud.update({ where: { id: req.solicitud.id }, data: { estado: "en_revision" } });
   });
   return { ok: true };
 }
