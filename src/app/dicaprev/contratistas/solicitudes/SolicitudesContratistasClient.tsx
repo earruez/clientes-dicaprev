@@ -13,7 +13,7 @@ import {
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
   invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
 } from "@/actions/contratistas/solicitudes";
-import { estadoEfectivo, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
+import { documentoContratistaPendienteValidacion, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
@@ -462,8 +462,7 @@ export default function SolicitudesContratistasClient() {
                       </select>
                     </div>}
                     {docs.filter((d) => key !== "trabajador" || !filtroTrabajador || d.recursoId === filtroTrabajador).map((d) => {
-                      const estadoOriginal = estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses);
-                      const estado = estadoOriginal === "pendiente" && d.archivoNombre ? "en_revision" : estadoOriginal;
+                      const estado = estadoVisibleRequisitoContratista(d.estado, d.archivoNombre, d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses);
                       return <div key={d.id} className="min-w-0 rounded-xl border border-slate-200 p-3 sm:p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
@@ -493,7 +492,7 @@ export default function SolicitudesContratistasClient() {
                         </div>}
                         {d.observacionRevision && <p className="mt-2 rounded-lg bg-orange-50 p-2 text-xs text-orange-800">Observación: {d.observacionRevision}</p>}
                         {d.versiones.length > 1 && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer">Historial ({d.versiones.length} versiones)</summary><div className="mt-2 flex flex-col gap-1">{d.versiones.map((v) => <a key={v.id} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline" href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}&versionId=${v.id}`}>Versión {v.version} · {fechaCorta(v.subidoAt)} · {v.archivoOriginal}</a>)}</div></details>}
-                        {puedeEditar && d.archivoNombre && ["en_revision", "pendiente"].includes(d.estado) && <div className="mt-3 flex flex-wrap gap-2">
+                        {puedeEditar && documentoContratistaPendienteValidacion(d.estado, d.archivoNombre) && <div className="mt-3 flex flex-wrap gap-2">
                           <Button disabled={procesando || estado === "vencido"} size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "aprobado" }), "Documento aprobado.")}>Aprobar</Button>
                           <input aria-label={`Motivo para ${d.nombre}`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" placeholder="Motivo de la observación o rechazo" value={motivos[d.id] || ""} onChange={(e) => setMotivos((prev) => ({ ...prev, [d.id]: e.target.value }))}/>
                           <Button disabled={procesando || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "observado", observacion: motivos[d.id] }), "Observación enviada al contratista.")}>Observar</Button>
