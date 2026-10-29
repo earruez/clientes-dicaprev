@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, ArrowRight, ArrowUpRight, Building2, CarFront, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, CloudUpload, ExternalLink, FileCheck2, FileText, FolderOpen, HardHat, Info, Layers3, LockKeyhole, Plus, Send, ShieldCheck, Sparkles, Trash2, UploadCloud, Users2, X } from "lucide-react";
+import { AlertCircle, ArrowRight, ArrowUpRight, Building2, CarFront, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, CloudUpload, ExternalLink, FileCheck2, FileText, FolderOpen, HardHat, Info, Layers3, LockKeyhole, Plus, ShieldCheck, Sparkles, Trash2, UploadCloud, Users2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { agregarRecursoPortal, importarNominaContratistaPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
+import { agregarRecursoPortal, importarNominaContratistaPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 import { formatRutChile } from "@/lib/rut";
 import { CARGOS_SUGERIDOS_CONTRATISTAS, normalizarCargoContratista } from "@/lib/contratistas/cargos";
@@ -71,9 +71,6 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
     ? trabajadorSeleccionado : (trabajadores[0]?.id || "");
   const documentosCategoria = portal.requisitos.filter((r) =>
     r.categoria === categoria && (categoria !== "trabajador" || r.recursoId === trabajadorActivoId));
-  const documentosEnviables = documentosCategoria.filter((r) => r.archivoNombre &&
-    !["en_revision", "aprobado", "vencido"].includes(r.estadoEfectivo));
-  const puedeEnviar = !enProceso && datosCompletos && documentosEnviables.length > 0;
   const obligatoriosCategoria = documentosCategoria.filter((r) => r.obligatorio);
   const entregadosCategoria = obligatoriosCategoria.filter((r) => r.archivoNombre && r.estadoEfectivo !== "vencido");
   const pendientesCategoria = obligatoriosCategoria.length - entregadosCategoria.length;
@@ -203,14 +200,6 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       }
       setCategoria("trabajador"); setTrabajadorSeleccionado("");
     }, "Nómina importada; cada persona tiene una carpeta documental independiente.");
-  }
-
-  function enviarGrupo() {
-    const recursoId = categoria === "trabajador" ? trabajadorActivoId : undefined;
-    void ejecutar("enviar", () => enviarCarpetaContratista(token, categoria, recursoId),
-      categoria === "empresa" ? "Antecedentes de empresa enviados. La nómina se puede entregar después."
-      : categoria === "trabajador" ? "Documentos del trabajador enviados; los demás pueden seguir cargando."
-      : "Documentos enviados a revisión.");
   }
 
   function bloqueRequisito(r: RequisitoPortal) {
@@ -566,10 +555,10 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
           <aside className="space-y-4 lg:sticky lg:top-5 lg:self-start">
             <section className={tarjeta}><h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><ShieldCheck className="h-5 w-5 text-emerald-600"/>Control de entrega</h3><div className="mt-5 flex justify-between gap-2"><strong className="text-3xl font-extrabold text-slate-900">{obligatoriosCategoria.length ? Math.round(entregadosCategoria.length / obligatoriosCategoria.length * 100) : 0}%</strong><span className="self-end text-xs text-slate-500">{entregadosCategoria.length}/{obligatoriosCategoria.length} entregados de este grupo</span></div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: (obligatoriosCategoria.length ? Math.round(entregadosCategoria.length / obligatoriosCategoria.length * 100) : 0) + "%" }}/></div>
-              <p className="mt-4 text-xs leading-relaxed text-slate-500">{pendientesCategoria > 0 ? `${pendientesCategoria} documentos obligatorios pendientes. Puedes enviar lo ya cargado.` : "Todos los documentos obligatorios de este grupo están entregados."}</p>
+              <p className="mt-4 text-xs leading-relaxed text-slate-500">{pendientesCategoria > 0 ? `${pendientesCategoria} documentos obligatorios aún sin entregar.` : "Todos los documentos obligatorios de este grupo están entregados."}</p>
               {!datosCompletos && <button type="button" onClick={() => irA("empresa")} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-amber-700"><AlertCircle className="h-4 w-4"/>Completa primero tus datos de empresa</button>}
-              {documentosEnviables.length > 0 && <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={"mt-5 w-full " + botonPrincipal}><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : "Enviar documentos anteriores pendientes"}</Button>}
-              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">Los documentos nuevos se envían a validación al cargarse. Si un archivo antiguo quedó pendiente, utiliza el botón para presentarlo.</p>
+              <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">Cada archivo se envía automáticamente a la empresa mandante al guardarlo. Su estado será «Pendiente de validación» hasta que lo revisen.</p>
+              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">Puedes seguir cargando las demás carpetas sin esperar la revisión de cada documento.</p>
             </section>
             <section className="rounded-3xl border border-sky-100 bg-sky-50 p-5"><p className="flex gap-2 text-xs leading-relaxed text-slate-600"><LockKeyhole className="h-4 w-4 shrink-0 text-emerald-600"/> Tus archivos se guardan de manera privada. No compartas tu enlace de acceso.</p></section>
           </aside>
@@ -579,7 +568,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       </div>
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_35px_-25px_rgba(15,23,42,0.5)] backdrop-blur-xl [padding-bottom:max(12px,env(safe-area-inset-bottom))] sm:hidden">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Tu carpeta</p><p className="text-sm font-extrabold text-slate-900">{entregados}/{total} <span className="text-xs font-medium text-slate-500">entregados</span></p></div>
-          {paso === "documentos" ? (documentosEnviables.length ? <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={botonPrincipal}><Send className="mr-2 h-4 w-4"/>Enviar pendientes anteriores</Button> : <span className="text-xs font-semibold text-emerald-700">Archivos guardados: revisión automática</span>) : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
+          {paso === "documentos" ? <span className="text-xs font-semibold text-emerald-700">Los archivos se envían a validación automáticamente</span> : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
         </div>
       </div>
     </main>
