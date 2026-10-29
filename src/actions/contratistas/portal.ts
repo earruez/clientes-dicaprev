@@ -164,7 +164,7 @@ export async function agregarRecursoPortal(token: string, input: {
       select: { id: true },
     });
   });
-  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "enviada" } });
+  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: ["en_revision", "observada"].includes(s.estado) ? s.estado : "enviada" } });
   return r;
 }
 
@@ -243,7 +243,7 @@ export async function importarNominaContratistaPortal(
       }))),
     });
     await tx.contratistaSolicitud.update({
-      where: { id: s.id }, data: { estado: "enviada" },
+      where: { id: s.id }, data: { estado: ["en_revision", "observada"].includes(s.estado) ? s.estado : "enviada" },
     });
   }, { timeout: 20000 });
   return { creados: nuevos.length, omitidos: normalizadas.length - nuevos.length };
@@ -278,7 +278,7 @@ export async function incorporarRecursoBasePortal(token: string, recursoBaseId: 
       },
     });
   });
-  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "enviada" } });
+  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: ["en_revision", "observada"].includes(s.estado) ? s.estado : "enviada" } });
   return { ok: true };
 }
 
