@@ -446,7 +446,7 @@ export async function revisarRequisitoContratista(input: {
       data: {
         estado: input.estado,
         ...(documentoBaseId ? { documentoBaseId } : {}),
-        observacionRevision: input.estado === "aprobado" ? null : input.observacion?.trim().slice(0, 1200),
+        observacionRevision: input.observacion?.trim().slice(0, 1200) || null,
         revisadoPorId: usuarioId, revisadoAt: new Date(),
       },
     });
