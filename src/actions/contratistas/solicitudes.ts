@@ -405,7 +405,7 @@ export async function revisarRequisitoContratista(input: {
     include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true, contratistaId: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
-  if (requisito.estado !== "en_revision") throw new Error("El contratista aún no ha enviado este documento a revisión");
+  if (!["en_revision", "pendiente"].includes(requisito.estado)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, requisito.vigenciaMeses) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
