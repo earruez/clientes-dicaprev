@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
-import { REQUISITOS_RECURSO, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
+import { REQUISITOS_RECURSO, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
 import { formatRutChile, validarRutChile } from "@/lib/rut";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
