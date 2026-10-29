@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
-import { estadoEfectivo, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
+import { documentoContratistaPendienteValidacion, estadoEfectivo, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
 import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
@@ -405,7 +405,7 @@ export async function revisarRequisitoContratista(input: {
     include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true, contratistaId: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
-  if (requisito.estado !== "en_revision") throw new Error("El contratista aún no ha enviado este documento a revisión");
+  if (!documentoContratistaPendienteValidacion(requisito.estado, requisito.archivoNombre)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, requisito.vigenciaMeses) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
@@ -446,7 +446,7 @@ export async function revisarRequisitoContratista(input: {
       data: {
         estado: input.estado,
         ...(documentoBaseId ? { documentoBaseId } : {}),
-        observacionRevision: input.estado === "aprobado" ? null : input.observacion?.trim().slice(0, 1200),
+        observacionRevision: input.observacion?.trim().slice(0, 1200) || null,
         revisadoPorId: usuarioId, revisadoAt: new Date(),
       },
     });

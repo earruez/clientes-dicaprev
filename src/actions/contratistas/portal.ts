@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
-import { REQUISITOS_RECURSO, estadoEfectivo, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
+import { REQUISITOS_RECURSO, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
 import { formatRutChile, validarRutChile } from "@/lib/rut";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
@@ -69,7 +69,7 @@ export async function obtenerPortalContratista(token: string) {
     nombre: s.nombre, faena: s.faena, servicio: s.servicio,
     estado: s.estado, contactoEmail: s.contactoEmail, empresaMandante: empresa?.nombre || "Empresa mandante",
     contratista: s.contratista, recursos: s.recursos, recursosBase,
-    requisitos: s.requisitos.map((r) => ({ ...r, fechaVencimiento: vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses), estadoEfectivo: estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) })),
+    requisitos: s.requisitos.map((r) => ({ ...r, fechaVencimiento: vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses), estadoEfectivo: estadoVisibleRequisitoContratista(r.estado, r.archivoNombre, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) })),
   };
 }
 
@@ -164,7 +164,7 @@ export async function agregarRecursoPortal(token: string, input: {
       select: { id: true },
     });
   });
-  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "enviada" } });
+  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: ["en_revision", "observada"].includes(s.estado) ? s.estado : "enviada" } });
   return r;
 }
 
@@ -243,7 +243,7 @@ export async function importarNominaContratistaPortal(
       }))),
     });
     await tx.contratistaSolicitud.update({
-      where: { id: s.id }, data: { estado: "enviada" },
+      where: { id: s.id }, data: { estado: ["en_revision", "observada"].includes(s.estado) ? s.estado : "enviada" },
     });
   }, { timeout: 20000 });
   return { creados: nuevos.length, omitidos: normalizadas.length - nuevos.length };
@@ -278,7 +278,7 @@ export async function incorporarRecursoBasePortal(token: string, recursoBaseId: 
       },
     });
   });
-  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: "enviada" } });
+  await prisma.contratistaSolicitud.update({ where: { id: s.id }, data: { estado: ["en_revision", "observada"].includes(s.estado) ? s.estado : "enviada" } });
   return { ok: true };
 }
 

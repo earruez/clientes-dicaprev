@@ -13,7 +13,7 @@ import {
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
   invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
 } from "@/actions/contratistas/solicitudes";
-import { estadoEfectivo, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
+import { documentoContratistaPendienteValidacion, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
@@ -27,7 +27,7 @@ type DocumentoBase = Awaited<ReturnType<typeof listarDocumentosBaseContratista>>
 const nombreExpediente = (faena: string) => faena.trim() ? `Requerimiento documental ${faena.trim()}` : "";
 const CAMPO = "block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 focus:border-sky-600 focus:outline-none";
 const ESTADOS: Record<string, string> = {
-  borrador: "Borrador", enviada: "Invitación enviada", en_revision: "En revisión",
+  borrador: "Borrador", enviada: "Invitación enviada", en_revision: "Pendiente de validación",
   observada: "Con observaciones", aprobada: "Documentación aprobada", cerrada: "Cerrado",
 };
 const CLASES: Record<string, string> = {
@@ -39,7 +39,7 @@ const CLASES: Record<string, string> = {
   vencido: "bg-red-100 text-red-800",
 };
 const ESTADOS_DOC: Record<string, string> = {
-  pendiente: "Pendiente", en_revision: "En revisión", aprobado: "Aprobado",
+  pendiente: "Pendiente", en_revision: "Pendiente de validación", aprobado: "Aprobado",
   observado: "Observado", rechazado: "Rechazado", vencido: "Vencido",
 };
 const CATEGORIAS: Record<string, string> = {
@@ -51,6 +51,7 @@ function fechaCorta(value: Date | string | null | undefined) {
 }
 function estadoExpediente(s: Expediente) {
   if (s.estado === "aprobada" && s.totalObligatorios !== s.aprobados) return "Requiere actualización";
+  if (s.requisitos.some((r) => r.archivoNombre && ["pendiente", "en_revision"].includes(r.estado))) return "Pendiente de validación";
   return ESTADOS[s.estado] || s.estado;
 }
 
@@ -356,7 +357,7 @@ export default function SolicitudesContratistasClient() {
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>
+                  <div className="flex flex-wrap items-center gap-3"><h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>{actual.requisitos.some((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)) && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{actual.requisitos.filter((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)).length} documento(s) pendiente(s) de validación</span>}</div>
                   <Button variant="outline" size="sm" disabled={descargandoZip} onClick={() => void descargarCarpetaZip()}>{descargandoZip ? "Generando ZIP…" : "Descargar carpeta ZIP"}</Button>
                   {puedeEditar && <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setAgregando((x) => !x)}><Plus className="mr-1 h-4 w-4"/>Agregar requisito</Button>
@@ -461,7 +462,7 @@ export default function SolicitudesContratistasClient() {
                       </select>
                     </div>}
                     {docs.filter((d) => key !== "trabajador" || !filtroTrabajador || d.recursoId === filtroTrabajador).map((d) => {
-                      const estado = estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses);
+                      const estado = estadoVisibleRequisitoContratista(d.estado, d.archivoNombre, d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses);
                       return <div key={d.id} className="min-w-0 rounded-xl border border-slate-200 p-3 sm:p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
@@ -487,13 +488,14 @@ export default function SolicitudesContratistasClient() {
                               {docsBase.map((doc) => <option key={doc.id} value={doc.id}>{doc.nombre}</option>)}
                             </select>
                           </div>
-                          <Button disabled={procesando || !seleccionReuso[d.id]} size="sm" className="rounded-xl bg-emerald-700 text-white" onClick={() => void ejecutar(() => reutilizarDocumentoContratista({ requisitoId: d.id, documentoBaseId: seleccionReuso[d.id] }), "Archivo reutilizado. Debe enviarse y aprobarse para esta faena.")}>Reutilizar</Button>
+                          <Button disabled={procesando || !seleccionReuso[d.id]} size="sm" className="rounded-xl bg-emerald-700 text-white" onClick={() => void ejecutar(() => reutilizarDocumentoContratista({ requisitoId: d.id, documentoBaseId: seleccionReuso[d.id] }), "Archivo reutilizado y enviado a validación para esta faena.")}>Reutilizar</Button>
                         </div>}
-                        {d.observacionRevision && <p className="mt-2 rounded-lg bg-orange-50 p-2 text-xs text-orange-800">Observación: {d.observacionRevision}</p>}
+                        {d.observacionRevision && <p className={`mt-2 rounded-lg p-2 text-xs ${d.estado === "aprobado" ? "bg-emerald-50 text-emerald-800" : "bg-orange-50 text-orange-800"}`}>{d.estado === "aprobado" ? "Comentario de aprobación" : "Observación"}: {d.observacionRevision}</p>}
                         {d.versiones.length > 1 && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer">Historial ({d.versiones.length} versiones)</summary><div className="mt-2 flex flex-col gap-1">{d.versiones.map((v) => <a key={v.id} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline" href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}&versionId=${v.id}`}>Versión {v.version} · {fechaCorta(v.subidoAt)} · {v.archivoOriginal}</a>)}</div></details>}
-                        {puedeEditar && d.archivoNombre && d.estado === "en_revision" && <div className="mt-3 flex flex-wrap gap-2">
-                          <Button disabled={procesando} size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "aprobado" }), "Documento aprobado.")}>Aprobar</Button>
-                          <input aria-label={`Motivo para ${d.nombre}`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" placeholder="Motivo de la observación o rechazo" value={motivos[d.id] || ""} onChange={(e) => setMotivos((prev) => ({ ...prev, [d.id]: e.target.value }))}/>
+                        {puedeEditar && documentoContratistaPendienteValidacion(d.estado, d.archivoNombre) && <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-100 pt-3">
+                          <p className="w-full text-xs font-semibold text-amber-800">Revisión de la mandante: abre el documento y aprueba con o sin comentario, observa o rechaza. Observar y rechazar exigen motivo.</p>
+                          <Button disabled={procesando || estado === "vencido"} size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "aprobado", observacion: motivos[d.id] || undefined }), "Documento aprobado.")}>Aprobar</Button>
+                          <input aria-label={`Motivo para ${d.nombre}`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" placeholder="Comentario opcional al aprobar; obligatorio al observar o rechazar" value={motivos[d.id] || ""} onChange={(e) => setMotivos((prev) => ({ ...prev, [d.id]: e.target.value }))}/>
                           <Button disabled={procesando || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "observado", observacion: motivos[d.id] }), "Observación enviada al contratista.")}>Observar</Button>
                           <Button disabled={procesando || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "rechazado", observacion: motivos[d.id] }), "Documento rechazado.")}>Rechazar</Button>
                         </div>}

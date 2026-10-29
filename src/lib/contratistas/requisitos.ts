@@ -79,6 +79,24 @@ export function estadoEfectivo(
   return estado;
 }
 
+/** Documento cargado pero todavía no revisado por la mandante, incluso en expedientes anteriores. */
+export function documentoContratistaPendienteValidacion(
+  estado: string, archivoNombre: string | null | undefined,
+): boolean {
+  return Boolean(archivoNombre && (estado === "pendiente" || estado === "en_revision"));
+}
+
+/** Los archivos heredados que seguían en "pendiente" se muestran listos para validar. */
+export function estadoVisibleRequisitoContratista(
+  estado: string, archivoNombre: string | null | undefined,
+  fechaVencimiento: Date | string | null, fechaEmision?: Date | string | null,
+  vigenciaMeses?: number | null,
+): string {
+  const efectivo = estadoEfectivo(estado, fechaVencimiento, fechaEmision, vigenciaMeses);
+  return efectivo === "pendiente" && documentoContratistaPendienteValidacion(estado, archivoNombre)
+    ? "en_revision" : efectivo;
+}
+
 /** Permite desplegar el código antes de activar la migración en la base objetivo. */
 export function faltaMigracionContratistas(error: unknown): boolean {
   if (!error || typeof error !== "object" || !("code" in error)) return false;

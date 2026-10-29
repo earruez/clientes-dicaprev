@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, ArrowRight, ArrowUpRight, Building2, CarFront, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, CloudUpload, ExternalLink, FileCheck2, FileText, FolderOpen, HardHat, Info, Layers3, LockKeyhole, Plus, Send, ShieldCheck, Sparkles, Trash2, UploadCloud, Users2, X } from "lucide-react";
+import { AlertCircle, ArrowRight, ArrowUpRight, Building2, CarFront, Check, CheckCircle2, ChevronDown, ClipboardList, Clock3, CloudUpload, ExternalLink, FileCheck2, FileText, FolderOpen, HardHat, Info, Layers3, LockKeyhole, Plus, ShieldCheck, Sparkles, Trash2, UploadCloud, Users2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { agregarRecursoPortal, importarNominaContratistaPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, enviarCarpetaContratista, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
+import { agregarRecursoPortal, importarNominaContratistaPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
 import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
 import { formatRutChile } from "@/lib/rut";
 import { CARGOS_SUGERIDOS_CONTRATISTAS, normalizarCargoContratista } from "@/lib/contratistas/cargos";
@@ -19,7 +19,7 @@ const CATEGORIAS = [
   { key: "equipo", label: "Maquinaria y equipos" },
 ] as const;
 const ESTADOS: Record<string, string> = {
-  pendiente: "Pendiente", en_revision: "En revisión", aprobado: "Aprobado",
+  pendiente: "Pendiente", en_revision: "Pendiente de validación", aprobado: "Aprobado",
   observado: "Observado", rechazado: "Rechazado", vencido: "Vencido",
 };
 const COLORES: Record<string, string> = {
@@ -71,9 +71,6 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
     ? trabajadorSeleccionado : (trabajadores[0]?.id || "");
   const documentosCategoria = portal.requisitos.filter((r) =>
     r.categoria === categoria && (categoria !== "trabajador" || r.recursoId === trabajadorActivoId));
-  const documentosEnviables = documentosCategoria.filter((r) => r.archivoNombre &&
-    !["en_revision", "aprobado", "vencido"].includes(r.estadoEfectivo));
-  const puedeEnviar = !enProceso && datosCompletos && documentosEnviables.length > 0;
   const obligatoriosCategoria = documentosCategoria.filter((r) => r.obligatorio);
   const entregadosCategoria = obligatoriosCategoria.filter((r) => r.archivoNombre && r.estadoEfectivo !== "vencido");
   const pendientesCategoria = obligatoriosCategoria.length - entregadosCategoria.length;
@@ -124,7 +121,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       if (!response.ok) throw new Error(json.error || "Error al cargar documento");
       setArchivo((prev) => ({ ...prev, [r.id]: null }));
       setExpandido(null);
-    }, "Documento cargado correctamente. Debes enviarlo a revisión.");
+    }, "Documento recibido. Quedó pendiente de validación por la empresa mandante.");
   }
 
 
@@ -205,14 +202,6 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
     }, "Nómina importada; cada persona tiene una carpeta documental independiente.");
   }
 
-  function enviarGrupo() {
-    const recursoId = categoria === "trabajador" ? trabajadorActivoId : undefined;
-    void ejecutar("enviar", () => enviarCarpetaContratista(token, categoria, recursoId),
-      categoria === "empresa" ? "Antecedentes de empresa enviados. La nómina se puede entregar después."
-      : categoria === "trabajador" ? "Documentos del trabajador enviados; los demás pueden seguir cargando."
-      : "Documentos enviados a revisión.");
-  }
-
   function bloqueRequisito(r: RequisitoPortal) {
     const actual = fechas[r.id] || { emision: isoFecha(r.fechaEmision), vencimiento: r.vigenciaMeses ? "" : isoFecha(r.fechaVencimiento) };
     const abierto = expandido === r.id;
@@ -244,7 +233,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
           <UploadCloud className="h-4 w-4"/>{abierto ? "Cerrar" : r.archivoNombre ? "Actualizar" : "Adjuntar"} <ChevronDown className={"h-3.5 w-3.5 transition-transform " + (abierto ? "rotate-180" : "")}/>
         </button>
       </div>
-      {r.observacionRevision && <div className="mx-4 mb-4 flex gap-2 rounded-xl border border-orange-200 bg-orange-50 p-3 sm:mx-5"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-orange-600"/><p className="text-xs leading-relaxed text-orange-900"><strong>Observación de la mandante:</strong> {r.observacionRevision}</p></div>}
+      {r.observacionRevision && <div className={"mx-4 mb-4 flex gap-2 rounded-xl border p-3 sm:mx-5 " + (r.estado === "aprobado" ? "border-emerald-200 bg-emerald-50" : "border-orange-200 bg-orange-50")}><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-orange-600"/><p className="text-xs leading-relaxed text-orange-900"><strong>{r.estado === "aprobado" ? "Comentario de aprobación:" : "Observación de la mandante:"}</strong> {r.observacionRevision}</p></div>}
       {abierto && <div className="space-y-4 border-t border-slate-100 bg-gradient-to-b from-emerald-50/40 to-white p-4 sm:p-5">
         <div><h5 className="text-sm font-bold text-slate-900">{r.archivoNombre ? "Cargar una nueva versión" : "Adjuntar documento"}</h5><p className="mt-1 text-xs text-slate-500">PDF, Word, Excel o imagen. Tamaño máximo: 4 MB.</p></div>
         <label className={"relative group flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition " + (archivo[r.id] ? "border-emerald-400 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/30")}>
@@ -533,7 +522,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
             <div className={tarjeta}>
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-700">Etapa 03 · Documentación</p>
               <h2 className="mt-2 text-2xl font-extrabold tracking-tight text-slate-900">Tu carpeta documental</h2>
-              <p className="mt-2 text-sm leading-relaxed text-slate-500">Elige una categoría y adjunta los archivos correspondientes. Si recibes una observación, puedes subir una nueva versión.</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">Al guardar un archivo, se envía automáticamente a validación. La mandante puede aprobarlo, observarlo o rechazarlo. Si recibes observaciones, sube una nueva versión.</p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {grupos.map((grupo) => { const Icon = grupo.icono; const docs = portal.requisitos.filter((d) => d.categoria === grupo.key); return <button key={grupo.key} type="button" aria-pressed={grupo.key === categoria} onClick={() => { setCategoria(grupo.key); setExpandido(null); }} className={"inline-flex min-h-[42px] items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition " + (grupo.key === categoria ? "border-slate-900 bg-[#0f1e33] text-white shadow-md" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}><Icon className="h-4 w-4"/>{grupo.label}<span className={"rounded-md px-1.5 py-0.5 text-[10px] " + (grupo.key === categoria ? "bg-white/15" : "bg-slate-100")}>{docs.length}</span></button>; })}
               </div>
@@ -566,10 +555,10 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
           <aside className="space-y-4 lg:sticky lg:top-5 lg:self-start">
             <section className={tarjeta}><h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><ShieldCheck className="h-5 w-5 text-emerald-600"/>Control de entrega</h3><div className="mt-5 flex justify-between gap-2"><strong className="text-3xl font-extrabold text-slate-900">{obligatoriosCategoria.length ? Math.round(entregadosCategoria.length / obligatoriosCategoria.length * 100) : 0}%</strong><span className="self-end text-xs text-slate-500">{entregadosCategoria.length}/{obligatoriosCategoria.length} entregados de este grupo</span></div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: (obligatoriosCategoria.length ? Math.round(entregadosCategoria.length / obligatoriosCategoria.length * 100) : 0) + "%" }}/></div>
-              <p className="mt-4 text-xs leading-relaxed text-slate-500">{pendientesCategoria > 0 ? `${pendientesCategoria} documentos obligatorios pendientes. Puedes enviar lo ya cargado.` : "Todos los documentos obligatorios de este grupo están entregados."}</p>
+              <p className="mt-4 text-xs leading-relaxed text-slate-500">{pendientesCategoria > 0 ? `${pendientesCategoria} documentos obligatorios aún sin entregar.` : "Todos los documentos obligatorios de este grupo están entregados."}</p>
               {!datosCompletos && <button type="button" onClick={() => irA("empresa")} className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-amber-700"><AlertCircle className="h-4 w-4"/>Completa primero tus datos de empresa</button>}
-              <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={"mt-5 w-full " + botonPrincipal}><Send className="mr-2 h-4 w-4"/>{enProceso === "enviar" ? "Enviando…" : categoria === "empresa" ? "Enviar empresa/faena a revisión" : categoria === "trabajador" ? "Enviar este trabajador" : "Enviar grupo a revisión"}</Button>
-              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-400">Cada grupo se revisa por separado y puedes continuar adjuntando documentos de otras carpetas.</p>
+              <p className="mt-4 rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">Cada archivo se envía automáticamente a la empresa mandante al guardarlo. Su estado será «Pendiente de validación» hasta que lo revisen.</p>
+              <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">Puedes seguir cargando las demás carpetas sin esperar la revisión de cada documento.</p>
             </section>
             <section className="rounded-3xl border border-sky-100 bg-sky-50 p-5"><p className="flex gap-2 text-xs leading-relaxed text-slate-600"><LockKeyhole className="h-4 w-4 shrink-0 text-emerald-600"/> Tus archivos se guardan de manera privada. No compartas tu enlace de acceso.</p></section>
           </aside>
@@ -579,7 +568,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       </div>
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-10px_35px_-25px_rgba(15,23,42,0.5)] backdrop-blur-xl [padding-bottom:max(12px,env(safe-area-inset-bottom))] sm:hidden">
         <div className="mx-auto flex max-w-lg items-center justify-between gap-3"><div className="min-w-0"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Tu carpeta</p><p className="text-sm font-extrabold text-slate-900">{entregados}/{total} <span className="text-xs font-medium text-slate-500">entregados</span></p></div>
-          {paso === "documentos" ? <Button disabled={!puedeEnviar} onClick={enviarGrupo} className={botonPrincipal}><Send className="mr-2 h-4 w-4"/>Enviar a revisión</Button> : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
+          {paso === "documentos" ? <span className="text-xs font-semibold text-emerald-700">Los archivos se envían a validación automáticamente</span> : <Button onClick={() => irA(paso === "inicio" ? "empresa" : paso === "empresa" ? "recursos" : "documentos")} className={botonPrincipal}>Continuar<ArrowRight className="ml-2 h-4 w-4"/></Button>}
         </div>
       </div>
     </main>
