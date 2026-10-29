@@ -357,7 +357,7 @@ export default function SolicitudesContratistasClient() {
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>
+                  <div className="flex flex-wrap items-center gap-3"><h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>{actual.requisitos.some((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)) && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{actual.requisitos.filter((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)).length} documento(s) pendiente(s) de validación</span>}</div>
                   <Button variant="outline" size="sm" disabled={descargandoZip} onClick={() => void descargarCarpetaZip()}>{descargandoZip ? "Generando ZIP…" : "Descargar carpeta ZIP"}</Button>
                   {puedeEditar && <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setAgregando((x) => !x)}><Plus className="mr-1 h-4 w-4"/>Agregar requisito</Button>
@@ -488,11 +488,12 @@ export default function SolicitudesContratistasClient() {
                               {docsBase.map((doc) => <option key={doc.id} value={doc.id}>{doc.nombre}</option>)}
                             </select>
                           </div>
-                          <Button disabled={procesando || !seleccionReuso[d.id]} size="sm" className="rounded-xl bg-emerald-700 text-white" onClick={() => void ejecutar(() => reutilizarDocumentoContratista({ requisitoId: d.id, documentoBaseId: seleccionReuso[d.id] }), "Archivo reutilizado. Debe enviarse y aprobarse para esta faena.")}>Reutilizar</Button>
+                          <Button disabled={procesando || !seleccionReuso[d.id]} size="sm" className="rounded-xl bg-emerald-700 text-white" onClick={() => void ejecutar(() => reutilizarDocumentoContratista({ requisitoId: d.id, documentoBaseId: seleccionReuso[d.id] }), "Archivo reutilizado y enviado a validación para esta faena.")}>Reutilizar</Button>
                         </div>}
                         {d.observacionRevision && <p className="mt-2 rounded-lg bg-orange-50 p-2 text-xs text-orange-800">Observación: {d.observacionRevision}</p>}
                         {d.versiones.length > 1 && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer">Historial ({d.versiones.length} versiones)</summary><div className="mt-2 flex flex-col gap-1">{d.versiones.map((v) => <a key={v.id} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline" href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}&versionId=${v.id}`}>Versión {v.version} · {fechaCorta(v.subidoAt)} · {v.archivoOriginal}</a>)}</div></details>}
-                        {puedeEditar && documentoContratistaPendienteValidacion(d.estado, d.archivoNombre) && <div className="mt-3 flex flex-wrap gap-2">
+                        {puedeEditar && documentoContratistaPendienteValidacion(d.estado, d.archivoNombre) && <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-100 pt-3">
+                          <p className="w-full text-xs font-semibold text-amber-800">Revisión de la mandante: abre el documento y decide si corresponde aprobarlo, observarlo o rechazarlo. Observar y rechazar exigen motivo.</p>
                           <Button disabled={procesando || estado === "vencido"} size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "aprobado" }), "Documento aprobado.")}>Aprobar</Button>
                           <input aria-label={`Motivo para ${d.nombre}`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" placeholder="Motivo de la observación o rechazo" value={motivos[d.id] || ""} onChange={(e) => setMotivos((prev) => ({ ...prev, [d.id]: e.target.value }))}/>
                           <Button disabled={procesando || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "observado", observacion: motivos[d.id] }), "Observación enviada al contratista.")}>Observar</Button>
