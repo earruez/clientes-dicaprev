@@ -2841,11 +2841,16 @@ export async function cambiarEstadoTrabajadorDocumento(
   const documento = await getTrabajadorDocumentoInEmpresa(empresaId, documentoId);
   await validateDocumentoReferencesInEmpresa(empresaId, documento);
   const normalizedEstado = normalizeEstadoForStorage(estado);
+  const comentario = detalle?.trim();
+  if (normalizedEstado === "rechazado" && !comentario) {
+    throw new Error("Es obligatorio ingresar el motivo de rechazo del documento.");
+  }
 
   const updated = await prisma.trabajadorDocumento.update({
     where: { id: documento.id },
     data: {
       estado: normalizedEstado,
+      ...(normalizedEstado === "rechazado" ? { observaciones: comentario?.slice(0, 1200) } : {}),
       subidoPorId: usuarioId,
     },
     select: { id: true, version: true },
