@@ -301,25 +301,38 @@ export function getWorkerDocs(
         firmadoEn: up?.firmadoEn,
         versionNumero: up?.versionNumero,
         origen: up?.origen,
+        contenidoMarkdown: up?.contenidoMarkdown,
+        createdAt: up?.createdAt,
         totalVersiones: up?.totalVersiones,
       } satisfies DocTrabajadorView;
     })
     .filter(Boolean) as DocTrabajadorView[];
 }
 
+/** Cumplimiento documental efectivo: documentos validados o firmados.
+ * En revisión / pendiente de firma representan trabajo en curso, no cumplimiento.
+ * Los documentos "No aplica" se excluyen del denominador.
+ */
 export function getWorkerDocSummary(docs: DocTrabajadorView[]) {
-  const cargados   = docs.filter((d) => d.estado === "completo").length;
-  const pendientes = docs.filter((d) => d.estado === "pendiente").length;
-  const vencidos   = docs.filter((d) => d.estado === "vencido").length;
-  const rechazados = docs.filter((d) => d.estado === "rechazado").length;
-  const enRevision = docs.filter((d) => d.estado === "en_revision").length;
+  const requeridos = docs.filter((d) => d.estado !== "no_aplica");
+  const esConforme = (d: DocTrabajadorView) => ["completo", "validado", "firmado"].includes(d.estado);
+  const cargados = requeridos.filter(esConforme).length;
+  const pendientes = requeridos.filter((d) => !esConforme(d) && d.estado !== "vencido" && d.estado !== "rechazado").length;
+  const vencidos = requeridos.filter((d) => d.estado === "vencido").length;
+  const rechazados = requeridos.filter((d) => d.estado === "rechazado").length;
+  const enRevision = requeridos.filter((d) => d.estado === "en_revision").length;
+  const entregados = requeridos.filter((d) =>
+    Boolean(d.archivoUrl || d.archivoNombre || d.contenidoMarkdown?.trim())
+    || ["completo", "validado", "enviado_firma", "firmado"].includes(d.estado)
+  ).length;
   return {
-    total: docs.length,
+    total: requeridos.length,
     cargados,
     pendientes,
     vencidos,
     rechazados,
     enRevision,
-    pct: docs.length > 0 ? Math.round((cargados / docs.length) * 100) : 0,
+    entregados,
+    pct: requeridos.length ? Math.round((cargados / requeridos.length) * 100) : 0,
   };
 }
