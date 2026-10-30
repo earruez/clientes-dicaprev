@@ -307,7 +307,7 @@ export function WorkerDrawer({ worker, isOpen, onClose, onEdit, controlDocumenta
                                 </div>
                               )}
                               {doc.estado === "en_revision" && !doc.archivoNombre && !doc.archivoUrl && !doc.contenidoMarkdown &&
-                                <p className="mt-2 text-[11px] text-amber-700">No hay archivo visible asociado a este registro. Adjunta un documento para validarlo.</p>}}
+                                <p className="mt-2 text-[11px] text-amber-700">No hay archivo visible asociado a este registro. Adjunta un documento para validarlo.</p>}
                             </div>
                           );
                         })}
