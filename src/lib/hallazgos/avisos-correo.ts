@@ -3,8 +3,10 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarCorreoHallazgo } from "@/lib/email/templates/hallazgo-aviso";
+import { generarCorreoResumenSemanalHallazgos } from "@/lib/email/templates/hallazgos-resumen-semanal";
+import { periodoResumenSemanalHallazgos } from "@/lib/hallazgos/resumen-semanal";
 import {
-  agruparDestinatariosHallazgo, correspondeAvisarHallazgo,
+  agruparDestinatariosHallazgo,
   fechaHoyChile, type DestinatarioAvisoHallazgo,
 } from "@/lib/hallazgos/avisos-utils";
 
@@ -12,7 +14,7 @@ const DAY_MS = 86_400_000;
 const FRECUENCIA_REAVISO_MS = 7 * DAY_MS;
 const seleccionHallazgo = {
   id: true, empresaId: true, descripcion: true, prioridad: true, estado: true,
-  fechaCompromiso: true,
+  fechaCompromiso: true, createdAt: true,
   empresa: { select: { nombre: true } },
   creadoPor: { select: { nombre: true, email: true, activo: true } },
   responsableTrabajador: { select: { nombres: true, apellidos: true, email: true, estado: true } },
@@ -121,7 +123,11 @@ export async function avisarNuevoHallazgo(id: string, empresaId: string) {
   const hallazgo = await prisma.hallazgoCumplimiento.findFirst({
     where: { id, empresaId }, select: seleccionHallazgo,
   });
-  if (!hallazgo) return { enviados: 0, omitidos: 0, errores: 0, intentos: 0, sinCorreo: true };
+  // Las notificaciones rutinarias se consolidan por semana. Las críticas
+  // siguen generando un aviso inmediato, por tratarse de riesgos prioritarios.
+  if (!hallazgo || hallazgo.prioridad.toLowerCase() !== "critica") {
+    return { enviados: 0, omitidos: 0, errores: 0, intentos: 0, sinCorreo: false };
+  }
   return notificarHallazgo(hallazgo, "nuevo", new Date(), 15);
 }
 
@@ -133,42 +139,134 @@ export type ResultadoAvisosHallazgo = {
   errores: number;
 };
 
-/** Cron diario: primer aviso al vencer y repetición semanal mientras continúe sin cerrar. */
-export async function procesarAvisosVencimientoHallazgos(): Promise<ResultadoAvisosHallazgo> {
+/**
+ * Un único correo por empresa y destinatario para la última semana completa.
+ * El cron actual sigue siendo diario: la clave semanal evita reenvíos y
+ * permite recuperar correos si falló el cron del lunes.
+ * No necesita migración: ActivacionEvento ya registra la entrega.
+ */
+export async function procesarResumenSemanalHallazgos(): Promise<ResultadoAvisosHallazgo> {
   const ahora = new Date();
-  const hoy = fechaHoyChile(ahora);
-  const hasta = new Date(hoy + "T23:59:59.999Z");
+  const periodo = periodoResumenSemanalHallazgos(ahora);
   const resultado: ResultadoAvisosHallazgo = {
     revisados: 0, enviados: 0, omitidos: 0, sinDestinatarios: 0, errores: 0,
   };
-  const maxEmailsPorEjecucion = 60;
+  // Envío principal cada lunes. Martes y miércoles sirven para reintentar
+  // fallos sin duplicar correos confirmados. El resto de días no hay consultas.
+  const diaSemana = new Date(periodo.hoy + "T12:00:00Z").getUTCDay();
+  if (diaSemana < 1 || diaSemana > 3) return resultado;
+  const inicioConsulta = new Date(periodo.desde + "T00:00:00Z");
   const cache = new Map<string, AdminsEmpresa>();
-  let intentos = 0;
+  const destinatarios = new Map<string, {
+    email: string;
+    nombre: string;
+    empresaId: string;
+    empresaNombre: string;
+    hallazgos: Map<string, HallazgoAviso>;
+  }>();
+
   let cursor: string | undefined;
-  // Paginar por compromiso e id: evitar que 500 vencidos antiguos impidan
-  // notificar los siguientes. Mantener un límite de correos por cron.
-  while (intentos < maxEmailsPorEjecucion) {
+  while (true) {
     const batch = await prisma.hallazgoCumplimiento.findMany({
-      where: { estado: { not: "cerrado" }, fechaCompromiso: { lte: hasta }, empresa: { activa: true } },
+      where: {
+        empresa: { activa: true },
+        OR: [
+          { estado: { notIn: ["cerrado", "resuelto"] } },
+          { createdAt: { gte: inicioConsulta } },
+        ],
+      },
       select: seleccionHallazgo,
-      orderBy: [{ fechaCompromiso: "asc" }, { id: "asc" }],
-      take: 100,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: 200,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     if (!batch.length) break;
+
     for (const hallazgo of batch) {
-      resultado.revisados += 1;
-      if (!correspondeAvisarHallazgo(hallazgo.estado, hallazgo.fechaCompromiso, hoy)) continue;
-      if (intentos >= maxEmailsPorEjecucion) break;
-      const aviso = await notificarHallazgo(hallazgo, "vencimiento", ahora, maxEmailsPorEjecucion - intentos, cache);
-      intentos += aviso.intentos;
-      resultado.enviados += aviso.enviados;
-      resultado.omitidos += aviso.omitidos;
-      resultado.errores += aviso.errores;
-      if (aviso.sinCorreo) resultado.sinDestinatarios += 1;
+      resultado.revisados++;
+      const creadoFecha = fechaHoyChile(hallazgo.createdAt);
+      const nuevoSemanaAnterior = creadoFecha >= periodo.desde && creadoFecha <= periodo.hasta;
+      const pendiente = !["resuelto", "cerrado"].includes(hallazgo.estado);
+      if (!nuevoSemanaAnterior && !pendiente) continue;
+      const receptores = await obtenerDestinatarios(hallazgo, cache);
+      if (!receptores.length) resultado.sinDestinatarios++;
+      for (const receptor of receptores) {
+        const clave = hallazgo.empresaId + ":" + receptor.email;
+        let registro = destinatarios.get(clave);
+        if (!registro) {
+          registro = {
+            empresaId: hallazgo.empresaId,
+            empresaNombre: hallazgo.empresa.nombre,
+            email: receptor.email, nombre: receptor.nombre,
+            hallazgos: new Map(),
+          };
+          destinatarios.set(clave, registro);
+        }
+        registro.hallazgos.set(hallazgo.id, hallazgo);
+      }
     }
     cursor = batch[batch.length - 1].id;
-    if (batch.length < 100) break;
+    if (batch.length < 200) break;
+  }
+
+  // Hasta 35 envíos por ejecución para respetar el tiempo límite del cron.
+  // Destinatarios restantes se procesarán al siguiente día sin duplicar éxitos.
+  let intentos = 0;
+  for (const registro of destinatarios.values()) {
+    if (intentos >= 35) break;
+    const emailHash = createHash("sha256").update(registro.email).digest("hex").slice(0, 20);
+    const evento = ["hallazgo_resumen_semanal", periodo.desde, emailHash].join(":");
+    const yaEnviado = await prisma.activacionEvento.findFirst({
+      where: { empresaId: registro.empresaId, evento },
+      select: { id: true },
+    });
+    if (yaEnviado) {
+      resultado.omitidos++;
+      continue;
+    }
+
+    const correo = generarCorreoResumenSemanalHallazgos({
+      nombreEmpresa: registro.empresaNombre,
+      destinatarioNombre: registro.nombre,
+      hallazgos: Array.from(registro.hallazgos.values()).map((hallazgo) => ({
+        id: hallazgo.id,
+        descripcion: hallazgo.descripcion,
+        prioridad: hallazgo.prioridad,
+        estado: hallazgo.estado,
+        fechaCompromiso: hallazgo.fechaCompromiso,
+        createdAt: hallazgo.createdAt,
+        centro: hallazgo.centroTrabajo?.nombre || "No asignado",
+        responsable: hallazgo.responsableTrabajador
+          ? [hallazgo.responsableTrabajador.nombres, hallazgo.responsableTrabajador.apellidos].join(" ").trim()
+          : "Por asignar",
+      })),
+      periodo,
+      appUrl: appUrl(),
+    });
+
+    intentos++;
+    try {
+      await sendEmail({ to: registro.email, ...correo });
+      await prisma.activacionEvento.create({
+        data: {
+          empresaId: registro.empresaId,
+          usuarioId: null,
+          evento,
+          metadata: {
+            tipo: "resumen_semanal", desde: periodo.desde, hasta: periodo.hasta,
+            destinatarioHash: emailHash, totalHallazgos: registro.hallazgos.size,
+            enviadoEn: ahora.toISOString(),
+          },
+        },
+      });
+      resultado.enviados++;
+    } catch (error) {
+      resultado.errores++;
+      console.error("[hallazgos-email] Falló resumen semanal", {
+        empresaId: registro.empresaId, semana: periodo.desde,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
   return resultado;
 }
