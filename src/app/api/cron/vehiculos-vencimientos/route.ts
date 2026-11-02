@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { procesarAvisosContratistas } from "@/lib/contratistas/vencimiento-alertas";
-import { procesarAvisosVencimientoHallazgos } from "@/lib/hallazgos/avisos-correo";
+import { procesarResumenSemanalHallazgos } from "@/lib/hallazgos/avisos-correo";
 import {
   enviarPruebaVencimientoVehiculo,
   procesarAvisosVencimientoVehiculos,
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     });
   }
 
-  const [vehiculos, contratistas, hallazgos] = await Promise.allSettled([procesarAvisosVencimientoVehiculos(), procesarAvisosContratistas(), procesarAvisosVencimientoHallazgos()]);
+  const [vehiculos, contratistas, hallazgos] = await Promise.allSettled([procesarAvisosVencimientoVehiculos(), procesarAvisosContratistas(), procesarResumenSemanalHallazgos()]);
   const errores = [vehiculos, contratistas, hallazgos].filter((r) => r.status === "rejected");
   if (errores.length) console.error("[cron-vencimientos] Proceso fallido", errores.map((r) => r.status === "rejected" ? String(r.reason) : ""));
   return NextResponse.json({ ok: errores.length === 0, mode: "cron", vehiculos: vehiculos.status === "fulfilled" ? vehiculos.value : null, contratistas: contratistas.status === "fulfilled" ? contratistas.value : null, hallazgos: hallazgos.status === "fulfilled" ? hallazgos.value : null }, { status: errores.length ? 500 : 200 });
