@@ -6,7 +6,7 @@ import { generarCorreoHallazgo } from "@/lib/email/templates/hallazgo-aviso";
 import { generarCorreoResumenSemanalHallazgos } from "@/lib/email/templates/hallazgos-resumen-semanal";
 import { periodoResumenSemanalHallazgos } from "@/lib/hallazgos/resumen-semanal";
 import {
-  agruparDestinatariosHallazgo, correspondeAvisarHallazgo,
+  agruparDestinatariosHallazgo,
   fechaHoyChile, type DestinatarioAvisoHallazgo,
 } from "@/lib/hallazgos/avisos-utils";
 
