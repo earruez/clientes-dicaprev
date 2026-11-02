@@ -148,10 +148,14 @@ export type ResultadoAvisosHallazgo = {
 export async function procesarResumenSemanalHallazgos(): Promise<ResultadoAvisosHallazgo> {
   const ahora = new Date();
   const periodo = periodoResumenSemanalHallazgos(ahora);
-  const inicioConsulta = new Date(periodo.desde + "T00:00:00Z");
   const resultado: ResultadoAvisosHallazgo = {
     revisados: 0, enviados: 0, omitidos: 0, sinDestinatarios: 0, errores: 0,
   };
+  // Envío principal cada lunes. Martes y miércoles sirven para reintentar
+  // fallos sin duplicar correos confirmados. El resto de días no hay consultas.
+  const diaSemana = new Date(periodo.hoy + "T12:00:00Z").getUTCDay();
+  if (diaSemana < 1 || diaSemana > 3) return resultado;
+  const inicioConsulta = new Date(periodo.desde + "T00:00:00Z");
   const cache = new Map<string, AdminsEmpresa>();
   const destinatarios = new Map<string, {
     email: string;
