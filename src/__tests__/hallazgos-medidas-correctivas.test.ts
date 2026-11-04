@@ -29,6 +29,18 @@ describe("Hallazgos: varias medidas correctivas", () => {
     expect(requisitosCierreMedidas(["completada"], false).permitido).toBe(false);
   });
 
+  it("informa cuántas medidas impiden el cierre sin lanzar excepción", () => {
+    const resultado = requisitosCierreMedidas(["completada", "pendiente", "en_proceso", "pendiente"], true);
+    expect(resultado.permitido).toBe(false);
+    expect(resultado.mensaje).toContain("2 pendientes");
+    expect(resultado.mensaje).toContain("1 en proceso");
+  });
+
+  it("explica qué falta cuando no hay medidas o evidencia", () => {
+    expect(requisitosCierreMedidas([], true).mensaje).toMatch(/Agrega al menos una medida/);
+    expect(requisitosCierreMedidas(["completada"], false).mensaje).toMatch(/evidencia|comentario/);
+  });
+
   it("permite cerrar solo cuando todas están gestionadas", () => {
     expect(requisitosCierreMedidas(["completada", "completada"], true).permitido).toBe(true);
     expect(requisitosCierreMedidas(["completada", "descartada"], true).permitido).toBe(true);

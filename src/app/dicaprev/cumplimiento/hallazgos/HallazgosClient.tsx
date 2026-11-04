@@ -49,6 +49,7 @@ import { guardarFichaHallazgoPdf, guardarInformeHallazgosPdf } from "@/lib/halla
 import { fechaChile, filtrarHallazgosInforme, rangoInformeHallazgos, type PeriodicidadInformeHallazgos } from "@/lib/hallazgos/informe-periodico";
 import { coincideTarjetaHallazgo, coincideFiltroEstadoHallazgo, type TarjetaEstadoHallazgo, type FiltroEstadoHallazgo } from "@/lib/hallazgos/filtro-tarjetas";
 import { JERARQUIA_CONTROL_DS44, nombreJerarquiaControlDs44, type NivelJerarquiaControlDs44 } from "@/lib/hallazgos/jerarquia-control-ds44";
+import { requisitosCierreMedidas } from "@/lib/hallazgos/medidas-correctivas";
 import StandardPageHeader from "@/components/layout/StandardPageHeader";
 import { cn } from "@/lib/utils";
 import type {
@@ -548,7 +549,11 @@ export default function HallazgosClient({
     try {
       setSaving(true);
       setCierreError(null);
-      await cerrarHallazgo(h.id, comentarioCierre);
+      const resultado = await cerrarHallazgo(h.id, comentarioCierre);
+      if (!resultado.cerrado) {
+        setCierreError(resultado.mensaje);
+        return;
+      }
       await reloadHallazgos();
       setSelected(null);
       setDetalle(null);
@@ -915,6 +920,13 @@ export default function HallazgosClient({
     () => rangoInformeHallazgos(tipoInforme, referenciaValida),
     [tipoInforme, referenciaValida],
   );
+
+  const validacionCierreActual = detalle
+    ? requisitosCierreMedidas(
+        detalle.medidasCorrectivas.map((medida) => medida.estado),
+        detalle.medidasCorrectivas.some((medida) => medida.evidenciaCierre) || Boolean(comentarioCierre.trim()),
+      )
+    : null;
 
   return (
     <div className="min-h-screen bg-slate-50/80 py-10">
@@ -1758,7 +1770,7 @@ export default function HallazgosClient({
                     </div>
                   ) : null}
 
-                  <section className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
+                  <section id="medidas-correctivas-hallazgo" className="rounded-2xl border border-slate-700/80 bg-slate-900/55 p-4">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                       <h3 className="text-base font-semibold text-white">Medidas correctivas</h3>
                       <span className="rounded-full bg-blue-500/15 px-3 py-1 text-xs font-semibold text-blue-200">
@@ -2022,6 +2034,23 @@ export default function HallazgosClient({
 
             <footer className="shrink-0 border-t border-slate-800 bg-[#071225]/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 backdrop-blur sm:px-6 sm:pb-4">
               <div className="mx-auto max-w-xl">
+                {selected && opciones.puedeEditar && selected.estado !== "cerrado" && validacionCierreActual && !detalleLoading && (
+                  <div role="status" className={cn(
+                    "mb-3 rounded-lg border px-3 py-2.5 text-xs leading-relaxed",
+                    validacionCierreActual.permitido
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-100",
+                  )}>
+                    {validacionCierreActual.permitido
+                      ? "El hallazgo cumple las condiciones para cerrarse."
+                      : validacionCierreActual.mensaje}
+                  </div>
+                )}
+                {selected && opciones.puedeEditar && selected.estado !== "cerrado" && cierreError && (
+                  <div role="alert" className="mb-3 rounded-lg border border-rose-400/40 bg-rose-950/60 px-3 py-2.5 text-xs text-rose-200">
+                    {cierreError}
+                  </div>
+                )}
                 {selected && opciones.puedeEditar && selected.estado !== "cerrado" ? (
                   <div className="grid grid-cols-[0.85fr_1.15fr] gap-2.5">
                     <Button
@@ -2041,7 +2070,7 @@ export default function HallazgosClient({
                     </Button>
                     <Button
                       onClick={() => selected && void onCerrar(selected)}
-                      disabled={saving}
+                      disabled={saving || detalleLoading || !detalle}
                       className="h-12 bg-emerald-500 px-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:bg-slate-700 disabled:text-slate-400"
                     >
                       <CheckCircle2 className="mr-2 h-4 w-4 shrink-0" />
