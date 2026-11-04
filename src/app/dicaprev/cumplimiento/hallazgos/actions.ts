@@ -734,7 +734,9 @@ export async function actualizarHallazgo(
   });
 }
 
-export async function cerrarHallazgo(id: string, comentarioCierre?: string): Promise<void> {
+export type ResultadoCerrarHallazgo = { cerrado: true } | { cerrado: false; mensaje: string };
+
+export async function cerrarHallazgo(id: string, comentarioCierre?: string): Promise<ResultadoCerrarHallazgo> {
   const context = await requireAuth();
   if (!canManageCumplimiento(context.rol)) {
     throw new Error("No autorizado para cerrar hallazgos.");
@@ -748,6 +750,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
     },
     select: {
       id: true,
+      estado: true,
       centroTrabajoId: true,
       trabajadorId: true,
       evidenciasCumplimiento: {
@@ -769,6 +772,10 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
     throw new Error("Hallazgo no encontrado para la empresa activa.");
   }
 
+  if (hallazgo.estado === "cerrado") {
+    return { cerrado: false, mensaje: "Este hallazgo ya se encuentra cerrado." };
+  }
+
   const medidas = hallazgo.evidenciasCumplimiento.filter((ev) => normalizeToken(ev.tipo) === "accion_correctiva");
   const evidenciaCierre = hallazgo.evidenciasCumplimiento.some((ev) => {
     const tipo = normalizeToken(ev.tipo);
@@ -778,7 +785,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
     medidas.map((medida) => estadoMedidaHallazgo(medida.estado, medida.origen, medida.historial[0]?.estadoNuevo)),
     evidenciaCierre || Boolean(comentario),
   );
-  if (!validacionCierre.permitido) throw new Error(validacionCierre.mensaje);
+  if (!validacionCierre.permitido) return { cerrado: false, mensaje: validacionCierre.mensaje };
 
   await prisma.$transaction(async (tx) => {
     if (comentario) {
@@ -805,6 +812,7 @@ export async function cerrarHallazgo(id: string, comentarioCierre?: string): Pro
       },
     });
   });
+  return { cerrado: true };
 }
 
 export async function moverHallazgosEmpresa(

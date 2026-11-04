@@ -23,16 +23,25 @@ export function requisitosCierreMedidas(
   evidenciaCierre: boolean,
 ): { permitido: boolean; mensaje: string } {
   if (!estados.length) {
-    return { permitido: false, mensaje: "Registra al menos una medida correctiva antes de cerrar el hallazgo." };
+    return { permitido: false, mensaje: "Este hallazgo no tiene medidas correctivas registradas. Agrega al menos una medida y márcala como completada para poder cerrar." };
   }
-  if (estados.some((estado) => estado === "pendiente" || estado === "en_proceso")) {
-    return { permitido: false, mensaje: "Para cerrar el hallazgo, completa o descarta justificadamente todas las medidas correctivas pendientes." };
+  const pendientes = estados.filter((estado) => estado === "pendiente").length;
+  const enProceso = estados.filter((estado) => estado === "en_proceso").length;
+  if (pendientes || enProceso) {
+    const partes = [
+      pendientes ? pendientes + " pendiente" + (pendientes === 1 ? "" : "s") : "",
+      enProceso ? enProceso + " en proceso" : "",
+    ].filter(Boolean).join(" y ");
+    return {
+      permitido: false,
+      mensaje: "Para cerrar el hallazgo, completa o descarta justificadamente todas las medidas correctivas pendientes. Quedan " + partes + ".",
+    };
   }
   if (!estados.some((estado) => estado === "completada")) {
     return { permitido: false, mensaje: "Al menos una medida correctiva debe estar completada para cerrar el hallazgo." };
   }
   if (!evidenciaCierre) {
-    return { permitido: false, mensaje: "Registra una evidencia o un comentario de cierre." };
+    return { permitido: false, mensaje: "Las medidas están gestionadas. Ahora registra una evidencia o escribe un comentario de cierre." };
   }
   return { permitido: true, mensaje: "" };
 }
