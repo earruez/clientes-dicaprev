@@ -446,6 +446,7 @@ async function enviarCopiaFirmaTemporal(documentoId: string, pdfVerificado?: Buf
     modalidadContrato: String(metadata.modalidadContrato || "-"),
     fechaInicioContrato: String(metadata.fechaInicioContrato || "-"),
     fechaTerminoContrato: String(metadata.fechaTerminoContrato || "-"),
+    actividadPresencial: metadata.actividadPresencial ? JSON.stringify(metadata.actividadPresencial) : undefined,
     nombreFirmante: firma.nombreFirmante || "-", rutFirmante: firma.rutFirmante || "-",
     correoParticular: firma.emailFirmante, solicitadoAt: firma.createdAt,
     firmadoAt: firma.firmadoAt, correoValidadoAt: firma.correoValidadoAt,
