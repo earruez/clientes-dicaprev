@@ -6,7 +6,7 @@ import {
   obtenerExpedienteFiscalizacion, auditarDocumentoFiscalizacion, cerrarSesionFiscalizacion,
 } from "@/lib/firmas-sst/fiscalizacion";
 
-export async function registrarInspectorSst(input: { empresaId: string; inspectorEmail: string; inspectorNombre: string; identidadVerificada: boolean }) {
+export async function registrarInspectorSst(input: { empresaId: string; inspectorEmail: string; inspectorNombre: string; inspectorRut: string; identidadVerificada: boolean }) {
   return otorgarAccesoFiscalizacion(input);
 }
 export async function obtenerInspectoresSst() { return listarAccesosFiscalizacion(); }
