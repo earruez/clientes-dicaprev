@@ -62,15 +62,43 @@ export async function crearSolicitudFirmaExterna(input: {
   rutFirmante: string;
   emailFirmante: string;
   diasVigencia: number;
+  trabajadorId: string;
+  modalidadContrato: "Plazo Fijo" | "Por Obra";
+  fechaInicio: string;
+  fechaTermino: string;
+  tipoEvidencia: "irl" | "extintores" | "capacitacion_epp" | "entrega_epp" | "reglamento" | "procedimientos" | "miper" | "otra";
   archivo: File;
 }) {
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  // Los firmantes son trabajadores dependientes de la empresa activa (contratación temporal).
+  const trabajador = await prisma.trabajador.findFirst({
+    where: { id: input.trabajadorId, empresaId },
+    select: { id: true, nombres: true, apellidos: true, rut: true, email: true },
+  });
+  if (!trabajador) throw new Error("Selecciona un trabajador contratado por la empresa activa.");
+  if (!["Plazo Fijo", "Por Obra"].includes(input.modalidadContrato)) {
+    throw new Error("Indica si el contrato es a plazo fijo o por obra/faena.");
+  }
+  const fechaInicio = new Date(input.fechaInicio + "T12:00:00Z");
+  const fechaTermino = new Date(input.fechaTermino + "T12:00:00Z");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fechaInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(input.fechaTermino) ||
+      Number.isNaN(fechaInicio.getTime()) || Number.isNaN(fechaTermino.getTime()) ||
+      fechaTermino.getTime() < fechaInicio.getTime() ||
+      fechaTermino.getTime() - fechaInicio.getTime() >= 7 * 86400000) {
+    throw new Error("Indica un período de contratación válido de hasta siete días.");
+  }
+  const tipos = ["irl", "extintores", "capacitacion_epp", "entrega_epp", "reglamento", "procedimientos", "miper", "otra"];
+  if (!tipos.includes(input.tipoEvidencia)) throw new Error("Selecciona el tipo de documento SST.");
   const titulo = (input.titulo || "").trim().slice(0, 180);
   const nombre = (input.nombreFirmante || "").trim().slice(0, 160);
   const rut = (input.rutFirmante || "").trim().slice(0, 20);
   const email = (input.emailFirmante || "").trim().toLowerCase().slice(0, 240);
   if (!titulo || !nombre || !validarRutChile(rut) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error("Completa documento, nombre, RUT válido y correo del firmante.");
+  }
+  const rutRegistro = (trabajador.rut || "").replace(/[^0-9K]/gi, "").toUpperCase();
+  if (!rutRegistro || rut.replace(/[^0-9K]/gi, "").toUpperCase() !== rutRegistro) {
+    throw new Error("El RUT debe coincidir con el trabajador registrado en Personas.");
   }
   const dias = Number(input.diasVigencia);
   if (!Number.isInteger(dias) || dias < 1 || dias > DIAS_MAXIMOS) {
@@ -93,15 +121,24 @@ export async function crearSolicitudFirmaExterna(input: {
     const doc = await tx.documentoGeneradoRegistro.create({
       data: {
         empresaId, usuarioId, modulo: MODULO_FIRMAS_EXTERNAS, tipoDocumento: "documento_externo",
-        entidadTipo: "firmante_externo", nombre: titulo, formato: "PDF",
+        entidadTipo: "trabajador_temporal", entidadId: trabajador.id,
+        nombre: titulo, formato: "PDF",
         archivoNombre: almacenado.archivoNombre, archivoNombreOriginal: almacenado.archivoOriginal,
         archivoTipo: "application/pdf", archivoPeso: almacenado.archivoPeso,
-        metadata: { sha256Original: hashOriginal, eventos: [evento("creado", usuarioId, "PDF original recibido y conservado sin alteraciones")] },
+        metadata: {
+          sha256Original: hashOriginal, tipoEvidencia: input.tipoEvidencia,
+          modalidadContrato: input.modalidadContrato,
+          fechaInicioContrato: input.fechaInicio, fechaTerminoContrato: input.fechaTermino,
+          trabajadorId: trabajador.id,
+          tipoRelacion: "dependiente_temporal",
+          eventos: [evento("creado", usuarioId, "Documento de SST vinculado a trabajador temporal de la empresa")],
+        },
       },
     });
     await tx.firmaDocumento.create({
       data: {
-        empresaId, documentoId: doc.id, documentoOrigen: "otro",
+        empresaId, trabajadorId: trabajador.id,
+        documentoId: doc.id, documentoOrigen: "otro",
         tipoFirmante: "externo", tipoFirma: "manual", estado: "pendiente",
         tituloDocumento: titulo, nombreFirmante: nombre, rutFirmante: rut,
         emailFirmante: email, token: hashTokenFirmaExterna(token), expiresAt: vence,
@@ -146,6 +183,10 @@ export async function listarSolicitudesFirmaExterna() {
     const metadata = objeto(doc.metadata);
     return {
       id: doc.id, titulo: doc.nombre, archivo: doc.archivoNombreOriginal || "Documento PDF", archivoNombre: doc.archivoNombre || "",
+      modalidadContrato: typeof metadata.modalidadContrato === "string" ? metadata.modalidadContrato : "",
+      tipoEvidencia: typeof metadata.tipoEvidencia === "string" ? metadata.tipoEvidencia : "",
+      fechaInicioContrato: typeof metadata.fechaInicioContrato === "string" ? metadata.fechaInicioContrato : "",
+      fechaTerminoContrato: typeof metadata.fechaTerminoContrato === "string" ? metadata.fechaTerminoContrato : "",
       peso: doc.archivoPeso, creadoAt: doc.createdAt.toISOString(),
       nombreFirmante: firma?.nombreFirmante || "", emailFirmante: firma?.emailFirmante || "",
       rutFirmante: firma?.rutFirmante || "", firmaId: firma?.id || "",
@@ -163,14 +204,18 @@ export async function resolverFirmaExterna(token: string) {
   const firma = await prisma.firmaDocumento.findUnique({
     where: { token: hashTokenFirmaExterna(token) },
     select: {
-      id: true, empresaId: true, documentoId: true, documentoOrigen: true, tipoFirmante: true,
+      id: true, empresaId: true, trabajadorId: true, documentoId: true, documentoOrigen: true, tipoFirmante: true,
       estado: true, tituloDocumento: true, descripcion: true, nombreFirmante: true,
       rutFirmante: true, firmadoAt: true, expiresAt: true,
     },
   });
   if (!firma || firma.documentoOrigen !== "otro" || firma.tipoFirmante !== "externo") return null;
+  if (!firma.trabajadorId) return null;
   const documento = await prisma.documentoGeneradoRegistro.findFirst({
-    where: { id: firma.documentoId, empresaId: firma.empresaId, modulo: MODULO_FIRMAS_EXTERNAS },
+    where: {
+      id: firma.documentoId, empresaId: firma.empresaId,
+      entidadId: firma.trabajadorId, modulo: MODULO_FIRMAS_EXTERNAS,
+    },
     select: { id: true, archivoNombre: true, metadata: true },
   });
   if (!documento?.archivoNombre) return null;
@@ -191,6 +236,7 @@ export async function obtenerFirmaExternaPublica(token: string) {
     rutFirmante: firma.rutFirmante, firmadoAt: firma.firmadoAt?.toISOString() || null,
     expiresAt: firma.expiresAt?.toISOString() || null, contenidoMarkdown: null,
     documentoExternoUrl: (estado === "pendiente" || estado === "firmado") ? "/api/firma/" + token + "/archivo" : null,
+    emailPersonal: null,
     documentoHash: hashOriginal,
   };
 }
