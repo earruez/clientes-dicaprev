@@ -9,7 +9,7 @@ export function validarArchivoPortal(file: { name: string; type: string; size: n
   if (!file.name.trim()) return "El archivo debe tener un nombre válido.";
   if (file.size <= 0) return "El archivo está vacío. Selecciona un documento con contenido.";
   if (file.size > MAX_ARCHIVO_PORTAL_BYTES) {
-    return "El archivo pesa " + (file.size / 1024 / 1024).toFixed(2) + " MB y supera el máximo de 4 MB. Reduce el tamaño o elige otro archivo.";
+    return "El archivo pesa " + (file.size / 1024 / 1024).toFixed(2) + " MB y supera el máximo de 5 MB. Reduce el tamaño o elige otro archivo.";
   }
   const resultado = validarArchivoDocumento(file);
   return resultado.ok ? null : resultado.error || "Formato de archivo no admitido.";
