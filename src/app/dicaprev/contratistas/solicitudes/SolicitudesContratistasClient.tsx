@@ -231,7 +231,7 @@ export default function SolicitudesContratistasClient() {
                             {d.recurso && <p className="text-xs text-slate-500">{d.recurso.nombre} · {d.recurso.patente || d.recurso.identificador || "Sin identificador"}</p>}
                             <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(vencimientoEfectivoRequisito(d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)))} · Versión {d.version}{vigenciaMesesRequisito(d) ? ` · Vigencia máxima ${vigenciaMesesRequisito(d)} meses` : ""}{d.condicional ? " · Si aplica" : ""}</p>
                           </div>
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${CLASES[estado] || CLASES.pendiente}`}>{ESTADOS_DOC[estado] || estado}</span>
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${CLASES[estado] || CLASES.pendiente}`}>{!d.archivoNombre ? "Sin cargar" : ESTADOS_DOC[estado] || estado}</span>
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-3">
                           {d.archivoNombre && <a href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 underline"><FileText className="h-3.5 w-3.5"/>Ver documento</a>}
@@ -542,8 +542,12 @@ export default function SolicitudesContratistasClient() {
                     "Requisitos actualizados para todos los trabajadores de ese cargo. La documentación permanece intacta."
                   )}>Aplicar a todo el cargo</Button>
                 </section>}
-                {actual.reglasTrabajadores.length > 0 && <div className="mt-5 space-y-2">
-                  <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">Requisitos para todos los trabajadores actuales y futuros ({actual.reglasTrabajadores.length})</h4>
+                {actual.reglasTrabajadores.length > 0 && <details className="group/reglas mt-5 rounded-xl border border-sky-100 bg-sky-50/30 p-3">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-sm font-semibold text-sky-900 [&::-webkit-details-marker]:hidden">
+                    Pauta general de trabajadores ({actual.reglasTrabajadores.length} requisitos)
+                    <ChevronDown className="h-4 w-4 transition-transform group-open/reglas:rotate-180"/>
+                  </summary>
+                  <div className="mt-3 space-y-2">
                   {actual.reglasTrabajadores.map((regla) => <div key={regla.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50/50 p-3 sm:p-4">
                     <div className="min-w-0">
                       <p className="break-words text-sm font-medium text-slate-900">{regla.nombre}</p>
@@ -554,7 +558,7 @@ export default function SolicitudesContratistasClient() {
                         void ejecutar(() => eliminarReglaRequisitosTrabajadores(regla.id), "Regla general eliminada.");
                     }}><Trash2 className="mr-1.5 h-3.5 w-3.5"/>Eliminar regla</Button>}
                   </div>)}
-                </div>}
+                </div></details>}
 
                 {Object.entries(CATEGORIAS).map(([key, label]) => {
                   const docs = actual.requisitos.filter((d) => d.categoria === key);
@@ -562,6 +566,7 @@ export default function SolicitudesContratistasClient() {
                   if (!docs.length && !recursos.length) return null;
                   const aprobadosGrupo = docs.filter((d) => d.archivoNombre && estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)) === "aprobado").length;
                   const pendientesGrupo = docs.filter((d) => documentoContratistaPendienteValidacion(d.estado, d.archivoNombre)).length;
+                  const subidosGrupo = docs.filter((d) => !!d.archivoNombre).length;
                   const trabajadores = key === "trabajador";
                   return (
                     <details key={actual.id + "-" + key} className="group/carpeta mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -571,6 +576,7 @@ export default function SolicitudesContratistasClient() {
                           {trabajadores ? "Trabajadores" : key === "empresa" ? "Documentos de empresa" : label} ({trabajadores ? recursos.length : docs.length})
                         </span>
                         <span className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                          <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-900">{subidosGrupo}/{docs.length} subidos</span>
                           <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-800">{aprobadosGrupo} aprobados</span>
                           {pendientesGrupo > 0 && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-900">{pendientesGrupo} por validar</span>}
                           <ChevronDown className="h-4 w-4 transition-transform group-open/carpeta:rotate-180"/>
