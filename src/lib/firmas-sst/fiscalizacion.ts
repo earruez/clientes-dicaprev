@@ -8,6 +8,7 @@ import {
   OTP_VIGENCIA_MS, OTP_INTENTOS_MAX, validarFormatoCodigo,
 } from "@/lib/firmas-sst/otp";
 import { MODULO_FIRMAS_EXTERNAS } from "@/lib/firmas-externas";
+import { validarRutChile } from "@/lib/rut";
 
 const COOKIE_FISCALIZADOR = "nextprev_dt_sst";
 const SESSION_MS = 8 * 60 * 60 * 1000;
@@ -57,7 +58,7 @@ export async function obtenerAccesoFiscalizacion() {
   const acceso = await prisma.fiscalizacionFirmaAcceso.findFirst({
     where: { id: sesion.id, activo: true },
     select: {
-      id: true, empresaId: true, inspectorEmail: true, inspectorNombre: true,
+      id: true, empresaId: true, inspectorEmail: true, inspectorNombre: true, inspectorRut: true,
       empresa: { select: { nombre: true, rut: true } },
     },
   });
@@ -65,19 +66,20 @@ export async function obtenerAccesoFiscalizacion() {
 }
 
 /** La autorización la emite el proveedor NextPrev, nunca el empleador fiscalizado. */
-export async function otorgarAccesoFiscalizacion(input: { empresaId: string; inspectorEmail: string; inspectorNombre: string; identidadVerificada: boolean }) {
+export async function otorgarAccesoFiscalizacion(input: { empresaId: string; inspectorEmail: string; inspectorNombre: string; inspectorRut: string; identidadVerificada: boolean }) {
   const context = await requireRole("SUPERADMIN");
   const email = emailNormalizado(input.inspectorEmail);
   const nombre = input.inspectorNombre.trim().slice(0, 160);
-  if (!input.identidadVerificada || !validarEmail(email) || nombre.length < 5) {
+  const rutInspector = input.inspectorRut.trim().slice(0, 20);
+  if (!input.identidadVerificada || !validarEmail(email) || nombre.length < 5 || !validarRutChile(rutInspector)) {
     throw new Error("Verifica por un canal independiente la calidad de fiscalizador antes de habilitar su correo.");
   }
   const empresa = await prisma.empresa.findUnique({ where: { id: input.empresaId }, select: { id: true, nombre: true, rut: true } });
   if (!empresa?.rut) throw new Error("Empresa no encontrada o sin RUT para consulta DT.");
   await prisma.fiscalizacionFirmaAcceso.upsert({
     where: { empresaId_inspectorEmail: { empresaId: empresa.id, inspectorEmail: email } },
-    update: { inspectorNombre: nombre, activo: true, otpHash: null, otpIntentos: 0, creadoPorUsuarioId: context.usuarioId },
-    create: { empresaId: empresa.id, inspectorEmail: email, inspectorNombre: nombre, creadoPorUsuarioId: context.usuarioId },
+    update: { inspectorNombre: nombre, inspectorRut: rutInspector, activo: true, otpHash: null, otpIntentos: 0, creadoPorUsuarioId: context.usuarioId },
+    create: { empresaId: empresa.id, inspectorEmail: email, inspectorNombre: nombre, inspectorRut: rutInspector, creadoPorUsuarioId: context.usuarioId },
   });
   return { ok: true };
 }
@@ -87,7 +89,7 @@ export async function listarAccesosFiscalizacion() {
     prisma.empresa.findMany({ orderBy: { nombre: "asc" }, select: { id: true, nombre: true, rut: true } }),
     prisma.fiscalizacionFirmaAcceso.findMany({
       orderBy: { creadoAt: "desc" },
-      select: { id: true, inspectorEmail: true, inspectorNombre: true, activo: true, empresa: { select: { nombre: true, rut: true } } },
+      select: { id: true, inspectorEmail: true, inspectorNombre: true, inspectorRut: true, activo: true, empresa: { select: { nombre: true, rut: true } } },
     }),
   ]);
   return { empresas, accesos };
@@ -168,7 +170,7 @@ export async function validarCodigoFiscalizacion(rutEmpresa: string, emailUsuari
   const cuerpo = Buffer.from(JSON.stringify({ id: acceso.id, vence, nonce: randomBytes(12).toString("hex") })).toString("base64url");
   (await cookies()).set(COOKIE_FISCALIZADOR, cuerpo + "." + firmaSesion(cuerpo), {
     httpOnly: true, secure: process.env.NODE_ENV === "production",
-    sameSite: "strict", path: "/fiscalizacion", maxAge: SESSION_MS / 1000,
+    sameSite: "strict", path: "/", maxAge: SESSION_MS / 1000,
   });
   await auditoria(acceso.id, "inicio_sesion");
   return { ok: true };
@@ -196,7 +198,7 @@ export async function obtenerExpedienteFiscalizacion({ skip = 0 }: { skip?: numb
   const mapa = new Map(firmas.map((f) => [f.documentoId, f]));
   await auditoria(acceso.id, "consulta_expediente");
   return {
-    total, skip: omitidos, inspector: acceso.inspectorNombre,
+    total, skip: omitidos, inspector: acceso.inspectorNombre, rutInspector: acceso.inspectorRut,
     empresa: acceso.empresa,
     documentos: documentos.map((d) => {
       const f = mapa.get(d.id);
