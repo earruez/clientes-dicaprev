@@ -254,6 +254,8 @@ export default function FirmasExternasPage() {
                   <p className="text-xs text-slate-600">{fila.nombreFirmante} · {fila.emailFirmante}</p>
                   <p className="text-xs text-slate-500">{fila.archivo} · Solicitado {fecha(fila.creadoAt)} · {fila.firmadoAt ? "Firmado " + fecha(fila.firmadoAt) : "Vence " + fecha(fila.expiraAt)}</p>
                   <p className="text-xs text-slate-500">{evidencias.find((t) => t.id === fila.tipoEvidencia)?.nombre || "Documento SST"} · {fila.modalidadContrato} · {fila.fechaInicioContrato} al {fila.fechaTerminoContrato}</p>
+                  {fila.estado === "firmado" ? <p className="text-xs text-emerald-800">Correo verificado: {fila.otpValidado ? "sí (OTP)" : "no"} · Copia al correo particular: {fila.copiaEntregadaAt ? "enviada " + fecha(fila.copiaEntregadaAt) : "pendiente"}</p> : null}
+                  {fila.motivoRechazo ? <p className="text-xs text-rose-800">Motivo / solicitud de papel: {fila.motivoRechazo}</p> : null}
                   <p className="font-mono text-[10px] text-slate-400" title="Huella SHA-256 del PDF original">SHA-256: {fila.hashOriginal || "—"}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
