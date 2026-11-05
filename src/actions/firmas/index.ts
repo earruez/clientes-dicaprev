@@ -50,6 +50,8 @@ export type FirmaPublicaView = {
   firmadoAt: string | null;
   expiresAt: string | null;
   contenidoMarkdown: string | null;
+  documentoExternoUrl?: string | null;
+  documentoHash?: string | null;
 };
 
 export type FirmaPrevencionistaPerfilInput = {
