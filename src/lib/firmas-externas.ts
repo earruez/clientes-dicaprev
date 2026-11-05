@@ -90,7 +90,7 @@ export async function crearSolicitudFirmaExterna(input: {
   if (!["Plazo Fijo", "Por Obra"].includes(input.modalidadContrato)) {
     throw new Error("Indica si el contrato es a plazo fijo o por obra/faena.");
   }
-  if (["Por Obra", "Plazo Fijo"].includes(trabajador.tipoContrato || "") &&
+  if (!["Por Obra", "Plazo Fijo"].includes(trabajador.tipoContrato || "") ||
       trabajador.tipoContrato !== input.modalidadContrato) {
     throw new Error("La modalidad indicada no coincide con la ficha contractual registrada en Personas.");
   }
