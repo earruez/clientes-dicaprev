@@ -12,7 +12,7 @@ export function hashOtp(identificador: string, codigo: string): string {
 }
 export function compararOtp(esperado: string | null | undefined, calculado: string): boolean {
   if (!esperado || !/^[a-f0-9]{64}$/.test(esperado) || !/^[a-f0-9]{64}$/.test(calculado)) return false;
-  return timingSafeEqual(Buffer.from(esperado, "hex"), Buffer.from(calculado, "hex"));
+  return timingSafeEqual(Uint8Array.from(Buffer.from(esperado, "hex")), Uint8Array.from(Buffer.from(calculado, "hex")));
 }
 export function otpVigente(vence: Date | null | undefined, intentos: number, ahora = Date.now()): boolean {
   return !!vence && vence.getTime() > ahora && intentos < OTP_INTENTOS_MAX;
