@@ -1,9 +1,9 @@
 import { validarArchivoDocumento, DOCUMENTO_TIPOS_LABEL } from "@/lib/documentacion/archivo-documento";
 
-export const MAX_ARCHIVO_PORTAL_BYTES = 4 * 1024 * 1024;
+export const MAX_ARCHIVO_PORTAL_BYTES = 5 * 1024 * 1024;
 export const ARCHIVOS_PORTAL_FORMATOS = DOCUMENTO_TIPOS_LABEL;
 
-/** Validación compartida por portal público y API, con el límite real de 4 MB. */
+/** Validación compartida por portal público y API, con el límite real de 5 MB. */
 export function validarArchivoPortal(file: { name: string; type: string; size: number } | null | undefined): string | null {
   if (!file) return "Selecciona un archivo para adjuntar.";
   if (!file.name.trim()) return "El archivo debe tener un nombre válido.";
