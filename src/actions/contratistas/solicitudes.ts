@@ -9,6 +9,7 @@ import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantill
 import { requirePermission } from "@/server/auth/permissions";
 import { normalizarNombreRequisitoContratista } from "@/lib/contratistas/estandarizar-requisitos";
 import { generarInformeContratista } from "@/lib/contratistas/informe-acreditacion";
+import { claveDocumentoRevision } from "@/lib/contratistas/organizacion-revision";
 import { claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
 const DIAS_ENLACE = 60;
@@ -179,14 +180,13 @@ export async function agregarRequisitoContratista(input: {
       throw new Error("Selecciona un trabajador, vehículo o equipo para este requisito");
     }
     if (input.categoria === "empresa") {
-      const existente = await prisma.contratistaRequisito.findFirst({
-        where: {
-          empresaId, solicitudId: solicitud.id, categoria: "empresa",
-          nombre: { equals: nombre, mode: "insensitive" },
-        },
-        select: { id: true },
+      const existentes = await prisma.contratistaRequisito.findMany({
+        where: { empresaId, solicitudId: solicitud.id, categoria: "empresa" },
+        select: { nombre: true },
       });
-      if (existente) throw new Error("Este documento de empresa ya existe en la faena. Revisa el requisito existente antes de agregar otro.");
+      if (existentes.some((r) => claveDocumentoRevision(r.nombre) === claveDocumentoRevision(nombre))) {
+        throw new Error("Ya existe este requisito de empresa (o un equivalente con distinta puntuación). Revisa el documento existente.");
+      }
     }
     await prisma.contratistaRequisito.create({
       data: { empresaId, solicitudId: solicitud.id, recursoId: input.recursoId || null, nombre, categoria: input.categoria, alcance: input.categoria === "empresa" && input.alcance === "empresa" ? "empresa" : "faena", obligatorio: input.obligatorio !== false },
