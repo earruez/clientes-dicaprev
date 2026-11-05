@@ -47,6 +47,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   const [firmaTexto, setFirmaTexto] = useState(firma.nombreFirmante ?? "");
   const [firmaTrazo, setFirmaTrazo] = useState<string | null>(null);
   const [aceptoLectura, setAceptoLectura] = useState(false);
+  const [aceptoEnvioElectronico, setAceptoEnvioElectronico] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isRead, setIsRead] = useState(firma.estado !== "pendiente");
@@ -69,7 +70,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   }, [firma.estado, firma.firmadoAt, mounted, success]);
 
   const formDisabled = firma.estado !== "pendiente" || isPending || finalizado;
-  const submitDisabled = formDisabled || !isRead || !aceptoLectura;
+  const submitDisabled = formDisabled || !isRead || !aceptoLectura || (!!firma.documentoExternoUrl && !aceptoEnvioElectronico);
 
   const contenidoMarkdown = firma.contenidoMarkdown?.trim() ?? "";
   const contenidoLineas = contenidoMarkdown.length > 0 ? contenidoMarkdown.split("\n") : [];
@@ -149,16 +150,20 @@ export default function FirmaDocumentoClient({ firma }: Props) {
 
     startTransition(async () => {
       try {
-        const result = await (firma.documentoExternoUrl ? completarFirmaExterna : completarFirmaDocumento)({
-          token: firma.token,
-          nombreFirmante,
-          rutFirmante,
-          aceptoLectura,
-          firmaSvg: firmaTrazo,
-          firmaTexto,
-        });
+        const result = firma.documentoExternoUrl
+          ? await completarFirmaExterna({
+              token: firma.token, nombreFirmante, rutFirmante, aceptoLectura,
+              aceptoEnvioElectronico, firmaSvg: firmaTrazo, firmaTexto,
+            })
+          : await completarFirmaDocumento({
+              token: firma.token, nombreFirmante, rutFirmante, aceptoLectura,
+              firmaSvg: firmaTrazo, firmaTexto,
+            });
 
-        setSuccess(`Documento firmado correctamente el ${formatFechaHoraCl(result.firmadoAt) ?? result.firmadoAt}.`);
+        setSuccess(`Documento firmado correctamente el ${formatFechaHoraCl(result.firmadoAt) ?? result.firmadoAt}.` +
+          ("copiaEnviada" in result && result.copiaEnviada
+            ? " Se envió copia del PDF y la constancia a tu correo particular."
+            : "copiaEnviada" in result ? " La copia queda pendiente de envío; comunícate con el empleador." : ""));
         setFinalizado(true);
       } catch (submitError) {
         setError(submitError instanceof Error ? submitError.message : "No fue posible completar la firma.");
@@ -345,6 +350,13 @@ export default function FirmaDocumentoClient({ firma }: Props) {
               />
               <span>Declaro haber leído el documento completo y acepto su contenido.</span>
             </label>
+
+            {firma.documentoExternoUrl ? (
+              <label className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700">
+                <Checkbox checked={aceptoEnvioElectronico} onCheckedChange={(v) => setAceptoEnvioElectronico(v === true)} disabled={formDisabled} />
+                <span>Acepto expresamente la firma y entrega de este documento laboral por medios electrónicos y confirmo que <strong>{firma.emailPersonal || "el correo indicado"}</strong> es mi correo particular para recibir mi copia. Puedo solicitar a mi empleador documentación en papel si no acepto esta modalidad.</span>
+              </label>
+            ) : null}
 
             {!isRead ? (
               <p className="text-xs text-amber-700">
