@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export async function GET(_request: Request, { params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const resultado = await resolverFirmaExterna(token);
-  if (!resultado || !["pendiente", "firmado"].includes(resultado.estado) ||
+  if (!resultado || !resultado.firma.consentimientoElectronicoAt || !["pendiente", "firmado"].includes(resultado.estado) ||
       (resultado.firma.expiresAt && resultado.firma.expiresAt.getTime() <= Date.now())) {
     return new Response("Enlace inválido o vencido", { status: 404, headers: { "Cache-Control": "no-store" } });
   }
