@@ -2886,3 +2886,18 @@ model FiscalizacionFirmaEvento {
   @@index([accesoId, creadoAt])
   @@index([documentoId])
 }
+
+/** Registro de eventos SST independiente del JSON editable del documento. */
+model FirmaSstEvento {
+  id          String   @id @default(cuid())
+  empresaId   String
+  documentoId String
+  tipo        String
+  actor       String?
+  detalle     String?
+  hashEvidencia String?
+  creadoAt    DateTime @default(now())
+
+  @@index([empresaId, documentoId, creadoAt])
+  @@index([tipo, creadoAt])
+}
