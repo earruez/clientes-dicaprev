@@ -59,6 +59,10 @@ export async function expedienteFirmadoSst(empresaId: string, documentoId: strin
     ip: f.ipFirma, userAgent: f.userAgentFirma,
     verificacionUrl: origenNextPrev() + "/verificar-firma/" + f.tokenTrazabilidad,
   });
+  const eventos = await prisma.firmaSstEvento.findMany({
+    where: { empresaId, documentoId }, orderBy: { creadoAt: "asc" },
+    select: { tipo: true, actor: true, detalle: true, hashEvidencia: true, creadoAt: true },
+  });
   const manifest = {
     sistema: "NextPrev", tipo: "expediente_firma_sst_v1",
     titulo: d.documento.nombre,
@@ -69,6 +73,7 @@ export async function expedienteFirmadoSst(empresaId: string, documentoId: strin
     firmadoAt: f.firmadoAt.toISOString(), correoParticularValidadoAt: f.correoValidadoAt?.toISOString() || null,
     sha256Original: d.huella, sha256Constancia: sha256(constancia),
     sha256Evidencia: f.tokenTrazabilidad,
+    eventosAuditoria: eventos.map(e => ({ ...e, creadoAt: e.creadoAt.toISOString() })),
     urlVerificacion: origenNextPrev() + "/verificar-firma/" + f.tokenTrazabilidad,
     nota: "Firma electronica simple; la evidencia no certifica por si sola una actividad practica.",
   };
