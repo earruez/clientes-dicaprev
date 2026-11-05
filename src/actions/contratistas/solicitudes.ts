@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
-import { documentoContratistaPendienteValidacion, estadoEfectivo, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
+import { documentoContratistaPendienteValidacion, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
 import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
@@ -41,7 +41,7 @@ export async function listarSolicitudesContratistas() {
   });
   return solicitudes.map((s) => {
     const total = s.requisitos.filter((r) => r.obligatorio).length;
-    const aprobados = s.requisitos.filter((r) => r.obligatorio && estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "aprobado").length;
+    const aprobados = s.requisitos.filter((r) => r.obligatorio && estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado").length;
     return { ...s, totalObligatorios: total, aprobados, porcentaje: total ? Math.round((aprobados / total) * 100) : 0 };
   });
 }
@@ -388,7 +388,7 @@ async function recalcularEstado(solicitudId: string, empresaId: string) {
   let estado: string;
   if (!solicitud.invitadoAt) estado = "borrador";
   else if (requeridos.some((r) => ["observado", "rechazado"].includes(r.estado))) estado = "observada";
-  else if (requeridos.length > 0 && requeridos.every((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "aprobado")) estado = "aprobada";
+  else if (requeridos.length > 0 && requeridos.every((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado")) estado = "aprobada";
   else if (solicitud.requisitos.some((r) => r.estado === "en_revision" || r.estado === "aprobado")) estado = "en_revision";
   else estado = "enviada";
   await prisma.contratistaSolicitud.update({ where: { id: solicitudId }, data: { estado } });
@@ -406,7 +406,7 @@ export async function revisarRequisitoContratista(input: {
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
   if (!documentoContratistaPendienteValidacion(requisito.estado, requisito.archivoNombre)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
-  if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, requisito.vigenciaMeses) === "vencido") throw new Error("No se puede aprobar un documento vencido");
+  if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, vigenciaMesesRequisito(requisito)) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
   // maestra: no es necesario volver a subirlos para una obra futura.
