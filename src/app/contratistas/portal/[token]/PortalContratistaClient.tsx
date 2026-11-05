@@ -115,6 +115,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       setError(mensaje);
       setErrorDocumento((prev) => ({ ...prev, [r.id]: mensaje }));
     };
+    if (!file) { mostrarError("Selecciona un archivo para adjuntar."); return; }
     const errorArchivo = validarArchivoPortal(file);
     if (errorArchivo) { mostrarError(errorArchivo); return; }
     const emision = fechas[r.id]?.emision ?? isoFecha(r.fechaEmision);
