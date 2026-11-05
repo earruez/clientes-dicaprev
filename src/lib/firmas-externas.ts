@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { generarTokenFirma } from "@/lib/firmas/tokens";
@@ -36,7 +37,7 @@ async function agregarEventoDocumento(documentoId: string, tipo: string, actor: 
   const eventos = Array.isArray(anterior.eventos) ? anterior.eventos : [];
   await prisma.documentoGeneradoRegistro.update({
     where: { id: documentoId },
-    data: { metadata: { ...anterior, ...extra, eventos: [...eventos, evento(tipo, actor, detalle)] } },
+    data: { metadata: { ...anterior, ...extra, eventos: [...eventos, evento(tipo, actor, detalle)] } as Prisma.InputJsonValue },
   });
 }
 
@@ -235,7 +236,7 @@ export async function completarSolicitudFirmaExterna(input: {
     const eventos = Array.isArray(previo.eventos) ? previo.eventos : [];
     await tx.documentoGeneradoRegistro.update({
       where: { id: resuelta.documento.id },
-      data: { metadata: { ...previo, hashEvidencia: evidenciaHash, eventos: [...eventos, evento("firmado", nombre, "Aceptación de lectura, RUT e integridad del PDF registrados")] } },
+      data: { metadata: { ...previo, hashEvidencia: evidenciaHash, eventos: [...eventos, evento("firmado", nombre, "Aceptación de lectura, RUT e integridad del PDF registrados")] } as Prisma.InputJsonValue },
     });
   });
   return { ok: true, firmadoAt: ahora.toISOString() };
