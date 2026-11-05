@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { completarFirmaDocumento, type FirmaPublicaView } from "@/actions/firmas";
-import { completarFirmaExterna, rechazarFirmaExterna, solicitarCodigoFirmaExterna } from "@/actions/firmas-externas";
+import { completarFirmaExterna, rechazarFirmaExterna, solicitarCodigoFirmaExterna, registrarConsentimientoFirmaSst } from "@/actions/firmas-externas";
 
 type Props = {
   firma: FirmaPublicaView;
@@ -48,6 +48,9 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   const [firmaTrazo, setFirmaTrazo] = useState<string | null>(null);
   const [aceptoLectura, setAceptoLectura] = useState(false);
   const [aceptoEnvioElectronico, setAceptoEnvioElectronico] = useState(false);
+  const [consentido, setConsentido] = useState(!!firma.consentimientoPreviamenteOtorgado);
+  const [aceptandoModalidad, setAceptandoModalidad] = useState(false);
+  const [confirmoModalidad, setConfirmoModalidad] = useState(false);
   const [codigoVerificacion, setCodigoVerificacion] = useState("");
   const [otpEnviado, setOtpEnviado] = useState(false);
   const [otpSolicitando, setOtpSolicitando] = useState(false);
@@ -72,8 +75,10 @@ export default function FirmaDocumentoClient({ firma }: Props) {
     }
   }, [firma.estado, firma.firmadoAt, mounted, success]);
 
-  const formDisabled = firma.estado !== "pendiente" || isPending || finalizado;
-  const submitDisabled = formDisabled || !isRead || !aceptoLectura || (!!firma.documentoExternoUrl && (!aceptoEnvioElectronico || !otpEnviado || !/^[0-9]{6}$/.test(codigoVerificacion)));
+  const esTemporal = !!firma.esFirmaTemporal;
+  const documentoExternoUrl = esTemporal && consentido ? "/api/firma/" + encodeURIComponent(firma.token) + "/archivo" : firma.documentoExternoUrl;
+  const formDisabled = firma.estado !== "pendiente" || isPending || finalizado || (esTemporal && !consentido);
+  const submitDisabled = formDisabled || !isRead || !aceptoLectura || (esTemporal && (!aceptoEnvioElectronico || !otpEnviado || !/^[0-9]{6}$/.test(codigoVerificacion)));
 
   const contenidoMarkdown = firma.contenidoMarkdown?.trim() ?? "";
   const contenidoLineas = contenidoMarkdown.length > 0 ? contenidoMarkdown.split("\n") : [];
@@ -147,7 +152,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   }
 
   async function solicitarOtp() {
-    if (!firma.documentoExternoUrl || otpSolicitando || isPending) return;
+    if (!esTemporal || !consentido || otpSolicitando || isPending) return;
     setOtpSolicitando(true);
     setError(null);
     try {
@@ -161,6 +166,34 @@ export default function FirmaDocumentoClient({ firma }: Props) {
     }
   }
 
+  async function aceptarModalidad() {
+    if (!esTemporal || !confirmoModalidad || aceptandoModalidad) return;
+    setAceptandoModalidad(true);
+    setError(null);
+    try {
+      await registrarConsentimientoFirmaSst(firma.token, true);
+      setConsentido(true);
+      setAceptoEnvioElectronico(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar el consentimiento.");
+    } finally {
+      setAceptandoModalidad(false);
+    }
+  }
+
+  async function pedirPapel() {
+    if (!esTemporal || aceptandoModalidad) return;
+    setAceptandoModalidad(true); setError(null);
+    try {
+      await rechazarFirmaExterna(firma.token, "Solicito que la documentación laboral SST me sea entregada en soporte de papel. No acepto la modalidad electrónica.");
+      setRechazado(true); setFinalizado(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo registrar la solicitud en papel.");
+    } finally {
+      setAceptandoModalidad(false);
+    }
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -168,7 +201,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
 
     startTransition(async () => {
       try {
-        const result = firma.documentoExternoUrl
+        const result = esTemporal
           ? await completarFirmaExterna({
               token: firma.token, nombreFirmante, rutFirmante, aceptoLectura,
               aceptoEnvioElectronico, codigoVerificacion, firmaSvg: firmaTrazo, firmaTexto,
@@ -190,7 +223,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   }
 
   function handleRechazo() {
-    if (!firma.documentoExternoUrl || !rechazo.trim()) return;
+    if (!esTemporal || !rechazo.trim()) return;
     setError(null);
     startTransition(async () => {
       try {
@@ -226,7 +259,27 @@ export default function FirmaDocumentoClient({ firma }: Props) {
           ) : null}
         </div>
 
-        {firma.documentoExternoUrl ? (
+        {esTemporal && !consentido && firma.estado === "pendiente" && !finalizado ? (
+          <div className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50 p-5">
+            <h2 className="text-lg font-semibold text-slate-900">Consentimiento previo a documentación electrónica</h2>
+            <p className="text-sm text-slate-700">Antes de consultar y firmar este documento, confirma si aceptas voluntariamente que tu empleador gestione, firme y te remita documentación laboral de seguridad y salud por medios electrónicos al correo particular {firma.emailPersonal || "registrado"}.</p>
+            <p className="text-sm text-slate-700">Si no aceptas, puedes solicitar la documentación en papel. El uso de tu teléfono personal no es obligatorio y debe contar con autorización y condiciones acordadas con el empleador.</p>
+            <label className="flex items-start gap-3 text-sm text-slate-800">
+              <Checkbox checked={confirmoModalidad} onCheckedChange={(v)=>setConfirmoModalidad(v===true)} disabled={aceptandoModalidad}/>
+              <span>Acepto expresamente, antes de abrir el documento, la confección, firma, tratamiento y envío electrónico de documentación SST, y confirmo que el correo indicado es particular.</span>
+            </label>
+            <div className="flex flex-wrap gap-3">
+              <Button type="button" disabled={!confirmoModalidad || aceptandoModalidad} onClick={() => void aceptarModalidad()}>
+                {aceptandoModalidad ? "Guardando..." : "Acepto y continúo"}
+              </Button>
+              <Button type="button" variant="outline" disabled={aceptandoModalidad} onClick={() => void pedirPapel()}>
+                Solicitar entrega en papel
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {documentoExternoUrl ? (
           <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50 p-4">
             <div>
               <p className="text-sm font-semibold text-slate-900">Documento original que vas a firmar</p>
@@ -234,11 +287,11 @@ export default function FirmaDocumentoClient({ firma }: Props) {
             </div>
             <iframe
               title="Vista previa del documento PDF"
-              src={firma.documentoExternoUrl}
+              src={documentoExternoUrl}
               className="h-[460px] w-full rounded-xl border border-slate-200 bg-white"
             />
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <a href={firma.documentoExternoUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-sky-700 underline">Abrir PDF en otra pestaña</a>
+              <a href={documentoExternoUrl || "#"} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-sky-700 underline">Abrir PDF en otra pestaña</a>
               <Button type="button" variant="outline" disabled={formDisabled} onClick={() => setIsRead(true)}>
                 {isRead ? "Lectura confirmada" : "He revisado el PDF"}
               </Button>
@@ -299,7 +352,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
           <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">Esta solicitud fue rechazada.</div>
         ) : null}
 
-        {firma.estado === "pendiente" && !finalizado ? (
+        {firma.estado === "pendiente" && !finalizado && (!esTemporal || consentido) ? (
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -369,7 +422,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
               <span>Declaro haber leído el documento completo y acepto su contenido.</span>
             </label>
 
-            {firma.documentoExternoUrl ? (
+            {esTemporal ? (
               <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                 <p className="text-sm font-semibold text-slate-900">Verificación del correo particular</p>
                 <p className="text-xs text-slate-600">Para firmar necesitas un código de seis dígitos que se enviará a {firma.emailPersonal || "tu correo particular"}. Vence en diez minutos y admite cinco intentos.</p>
@@ -387,7 +440,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
               </div>
             ) : null}
 
-            {firma.documentoExternoUrl ? (
+            {esTemporal ? (
               <label className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700">
                 <Checkbox checked={aceptoEnvioElectronico} onCheckedChange={(v) => setAceptoEnvioElectronico(v === true)} disabled={formDisabled} />
                 <span>Acepto expresamente la firma y entrega de este documento laboral por medios electrónicos y confirmo que <strong>{firma.emailPersonal || "el correo indicado"}</strong> es mi correo particular para recibir mi copia. Puedo solicitar a mi empleador documentación en papel si no acepto esta modalidad.</span>
@@ -408,7 +461,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
             ) : null}
 
-            {firma.documentoExternoUrl ? (
+            {esTemporal ? (
               <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <Label htmlFor="rechazo-firma">¿No corresponde firmar este documento?</Label>
                 <textarea id="rechazo-firma" value={rechazo} onChange={(e) => setRechazo(e.target.value)} maxLength={600} rows={2} placeholder="Motivo del rechazo" className="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm" />
