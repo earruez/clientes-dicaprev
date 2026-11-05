@@ -11,13 +11,14 @@ import { getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import {
   agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, configurarRequisitoPorCargoContratista, cerrarExpedienteContratista,
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
-  invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
+  invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista, enviarInformeAcreditacionContratista,
 } from "@/actions/contratistas/solicitudes";
 import { documentoContratistaPendienteValidacion, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 import { agruparDocumentosRevision } from "@/lib/contratistas/organizacion-revision";
+import { resumenDocumentosInforme, estadoAcreditacionDocumental } from "@/lib/contratistas/resumen-informe";
 import JSZip from "jszip";
 import { crearCatalogoContratista, listarCentrosMandante, listarDocumentosBaseContratista, obtenerCatalogoContratistas, reutilizarDocumentoContratista } from "@/actions/contratistas/catalogo";
 
@@ -78,6 +79,7 @@ export default function SolicitudesContratistasClient() {
   });
   const [seleccionados, setSeleccionados] = useState<string[]>([...CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS]);
   const [descargandoZip, setDescargandoZip] = useState(false);
+  const [enviandoInforme, setEnviandoInforme] = useState(false);
   const [filtroTrabajador, setFiltroTrabajador] = useState("");
   const [cargoMasivo, setCargoMasivo] = useState("");
   const [reglaMasiva, setReglaMasiva] = useState("");
@@ -128,6 +130,23 @@ export default function SolicitudesContratistasClient() {
       setError(e instanceof Error ? e.message : "No se pudo completar la operación");
     } finally {
       setProcesando(false);
+    }
+  }
+
+  async function enviarInforme() {
+    if (!actual || enviandoInforme) return;
+    const destinatario = actual.contactoEmail?.trim();
+    if (!destinatario) { setError("Este contratista no tiene correo de contacto para enviar el informe."); return; }
+    if (!window.confirm("¿Enviar UN informe consolidado en PDF a " + destinatario +
+      "? Incluye el estado actual de documentos de empresa y trabajadores, con observaciones. No se enviarán avisos por cada documento.")) return;
+    setEnviandoInforme(true); setError(""); setAviso("");
+    try {
+      const resultado = await enviarInformeAcreditacionContratista(actual.id);
+      setAviso("Informe PDF enviado a " + resultado.correo + ". No se enviaron notificaciones individuales.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo enviar el informe.");
+    } finally {
+      setEnviandoInforme(false);
     }
   }
 
@@ -421,7 +440,16 @@ export default function SolicitudesContratistasClient() {
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-3"><h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>{actual.requisitos.some((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)) && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{actual.requisitos.filter((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)).length} documento(s) pendiente(s) de validación</span>}</div>
-                  <Button variant="outline" size="sm" disabled={descargandoZip} onClick={() => void descargarCarpetaZip()}>{descargandoZip ? "Generando ZIP…" : "Descargar carpeta ZIP"}</Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a href={"/api/dicaprev/contratistas/informe?solicitudId=" + encodeURIComponent(actual.id)}
+                      className="inline-flex h-9 items-center justify-center rounded-xl border border-sky-200 bg-white px-3 text-xs font-semibold text-sky-800 hover:bg-sky-50">
+                      <FileText className="mr-2 h-4 w-4"/>Descargar informe PDF
+                    </a>
+                    {puedeEditar && <Button size="sm" disabled={enviandoInforme || procesando} className="rounded-xl bg-sky-700 text-white hover:bg-sky-800" onClick={() => void enviarInforme()}>
+                      <Mail className="mr-2 h-4 w-4"/>{enviandoInforme ? "Enviando informe…" : "Enviar informe al contratista"}
+                    </Button>}
+                    <Button variant="outline" size="sm" disabled={descargandoZip} onClick={() => void descargarCarpetaZip()}>{descargandoZip ? "Generando ZIP…" : "Descargar carpeta ZIP"}</Button>
+                  </div>
                   {puedeEditar && <div className="flex flex-wrap items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setAgregando((x) => !x)}><Plus className="mr-1 h-4 w-4"/>Agregar requisito</Button>
                     <Button variant="outline" size="sm" disabled={procesando} className="border-sky-200 text-sky-800" onClick={() => {
@@ -449,6 +477,7 @@ export default function SolicitudesContratistasClient() {
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-slate-500">Los documentos opcionales aprobados cuentan en “Documentos aprobados”, pero no en el total de requisitos obligatorios.</p>
+                <p className="mt-1 text-xs text-slate-600">Estado de acreditación documental: <strong>{estadoAcreditacionDocumental(actual.requisitos)}</strong>. El informe se envía únicamente al presionar el botón y confirmarlo; ninguna aprobación u observación individual genera correo automático.</p>
                 {puedeEditar && <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 text-xs text-slate-600">
                   <summary className="cursor-pointer font-semibold text-sky-900">Ver documentos de la plantilla de acreditación</summary>
                   <ol className="mt-2 list-decimal space-y-1 pl-5">
@@ -561,6 +590,9 @@ export default function SolicitudesContratistasClient() {
                               const documentos = docs.filter((d) => d.recursoId === recurso.id);
                               const aprobados = documentos.filter((d) => d.archivoNombre && estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)) === "aprobado").length;
                               const pendientes = documentos.filter((d) => documentoContratistaPendienteValidacion(d.estado, d.archivoNombre)).length;
+                              const resumen = resumenDocumentosInforme(documentos);
+                              const exigibles = [...actual.requisitos.filter((d) => d.categoria === "empresa" && d.obligatorio), ...documentos.filter((d) => d.obligatorio)];
+                              const estadoAcreditacion = estadoAcreditacionDocumental(exigibles);
                               return (
                                 <details key={recurso.id} className="group/trabajador overflow-hidden rounded-xl border border-slate-200 bg-white">
                                   <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-3 [&::-webkit-details-marker]:hidden sm:p-4">
@@ -570,12 +602,18 @@ export default function SolicitudesContratistasClient() {
                                       <span className="text-xs text-slate-500">{recurso.identificador || "Sin RUT"}</span>
                                     </span>
                                     <span className="flex shrink-0 items-center gap-2 text-xs text-slate-600">
-                                      {aprobados}/{documentos.length} aprobados
+                                      {resumen.cargados}/{documentos.length} subidos
+                                      <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-800">{aprobados} aprobados</span>
                                       {pendientes > 0 && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-900">{pendientes} por validar</span>}
                                       <ChevronDown className="h-4 w-4 transition-transform group-open/trabajador:rotate-180"/>
                                     </span>
                                   </summary>
                                   <div className="space-y-3 border-t border-slate-100 bg-slate-50/40 p-3 sm:p-4">
+                                    <p className="text-xs text-slate-700">
+                                      <strong>Acreditación documental:</strong> {estadoAcreditacion} ·
+                                      Subidos {resumen.cargados}/{resumen.total} · Faltan subir {resumen.sinArchivo} ·
+                                      Por validar {resumen.porValidar} · Observados {resumen.observados}
+                                    </p>
                                     {documentos.length ? renderDocumentosAgrupados(documentos) : <p className="text-sm text-slate-500">Este trabajador todavía no tiene requisitos asignados.</p>}
                                   </div>
                                 </details>
