@@ -9,6 +9,7 @@ import {
   OTP_VIGENCIA_MS, OTP_INTENTOS_MAX, validarFormatoCodigo,
 } from "@/lib/firmas-sst/otp";
 import { MODULO_FIRMAS_EXTERNAS } from "@/lib/firmas-externas";
+import { expedienteFirmadoSst } from "@/lib/firmas-sst/expediente";
 import { validarRutChile } from "@/lib/rut";
 
 const COOKIE_FISCALIZADOR = "nextprev_dt_sst";
@@ -236,6 +237,10 @@ export async function auditarDocumentoFiscalizacion(documentoId: string, accion:
     select: { id: true },
   });
   if (!doc) throw new Error("Documento inexistente para esta empresa.");
+  if (accion === "ratificacion") {
+    // Ningún expediente pendiente, alterado o sin constancia puede ratificarse.
+    await expedienteFirmadoSst(acceso.empresaId, doc.id);
+  }
   const f = await prisma.firmaDocumento.findFirst({
     where: { documentoId: doc.id, empresaId: acceso.empresaId, tipoFirmante: "externo" },
     select: { tokenTrazabilidad: true },
