@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MAX_ARCHIVO_PORTAL_BYTES, validarArchivoPortal, validarFechasPortal } from "@/lib/contratistas/validacion-carga";
 import {
   esRequisitoContratoLaboral, vigenciaMesesRequisito,
   vencimientoEfectivoRequisito, estadoVisibleRequisitoContratista,
@@ -30,5 +31,23 @@ describe("Portal contratistas: contratos de trabajo indefinidos", () => {
     expect(esRequisitoContratoLaboral({ categoria: "empresa", nombre: contrato.nombre })).toBe(false);
     expect(esRequisitoContratoLaboral({ categoria: "trabajador", nombre: "Constancia de capacitación" })).toBe(false);
     expect(esRequisitoContratoLaboral({ categoria: "trabajador", nombre: "Contrato laboral indefinido" })).toBe(true);
+  });
+});
+
+describe("Portal contratistas: validaciones de carga", () => {
+  it("acepta archivos de hasta 4,5 MB, pero rechaza uno mayor", () => {
+    expect(MAX_ARCHIVO_PORTAL_BYTES).toBe(4_500_000);
+    expect(validarArchivoPortal({ name: "contrato.pdf", type: "application/pdf", size: MAX_ARCHIVO_PORTAL_BYTES })).toBeNull();
+    expect(validarArchivoPortal({ name: "contrato.pdf", type: "application/pdf", size: MAX_ARCHIVO_PORTAL_BYTES + 1 })).toContain("4,5 MB");
+  });
+  it("explica los formatos admitidos y archivos inválidos", () => {
+    expect(validarArchivoPortal({ name: "contrato.exe", type: "application/octet-stream", size: 120 })).toContain("Tipo de archivo no permitido");
+    expect(validarArchivoPortal({ name: "contrato.pdf", type: "application/pdf", size: 0 })).toContain("vacío");
+    expect(validarArchivoPortal(null)).toContain("Selecciona");
+  });
+  it("informa la fecha obligatoria solo en documentos sujetos a vigencia", () => {
+    expect(validarFechasPortal({ emision: "", vencimiento: "", vigenciaMeses: null })).toBeNull();
+    expect(validarFechasPortal({ emision: "", vencimiento: "", vigenciaMeses: 24 })).toContain("Falta completar");
+    expect(validarFechasPortal({ emision: "2026-11-05", vencimiento: "2026-11-04", vigenciaMeses: null })).toContain("anterior");
   });
 });
