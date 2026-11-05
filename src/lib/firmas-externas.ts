@@ -19,7 +19,7 @@ function objeto(value: unknown): Datos {
 }
 
 export function sha256(value: string | Buffer): string {
-  return createHash("sha256").update(value).digest("hex");
+  return createHash("sha256").update(typeof value === "string" ? value : new Uint8Array(value)).digest("hex");
 }
 
 export function hashTokenFirmaExterna(token: string): string {
