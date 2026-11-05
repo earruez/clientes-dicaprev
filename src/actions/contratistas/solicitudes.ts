@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
-import { documentoContratistaPendienteValidacion, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
+import { documentoContratistaPendienteValidacion, documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
 import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
@@ -41,12 +41,10 @@ export async function listarSolicitudesContratistas() {
     },
   });
   return solicitudes.map((s) => {
-    const estadoDocumento = (r: typeof s.requisitos[number]) =>
-      estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r));
     const total = s.requisitos.filter((r) => r.obligatorio).length;
-    const aprobados = s.requisitos.filter((r) => r.obligatorio && estadoDocumento(r) === "aprobado").length;
-    const documentosAprobados = s.requisitos.filter((r) => r.archivoNombre && estadoDocumento(r) === "aprobado").length;
-    const pendientesValidacion = s.requisitos.filter((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)).length;
+    const aprobados = s.requisitos.filter((r) => r.obligatorio && documentoAprobadoConRevision(r)).length;
+    const documentosAprobados = s.requisitos.filter((r) => documentoAprobadoConRevision(r)).length;
+    const pendientesValidacion = s.requisitos.filter((r) => documentoPendienteRevisionMandante(r)).length;
     const documentosObservados = s.requisitos.filter((r) => r.estado === "observado" || r.estado === "rechazado").length;
     const pendientesCarga = s.requisitos.filter((r) => r.obligatorio && !r.archivoNombre).length;
     return {
@@ -409,8 +407,8 @@ async function recalcularEstado(solicitudId: string, empresaId: string) {
   let estado: string;
   if (!solicitud.invitadoAt) estado = "borrador";
   else if (requeridos.some((r) => ["observado", "rechazado"].includes(r.estado))) estado = "observada";
-  else if (requeridos.length > 0 && requeridos.every((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado")) estado = "aprobada";
-  else if (solicitud.requisitos.some((r) => r.estado === "en_revision" || r.estado === "aprobado")) estado = "en_revision";
+  else if (requeridos.length > 0 && requeridos.every((r) => documentoAprobadoConRevision(r))) estado = "aprobada";
+  else if (solicitud.requisitos.some((r) => documentoPendienteRevisionMandante(r) || documentoAprobadoConRevision(r))) estado = "en_revision";
   else estado = "enviada";
   await prisma.contratistaSolicitud.update({ where: { id: solicitudId }, data: { estado } });
 }
@@ -426,7 +424,7 @@ export async function revisarRequisitoContratista(input: {
     include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true, contratistaId: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
-  if (!documentoContratistaPendienteValidacion(requisito.estado, requisito.archivoNombre)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
+  if (!documentoPendienteRevisionMandante(requisito)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, vigenciaMesesRequisito(requisito)) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
