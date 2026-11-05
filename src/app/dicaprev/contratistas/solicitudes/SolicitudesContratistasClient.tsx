@@ -13,7 +13,7 @@ import {
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
   invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista, enviarInformeAcreditacionContratista,
 } from "@/actions/contratistas/solicitudes";
-import { documentoContratistaPendienteValidacion, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
+import { documentoContratistaPendienteValidacion, documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoAuditableRequisito, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
@@ -53,7 +53,7 @@ function fechaCorta(value: Date | string | null | undefined) {
 }
 function estadoExpediente(s: Expediente) {
   if (s.estado === "aprobada" && s.totalObligatorios !== s.aprobados) return "Requiere actualización";
-  if (s.requisitos.some((r) => r.archivoNombre && ["pendiente", "en_revision"].includes(r.estado))) return "Pendiente de validación";
+  if (s.requisitos.some(documentoPendienteRevisionMandante)) return "Pendiente de validación";
   return ESTADOS[s.estado] || s.estado;
 }
 
@@ -223,7 +223,7 @@ export default function SolicitudesContratistasClient() {
 
 
   function renderDocumentoRevision(d: Expediente["requisitos"][number]) {
-    const estado = estadoVisibleRequisitoContratista(d.estado, d.archivoNombre, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d));
+    const estado = estadoAuditableRequisito(d);
     return <div key={d.id} className="min-w-0 rounded-xl border border-slate-200 p-3 sm:p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
@@ -253,7 +253,7 @@ export default function SolicitudesContratistasClient() {
                         </div>}
                         {d.observacionRevision && <p className={`mt-2 rounded-lg p-2 text-xs ${d.estado === "aprobado" ? "bg-emerald-50 text-emerald-800" : "bg-orange-50 text-orange-800"}`}>{d.estado === "aprobado" ? "Comentario de aprobación" : "Observación"}: {d.observacionRevision}</p>}
                         {d.versiones.length > 1 && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer">Historial ({d.versiones.length} versiones)</summary><div className="mt-2 flex flex-col gap-1">{d.versiones.map((v) => <a key={v.id} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline" href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}&versionId=${v.id}`}>Versión {v.version} · {fechaCorta(v.subidoAt)} · {v.archivoOriginal}</a>)}</div></details>}
-                        {puedeEditar && documentoContratistaPendienteValidacion(d.estado, d.archivoNombre) && <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-100 pt-3">
+                        {puedeEditar && documentoPendienteRevisionMandante(d) && <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-100 pt-3">
                           <p className="w-full text-xs font-semibold text-amber-800">Revisión de la mandante: abre el documento y aprueba con o sin comentario, observa o rechaza. Observar y rechazar exigen motivo.</p>
                           <Button disabled={procesando || estado === "vencido"} size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "aprobado", observacion: motivos[d.id] || undefined }), "Documento aprobado.")}>Aprobar</Button>
                           <input aria-label={`Motivo para ${d.nombre}`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" placeholder="Comentario opcional al aprobar; obligatorio al observar o rechazar" value={motivos[d.id] || ""} onChange={(e) => setMotivos((prev) => ({ ...prev, [d.id]: e.target.value }))}/>
@@ -424,13 +424,17 @@ export default function SolicitudesContratistasClient() {
                     const docsRecurso = actual.requisitos.filter((r) => r.recursoId === recurso.id && r.obligatorio);
                     const docsEmpresa = actual.requisitos.filter((r) => r.categoria === "empresa" && r.obligatorio);
                     const todos = [...docsEmpresa, ...docsRecurso];
-                    const correctos = todos.filter((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado").length;
+                    const correctosEmpresa = docsEmpresa.filter(documentoAprobadoConRevision).length;
+                    const correctosPersonal = docsRecurso.filter(documentoAprobadoConRevision).length;
+                    const correctos = correctosEmpresa + correctosPersonal;
                     const listo = todos.length > 0 && correctos === todos.length;
                     return <div key={recurso.id} className="flex min-w-0 items-start justify-between gap-2 rounded-xl border border-slate-200 p-3">
                       <div className="min-w-0">
                         <p className="break-words text-sm font-medium text-slate-900">{recurso.nombre}</p>
                         <p className="text-xs text-slate-500">{recurso.tipo} · {recurso.patente || recurso.identificador || recurso.cargo || "Sin identificador"}</p>
-                        <p className="mt-1 text-xs text-slate-500">{correctos}/{todos.length} documentos obligatorios aprobados</p>
+                        <p className="mt-1 text-xs text-slate-600">Documentos de este {recurso.tipo === "trabajador" ? "trabajador" : "recurso"}: <strong>{correctosPersonal}/{docsRecurso.length} aprobados</strong></p>
+                        <p className="mt-0.5 text-xs text-slate-500">Documentos de empresa compartidos: {correctosEmpresa}/{docsEmpresa.length} aprobados</p>
+                        <p className="mt-0.5 text-xs text-slate-500">Acreditación documental global: {correctos}/{todos.length} obligatorios conformes</p>
                       </div>
                       <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-medium ${listo ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{listo ? "Documentalmente conforme" : "No conforme"}</span>
                     </div>;
@@ -439,7 +443,7 @@ export default function SolicitudesContratistasClient() {
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-3"><h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>{actual.requisitos.some((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)) && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{actual.requisitos.filter((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)).length} documento(s) pendiente(s) de validación</span>}</div>
+                  <div className="flex flex-wrap items-center gap-3"><h3 className="text-base font-semibold text-slate-800">Requisitos y revisión</h3>{actual.requisitos.some(documentoPendienteRevisionMandante) && <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">{actual.requisitos.filter(documentoPendienteRevisionMandante).length} documento(s) pendiente(s) de validación</span>}</div>
                   <div className="flex flex-wrap items-center gap-2">
                     <a href={"/api/dicaprev/contratistas/informe?solicitudId=" + encodeURIComponent(actual.id)}
                       className="inline-flex h-9 items-center justify-center rounded-xl border border-sky-200 bg-white px-3 text-xs font-semibold text-sky-800 hover:bg-sky-50">
@@ -564,8 +568,8 @@ export default function SolicitudesContratistasClient() {
                   const docs = actual.requisitos.filter((d) => d.categoria === key);
                   const recursos = actual.recursos.filter((r) => r.tipo === key);
                   if (!docs.length && !recursos.length) return null;
-                  const aprobadosGrupo = docs.filter((d) => d.archivoNombre && estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)) === "aprobado").length;
-                  const pendientesGrupo = docs.filter((d) => documentoContratistaPendienteValidacion(d.estado, d.archivoNombre)).length;
+                  const aprobadosGrupo = docs.filter(documentoAprobadoConRevision).length;
+                  const pendientesGrupo = docs.filter(documentoPendienteRevisionMandante).length;
                   const subidosGrupo = docs.filter((d) => !!d.archivoNombre).length;
                   const trabajadores = key === "trabajador";
                   return (
@@ -594,8 +598,8 @@ export default function SolicitudesContratistasClient() {
                             </label>
                             {recursos.filter((r) => !filtroTrabajador || r.id === filtroTrabajador).map((recurso) => {
                               const documentos = docs.filter((d) => d.recursoId === recurso.id);
-                              const aprobados = documentos.filter((d) => d.archivoNombre && estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)) === "aprobado").length;
-                              const pendientes = documentos.filter((d) => documentoContratistaPendienteValidacion(d.estado, d.archivoNombre)).length;
+                              const aprobados = documentos.filter(documentoAprobadoConRevision).length;
+                              const pendientes = documentos.filter(documentoPendienteRevisionMandante).length;
                               const resumen = resumenDocumentosInforme(documentos);
                               const exigibles = [...actual.requisitos.filter((d) => d.categoria === "empresa" && d.obligatorio), ...documentos.filter((d) => d.obligatorio)];
                               const estadoAcreditacion = estadoAcreditacionDocumental(exigibles);
