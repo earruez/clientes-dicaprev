@@ -83,11 +83,15 @@ export async function crearSolicitudFirmaExterna(input: {
   // Los firmantes son trabajadores dependientes de la empresa activa (contratación temporal).
   const trabajador = await prisma.trabajador.findFirst({
     where: { id: input.trabajadorId, empresaId },
-    select: { id: true, nombres: true, apellidos: true, rut: true, email: true },
+    select: { id: true, nombres: true, apellidos: true, rut: true, email: true, tipoContrato: true },
   });
   if (!trabajador) throw new Error("Selecciona un trabajador contratado por la empresa activa.");
   if (!["Plazo Fijo", "Por Obra"].includes(input.modalidadContrato)) {
     throw new Error("Indica si el contrato es a plazo fijo o por obra/faena.");
+  }
+  if (["Por Obra", "Plazo Fijo"].includes(trabajador.tipoContrato || "") &&
+      trabajador.tipoContrato !== input.modalidadContrato) {
+    throw new Error("La modalidad indicada no coincide con la ficha contractual registrada en Personas.");
   }
   const fechaInicio = new Date(input.fechaInicio + "T12:00:00Z");
   const fechaTermino = new Date(input.fechaTermino + "T12:00:00Z");
@@ -179,6 +183,10 @@ export async function crearSolicitudFirmaExterna(input: {
     });
     return doc;
   });
+  await prisma.firmaSstEvento.create({ data: {
+    empresaId, documentoId: registro.id, tipo: "solicitud_creada", actor: usuarioId,
+    detalle: "Documento original resguardado y huella SHA-256 calculada", hashEvidencia: hashOriginal,
+  }});
   let enviado = false;
   try {
     await enviarInvitacion(email, nombre, titulo, token, vence);
