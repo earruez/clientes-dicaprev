@@ -41,7 +41,7 @@ export async function rechazarFirmaExterna(token: string, motivo: string) {
 export async function listarTrabajadoresFirmaTemporal() {
   const { empresaId } = await requirePermission("canReadDocumentacion");
   const trabajadores = await prisma.trabajador.findMany({
-    where: { empresaId, estado: { in: ["activo", "Activo"] } },
+    where: { empresaId, estado: { in: ["activo", "Activo"] }, tipoContrato: { in: ["Plazo Fijo", "Por Obra"] } },
     orderBy: [{ apellidos: "asc" }, { nombres: "asc" }],
     select: {
       id: true, nombres: true, apellidos: true, rut: true, email: true,
