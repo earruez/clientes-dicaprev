@@ -96,6 +96,43 @@ export function estadoEfectivo(
   return estado;
 }
 
+
+/** Una aprobación debe probar la revisión humana en ESTA solicitud y ESTA versión. */
+export type RequisitoRevisionMandante = {
+  estado: string;
+  archivoNombre?: string | null;
+  revisadoAt?: Date | string | null;
+  revisadoPorId?: string | null;
+  fechaVencimiento: Date | string | null;
+  fechaEmision?: Date | string | null;
+  vigenciaMeses?: number | null;
+  categoria?: string | null;
+  nombre: string;
+};
+
+export function documentoAprobadoConRevision(r: RequisitoRevisionMandante): boolean {
+  return !!r.archivoNombre && !!r.revisadoAt && !!r.revisadoPorId &&
+    estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado";
+}
+
+/**
+ * Nunca presentar como aprobado un registro heredado sin archivo, fecha o autor
+ * de validación. Permite que la mandante revise tales registros en esta obra.
+ */
+export function estadoAuditableRequisito(r: RequisitoRevisionMandante): string {
+  const estado = estadoVisibleRequisitoContratista(
+    r.estado, r.archivoNombre, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r),
+  );
+  if (estado === "aprobado" && !documentoAprobadoConRevision(r)) {
+    return r.archivoNombre ? "en_revision" : "pendiente";
+  }
+  return estado;
+}
+
+export function documentoPendienteRevisionMandante(r: RequisitoRevisionMandante): boolean {
+  return !!r.archivoNombre && estadoAuditableRequisito(r) === "en_revision";
+}
+
 /** Documento cargado pero todavía no revisado por la mandante, incluso en expedientes anteriores. */
 export function documentoContratistaPendienteValidacion(
   estado: string, archivoNombre: string | null | undefined,
