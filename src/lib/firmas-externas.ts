@@ -130,7 +130,7 @@ export async function listarSolicitudesFirmaExterna() {
     where: { empresaId, modulo: MODULO_FIRMAS_EXTERNAS },
     orderBy: { createdAt: "desc" },
     take: 200,
-    select: { id: true, nombre: true, archivoNombreOriginal: true, archivoPeso: true, metadata: true, createdAt: true },
+    select: { id: true, nombre: true, archivoNombre: true, archivoNombreOriginal: true, archivoPeso: true, metadata: true, createdAt: true },
   });
   const firmas = documentos.length ? await prisma.firmaDocumento.findMany({
     where: { empresaId, documentoOrigen: "otro", tipoFirmante: "externo", documentoId: { in: documentos.map((d) => d.id) } },
@@ -145,7 +145,7 @@ export async function listarSolicitudesFirmaExterna() {
     const firma = porDocumento.get(doc.id);
     const metadata = objeto(doc.metadata);
     return {
-      id: doc.id, titulo: doc.nombre, archivo: doc.archivoNombreOriginal || "Documento PDF",
+      id: doc.id, titulo: doc.nombre, archivo: doc.archivoNombreOriginal || "Documento PDF", archivoNombre: doc.archivoNombre || "",
       peso: doc.archivoPeso, creadoAt: doc.createdAt.toISOString(),
       nombreFirmante: firma?.nombreFirmante || "", emailFirmante: firma?.emailFirmante || "",
       rutFirmante: firma?.rutFirmante || "", firmaId: firma?.id || "",
