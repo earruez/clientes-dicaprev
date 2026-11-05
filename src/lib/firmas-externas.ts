@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { generarCodigoOtp, hashOtp, compararOtp, otpVigente, puedeReenviarOtp, validarFormatoCodigo, OTP_INTENTOS_MAX, OTP_VIGENCIA_MS } from "@/lib/firmas-sst/otp";
-import { jsPDF } from "jspdf";
+import { crearConstanciaFirmaSst } from "@/lib/firmas-sst/constancia";
 import type { Prisma } from "@prisma/client";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -381,7 +381,7 @@ export async function reenviarSolicitudFirmaExterna(documentoId: string) {
 async function enviarCopiaFirmaTemporal(documentoId: string, pdfVerificado?: Buffer): Promise<boolean> {
   const documento = await prisma.documentoGeneradoRegistro.findUnique({
     where: { id: documentoId },
-    select: { id: true, empresaId: true, modulo: true, nombre: true, archivoNombre: true, metadata: true },
+    select: { id: true, empresaId: true, modulo: true, nombre: true, archivoNombre: true, archivoNombreOriginal: true, metadata: true, empresa: { select: { nombre: true, rut: true } } },
   });
   if (!documento || documento.modulo !== MODULO_FIRMAS_EXTERNAS || !documento.archivoNombre) return false;
   const firma = await prisma.firmaDocumento.findFirst({
@@ -389,6 +389,8 @@ async function enviarCopiaFirmaTemporal(documentoId: string, pdfVerificado?: Buf
     select: {
       nombreFirmante: true, rutFirmante: true, emailFirmante: true, firmadoAt: true,
       hashDocumento: true, tokenTrazabilidad: true, aceptoLectura: true,
+      firmaSvg: true, firmaTexto: true, correoValidadoAt: true,
+      ipFirma: true, userAgentFirma: true, createdAt: true,
     },
   });
   if (!firma?.emailFirmante || !firma.firmadoAt || !firma.aceptoLectura) return false;
@@ -401,40 +403,34 @@ async function enviarCopiaFirmaTemporal(documentoId: string, pdfVerificado?: Buf
   if (typeof metadata.sha256Original !== "string" || sha256(contenido) !== metadata.sha256Original) {
     throw new Error("Integridad de PDF inválida");
   }
-  const constancia = new jsPDF({ unit: "mm", format: "a4" });
-  const lines = [
-    "NEXTPREV | CONSTANCIA DE FIRMA ELECTRONICA SIMPLE",
-    "Documento: " + documento.nombre,
-    "Firmante: " + (firma.nombreFirmante || "-"),
-    "RUT: " + (firma.rutFirmante || "-"),
-    "Fecha firma (UTC): " + firma.firmadoAt.toISOString(),
-    "Lectura y consentimiento electronico: SI",
-    "SHA256 PDF original: " + (firma.hashDocumento || "-"),
-    "SHA256 evidencia: " + (firma.tokenTrazabilidad || "-"),
-    "El documento original no fue alterado.",
-    "No es una firma electronica avanzada.",
-    "Generado por NextPrev",
-  ];
-  constancia.setFont("helvetica", "normal");
-  constancia.setFontSize(10);
-  let y = 20;
-  for (const line of lines) {
-    const wrapped = constancia.splitTextToSize(line, 170) as string[];
-    constancia.text(wrapped, 18, y);
-    y += wrapped.length * 6 + 3;
-  }
+  const constancia = crearConstanciaFirmaSst({
+    empresa: documento.empresa.nombre,
+    rutEmpresa: documento.empresa.rut || "-",
+    titulo: documento.nombre, archivoOriginal: documento.archivoNombreOriginal || documento.nombre + ".pdf",
+    tipoEvidencia: String(metadata.tipoEvidencia || "otra"),
+    modalidadContrato: String(metadata.modalidadContrato || "-"),
+    fechaInicioContrato: String(metadata.fechaInicioContrato || "-"),
+    fechaTerminoContrato: String(metadata.fechaTerminoContrato || "-"),
+    nombreFirmante: firma.nombreFirmante || "-", rutFirmante: firma.rutFirmante || "-",
+    correoParticular: firma.emailFirmante, solicitadoAt: firma.createdAt,
+    firmadoAt: firma.firmadoAt, correoValidadoAt: firma.correoValidadoAt,
+    firmaImagen: firma.firmaSvg, firmaTexto: firma.firmaTexto,
+    hashDocumento: firma.hashDocumento || "", hashEvidencia: firma.tokenTrazabilidad || "",
+    ip: firma.ipFirma, userAgent: firma.userAgentFirma,
+    verificacionUrl: origenNextPrev() + "/verificar-firma/" + (firma.tokenTrazabilidad || ""),
+  });
   try {
-    await sendEmail({
+    const entrega = await sendEmail({
       to: firma.emailFirmante,
       subject: "NextPrev · Copia de documento de SST firmado: " + documento.nombre,
       html: '<div style="font-family:Arial,sans-serif;padding:24px"><h2>Documento firmado</h2><p>Se adjuntan el documento original y su constancia de firma electrónica simple.</p><p>Fecha de firma: ' + firma.firmadoAt.toISOString() + '</p><p>Generado por NextPrev</p></div>',
       text: "Se adjuntan el PDF original y la constancia de firma electrónica simple. Firma: " + firma.firmadoAt.toISOString(),
       attachments: [
         { filename: "documento-original.pdf", content: contenido.toString("base64"), contentType: "application/pdf" },
-        { filename: "constancia-firma-nextprev.pdf", content: Buffer.from(constancia.output("arraybuffer")).toString("base64"), contentType: "application/pdf" },
+        { filename: "constancia-firma-nextprev.pdf", content: constancia.toString("base64"), contentType: "application/pdf" },
       ],
     });
-    await agregarEventoDocumento(documento.id, "copia_firmada_enviada", firma.nombreFirmante, firma.emailFirmante, { copiaFirmadaEnviadaAt: new Date().toISOString() });
+    await agregarEventoDocumento(documento.id, "copia_firmada_enviada", firma.nombreFirmante, firma.emailFirmante, { copiaFirmadaEnviadaAt: new Date().toISOString(), copiaFirmadaProveedor: entrega.provider, copiaFirmadaMensajeId: entrega.messageId || null });
     return true;
   } catch {
     await agregarEventoDocumento(documento.id, "copia_firmada_pendiente", firma.nombreFirmante, "Error de envío al correo personal");
