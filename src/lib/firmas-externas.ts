@@ -33,13 +33,17 @@ function evento(tipo: string, actor: string | null, detalle?: string) {
 }
 
 async function agregarEventoDocumento(documentoId: string, tipo: string, actor: string | null, detalle?: string, extra?: Datos) {
-  const registro = await prisma.documentoGeneradoRegistro.findUnique({ where: { id: documentoId }, select: { metadata: true } });
+  const registro = await prisma.documentoGeneradoRegistro.findUnique({ where: { id: documentoId }, select: { metadata: true, empresaId: true } });
   if (!registro) return;
   const anterior = objeto(registro.metadata);
   const eventos = Array.isArray(anterior.eventos) ? anterior.eventos : [];
   await prisma.documentoGeneradoRegistro.update({
     where: { id: documentoId },
     data: { metadata: { ...anterior, ...extra, eventos: [...eventos, evento(tipo, actor, detalle)] } as Prisma.InputJsonValue },
+  });
+  await prisma.firmaSstEvento.create({
+    data: { empresaId: registro.empresaId, documentoId, tipo, actor, detalle: detalle?.slice(0, 500) || null,
+      hashEvidencia: typeof extra?.hashEvidencia === "string" ? extra.hashEvidencia : null },
   });
 }
 
@@ -337,6 +341,11 @@ export async function completarSolicitudFirmaExterna(input: {
     const registro = await tx.documentoGeneradoRegistro.findUnique({ where: { id: resuelta.documento.id }, select: { metadata: true } });
     const previo = objeto(registro?.metadata);
     const eventos = Array.isArray(previo.eventos) ? previo.eventos : [];
+    await tx.firmaSstEvento.create({ data: {
+      empresaId: resuelta.firma.empresaId, documentoId: resuelta.documento.id,
+      tipo: "firma_electronica_simple", actor: nombre, hashEvidencia: evidenciaHash,
+      detalle: "Correo particular validado por OTP; PDF original SHA-256 verificado",
+    }});
     await tx.documentoGeneradoRegistro.update({
       where: { id: resuelta.documento.id },
       data: { metadata: { ...previo, hashEvidencia: evidenciaHash, verificacionCorreo: { verificadoAt: ahora.toISOString(), metodo: "OTP correo particular", intentosFallidos: resuelta.firma.codigoFirmaIntentos }, consentimientoElectronico: { aceptadoAt: ahora.toISOString(), alcance: "gestion_firma_envio_documentacion_sst" }, eventos: [...eventos, evento("firmado", nombre, "Lectura, consentimiento electrónico, OTP correo particular e integridad SHA256 del PDF registrados")] } as Prisma.InputJsonValue },
