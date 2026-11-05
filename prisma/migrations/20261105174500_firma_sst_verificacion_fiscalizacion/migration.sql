@@ -50,3 +50,18 @@ CREATE INDEX "FiscalizacionFirmaEvento_documentoId_idx" ON "FiscalizacionFirmaEv
 ALTER TABLE "FiscalizacionFirmaEvento"
   ADD CONSTRAINT "FiscalizacionFirmaEvento_accesoId_fkey"
   FOREIGN KEY ("accesoId") REFERENCES "FiscalizacionFirmaAcceso"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- Eventos append-only de auditoría de firma SST.
+CREATE TABLE "FirmaSstEvento" (
+  "id" TEXT NOT NULL,
+  "empresaId" TEXT NOT NULL,
+  "documentoId" TEXT NOT NULL,
+  "tipo" TEXT NOT NULL,
+  "actor" TEXT,
+  "detalle" TEXT,
+  "hashEvidencia" TEXT,
+  "creadoAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "FirmaSstEvento_pkey" PRIMARY KEY ("id")
+);
+CREATE INDEX "FirmaSstEvento_empresaId_documentoId_creadoAt_idx" ON "FirmaSstEvento"("empresaId", "documentoId", "creadoAt");
+CREATE INDEX "FirmaSstEvento_tipo_creadoAt_idx" ON "FirmaSstEvento"("tipo", "creadoAt");
