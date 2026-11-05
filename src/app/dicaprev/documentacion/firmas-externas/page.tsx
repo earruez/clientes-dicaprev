@@ -3,10 +3,21 @@
 import { useCallback, useEffect, useState } from "react";
 import { FileSignature, FileText, Link2, RefreshCw, Send, ShieldCheck, XCircle } from "lucide-react";
 import {
-  listarFirmasExternas, reenviarFirmaExterna, revocarFirmaExterna,
+  listarFirmasExternas, listarTrabajadoresFirmaTemporal, reenviarFirmaExterna, revocarFirmaExterna,
 } from "@/actions/firmas-externas";
 
 type Solicitud = Awaited<ReturnType<typeof listarFirmasExternas>>[number];
+type Trabajador = Awaited<ReturnType<typeof listarTrabajadoresFirmaTemporal>>[number];
+const evidencias = [
+  { id: "irl", nombre: "Información de Riesgos Laborales (IRL)" },
+  { id: "extintores", nombre: "Capacitación uso y manejo de extintores" },
+  { id: "capacitacion_epp", nombre: "Capacitación teórica y práctica de EPP" },
+  { id: "entrega_epp", nombre: "Entrega de elementos de protección personal" },
+  { id: "reglamento", nombre: "Recepción de reglamento interno" },
+  { id: "procedimientos", nombre: "Difusión de procedimiento de trabajo seguro" },
+  { id: "miper", nombre: "Difusión de matriz de riesgos" },
+  { id: "otra", nombre: "Otra documentación SST" },
+] as const;
 
 const colorEstado: Record<string, string> = {
   pendiente: "bg-amber-50 text-amber-800",
@@ -29,6 +40,12 @@ function fecha(value: string | null) {
 
 export default function FirmasExternasPage() {
   const [filas, setFilas] = useState<Solicitud[]>([]);
+  const [trabajadores, setTrabajadores] = useState<Trabajador[]>([]);
+  const [trabajadorId, setTrabajadorId] = useState("");
+  const [modalidadContrato, setModalidadContrato] = useState<"Plazo Fijo" | "Por Obra">("Plazo Fijo");
+  const [fechaInicio, setFechaInicio] = useState("");
+  const [fechaTermino, setFechaTermino] = useState("");
+  const [tipoEvidencia, setTipoEvidencia] = useState<(typeof evidencias)[number]["id"]>("irl");
   const [archivo, setArchivo] = useState<File | null>(null);
   const [titulo, setTitulo] = useState("");
   const [nombre, setNombre] = useState("");
@@ -43,7 +60,9 @@ export default function FirmasExternasPage() {
 
   const cargar = useCallback(async () => {
     try {
-      setFilas(await listarFirmasExternas());
+      const [firmas, personas] = await Promise.all([listarFirmasExternas(), listarTrabajadoresFirmaTemporal()]);
+      setFilas(firmas);
+      setTrabajadores(personas);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo abrir la bandeja.");
@@ -66,12 +85,18 @@ export default function FirmasExternasPage() {
       datos.set("rutFirmante", rut.trim());
       datos.set("emailFirmante", correo.trim());
       datos.set("diasVigencia", String(dias));
+      datos.set("trabajadorId", trabajadorId);
+      datos.set("modalidadContrato", modalidadContrato);
+      datos.set("fechaInicio", fechaInicio);
+      datos.set("fechaTermino", fechaTermino);
+      datos.set("tipoEvidencia", tipoEvidencia);
       const respuesta = await fetch("/api/dicaprev/firmas-externas", { method: "POST", body: datos });
       const resultado = await respuesta.json() as { error?: string; aviso?: string; enlace?: string };
       if (!respuesta.ok) throw new Error(resultado.error || "No fue posible enviar el documento.");
       setAviso(resultado.aviso || "Solicitud creada.");
       setEnlace(resultado.enlace || "");
       setTitulo(""); setNombre(""); setRut(""); setCorreo(""); setArchivo(null); setDias(7);
+      setTrabajadorId(""); setFechaInicio(""); setFechaTermino(""); setTipoEvidencia("irl");
       const selector = document.getElementById("archivo-firma-externa") as HTMLInputElement | null;
       if (selector) selector.value = "";
       await cargar();
@@ -107,8 +132,8 @@ export default function FirmasExternasPage() {
     <div className="mx-auto max-w-6xl space-y-6 pb-12">
       <div className="rounded-3xl bg-gradient-to-r from-slate-900 to-sky-950 p-6 text-white md:p-8">
         <div className="flex items-center gap-3 text-sm font-medium text-sky-200"><FileSignature size={18} /> Documentación · Firma simple</div>
-        <h1 className="mt-2 text-2xl font-semibold md:text-3xl">Firmas de documentos externos</h1>
-        <p className="mt-2 max-w-3xl text-sm text-slate-200">Carga un PDF, solicita la firma de una persona externa y consulta su trazabilidad. El archivo original queda protegido y sin modificaciones.</p>
+        <h1 className="mt-2 text-2xl font-semibold md:text-3xl">Firmas SST · Personal temporal</h1>
+        <p className="mt-2 max-w-3xl text-sm text-slate-200">Documentos preventivos de personas contratadas directamente por la empresa por plazo fijo u obra/faena, incluso por pocos días. No corresponde a empresas contratistas.</p>
       </div>
 
       {error ? <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div> : null}
@@ -122,8 +147,39 @@ export default function FirmasExternasPage() {
       ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
-        <div className="mb-5 flex items-center gap-2"><Send size={18} className="text-emerald-700" /><h2 className="text-lg font-semibold text-slate-900">Nueva solicitud de firma</h2></div>
+        <div className="mb-5 flex items-center gap-2"><Send size={18} className="text-emerald-700" /><h2 className="text-lg font-semibold text-slate-900">Nueva solicitud de firma SST</h2></div>
+        <p className="mb-4 text-sm text-slate-600">Selecciona un trabajador registrado en <strong>Personas</strong>. Si falta, regístralo allí primero. El empleador es siempre la empresa activa en NextPrev.</p>
         <form onSubmit={(e) => void nuevaSolicitud(e)} className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <label className="space-y-1 text-sm font-medium text-slate-700">Trabajador contratado por la empresa
+            <select required value={trabajadorId} onChange={(e) => {
+              const id = e.target.value;
+              setTrabajadorId(id);
+              const t = trabajadores.find((x) => x.id === id);
+              setNombre(t?.nombre || "");
+              setRut(t?.rut || "");
+              setCorreo(t?.email || "");
+              if (t?.tipoContrato === "Por Obra" || t?.tipoContrato === "Plazo Fijo") setModalidadContrato(t.tipoContrato);
+            }} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
+              <option value="">Seleccionar trabajador</option>
+              {trabajadores.map((t) => <option key={t.id} value={t.id}>{t.nombre} · {t.rut} · {t.centroTrabajo}</option>)}
+            </select>
+          </label>
+          <label className="space-y-1 text-sm font-medium text-slate-700">Tipo de contrato laboral
+            <select required value={modalidadContrato} onChange={(e) => setModalidadContrato(e.target.value as "Plazo Fijo" | "Por Obra")} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
+              <option value="Plazo Fijo">Plazo fijo</option><option value="Por Obra">Por obra o faena</option>
+            </select>
+          </label>
+          <label className="space-y-1 text-sm font-medium text-slate-700">Inicio de contratación
+            <input required type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
+          </label>
+          <label className="space-y-1 text-sm font-medium text-slate-700">Término / fecha referencial de faena
+            <input required type="date" value={fechaTermino} onChange={(e) => setFechaTermino(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
+          </label>
+          <label className="space-y-1 text-sm font-medium text-slate-700 md:col-span-2">Tipo de documento de prevención
+            <select required value={tipoEvidencia} onChange={(e) => setTipoEvidencia(e.target.value as (typeof evidencias)[number]["id"])} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
+              {evidencias.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
+            </select>
+          </label>
           <label className="space-y-1 text-sm font-medium text-slate-700">Nombre del documento
             <input required maxLength={180} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej.: Declaración de recepción de antecedentes" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
           </label>
@@ -143,7 +199,7 @@ export default function FirmasExternasPage() {
             <input required type="number" min={1} max={30} value={dias} onChange={(e) => setDias(Number(e.target.value))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
           </label>
           <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2">
-            <p className="max-w-lg text-xs text-slate-500">El destinatario recibirá un enlace personal por correo. Podrá ver el PDF, aceptarlo y firmar desde teléfono o computador.</p>
+            <p className="max-w-lg text-xs text-slate-500">El trabajador recibirá el enlace en su correo personal. La firma registra recepción y aceptación del documento, pero no reemplaza las actividades prácticas presenciales ni el consentimiento para usar documentación electrónica.</p>
             <button disabled={!!ocupado || !archivo} type="submit" className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"><Send size={16} />{ocupado === "crear" ? "Guardando..." : "Enviar a firma"}</button>
           </div>
         </form>
@@ -166,6 +222,7 @@ export default function FirmasExternasPage() {
                   </div>
                   <p className="text-xs text-slate-600">{fila.nombreFirmante} · {fila.emailFirmante}</p>
                   <p className="text-xs text-slate-500">{fila.archivo} · Solicitado {fecha(fila.creadoAt)} · {fila.firmadoAt ? "Firmado " + fecha(fila.firmadoAt) : "Vence " + fecha(fila.expiraAt)}</p>
+                  <p className="text-xs text-slate-500">{evidencias.find((t) => t.id === fila.tipoEvidencia)?.nombre || "Documento SST"} · {fila.modalidadContrato} · {fila.fechaInicioContrato} al {fila.fechaTerminoContrato}</p>
                   <p className="font-mono text-[10px] text-slate-400" title="Huella SHA-256 del PDF original">SHA-256: {fila.hashOriginal || "—"}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
