@@ -1,4 +1,4 @@
-import { documentoContratistaPendienteValidacion, estadoVisibleRequisitoContratista, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
+import { documentoAprobadoConRevision, documentoPendienteRevisionMandante, estadoAuditableRequisito } from "@/lib/contratistas/requisitos";
 
 export type RequisitoInforme = {
   nombre: string;
@@ -12,14 +12,14 @@ export type RequisitoInforme = {
   fechaVencimiento: Date | string | null;
   vigenciaMeses: number | null;
   observacionRevision?: string | null;
+  revisadoAt?: Date | string | null;
+  revisadoPorId?: string | null;
 };
 
 export type EstadoAcreditacionDocumental = "Conforme documentalmente" | "Con observaciones" | "Pendiente de validación" | "Documentación incompleta";
 
 export function estadoInformeDocumento(d: RequisitoInforme): string {
-  return estadoVisibleRequisitoContratista(
-    d.estado, d.archivoNombre, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d),
-  );
+  return estadoAuditableRequisito(d);
 }
 
 export function resumenDocumentosInforme(docs: readonly RequisitoInforme[]) {
@@ -27,13 +27,13 @@ export function resumenDocumentosInforme(docs: readonly RequisitoInforme[]) {
   return {
     total: docs.length,
     cargados: docs.filter((d) => !!d.archivoNombre).length,
-    aprobados: docs.filter((d) => !!d.archivoNombre && estadoInformeDocumento(d) === "aprobado").length,
-    porValidar: docs.filter((d) => documentoContratistaPendienteValidacion(d.estado, d.archivoNombre)).length,
+    aprobados: docs.filter((d) => documentoAprobadoConRevision(d)).length,
+    porValidar: docs.filter((d) => documentoPendienteRevisionMandante(d)).length,
     observados: docs.filter((d) => ["observado", "rechazado"].includes(d.estado)).length,
     vencidos: docs.filter((d) => estadoInformeDocumento(d) === "vencido").length,
     sinArchivo: docs.filter((d) => !d.archivoNombre).length,
     obligatorios: obligatorios.length,
-    obligatoriosAprobados: obligatorios.filter((d) => !!d.archivoNombre && estadoInformeDocumento(d) === "aprobado").length,
+    obligatoriosAprobados: obligatorios.filter((d) => documentoAprobadoConRevision(d)).length,
   };
 }
 
@@ -41,7 +41,7 @@ export function resumenDocumentosInforme(docs: readonly RequisitoInforme[]) {
 export function estadoAcreditacionDocumental(docs: readonly RequisitoInforme[]): EstadoAcreditacionDocumental {
   const obligatorios = docs.filter((d) => d.obligatorio);
   if (!obligatorios.length) return "Documentación incompleta";
-  if (obligatorios.every((d) => d.archivoNombre && estadoInformeDocumento(d) === "aprobado")) return "Conforme documentalmente";
+  if (obligatorios.every((d) => documentoAprobadoConRevision(d))) return "Conforme documentalmente";
   if (obligatorios.some((d) => d.estado === "observado" || d.estado === "rechazado" || estadoInformeDocumento(d) === "vencido")) {
     return "Con observaciones";
   }
