@@ -48,6 +48,7 @@ export async function GET(request: Request) {
     modalidadContrato: String(meta.modalidadContrato || "-"),
     fechaInicioContrato: String(meta.fechaInicioContrato || "-"),
     fechaTerminoContrato: String(meta.fechaTerminoContrato || "-"),
+    actividadPresencial: meta.actividadPresencial ? JSON.stringify(meta.actividadPresencial) : undefined,
     nombreFirmante: firma.nombreFirmante || "-", rutFirmante: firma.rutFirmante || "-",
     correoParticular: firma.emailFirmante || "-", solicitadoAt: firma.createdAt,
     firmadoAt: firma.firmadoAt, correoValidadoAt: firma.correoValidadoAt,
