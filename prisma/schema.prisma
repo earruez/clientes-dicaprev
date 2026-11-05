@@ -2850,6 +2850,7 @@ model FiscalizacionFirmaAcceso {
   empresaId          String
   inspectorEmail     String
   inspectorNombre    String
+  inspectorRut       String
   creadoPorUsuarioId String
   activo             Boolean  @default(true)
   otpHash            String?
