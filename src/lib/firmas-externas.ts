@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { generarCodigoOtp, hashOtp, compararOtp, otpVigente, puedeReenviarOtp, validarFormatoCodigo, OTP_INTENTOS_MAX, OTP_VIGENCIA_MS } from "@/lib/firmas-sst/otp";
 import { jsPDF } from "jspdf";
 import type { Prisma } from "@prisma/client";
 import { headers } from "next/headers";
@@ -208,6 +209,7 @@ export async function resolverFirmaExterna(token: string) {
       id: true, empresaId: true, trabajadorId: true, emailFirmante: true, documentoId: true, documentoOrigen: true, tipoFirmante: true,
       estado: true, tituloDocumento: true, descripcion: true, nombreFirmante: true,
       rutFirmante: true, firmadoAt: true, expiresAt: true,
+      codigoFirmaHash: true, codigoFirmaEnviadoAt: true, codigoFirmaVenceAt: true, codigoFirmaIntentos: true,
     },
   });
   if (!firma || firma.documentoOrigen !== "otro" || firma.tipoFirmante !== "externo") return null;
@@ -246,10 +248,22 @@ export async function completarSolicitudFirmaExterna(input: {
   token: string; nombreFirmante: string; rutFirmante: string; aceptoLectura: boolean;
   firmaSvg?: string | null; firmaTexto?: string | null;
   aceptoEnvioElectronico: boolean;
+  codigoVerificacion: string;
 }) {
   const resuelta = await resolverFirmaExterna(input.token);
   if (!resuelta || resuelta.estado !== "pendiente") throw new Error("El enlace ya no está disponible.");
   if (!input.aceptoLectura) throw new Error("Debes confirmar la lectura y aceptación del documento.");
+  const codigo = (input.codigoVerificacion || "").trim();
+  if (!validarFormatoCodigo(codigo) || !otpVigente(resuelta.firma.codigoFirmaVenceAt, resuelta.firma.codigoFirmaIntentos)) {
+    throw new Error("Solicita un código vigente a tu correo particular antes de firmar.");
+  }
+  if (!compararOtp(resuelta.firma.codigoFirmaHash, hashOtp(resuelta.firma.id, codigo))) {
+    await prisma.firmaDocumento.updateMany({
+      where: { id: resuelta.firma.id, estado: "pendiente", codigoFirmaIntentos: { lt: OTP_INTENTOS_MAX } },
+      data: { codigoFirmaIntentos: { increment: 1 } },
+    });
+    throw new Error("Código incorrecto. Verifica tu correo; se permite un máximo de cinco intentos.");
+  }
   if (!input.aceptoEnvioElectronico) throw new Error("Debes aceptar expresamente la modalidad electrónica o solicitar el procedimiento en papel.");
   const nombre = (input.nombreFirmante || "").trim().slice(0, 160);
   const rut = (input.rutFirmante || "").trim();
@@ -276,12 +290,17 @@ export async function completarSolicitudFirmaExterna(input: {
     ahora.toISOString(), nombre, rut, sha256(trazo || texto)].join("|"));
   await prisma.$transaction(async (tx) => {
     const actualizado = await tx.firmaDocumento.updateMany({
-      where: { id: resuelta.firma.id, token: hashTokenFirmaExterna(input.token), estado: "pendiente", expiresAt: { gt: ahora } },
+      where: {
+        id: resuelta.firma.id, token: hashTokenFirmaExterna(input.token), estado: "pendiente",
+        expiresAt: { gt: ahora }, codigoFirmaHash: hashOtp(resuelta.firma.id, codigo),
+        codigoFirmaVenceAt: { gt: ahora }, codigoFirmaIntentos: { lt: OTP_INTENTOS_MAX },
+      },
       data: {
         estado: "firmado", nombreFirmante: nombre, rutFirmante: rut,
         aceptoLectura: true, firmaSvg: trazo || null, firmaTexto: texto || null,
         ipFirma: ip, userAgentFirma: userAgent, firmadoAt: ahora,
         hashDocumento: resuelta.hashOriginal, tokenTrazabilidad: evidenciaHash,
+        correoValidadoAt: ahora, codigoFirmaHash: null, codigoFirmaVenceAt: null,
       },
     });
     if (actualizado.count !== 1) throw new Error("Este documento ya fue firmado, revocado o venció.");
@@ -290,7 +309,7 @@ export async function completarSolicitudFirmaExterna(input: {
     const eventos = Array.isArray(previo.eventos) ? previo.eventos : [];
     await tx.documentoGeneradoRegistro.update({
       where: { id: resuelta.documento.id },
-      data: { metadata: { ...previo, hashEvidencia: evidenciaHash, consentimientoElectronico: { aceptadoAt: ahora.toISOString(), alcance: "gestion_firma_envio_documentacion_sst" }, eventos: [...eventos, evento("firmado", nombre, "Aceptación de lectura, modalidad electrónica, RUT e integridad del PDF registrados")] } as Prisma.InputJsonValue },
+      data: { metadata: { ...previo, hashEvidencia: evidenciaHash, verificacionCorreo: { verificadoAt: ahora.toISOString(), metodo: "OTP correo particular", intentosFallidos: resuelta.firma.codigoFirmaIntentos }, consentimientoElectronico: { aceptadoAt: ahora.toISOString(), alcance: "gestion_firma_envio_documentacion_sst" }, eventos: [...eventos, evento("firmado", nombre, "Lectura, consentimiento electrónico, OTP correo particular e integridad SHA256 del PDF registrados")] } as Prisma.InputJsonValue },
     });
   });
   // El vínculo se cierra primero. Si falla el correo se conserva la firma y su evidencia.
@@ -344,7 +363,7 @@ export async function reenviarSolicitudFirmaExterna(documentoId: string) {
   const vence = new Date(Date.now() + 7 * 86400000);
   const renovada = await prisma.firmaDocumento.updateMany({
     where: { id: firma.id, estado: { in: ["pendiente", "expirado", "rechazado"] } },
-    data: { token: hashTokenFirmaExterna(token), estado: "pendiente", expiresAt: vence, firmadoAt: null },
+    data: { token: hashTokenFirmaExterna(token), estado: "pendiente", expiresAt: vence, firmadoAt: null, codigoFirmaHash: null, codigoFirmaVenceAt: null, codigoFirmaEnviadoAt: null, codigoFirmaIntentos: 0 },
   });
   if (renovada.count !== 1) throw new Error("El documento cambió de estado y no puede reenviarse.");
   await agregarEventoDocumento(doc.id, "enlace_renovado", usuarioId, "Se invalidó el enlace anterior", { revocado: false });
@@ -433,4 +452,49 @@ export async function reenviarCopiaFirmadaTrabajadorTemporal(documentoId: string
   if (!documento) throw new Error("Documento SST no encontrado");
   const enviado = await enviarCopiaFirmaTemporal(documento.id);
   return { enviado };
+}
+
+/** Segundo factor obligatorio: el enlace no basta para firmar; hay que controlar el correo particular. */
+export async function solicitarCodigoFirmaTemporal(token: string) {
+  const resuelta = await resolverFirmaExterna(token);
+  if (!resuelta || resuelta.estado !== "pendiente" ||
+      !resuelta.firma.expiresAt || resuelta.firma.expiresAt.getTime() <= Date.now()) {
+    throw new Error("El enlace está vencido o no admite firmas.");
+  }
+  const firma = resuelta.firma;
+  if (!firma.emailFirmante) throw new Error("No existe un correo particular para verificar.");
+  if (!puedeReenviarOtp(firma.codigoFirmaEnviadoAt)) {
+    throw new Error("Espera un minuto antes de solicitar otro código.");
+  }
+  const codigo = generarCodigoOtp();
+  const ahora = new Date();
+  const guardado = await prisma.firmaDocumento.updateMany({
+    where: {
+      id: firma.id, estado: "pendiente", expiresAt: { gt: ahora },
+      ...(firma.codigoFirmaEnviadoAt ? { codigoFirmaEnviadoAt: { lte: new Date(ahora.getTime() - 60_000) } } : { codigoFirmaEnviadoAt: null }),
+    },
+    data: {
+      codigoFirmaHash: hashOtp(firma.id, codigo),
+      codigoFirmaEnviadoAt: ahora,
+      codigoFirmaVenceAt: new Date(ahora.getTime() + OTP_VIGENCIA_MS),
+      codigoFirmaIntentos: 0,
+    },
+  });
+  if (guardado.count !== 1) throw new Error("Espera un minuto antes de solicitar otro código.");
+  try {
+    await sendEmail({
+      to: firma.emailFirmante,
+      subject: "NextPrev · Código de verificación para firmar",
+      html: '<div style="font-family:Arial,sans-serif;max-width:560px;padding:24px"><h2>Verificación de identidad · NextPrev</h2><p>El código para confirmar la firma del documento <strong>' + escapado(firma.tituloDocumento) + '</strong> es:</p><div style="font-size:32px;font-weight:bold;letter-spacing:7px">' + codigo + '</div><p>Vence en 10 minutos. No compartas este código.</p><p>Si no solicitaste firmar, ignora el mensaje y comunícate con tu empleador.</p></div>',
+      text: "Tu código de verificación NextPrev es " + codigo + ". Vence en 10 minutos. No lo compartas.",
+    });
+  } catch {
+    await prisma.firmaDocumento.updateMany({
+      where: { id: firma.id, codigoFirmaHash: hashOtp(firma.id, codigo), estado: "pendiente" },
+      data: { codigoFirmaHash: null, codigoFirmaVenceAt: null, codigoFirmaEnviadoAt: null },
+    });
+    throw new Error("No fue posible enviar el código al correo particular. Solicita uno nuevo.");
+  }
+  await agregarEventoDocumento(resuelta.documento.id, "otp_enviado", null, "Desafío enviado al correo particular del firmante");
+  return { ok: true, venceEnMinutos: 10 };
 }
