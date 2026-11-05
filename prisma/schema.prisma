@@ -294,6 +294,7 @@ model Empresa {
   activacionEventos          ActivacionEvento[]
   firmasDocumento            FirmaDocumento[]
   firmasUsuarioPerfil        FirmaUsuarioPerfil[]
+  accesosFiscalizacionFirma   FiscalizacionFirmaAcceso[]
   inducciones                 InduccionTrabajador[]
   documentosInduccionGenerados DocumentoInduccionGenerado[]
   documentosGenerados         DocumentoGeneradoRegistro[]
@@ -1191,11 +1192,19 @@ model FirmaDocumento {
   rutFirmante     String?
   emailFirmante   String?
   aceptoLectura   Boolean              @default(false)
+  consentimientoElectronicoAt DateTime?
+  consentimientoIp String?
+  consentimientoUserAgent String?
   firmaSvg        String?
   firmaTexto      String?
   ipFirma         String?
   userAgentFirma  String?
   tokenTrazabilidad String?
+  codigoFirmaHash String?
+  codigoFirmaEnviadoAt DateTime?
+  codigoFirmaVenceAt DateTime?
+  codigoFirmaIntentos Int @default(0)
+  correoValidadoAt DateTime?
   hashDocumento   String?
   expiresAt       DateTime?
   firmadoAt       DateTime?
@@ -2835,4 +2844,60 @@ model ContratistaDocumentoVersion {
 
   @@unique([requisitoId, version])
   @@index([archivoNombre])
+}
+
+/** Credenciales de lectura de expedientes SST emitidas SOLO por el proveedor (SUPERADMIN).
+    No son usuarios o permisos controlados por la empresa fiscalizada. */
+model FiscalizacionFirmaAcceso {
+  id                 String   @id @default(cuid())
+  empresaId          String
+  inspectorEmail     String
+  inspectorNombre    String
+  inspectorRut       String
+  creadoPorUsuarioId String
+  activo             Boolean  @default(true)
+  otpHash            String?
+  otpEnviadoAt       DateTime?
+  otpVenceAt         DateTime?
+  otpIntentos        Int      @default(0)
+  creadoAt           DateTime @default(now())
+  actualizadoAt      DateTime @updatedAt
+
+  empresa Empresa @relation(fields: [empresaId], references: [id], onDelete: Cascade)
+  eventos FiscalizacionFirmaEvento[]
+
+  @@unique([empresaId, inspectorEmail])
+  @@index([inspectorEmail])
+  @@index([empresaId, activo])
+}
+
+model FiscalizacionFirmaEvento {
+  id             String @id @default(cuid())
+  accesoId       String
+  documentoId    String?
+  tipo           String
+  ip             String?
+  userAgent      String?
+  evidenciaHash  String?
+  creadoAt       DateTime @default(now())
+
+  acceso FiscalizacionFirmaAcceso @relation(fields: [accesoId], references: [id], onDelete: Restrict)
+
+  @@index([accesoId, creadoAt])
+  @@index([documentoId])
+}
+
+/** Registro de eventos SST independiente del JSON editable del documento. */
+model FirmaSstEvento {
+  id          String   @id @default(cuid())
+  empresaId   String
+  documentoId String
+  tipo        String
+  actor       String?
+  detalle     String?
+  hashEvidencia String?
+  creadoAt    DateTime @default(now())
+
+  @@index([empresaId, documentoId, creadoAt])
+  @@index([tipo, creadoAt])
 }

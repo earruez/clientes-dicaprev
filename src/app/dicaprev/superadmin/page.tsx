@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { requireRole } from "@/server/auth/permissions";
 import { getSuperadminData } from "./actions";
 import SuperadminClient from "./SuperadminClient";
@@ -27,6 +28,10 @@ export default async function SuperadminPage() {
         </p>
       </header>
 
+      <Link href="/dicaprev/superadmin/fiscalizacion" className="block rounded-xl border border-sky-200 bg-sky-50 px-5 py-4 text-sm font-semibold text-sky-900">
+        Administrar accesos independientes de fiscalización SST
+        <span className="ml-2 font-normal text-sky-700">Verificar identidad y habilitar inspectores</span>
+      </Link>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs text-slate-500">Total empresas</p>

@@ -50,6 +50,11 @@ export type FirmaPublicaView = {
   firmadoAt: string | null;
   expiresAt: string | null;
   contenidoMarkdown: string | null;
+  documentoExternoUrl?: string | null;
+  documentoHash?: string | null;
+  emailPersonal?: string | null;
+  esFirmaTemporal?: boolean;
+  consentimientoPreviamenteOtorgado?: boolean;
 };
 
 export type FirmaPrevencionistaPerfilInput = {

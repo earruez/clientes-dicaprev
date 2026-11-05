@@ -1,4 +1,5 @@
 import { getFirmaPorToken } from "@/actions/firmas";
+import { obtenerFirmaExternaPublica } from "@/lib/firmas-externas";
 import FirmaDocumentoClient from "./FirmaDocumentoClient";
 
 type PageProps = {
@@ -7,7 +8,7 @@ type PageProps = {
 
 export default async function FirmaDocumentoPage({ params }: PageProps) {
   const { token } = await params;
-  const firma = await getFirmaPorToken(token);
+  const firma = (await obtenerFirmaExternaPublica(token)) ?? (await getFirmaPorToken(token));
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#e8eefc_0%,_#f8fafc_42%,_#f8fafc_100%)] px-4 py-10 sm:px-6 lg:px-8">

@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { completarFirmaDocumento, type FirmaPublicaView } from "@/actions/firmas";
+import { completarFirmaExterna, rechazarFirmaExterna, solicitarCodigoFirmaExterna, registrarConsentimientoFirmaSst } from "@/actions/firmas-externas";
 
 type Props = {
   firma: FirmaPublicaView;
@@ -46,9 +47,19 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   const [firmaTexto, setFirmaTexto] = useState(firma.nombreFirmante ?? "");
   const [firmaTrazo, setFirmaTrazo] = useState<string | null>(null);
   const [aceptoLectura, setAceptoLectura] = useState(false);
+  const [aceptoEnvioElectronico, setAceptoEnvioElectronico] = useState(false);
+  const [consentido, setConsentido] = useState(!!firma.consentimientoPreviamenteOtorgado);
+  const [aceptandoModalidad, setAceptandoModalidad] = useState(false);
+  const [confirmoModalidad, setConfirmoModalidad] = useState(false);
+  const [codigoVerificacion, setCodigoVerificacion] = useState("");
+  const [otpEnviado, setOtpEnviado] = useState(false);
+  const [otpSolicitando, setOtpSolicitando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isRead, setIsRead] = useState(firma.estado !== "pendiente");
+  const [rechazo, setRechazo] = useState("");
+  const [rechazado, setRechazado] = useState(false);
+  const [finalizado, setFinalizado] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -64,8 +75,10 @@ export default function FirmaDocumentoClient({ firma }: Props) {
     }
   }, [firma.estado, firma.firmadoAt, mounted, success]);
 
-  const formDisabled = firma.estado !== "pendiente" || isPending;
-  const submitDisabled = formDisabled || !isRead || !aceptoLectura;
+  const esTemporal = !!firma.esFirmaTemporal;
+  const documentoExternoUrl = esTemporal && consentido ? "/api/firma/" + encodeURIComponent(firma.token) + "/archivo" : firma.documentoExternoUrl;
+  const formDisabled = firma.estado !== "pendiente" || isPending || finalizado || (esTemporal && !consentido);
+  const submitDisabled = formDisabled || !isRead || !aceptoLectura || (esTemporal && (!aceptoEnvioElectronico || !otpEnviado || !/^[0-9]{6}$/.test(codigoVerificacion)));
 
   const contenidoMarkdown = firma.contenidoMarkdown?.trim() ?? "";
   const contenidoLineas = contenidoMarkdown.length > 0 ? contenidoMarkdown.split("\n") : [];
@@ -138,6 +151,49 @@ export default function FirmaDocumentoClient({ firma }: Props) {
     setFirmaTrazo(null);
   }
 
+  async function solicitarOtp() {
+    if (!esTemporal || !consentido || otpSolicitando || isPending) return;
+    setOtpSolicitando(true);
+    setError(null);
+    try {
+      await solicitarCodigoFirmaExterna(firma.token);
+      setOtpEnviado(true);
+      setCodigoVerificacion("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No fue posible enviar el código.");
+    } finally {
+      setOtpSolicitando(false);
+    }
+  }
+
+  async function aceptarModalidad() {
+    if (!esTemporal || !confirmoModalidad || aceptandoModalidad) return;
+    setAceptandoModalidad(true);
+    setError(null);
+    try {
+      await registrarConsentimientoFirmaSst(firma.token, true);
+      setConsentido(true);
+      setAceptoEnvioElectronico(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo guardar el consentimiento.");
+    } finally {
+      setAceptandoModalidad(false);
+    }
+  }
+
+  async function pedirPapel() {
+    if (!esTemporal || aceptandoModalidad) return;
+    setAceptandoModalidad(true); setError(null);
+    try {
+      await rechazarFirmaExterna(firma.token, "Solicito que la documentación laboral SST me sea entregada en soporte de papel. No acepto la modalidad electrónica.");
+      setRechazado(true); setFinalizado(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo registrar la solicitud en papel.");
+    } finally {
+      setAceptandoModalidad(false);
+    }
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -145,18 +201,37 @@ export default function FirmaDocumentoClient({ firma }: Props) {
 
     startTransition(async () => {
       try {
-        const result = await completarFirmaDocumento({
-          token: firma.token,
-          nombreFirmante,
-          rutFirmante,
-          aceptoLectura,
-          firmaSvg: firmaTrazo,
-          firmaTexto,
-        });
+        const result = esTemporal
+          ? await completarFirmaExterna({
+              token: firma.token, nombreFirmante, rutFirmante, aceptoLectura,
+              aceptoEnvioElectronico, codigoVerificacion, firmaSvg: firmaTrazo, firmaTexto,
+            })
+          : await completarFirmaDocumento({
+              token: firma.token, nombreFirmante, rutFirmante, aceptoLectura,
+              firmaSvg: firmaTrazo, firmaTexto,
+            });
 
-        setSuccess(`Documento firmado correctamente el ${formatFechaHoraCl(result.firmadoAt) ?? result.firmadoAt}.`);
+        setSuccess(`Documento firmado correctamente el ${formatFechaHoraCl(result.firmadoAt) ?? result.firmadoAt}.` +
+          ("copiaEnviada" in result && result.copiaEnviada
+            ? " Se envió copia del PDF y la constancia a tu correo particular."
+            : "copiaEnviada" in result ? " La copia queda pendiente de envío; comunícate con el empleador." : ""));
+        setFinalizado(true);
       } catch (submitError) {
         setError(submitError instanceof Error ? submitError.message : "No fue posible completar la firma.");
+      }
+    });
+  }
+
+  function handleRechazo() {
+    if (!esTemporal || !rechazo.trim()) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        await rechazarFirmaExterna(firma.token, rechazo);
+        setRechazado(true);
+        setFinalizado(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo registrar el rechazo.");
       }
     });
   }
@@ -183,6 +258,47 @@ export default function FirmaDocumentoClient({ firma }: Props) {
             </span>
           ) : null}
         </div>
+
+        {esTemporal && !consentido && firma.estado === "pendiente" && !finalizado ? (
+          <div className="space-y-4 rounded-2xl border border-sky-200 bg-sky-50 p-5">
+            <h2 className="text-lg font-semibold text-slate-900">Consentimiento previo a documentación electrónica</h2>
+            <p className="text-sm text-slate-700">Antes de consultar y firmar este documento, confirma si aceptas voluntariamente que tu empleador gestione, firme y te remita documentación laboral de seguridad y salud por medios electrónicos al correo particular {firma.emailPersonal || "registrado"}.</p>
+            <p className="text-sm text-slate-700">Si no aceptas, puedes solicitar la documentación en papel. El uso de tu teléfono personal no es obligatorio y debe contar con autorización y condiciones acordadas con el empleador.</p>
+            <label className="flex items-start gap-3 text-sm text-slate-800">
+              <Checkbox checked={confirmoModalidad} onCheckedChange={(v)=>setConfirmoModalidad(v===true)} disabled={aceptandoModalidad}/>
+              <span>Acepto expresamente, antes de abrir el documento, la confección, firma, tratamiento y envío electrónico de documentación SST, y confirmo que el correo indicado es particular.</span>
+            </label>
+            <div className="flex flex-wrap gap-3">
+              <Button type="button" disabled={!confirmoModalidad || aceptandoModalidad} onClick={() => void aceptarModalidad()}>
+                {aceptandoModalidad ? "Guardando..." : "Acepto y continúo"}
+              </Button>
+              <Button type="button" variant="outline" disabled={aceptandoModalidad} onClick={() => void pedirPapel()}>
+                Solicitar entrega en papel
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        {documentoExternoUrl ? (
+          <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50 p-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Documento original que vas a firmar</p>
+              <p className="text-xs text-slate-600">Revisa el PDF completo antes de confirmar. El archivo original se conservará sin cambios.</p>
+            </div>
+            <iframe
+              title="Vista previa del documento PDF"
+              src={documentoExternoUrl}
+              className="h-[460px] w-full rounded-xl border border-slate-200 bg-white"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <a href={documentoExternoUrl || "#"} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-sky-700 underline">Abrir PDF en otra pestaña</a>
+              <Button type="button" variant="outline" disabled={formDisabled} onClick={() => setIsRead(true)}>
+                {isRead ? "Lectura confirmada" : "He revisado el PDF"}
+              </Button>
+            </div>
+            {firma.documentoHash ? <p className="break-all font-mono text-[10px] text-slate-500">SHA-256 del PDF: {firma.documentoHash}</p> : null}
+          </div>
+        ) : null}
 
         {contenidoLineas.length > 0 ? (
           <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -224,7 +340,19 @@ export default function FirmaDocumentoClient({ firma }: Props) {
           </div>
         ) : null}
 
-        {firma.estado === "pendiente" ? (
+        {finalizado && success && !rechazado ? (
+          <div role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{success}</div>
+        ) : null}
+
+        {rechazado ? (
+          <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">Rechazo registrado. El enlace ya no admite una firma.</div>
+        ) : null}
+
+        {firma.estado === "rechazado" ? (
+          <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">Esta solicitud fue rechazada.</div>
+        ) : null}
+
+        {firma.estado === "pendiente" && !finalizado && (!esTemporal || consentido) ? (
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -294,6 +422,31 @@ export default function FirmaDocumentoClient({ firma }: Props) {
               <span>Declaro haber leído el documento completo y acepto su contenido.</span>
             </label>
 
+            {esTemporal ? (
+              <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Verificación del correo particular</p>
+                <p className="text-xs text-slate-600">Para firmar necesitas un código de seis dígitos que se enviará a {firma.emailPersonal || "tu correo particular"}. Vence en diez minutos y admite cinco intentos.</p>
+                <Button type="button" variant="outline" disabled={formDisabled || otpSolicitando} onClick={() => void solicitarOtp()}>
+                  {otpSolicitando ? "Enviando código..." : otpEnviado ? "Solicitar nuevo código" : "Enviar código de verificación"}
+                </Button>
+                {otpEnviado ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="codigo-firma-temporal">Código recibido por correo</Label>
+                    <Input id="codigo-firma-temporal" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6}
+                      value={codigoVerificacion} onChange={(e) => setCodigoVerificacion(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000" disabled={formDisabled} />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {esTemporal ? (
+              <label className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700">
+                <Checkbox checked={aceptoEnvioElectronico} onCheckedChange={(v) => setAceptoEnvioElectronico(v === true)} disabled={formDisabled} />
+                <span>Acepto expresamente la firma y entrega de este documento laboral por medios electrónicos y confirmo que <strong>{firma.emailPersonal || "el correo indicado"}</strong> es mi correo particular para recibir mi copia. Puedo solicitar a mi empleador documentación en papel si no acepto esta modalidad.</span>
+              </label>
+            ) : null}
+
             {!isRead ? (
               <p className="text-xs text-amber-700">
                 Debes leer el documento completo antes de habilitar la firma.
@@ -308,6 +461,13 @@ export default function FirmaDocumentoClient({ firma }: Props) {
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
             ) : null}
 
+            {esTemporal ? (
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <Label htmlFor="rechazo-firma">¿No corresponde firmar este documento?</Label>
+                <textarea id="rechazo-firma" value={rechazo} onChange={(e) => setRechazo(e.target.value)} maxLength={600} rows={2} placeholder="Motivo del rechazo" className="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm" />
+                <Button type="button" variant="outline" onClick={handleRechazo} disabled={formDisabled || rechazo.trim().length < 5} className="border-rose-200 text-rose-700">Rechazar documento</Button>
+              </div>
+            ) : null}
             <Button type="submit" className="w-full rounded-xl bg-slate-900 text-white hover:bg-slate-800" disabled={submitDisabled}>
               {isPending ? "Firmando..." : !isRead ? "Lee el documento para firmar" : !aceptoLectura ? "Acepta la lectura para firmar" : "Firmar documento"}
             </Button>
