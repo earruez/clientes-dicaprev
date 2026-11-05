@@ -12,7 +12,7 @@ import { validarRutChile } from "@/lib/rut";
 import { requirePermission } from "@/server/auth/permissions";
 
 export const MODULO_FIRMAS_EXTERNAS = "firmas_externas";
-const DIAS_MAXIMOS = 30;
+const DIAS_MAXIMOS = 7;
 
 type Datos = Record<string, unknown>;
 
@@ -69,6 +69,10 @@ export async function crearSolicitudFirmaExterna(input: {
   fechaInicio: string;
   fechaTermino: string;
   tipoEvidencia: "irl" | "extintores" | "capacitacion_epp" | "entrega_epp" | "reglamento" | "procedimientos" | "miper" | "otra";
+  actividadPresencialConfirmada: boolean;
+  fechaActividad: string;
+  lugarActividad: string;
+  responsableActividad: string;
   archivo: File;
 }) {
   const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
@@ -91,6 +95,17 @@ export async function crearSolicitudFirmaExterna(input: {
   }
   const tipos = ["irl", "extintores", "capacitacion_epp", "entrega_epp", "reglamento", "procedimientos", "miper", "otra"];
   if (!tipos.includes(input.tipoEvidencia)) throw new Error("Selecciona el tipo de documento SST.");
+  // Las actividades prácticas son presenciales; la firma solo acredita la constancia documental.
+  const requierePresencial = ["extintores", "capacitacion_epp", "entrega_epp"].includes(input.tipoEvidencia);
+  const lugarActividad = input.lugarActividad?.trim().slice(0, 180) || "";
+  const responsableActividad = input.responsableActividad?.trim().slice(0, 160) || "";
+  const fechaActividad = input.fechaActividad?.trim() || "";
+  if (requierePresencial && (!input.actividadPresencialConfirmada || !lugarActividad || !responsableActividad ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(fechaActividad) ||
+      fechaActividad < input.fechaInicio || fechaActividad > input.fechaTermino ||
+      fechaActividad > new Date().toISOString().slice(0, 10))) {
+    throw new Error("La capacitación o entrega presencial debe estar efectivamente realizada. Registra fecha, lugar y responsable dentro del contrato.");
+  }
   const titulo = (input.titulo || "").trim().slice(0, 180);
   const nombre = (input.nombreFirmante || "").trim().slice(0, 160);
   const rut = (input.rutFirmante || "").trim().slice(0, 20);
@@ -101,6 +116,9 @@ export async function crearSolicitudFirmaExterna(input: {
   const rutRegistro = (trabajador.rut || "").replace(/[^0-9K]/gi, "").toUpperCase();
   if (!rutRegistro || rut.replace(/[^0-9K]/gi, "").toUpperCase() !== rutRegistro) {
     throw new Error("El RUT debe coincidir con el trabajador registrado en Personas.");
+  }
+  if (!trabajador.email || trabajador.email.trim().toLowerCase() !== email) {
+    throw new Error("El correo particular debe coincidir con el registrado en Personas. Corrige primero su ficha.");
   }
   const dias = Number(input.diasVigencia);
   if (!Number.isInteger(dias) || dias < 1 || dias > DIAS_MAXIMOS) {
@@ -118,7 +136,11 @@ export async function crearSolicitudFirmaExterna(input: {
   const hashOriginal = sha256(buffer);
   const almacenado = await subirArchivoContratista(empresaId, input.archivo);
   const token = generarTokenFirma();
-  const vence = new Date(Date.now() + dias * 86400000);
+  // El enlace no debe mantenerse firmable después del término del contrato temporal.
+  const finContrato = Date.parse(input.fechaTermino + "T23:59:59Z");
+  const limite = Math.min(Date.now() + dias * 86400000, finContrato);
+  if (limite <= Date.now()) throw new Error("El contrato ya terminó; no puedes generar una nueva firma de acreditación previa.");
+  const vence = new Date(limite);
   const registro = await prisma.$transaction(async (tx) => {
     const doc = await tx.documentoGeneradoRegistro.create({
       data: {
@@ -133,6 +155,10 @@ export async function crearSolicitudFirmaExterna(input: {
           fechaInicioContrato: input.fechaInicio, fechaTerminoContrato: input.fechaTermino,
           trabajadorId: trabajador.id,
           tipoRelacion: "dependiente_temporal",
+          ...(requierePresencial ? {
+            actividadPresencial: { fecha: fechaActividad, lugar: lugarActividad,
+              responsable: responsableActividad, declaradaRealizada: true },
+          } : {}),
           eventos: [evento("creado", usuarioId, "Documento de SST vinculado a trabajador temporal de la empresa")],
         },
       },
@@ -364,7 +390,12 @@ export async function reenviarSolicitudFirmaExterna(documentoId: string) {
   if (!firma || firma.estado === "firmado") throw new Error("Un documento firmado no puede volver a enviarse.");
   if (!firma.emailFirmante || !firma.nombreFirmante) throw new Error("Faltan los datos del destinatario.");
   const token = generarTokenFirma();
-  const vence = new Date(Date.now() + 7 * 86400000);
+  const documentoOrigen = await prisma.documentoGeneradoRegistro.findUnique({ where: { id: doc.id }, select: { metadata: true } });
+  const metaAnterior = objeto(documentoOrigen?.metadata);
+  const finContrato = Date.parse(String(metaAnterior.fechaTerminoContrato || "") + "T23:59:59Z");
+  const limite = Math.min(Date.now() + 7 * 86400000, finContrato);
+  if (!Number.isFinite(limite) || limite <= Date.now()) throw new Error("El período de contratación ya terminó; no corresponde renovar firmas de acreditación.");
+  const vence = new Date(limite);
   const renovada = await prisma.firmaDocumento.updateMany({
     where: { id: firma.id, estado: { in: ["pendiente", "expirado", "rechazado"] } },
     data: { token: hashTokenFirmaExterna(token), estado: "pendiente", expiresAt: vence, firmadoAt: null, consentimientoElectronicoAt: null, consentimientoIp: null, consentimientoUserAgent: null, codigoFirmaHash: null, codigoFirmaVenceAt: null, codigoFirmaEnviadoAt: null, codigoFirmaIntentos: 0 },
