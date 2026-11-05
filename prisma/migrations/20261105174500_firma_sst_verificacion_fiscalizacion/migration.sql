@@ -11,6 +11,7 @@ CREATE TABLE "FiscalizacionFirmaAcceso" (
   "empresaId" TEXT NOT NULL,
   "inspectorEmail" TEXT NOT NULL,
   "inspectorNombre" TEXT NOT NULL,
+  "inspectorRut" TEXT NOT NULL,
   "creadoPorUsuarioId" TEXT NOT NULL,
   "activo" BOOLEAN NOT NULL DEFAULT true,
   "otpHash" TEXT,
