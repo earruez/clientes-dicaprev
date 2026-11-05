@@ -210,6 +210,7 @@ export async function resolverFirmaExterna(token: string) {
       estado: true, tituloDocumento: true, descripcion: true, nombreFirmante: true,
       rutFirmante: true, firmadoAt: true, expiresAt: true,
       codigoFirmaHash: true, codigoFirmaEnviadoAt: true, codigoFirmaVenceAt: true, codigoFirmaIntentos: true,
+      consentimientoElectronicoAt: true,
     },
   });
   if (!firma || firma.documentoOrigen !== "otro" || firma.tipoFirmante !== "externo") return null;
@@ -238,8 +239,10 @@ export async function obtenerFirmaExternaPublica(token: string) {
     nombreTrabajador: null, rutTrabajador: null, nombreFirmante: firma.nombreFirmante,
     rutFirmante: firma.rutFirmante, firmadoAt: firma.firmadoAt?.toISOString() || null,
     expiresAt: firma.expiresAt?.toISOString() || null, contenidoMarkdown: null,
-    documentoExternoUrl: (estado === "pendiente" || estado === "firmado") ? "/api/firma/" + token + "/archivo" : null,
+    documentoExternoUrl: (estado === "pendiente" || estado === "firmado") && !!firma.consentimientoElectronicoAt ? "/api/firma/" + token + "/archivo" : null,
     emailPersonal: firma.emailFirmante || null,
+    esFirmaTemporal: true,
+    consentimientoPreviamenteOtorgado: !!firma.consentimientoElectronicoAt,
     documentoHash: hashOriginal,
   };
 }
@@ -264,7 +267,7 @@ export async function completarSolicitudFirmaExterna(input: {
     });
     throw new Error("Código incorrecto. Verifica tu correo; se permite un máximo de cinco intentos.");
   }
-  if (!input.aceptoEnvioElectronico) throw new Error("Debes aceptar expresamente la modalidad electrónica o solicitar el procedimiento en papel.");
+  if (!input.aceptoEnvioElectronico || !resuelta.firma.consentimientoElectronicoAt) throw new Error("Debes otorgar tu consentimiento previo a la modalidad electrónica o solicitar soporte papel.");
   const nombre = (input.nombreFirmante || "").trim().slice(0, 160);
   const rut = (input.rutFirmante || "").trim();
   const trazo = (input.firmaSvg || "").trim();
@@ -292,6 +295,7 @@ export async function completarSolicitudFirmaExterna(input: {
     const actualizado = await tx.firmaDocumento.updateMany({
       where: {
         id: resuelta.firma.id, token: hashTokenFirmaExterna(input.token), estado: "pendiente",
+        consentimientoElectronicoAt: { not: null },
         expiresAt: { gt: ahora }, codigoFirmaHash: hashOtp(resuelta.firma.id, codigo),
         codigoFirmaVenceAt: { gt: ahora }, codigoFirmaIntentos: { lt: OTP_INTENTOS_MAX },
       },
@@ -363,7 +367,7 @@ export async function reenviarSolicitudFirmaExterna(documentoId: string) {
   const vence = new Date(Date.now() + 7 * 86400000);
   const renovada = await prisma.firmaDocumento.updateMany({
     where: { id: firma.id, estado: { in: ["pendiente", "expirado", "rechazado"] } },
-    data: { token: hashTokenFirmaExterna(token), estado: "pendiente", expiresAt: vence, firmadoAt: null, codigoFirmaHash: null, codigoFirmaVenceAt: null, codigoFirmaEnviadoAt: null, codigoFirmaIntentos: 0 },
+    data: { token: hashTokenFirmaExterna(token), estado: "pendiente", expiresAt: vence, firmadoAt: null, consentimientoElectronicoAt: null, consentimientoIp: null, consentimientoUserAgent: null, codigoFirmaHash: null, codigoFirmaVenceAt: null, codigoFirmaEnviadoAt: null, codigoFirmaIntentos: 0 },
   });
   if (renovada.count !== 1) throw new Error("El documento cambió de estado y no puede reenviarse.");
   await agregarEventoDocumento(doc.id, "enlace_renovado", usuarioId, "Se invalidó el enlace anterior", { revocado: false });
@@ -458,6 +462,7 @@ export async function solicitarCodigoFirmaTemporal(token: string) {
     throw new Error("El enlace está vencido o no admite firmas.");
   }
   const firma = resuelta.firma;
+  if (!firma.consentimientoElectronicoAt) throw new Error("Debes aceptar primero el tratamiento y envío electrónico.");
   if (!firma.emailFirmante) throw new Error("No existe un correo particular para verificar.");
   if (!puedeReenviarOtp(firma.codigoFirmaEnviadoAt)) {
     throw new Error("Espera un minuto antes de solicitar otro código.");
@@ -493,4 +498,30 @@ export async function solicitarCodigoFirmaTemporal(token: string) {
   }
   await agregarEventoDocumento(resuelta.documento.id, "otp_enviado", null, "Desafío enviado al correo particular del firmante");
   return { ok: true, venceEnMinutos: 10 };
+}
+
+/** El consentimiento se registra antes de permitir acceso al PDF o solicitar OTP. */
+export async function aceptarModalidadElectronicaSst(token: string, confirma: boolean) {
+  if (confirma !== true) throw new Error("No se ha aceptado la modalidad electrónica.");
+  const resuelta = await resolverFirmaExterna(token);
+  if (!resuelta || resuelta.estado !== "pendiente") throw new Error("El enlace no admite consentimiento.");
+  if (resuelta.firma.consentimientoElectronicoAt) return { ok: true };
+  const h = await headers();
+  const ahora = new Date();
+  const actualizado = await prisma.firmaDocumento.updateMany({
+    where: {
+      id: resuelta.firma.id, token: hashTokenFirmaExterna(token), estado: "pendiente",
+      expiresAt: { gt: ahora }, consentimientoElectronicoAt: null,
+    },
+    data: {
+      consentimientoElectronicoAt: ahora,
+      consentimientoIp: (h.get("x-forwarded-for") || "").split(",")[0].trim().slice(0, 64) || null,
+      consentimientoUserAgent: h.get("user-agent")?.slice(0, 350) || null,
+    },
+  });
+  if (actualizado.count === 1) {
+    await agregarEventoDocumento(resuelta.documento.id, "consentimiento_previo", resuelta.firma.nombreFirmante,
+      "Aceptó gestión, firma y entrega electrónica en su correo particular antes de recibir el PDF; opción papel disponible.");
+  }
+  return { ok: true };
 }
