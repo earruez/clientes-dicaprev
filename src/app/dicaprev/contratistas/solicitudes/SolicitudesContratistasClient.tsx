@@ -230,6 +230,16 @@ export default function SolicitudesContratistasClient() {
                             <p className="break-words text-sm font-medium text-slate-900">{d.nombre}</p>
                             {d.recurso && <p className="text-xs text-slate-500">{d.recurso.nombre} · {d.recurso.patente || d.recurso.identificador || "Sin identificador"}</p>}
                             <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(vencimientoEfectivoRequisito(d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)))} · Versión {d.version}{vigenciaMesesRequisito(d) ? ` · Vigencia máxima ${vigenciaMesesRequisito(d)} meses` : ""}{d.condicional ? " · Si aplica" : ""}</p>
+                            {documentoAprobadoConRevision(d) && (
+                              <p className="mt-1 text-xs font-medium text-emerald-800">
+                                Aprobado por la mandante el {fechaCorta(d.revisadoAt)}.
+                              </p>
+                            )}
+                            {d.estado === "aprobado" && !documentoAprobadoConRevision(d) && d.archivoNombre && (
+                              <p className="mt-1 text-xs font-medium text-amber-800">
+                                Este registro figura como aprobado, pero no tiene una revisión comprobable de esta obra. Requiere validación.
+                              </p>
+                            )}
                           </div>
                           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${CLASES[estado] || CLASES.pendiente}`}>{!d.archivoNombre ? "Sin cargar" : ESTADOS_DOC[estado] || estado}</span>
                         </div>
