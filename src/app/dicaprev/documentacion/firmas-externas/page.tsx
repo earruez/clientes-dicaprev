@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FileSignature, FileText, Link2, RefreshCw, Send, ShieldCheck, XCircle } from "lucide-react";
 import {
-  listarFirmasExternas, listarTrabajadoresFirmaTemporal, reenviarFirmaExterna, revocarFirmaExterna,
+  listarFirmasExternas, listarTrabajadoresFirmaTemporal, reenviarFirmaExterna, revocarFirmaExterna, reenviarCopiaFirmadaTemporal,
 } from "@/actions/firmas-externas";
 
 type Solicitud = Awaited<ReturnType<typeof listarFirmasExternas>>[number];
@@ -107,12 +107,15 @@ export default function FirmasExternasPage() {
     }
   }
 
-  async function ejecutar(id: string, accion: "reenviar" | "revocar") {
+  async function ejecutar(id: string, accion: "reenviar" | "revocar" | "copia") {
     if (ocupado) return;
     if (accion === "revocar" && !window.confirm("¿Revocar el enlace de firma? El destinatario ya no podrá usarlo.")) return;
     setOcupado(id); setError(""); setAviso(""); setEnlace("");
     try {
-      if (accion === "revocar") {
+      if (accion === "copia") {
+        const resultado = await reenviarCopiaFirmadaTemporal(id);
+        setAviso(resultado.enviado ? "Copia y constancia enviadas al correo particular del trabajador." : "No se pudo entregar la copia. Revisa el correo configurado.");
+      } else if (accion === "revocar") {
         await revocarFirmaExterna(id);
         setAviso("El enlace quedó revocado.");
       } else {
@@ -228,6 +231,9 @@ export default function FirmasExternasPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   {fila.archivoNombre ? (
                     <a href={"/api/dicaprev/documentacion/archivo/" + encodeURIComponent(fila.archivoNombre)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">PDF original</a>
+                  ) : null}
+                  {fila.certificadoDisponible ? (
+                    <button type="button" disabled={!!ocupado} onClick={() => void ejecutar(fila.id, "copia")} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Reenviar copia al trabajador</button>
                   ) : null}
                   {fila.certificadoDisponible ? (
                     <a className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800" href={"/api/dicaprev/firmas-externas/constancia?id=" + encodeURIComponent(fila.id)}><ShieldCheck size={15} /> Constancia PDF</a>
