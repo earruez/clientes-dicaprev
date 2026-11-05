@@ -9,6 +9,7 @@ export type DatosConstanciaSst = {
   modalidadContrato: string;
   fechaInicioContrato: string;
   fechaTerminoContrato: string;
+  actividadPresencial?: string;
   nombreFirmante: string;
   rutFirmante: string;
   correoParticular: string;
@@ -59,6 +60,7 @@ export function crearConstanciaFirmaSst(d: DatosConstanciaSst): Buffer {
   campo("Documento", d.titulo + " (" + d.tipoEvidencia + ")");
   campo("Archivo original", d.archivoOriginal);
   campo("Contrato y periodo", d.modalidadContrato + " | " + d.fechaInicioContrato + " a " + d.fechaTerminoContrato);
+  if (d.actividadPresencial) campo("Registro de actividad presencial informada por el empleador", d.actividadPresencial);
   campo("Trabajador / RUT", d.nombreFirmante + " | " + d.rutFirmante);
   campo("Correo particular de copia", d.correoParticular);
   campo("Solicitud", d.solicitadoAt.toISOString());
