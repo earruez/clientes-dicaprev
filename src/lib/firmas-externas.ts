@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 import { generarCodigoOtp, hashOtp, compararOtp, otpVigente, puedeReenviarOtp, validarFormatoCodigo, OTP_INTENTOS_MAX, OTP_VIGENCIA_MS } from "@/lib/firmas-sst/otp";
 import { crearConstanciaFirmaSst } from "@/lib/firmas-sst/constancia";
-import { fechaIsoValida, finDiaChile } from "@/lib/firmas-sst/fechas";
+import { fechaIsoValida, finDiaChile, hoyChile } from "@/lib/firmas-sst/fechas";
 import type { Prisma } from "@prisma/client";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -112,7 +112,7 @@ export async function crearSolicitudFirmaExterna(input: {
   if (requierePresencial && (!input.actividadPresencialConfirmada || !lugarActividad || !responsableActividad ||
       !fechaIsoValida(fechaActividad) ||
       fechaActividad < input.fechaInicio || fechaActividad > input.fechaTermino ||
-      fechaActividad > new Date().toISOString().slice(0, 10))) {
+      fechaActividad > hoyChile())) {
     throw new Error("La capacitación o entrega presencial debe estar efectivamente realizada. Registra fecha, lugar y responsable dentro del contrato.");
   }
   const titulo = (input.titulo || "").trim().slice(0, 180);
