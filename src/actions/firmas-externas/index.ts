@@ -9,6 +9,7 @@ import {
   completarSolicitudFirmaExterna,
   rechazarSolicitudFirmaExterna,
   reenviarCopiaFirmadaTrabajadorTemporal,
+  solicitarCodigoFirmaTemporal,
 } from "@/lib/firmas-externas";
 
 export async function listarFirmasExternas() {
@@ -26,6 +27,7 @@ export async function reenviarFirmaExterna(documentoId: string) {
 export async function completarFirmaExterna(input: {
   token: string; nombreFirmante: string; rutFirmante: string; aceptoLectura: boolean;
   firmaSvg?: string | null; firmaTexto?: string | null; aceptoEnvioElectronico: boolean;
+  codigoVerificacion: string;
 }) {
   return completarSolicitudFirmaExterna(input);
 }
@@ -58,4 +60,8 @@ export async function listarTrabajadoresFirmaTemporal() {
 
 export async function reenviarCopiaFirmadaTemporal(documentoId: string) {
   return reenviarCopiaFirmadaTrabajadorTemporal(documentoId);
+}
+
+export async function solicitarCodigoFirmaExterna(token: string) {
+  return solicitarCodigoFirmaTemporal(token);
 }
