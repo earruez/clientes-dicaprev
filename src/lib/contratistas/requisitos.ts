@@ -103,6 +103,7 @@ export type RequisitoRevisionMandante = {
   archivoNombre?: string | null;
   revisadoAt?: Date | string | null;
   revisadoPorId?: string | null;
+  createdAt?: Date | string | null;
   fechaVencimiento: Date | string | null;
   fechaEmision?: Date | string | null;
   vigenciaMeses?: number | null;
@@ -111,8 +112,15 @@ export type RequisitoRevisionMandante = {
 };
 
 export function documentoAprobadoConRevision(r: RequisitoRevisionMandante): boolean {
-  return !!r.archivoNombre && !!r.revisadoAt && !!r.revisadoPorId &&
-    estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado";
+  if (!r.archivoNombre || !r.revisadoAt || !r.revisadoPorId) return false;
+  const fechaRevision = new Date(r.revisadoAt).getTime();
+  if (!Number.isFinite(fechaRevision)) return false;
+  // Una aprobación histórica de otra obra no acredita automáticamente esta solicitud.
+  if (r.createdAt) {
+    const fechaRequisito = new Date(r.createdAt).getTime();
+    if (!Number.isFinite(fechaRequisito) || fechaRevision < fechaRequisito) return false;
+  }
+  return estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado";
 }
 
 /**
