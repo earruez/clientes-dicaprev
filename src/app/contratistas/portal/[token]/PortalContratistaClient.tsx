@@ -263,7 +263,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
         <div>
           <h5 className="text-sm font-bold text-slate-900">{r.archivoNombre ? "Cargar una nueva versión" : "Adjuntar documento"}</h5>
           <p className="mt-1 text-xs font-medium text-slate-700"><strong>Formatos permitidos:</strong> {ARCHIVOS_PORTAL_FORMATOS}.</p>
-          <p className="mt-1 text-xs font-medium text-slate-700"><strong>Tamaño máximo:</strong> 4 MB por archivo ({(MAX_ARCHIVO_PORTAL_BYTES / 1024 / 1024).toFixed(0)} MB). No se aceptan archivos vacíos.</p>
+          <p className="mt-1 text-xs font-medium text-slate-700"><strong>Tamaño máximo:</strong> {(MAX_ARCHIVO_PORTAL_BYTES / 1024 / 1024).toFixed(0)} MB por archivo. No se aceptan archivos vacíos.</p>
         </div>
         <label className={"relative group flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition " + (archivo[r.id] ? "border-emerald-400 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/30")}>
           <span className={"flex h-10 w-10 items-center justify-center rounded-xl " + (archivo[r.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600")}>{archivo[r.id] ? <Check className="h-5 w-5"/> : <CloudUpload className="h-5 w-5"/>}</span>
@@ -277,7 +277,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
           }}/>
         </label>
         {archivo[r.id] && !validarArchivoPortal(archivo[r.id]) ? (
-          <p role="status" className="flex items-center gap-2 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-4 w-4" /> Archivo válido: {formatDocumentoPeso(archivo[r.id]!.size)} de 4 MB permitidos.</p>
+          <p role="status" className="flex items-center gap-2 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-4 w-4" /> Archivo válido: {formatDocumentoPeso(archivo[r.id]!.size)} de {(MAX_ARCHIVO_PORTAL_BYTES / 1024 / 1024).toFixed(0)} MB permitidos.</p>
         ) : null}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de emisión o entrega <span className="font-normal text-slate-400">{r.vigenciaMeses ? "(obligatoria para validar vigencia)" : "(si aplica)"}</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.emision} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, emision: e.target.value } }))}/></label>
