@@ -286,10 +286,11 @@ export async function reenviarSolicitudFirmaExterna(documentoId: string) {
   if (!firma.emailFirmante || !firma.nombreFirmante) throw new Error("Faltan los datos del destinatario.");
   const token = generarTokenFirma();
   const vence = new Date(Date.now() + 7 * 86400000);
-  await prisma.firmaDocumento.update({
-    where: { id: firma.id },
+  const renovada = await prisma.firmaDocumento.updateMany({
+    where: { id: firma.id, estado: { in: ["pendiente", "expirado", "rechazado"] } },
     data: { token: hashTokenFirmaExterna(token), estado: "pendiente", expiresAt: vence, firmadoAt: null },
   });
+  if (renovada.count !== 1) throw new Error("El documento cambió de estado y no puede reenviarse.");
   await agregarEventoDocumento(doc.id, "enlace_renovado", usuarioId, "Se invalidó el enlace anterior", { revocado: false });
   let enviado = false;
   try {
