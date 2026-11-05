@@ -1,5 +1,8 @@
 -- Firma SST: segundo factor y acceso independiente de fiscalización
 ALTER TABLE "FirmaDocumento"
+  ADD COLUMN "consentimientoElectronicoAt" TIMESTAMP(3),
+  ADD COLUMN "consentimientoIp" TEXT,
+  ADD COLUMN "consentimientoUserAgent" TEXT,
   ADD COLUMN "codigoFirmaHash" TEXT,
   ADD COLUMN "codigoFirmaEnviadoAt" TIMESTAMP(3),
   ADD COLUMN "codigoFirmaVenceAt" TIMESTAMP(3),
