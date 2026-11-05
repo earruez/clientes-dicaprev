@@ -1,6 +1,7 @@
 import { createHash } from "crypto";
 import { generarCodigoOtp, hashOtp, compararOtp, otpVigente, puedeReenviarOtp, validarFormatoCodigo, OTP_INTENTOS_MAX, OTP_VIGENCIA_MS } from "@/lib/firmas-sst/otp";
 import { crearConstanciaFirmaSst } from "@/lib/firmas-sst/constancia";
+import { fechaIsoValida, finDiaChile } from "@/lib/firmas-sst/fechas";
 import type { Prisma } from "@prisma/client";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
@@ -95,7 +96,7 @@ export async function crearSolicitudFirmaExterna(input: {
   }
   const fechaInicio = new Date(input.fechaInicio + "T12:00:00Z");
   const fechaTermino = new Date(input.fechaTermino + "T12:00:00Z");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.fechaInicio) || !/^\d{4}-\d{2}-\d{2}$/.test(input.fechaTermino) ||
+  if (!fechaIsoValida(input.fechaInicio) || !fechaIsoValida(input.fechaTermino) ||
       Number.isNaN(fechaInicio.getTime()) || Number.isNaN(fechaTermino.getTime()) ||
       fechaTermino.getTime() < fechaInicio.getTime() ||
       fechaTermino.getTime() - fechaInicio.getTime() >= 7 * 86400000) {
@@ -109,7 +110,7 @@ export async function crearSolicitudFirmaExterna(input: {
   const responsableActividad = input.responsableActividad?.trim().slice(0, 160) || "";
   const fechaActividad = input.fechaActividad?.trim() || "";
   if (requierePresencial && (!input.actividadPresencialConfirmada || !lugarActividad || !responsableActividad ||
-      !/^\d{4}-\d{2}-\d{2}$/.test(fechaActividad) ||
+      !fechaIsoValida(fechaActividad) ||
       fechaActividad < input.fechaInicio || fechaActividad > input.fechaTermino ||
       fechaActividad > new Date().toISOString().slice(0, 10))) {
     throw new Error("La capacitación o entrega presencial debe estar efectivamente realizada. Registra fecha, lugar y responsable dentro del contrato.");
@@ -145,7 +146,7 @@ export async function crearSolicitudFirmaExterna(input: {
   const almacenado = await subirArchivoContratista(empresaId, input.archivo);
   const token = generarTokenFirma();
   // El enlace no debe mantenerse firmable después del término del contrato temporal.
-  const finContrato = Date.parse(input.fechaTermino + "T23:59:59Z");
+  const finContrato = finDiaChile(input.fechaTermino).getTime();
   const limite = Math.min(Date.now() + dias * 86400000, finContrato);
   if (limite <= Date.now()) throw new Error("El contrato ya terminó; no puedes generar una nueva firma de acreditación previa.");
   const vence = new Date(limite);
@@ -412,7 +413,7 @@ export async function reenviarSolicitudFirmaExterna(documentoId: string) {
   const token = generarTokenFirma();
   const documentoOrigen = await prisma.documentoGeneradoRegistro.findUnique({ where: { id: doc.id }, select: { metadata: true } });
   const metaAnterior = objeto(documentoOrigen?.metadata);
-  const finContrato = Date.parse(String(metaAnterior.fechaTerminoContrato || "") + "T23:59:59Z");
+  const finContrato = finDiaChile(String(metaAnterior.fechaTerminoContrato || "")).getTime();
   const limite = Math.min(Date.now() + 7 * 86400000, finContrato);
   if (!Number.isFinite(limite) || limite <= Date.now()) throw new Error("El período de contratación ya terminó; no corresponde renovar firmas de acreditación.");
   const vence = new Date(limite);
