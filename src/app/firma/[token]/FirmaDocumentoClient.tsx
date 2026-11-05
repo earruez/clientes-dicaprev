@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { completarFirmaDocumento, type FirmaPublicaView } from "@/actions/firmas";
+import { completarFirmaExterna, rechazarFirmaExterna } from "@/actions/firmas-externas";
 
 type Props = {
   firma: FirmaPublicaView;
@@ -49,6 +50,9 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isRead, setIsRead] = useState(firma.estado !== "pendiente");
+  const [rechazo, setRechazo] = useState("");
+  const [rechazado, setRechazado] = useState(false);
+  const [finalizado, setFinalizado] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -64,7 +68,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
     }
   }, [firma.estado, firma.firmadoAt, mounted, success]);
 
-  const formDisabled = firma.estado !== "pendiente" || isPending;
+  const formDisabled = firma.estado !== "pendiente" || isPending || finalizado;
   const submitDisabled = formDisabled || !isRead || !aceptoLectura;
 
   const contenidoMarkdown = firma.contenidoMarkdown?.trim() ?? "";
@@ -145,7 +149,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
 
     startTransition(async () => {
       try {
-        const result = await completarFirmaDocumento({
+        const result = await (firma.documentoExternoUrl ? completarFirmaExterna : completarFirmaDocumento)({
           token: firma.token,
           nombreFirmante,
           rutFirmante,
@@ -155,8 +159,23 @@ export default function FirmaDocumentoClient({ firma }: Props) {
         });
 
         setSuccess(`Documento firmado correctamente el ${formatFechaHoraCl(result.firmadoAt) ?? result.firmadoAt}.`);
+        setFinalizado(true);
       } catch (submitError) {
         setError(submitError instanceof Error ? submitError.message : "No fue posible completar la firma.");
+      }
+    });
+  }
+
+  function handleRechazo() {
+    if (!firma.documentoExternoUrl || !rechazo.trim()) return;
+    setError(null);
+    startTransition(async () => {
+      try {
+        await rechazarFirmaExterna(firma.token, rechazo);
+        setRechazado(true);
+        setFinalizado(true);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo registrar el rechazo.");
       }
     });
   }
@@ -183,6 +202,27 @@ export default function FirmaDocumentoClient({ firma }: Props) {
             </span>
           ) : null}
         </div>
+
+        {firma.documentoExternoUrl ? (
+          <div className="space-y-3 rounded-2xl border border-sky-200 bg-sky-50 p-4">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Documento original que vas a firmar</p>
+              <p className="text-xs text-slate-600">Revisa el PDF completo antes de confirmar. El archivo original se conservará sin cambios.</p>
+            </div>
+            <iframe
+              title="Vista previa del documento PDF"
+              src={firma.documentoExternoUrl}
+              className="h-[460px] w-full rounded-xl border border-slate-200 bg-white"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <a href={firma.documentoExternoUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-sky-700 underline">Abrir PDF en otra pestaña</a>
+              <Button type="button" variant="outline" disabled={formDisabled} onClick={() => setIsRead(true)}>
+                {isRead ? "Lectura confirmada" : "He revisado el PDF"}
+              </Button>
+            </div>
+            {firma.documentoHash ? <p className="break-all font-mono text-[10px] text-slate-500">SHA-256 del PDF: {firma.documentoHash}</p> : null}
+          </div>
+        ) : null}
 
         {contenidoLineas.length > 0 ? (
           <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -224,7 +264,15 @@ export default function FirmaDocumentoClient({ firma }: Props) {
           </div>
         ) : null}
 
-        {firma.estado === "pendiente" ? (
+        {rechazado ? (
+          <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">Rechazo registrado. El enlace ya no admite una firma.</div>
+        ) : null}
+
+        {firma.estado === "rechazado" ? (
+          <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800">Esta solicitud fue rechazada.</div>
+        ) : null}
+
+        {firma.estado === "pendiente" && !finalizado ? (
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -308,6 +356,13 @@ export default function FirmaDocumentoClient({ firma }: Props) {
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
             ) : null}
 
+            {firma.documentoExternoUrl ? (
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <Label htmlFor="rechazo-firma">¿No corresponde firmar este documento?</Label>
+                <textarea id="rechazo-firma" value={rechazo} onChange={(e) => setRechazo(e.target.value)} maxLength={600} rows={2} placeholder="Motivo del rechazo" className="w-full rounded-lg border border-slate-200 bg-white p-2 text-sm" />
+                <Button type="button" variant="outline" onClick={handleRechazo} disabled={formDisabled || rechazo.trim().length < 5} className="border-rose-200 text-rose-700">Rechazar documento</Button>
+              </div>
+            ) : null}
             <Button type="submit" className="w-full rounded-xl bg-slate-900 text-white hover:bg-slate-800" disabled={submitDisabled}>
               {isPending ? "Firmando..." : !isRead ? "Lee el documento para firmar" : !aceptoLectura ? "Acepta la lectura para firmar" : "Firmar documento"}
             </Button>
