@@ -13,7 +13,7 @@ import {
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
   invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista, enviarInformeAcreditacionContratista,
 } from "@/actions/contratistas/solicitudes";
-import { documentoContratistaPendienteValidacion, documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoAuditableRequisito, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
+import { documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoAuditableRequisito, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
