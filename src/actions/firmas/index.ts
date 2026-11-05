@@ -53,6 +53,8 @@ export type FirmaPublicaView = {
   documentoExternoUrl?: string | null;
   documentoHash?: string | null;
   emailPersonal?: string | null;
+  esFirmaTemporal?: boolean;
+  consentimientoPreviamenteOtorgado?: boolean;
 };
 
 export type FirmaPrevencionistaPerfilInput = {
