@@ -46,6 +46,10 @@ export default function FirmasExternasPage() {
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaTermino, setFechaTermino] = useState("");
   const [tipoEvidencia, setTipoEvidencia] = useState<(typeof evidencias)[number]["id"]>("irl");
+  const [actividadPresencialConfirmada, setActividadPresencialConfirmada] = useState(false);
+  const [fechaActividad, setFechaActividad] = useState("");
+  const [lugarActividad, setLugarActividad] = useState("");
+  const [responsableActividad, setResponsableActividad] = useState("");
   const [archivo, setArchivo] = useState<File | null>(null);
   const [titulo, setTitulo] = useState("");
   const [nombre, setNombre] = useState("");
@@ -90,6 +94,10 @@ export default function FirmasExternasPage() {
       datos.set("fechaInicio", fechaInicio);
       datos.set("fechaTermino", fechaTermino);
       datos.set("tipoEvidencia", tipoEvidencia);
+      datos.set("actividadPresencialConfirmada", actividadPresencialConfirmada ? "true" : "false");
+      datos.set("fechaActividad", fechaActividad);
+      datos.set("lugarActividad", lugarActividad);
+      datos.set("responsableActividad", responsableActividad);
       const respuesta = await fetch("/api/dicaprev/firmas-externas", { method: "POST", body: datos });
       const resultado = await respuesta.json() as { error?: string; aviso?: string; enlace?: string };
       if (!respuesta.ok) throw new Error(resultado.error || "No fue posible enviar el documento.");
@@ -97,6 +105,7 @@ export default function FirmasExternasPage() {
       setEnlace(resultado.enlace || "");
       setTitulo(""); setNombre(""); setRut(""); setCorreo(""); setArchivo(null); setDias(7);
       setTrabajadorId(""); setFechaInicio(""); setFechaTermino(""); setTipoEvidencia("irl");
+      setActividadPresencialConfirmada(false); setFechaActividad(""); setLugarActividad(""); setResponsableActividad("");
       const selector = document.getElementById("archivo-firma-externa") as HTMLInputElement | null;
       if (selector) selector.value = "";
       await cargar();
@@ -183,6 +192,25 @@ export default function FirmasExternasPage() {
               {evidencias.map((t) => <option key={t.id} value={t.id}>{t.nombre}</option>)}
             </select>
           </label>
+          {(["extintores", "capacitacion_epp", "entrega_epp"] as string[]).includes(tipoEvidencia) ? (
+            <div className="grid gap-4 rounded-xl border border-amber-200 bg-amber-50 p-4 md:col-span-2 md:grid-cols-2">
+              <p className="text-sm font-semibold text-amber-900 md:col-span-2">Registro de actividad o entrega realmente efectuada</p>
+              <p className="text-xs text-amber-800 md:col-span-2">La firma remota no reemplaza la práctica presencial, asistencia ni recepción real. Completa estos antecedentes una vez ejecutada la actividad.</p>
+              <label className="text-sm text-slate-700">Fecha de actividad presencial
+                <input required type="date" value={fechaActividad} onChange={(e)=>setFechaActividad(e.target.value)} className="mt-1 block w-full rounded-lg border p-3" />
+              </label>
+              <label className="text-sm text-slate-700">Lugar / faena
+                <input required maxLength={180} value={lugarActividad} onChange={(e)=>setLugarActividad(e.target.value)} className="mt-1 block w-full rounded-lg border p-3" />
+              </label>
+              <label className="text-sm text-slate-700 md:col-span-2">Responsable de la capacitación o entrega
+                <input required maxLength={160} value={responsableActividad} onChange={(e)=>setResponsableActividad(e.target.value)} className="mt-1 block w-full rounded-lg border p-3" />
+              </label>
+              <label className="flex items-start gap-3 text-sm text-slate-700 md:col-span-2">
+                <input required type="checkbox" checked={actividadPresencialConfirmada} onChange={(e)=>setActividadPresencialConfirmada(e.target.checked)} />
+                <span>Confirmo que la actividad o entrega se realizó efectivamente en la fecha y lugar señalados y que el PDF contiene la evidencia correspondiente.</span>
+              </label>
+            </div>
+          ) : null}
           <label className="space-y-1 text-sm font-medium text-slate-700">Nombre del documento
             <input required maxLength={180} value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ej.: Declaración de recepción de antecedentes" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
           </label>
@@ -196,10 +224,10 @@ export default function FirmasExternasPage() {
             <input required value={rut} onChange={(e) => setRut(e.target.value)} placeholder="12.345.678-9" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
           </label>
           <label className="space-y-1 text-sm font-medium text-slate-700">Correo del firmante
-            <input required type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="persona@empresa.cl" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
+            <input required type="email" value={correo} onChange={(e) => setCorreo(e.target.value)} placeholder="correo.particular@gmail.com" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
           </label>
           <label className="space-y-1 text-sm font-medium text-slate-700">Vigencia del enlace (días)
-            <input required type="number" min={1} max={30} value={dias} onChange={(e) => setDias(Number(e.target.value))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
+            <input required type="number" min={1} max={7} value={dias} onChange={(e) => setDias(Number(e.target.value))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
           </label>
           <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2">
             <p className="max-w-lg text-xs text-slate-500">El trabajador recibirá el enlace en su correo personal. La firma registra recepción y aceptación del documento, pero no reemplaza las actividades prácticas presenciales ni el consentimiento para usar documentación electrónica.</p>
@@ -234,6 +262,9 @@ export default function FirmasExternasPage() {
                   ) : null}
                   {fila.certificadoDisponible ? (
                     <button type="button" disabled={!!ocupado} onClick={() => void ejecutar(fila.id, "copia")} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">Reenviar copia al trabajador</button>
+                  ) : null}
+                  {fila.certificadoDisponible ? (
+                    <a href={"/api/dicaprev/firmas-externas/expediente?id=" + encodeURIComponent(fila.id)} className="rounded-lg border border-sky-200 px-3 py-2 text-xs font-semibold text-sky-900">Expediente ZIP para mandante</a>
                   ) : null}
                   {fila.certificadoDisponible ? (
                     <a className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800" href={"/api/dicaprev/firmas-externas/constancia?id=" + encodeURIComponent(fila.id)}><ShieldCheck size={15} /> Constancia PDF</a>
