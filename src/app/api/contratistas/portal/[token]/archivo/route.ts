@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { descargarArchivoContratista, subirArchivoContratista } from "@/lib/contratistas/archivos";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
 import { vencimientoMaximoPorMeses, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
+import { validarArchivoPortal, validarFechasPortal } from "@/lib/contratistas/validacion-carga";
 
 type Context = { params: Promise<{ token: string }> };
 
@@ -24,20 +25,20 @@ export async function POST(request: Request, { params }: Context) {
     if (typeof requisitoId !== "string" || !(archivo instanceof File)) {
       return NextResponse.json({ error: "Selecciona un documento y su archivo" }, { status: 400 });
     }
-    if (archivo.size > 4 * 1024 * 1024) {
-      return NextResponse.json({ error: "El archivo no debe superar 4 MB" }, { status: 400 });
-    }
+    const errorArchivo = validarArchivoPortal(archivo);
+    if (errorArchivo) return NextResponse.json({ error: errorArchivo }, { status: 400 });
     const requisito = await prisma.contratistaRequisito.findFirst({
       where: { id: requisitoId, solicitudId: s.id, empresaId: s.empresaId },
       select: { id: true, version: true, vigenciaMeses: true, nombre: true, categoria: true },
     });
     if (!requisito) return NextResponse.json({ error: "Requisito no encontrado" }, { status: 404 });
-    const emision = fecha(data.get("fechaEmision"));
-    let vencimiento = fecha(data.get("fechaVencimiento"));
     const vigenciaMeses = vigenciaMesesRequisito(requisito);
-    if (vigenciaMeses && !emision) {
-      return NextResponse.json({ error: "Indica la fecha de entrega para comprobar la vigencia máxima del documento" }, { status: 400 });
-    }
+    const fechaEmision = typeof data.get("fechaEmision") === "string" ? String(data.get("fechaEmision")) : "";
+    const fechaVencimiento = typeof data.get("fechaVencimiento") === "string" ? String(data.get("fechaVencimiento")) : "";
+    const errorFechas = validarFechasPortal({ emision: fechaEmision, vencimiento: fechaVencimiento, vigenciaMeses });
+    if (errorFechas) return NextResponse.json({ error: errorFechas }, { status: 400 });
+    const emision = fecha(fechaEmision);
+    let vencimiento = fecha(fechaVencimiento);
     const maximo = vencimientoMaximoPorMeses(emision, vigenciaMeses);
     if (maximo && (!vencimiento || vencimiento > maximo)) vencimiento = maximo;
     if (emision && vencimiento && emision > vencimiento) {
