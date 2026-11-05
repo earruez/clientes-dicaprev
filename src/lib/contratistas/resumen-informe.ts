@@ -14,6 +14,7 @@ export type RequisitoInforme = {
   observacionRevision?: string | null;
   revisadoAt?: Date | string | null;
   revisadoPorId?: string | null;
+  createdAt?: Date | string | null;
 };
 
 export type EstadoAcreditacionDocumental = "Conforme documentalmente" | "Con observaciones" | "Pendiente de validación" | "Documentación incompleta";
