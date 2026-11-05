@@ -169,6 +169,9 @@ export default function FirmasExternasPage() {
                   <p className="font-mono text-[10px] text-slate-400" title="Huella SHA-256 del PDF original">SHA-256: {fila.hashOriginal || "—"}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {fila.archivoNombre ? (
+                    <a href={"/api/dicaprev/documentacion/archivo/" + encodeURIComponent(fila.archivoNombre)} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">PDF original</a>
+                  ) : null}
                   {fila.certificadoDisponible ? (
                     <a className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold text-emerald-800" href={"/api/dicaprev/firmas-externas/constancia?id=" + encodeURIComponent(fila.id)}><ShieldCheck size={15} /> Constancia PDF</a>
                   ) : null}
