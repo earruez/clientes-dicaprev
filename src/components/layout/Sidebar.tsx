@@ -197,6 +197,7 @@ const MODULES: ModuleItem[] = [
       { href: "/dicaprev/auditoria", label: "Auditoría" },
       { href: "/dicaprev/notificaciones", label: "Notificaciones" },
       { href: "/dicaprev/documentacion/firmas", label: "Firma prevencionista" },
+      { href: "/dicaprev/documentacion/firmas-externas", label: "Firmas externas", permission: "canReadDocumentacion" },
     ],
   },
   {
