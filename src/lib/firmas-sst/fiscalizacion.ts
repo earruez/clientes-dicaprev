@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/server/auth/permissions";
 import { sendEmail } from "@/lib/email/send-email";
+import { origenNextPrev } from "@/lib/contratistas/portal";
 import {
   generarCodigoOtp, hashOtp, compararOtp, otpVigente, puedeReenviarOtp,
   OTP_VIGENCIA_MS, OTP_INTENTOS_MAX, validarFormatoCodigo,
@@ -76,12 +77,25 @@ export async function otorgarAccesoFiscalizacion(input: { empresaId: string; ins
   }
   const empresa = await prisma.empresa.findUnique({ where: { id: input.empresaId }, select: { id: true, nombre: true, rut: true } });
   if (!empresa?.rut) throw new Error("Empresa no encontrada o sin RUT para consulta DT.");
-  await prisma.fiscalizacionFirmaAcceso.upsert({
+  const concedido = await prisma.fiscalizacionFirmaAcceso.upsert({
     where: { empresaId_inspectorEmail: { empresaId: empresa.id, inspectorEmail: email } },
     update: { inspectorNombre: nombre, inspectorRut: rutInspector, activo: true, otpHash: null, otpIntentos: 0, creadoPorUsuarioId: context.usuarioId },
     create: { empresaId: empresa.id, inspectorEmail: email, inspectorNombre: nombre, inspectorRut: rutInspector, creadoPorUsuarioId: context.usuarioId },
   });
-  return { ok: true };
+  await auditoria(concedido.id, "habilitado_proveedor");
+  let correoEnviado = false;
+  try {
+    await sendEmail({
+      to: email, subject: "NextPrev · Habilitación de consulta documental SST",
+      html: '<div style="font-family:Arial;padding:24px"><h2>Acceso de fiscalización NextPrev</h2><p>Se habilitó tu correo para consultar documentación SST de ' + empresa.nombre.replace(/[<>&]/g, "") + '.</p><p>Ingresa con el RUT del empleador a <a href="' + origenNextPrev() + '/fiscalizacion/firmas">Portal de fiscalización</a> y solicita un código de un solo uso.</p><p>Si no has solicitado acceso, comunícate con el proveedor de NextPrev.</p></div>',
+      text: "Acceso habilitado para la documentación SST de " + empresa.nombre + ". Portal: " + origenNextPrev() + "/fiscalizacion/firmas",
+    });
+    correoEnviado = true;
+    await auditoria(concedido.id, "invitacion_fiscalizador_enviada");
+  } catch {
+    await auditoria(concedido.id, "invitacion_fiscalizador_pendiente");
+  }
+  return { ok: true, correoEnviado };
 }
 export async function listarAccesosFiscalizacion() {
   await requireRole("SUPERADMIN");
