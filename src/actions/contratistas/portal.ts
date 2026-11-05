@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
-import { REQUISITOS_RECURSO, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
+import { REQUISITOS_RECURSO, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, vigenciaMesesRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
 import { formatRutChile, validarRutChile } from "@/lib/rut";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
@@ -19,7 +19,7 @@ function requisitosParaNuevoRecurso(
     const regla = tipo === "trabajador" ? reglas.find((r) => nombreNormal(r.nombre) === nombreNormal(d.nombre)) : undefined;
     return {
       nombre: d.nombre, categoria: d.categoria, obligatorio: regla?.obligatorio ?? d.obligatorio,
-      reglaTrabajadorId: regla?.id || null, vigenciaMeses: regla?.vigenciaMeses || null,
+      reglaTrabajadorId: regla?.id || null, vigenciaMeses: vigenciaMesesRequisito({ ...d, vigenciaMeses: regla?.vigenciaMeses }),
       condicional: regla?.condicional || false,
     };
   });
@@ -32,7 +32,7 @@ function requisitosParaNuevoRecurso(
     return true;
   }).map((r) => ({
     nombre: r.nombre, categoria: "trabajador", obligatorio: r.obligatorio, reglaTrabajadorId: r.id,
-    vigenciaMeses: r.vigenciaMeses, condicional: r.condicional,
+    vigenciaMeses: vigenciaMesesRequisito({ ...r, categoria: "trabajador" }), condicional: r.condicional,
   }));
   return [...basicos, ...adicionales];
 }
@@ -69,7 +69,15 @@ export async function obtenerPortalContratista(token: string) {
     nombre: s.nombre, faena: s.faena, servicio: s.servicio,
     estado: s.estado, contactoEmail: s.contactoEmail, empresaMandante: empresa?.nombre || "Empresa mandante",
     contratista: s.contratista, recursos: s.recursos, recursosBase,
-    requisitos: s.requisitos.map((r) => ({ ...r, fechaVencimiento: vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses), estadoEfectivo: estadoVisibleRequisitoContratista(r.estado, r.archivoNombre, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) })),
+    requisitos: s.requisitos.map((r) => {
+      const vigenciaMeses = vigenciaMesesRequisito(r);
+      return {
+        ...r,
+        vigenciaMeses,
+        fechaVencimiento: vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, vigenciaMeses),
+        estadoEfectivo: estadoVisibleRequisitoContratista(r.estado, r.archivoNombre, r.fechaVencimiento, r.fechaEmision, vigenciaMeses),
+      };
+    }),
   };
 }
 
