@@ -214,7 +214,7 @@ export async function listarSolicitudesFirmaExterna() {
     orderBy: { createdAt: "desc" },
     select: {
       id: true, documentoId: true, estado: true, nombreFirmante: true, rutFirmante: true,
-      emailFirmante: true, expiresAt: true, firmadoAt: true, tokenTrazabilidad: true,
+      emailFirmante: true, expiresAt: true, firmadoAt: true, tokenTrazabilidad: true, correoValidadoAt: true,
     },
   }) : [];
   const porDocumento = new Map(firmas.map((f) => [f.documentoId, f]));
@@ -235,6 +235,9 @@ export async function listarSolicitudesFirmaExterna() {
       expiraAt: firma?.expiresAt?.toISOString() || null,
       hashOriginal: typeof metadata.sha256Original === "string" ? metadata.sha256Original : "",
       certificadoDisponible: firma?.estado === "firmado",
+      otpValidado: !!firma?.correoValidadoAt,
+      copiaEntregadaAt: typeof metadata.copiaFirmadaEnviadaAt === "string" ? metadata.copiaFirmadaEnviadaAt : null,
+      motivoRechazo: Array.isArray(metadata.eventos) ? (metadata.eventos as Array<{ tipo?: string; detalle?: string }>).filter(e => e.tipo === "rechazado").at(-1)?.detalle || null : null,
     };
   });
 }
