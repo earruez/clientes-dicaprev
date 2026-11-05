@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { resolverPortalContratista } from "@/lib/contratistas/portal";
-import { REQUISITOS_RECURSO, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, vigenciaMesesRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
+import { REQUISITOS_RECURSO, estadoEfectivo, estadoAuditableRequisito, vencimientoEfectivoRequisito, vigenciaMesesRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
 import { formatRutChile, validarRutChile } from "@/lib/rut";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
@@ -75,7 +75,7 @@ export async function obtenerPortalContratista(token: string) {
         ...r,
         vigenciaMeses,
         fechaVencimiento: vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, vigenciaMeses),
-        estadoEfectivo: estadoVisibleRequisitoContratista(r.estado, r.archivoNombre, r.fechaVencimiento, r.fechaEmision, vigenciaMeses),
+        estadoEfectivo: estadoAuditableRequisito(r),
       };
     }),
   };

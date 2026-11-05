@@ -3,11 +3,13 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
-import { documentoContratistaPendienteValidacion, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
+import { documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
 import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
 import { normalizarNombreRequisitoContratista } from "@/lib/contratistas/estandarizar-requisitos";
+import { generarInformeContratista } from "@/lib/contratistas/informe-acreditacion";
+import { claveDocumentoRevision } from "@/lib/contratistas/organizacion-revision";
 import { claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 
 const DIAS_ENLACE = 60;
@@ -41,8 +43,16 @@ export async function listarSolicitudesContratistas() {
   });
   return solicitudes.map((s) => {
     const total = s.requisitos.filter((r) => r.obligatorio).length;
-    const aprobados = s.requisitos.filter((r) => r.obligatorio && estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado").length;
-    return { ...s, totalObligatorios: total, aprobados, porcentaje: total ? Math.round((aprobados / total) * 100) : 0 };
+    const aprobados = s.requisitos.filter((r) => r.obligatorio && documentoAprobadoConRevision(r)).length;
+    const documentosAprobados = s.requisitos.filter((r) => documentoAprobadoConRevision(r)).length;
+    const pendientesValidacion = s.requisitos.filter((r) => documentoPendienteRevisionMandante(r)).length;
+    const documentosObservados = s.requisitos.filter((r) => r.estado === "observado" || r.estado === "rechazado").length;
+    const pendientesCarga = s.requisitos.filter((r) => r.obligatorio && !r.archivoNombre).length;
+    return {
+      ...s, totalObligatorios: total, aprobados,
+      porcentaje: total ? Math.round((aprobados / total) * 100) : 0,
+      documentosAprobados, pendientesValidacion, documentosObservados, pendientesCarga,
+    };
   });
 }
 
@@ -168,6 +178,15 @@ export async function agregarRequisitoContratista(input: {
       if (!recurso || recurso.tipo !== input.categoria) throw new Error("Recurso no válido para este requisito");
     } else if (input.categoria !== "empresa") {
       throw new Error("Selecciona un trabajador, vehículo o equipo para este requisito");
+    }
+    if (input.categoria === "empresa") {
+      const existentes = await prisma.contratistaRequisito.findMany({
+        where: { empresaId, solicitudId: solicitud.id, categoria: "empresa" },
+        select: { nombre: true },
+      });
+      if (existentes.some((r) => claveDocumentoRevision(r.nombre) === claveDocumentoRevision(nombre))) {
+        throw new Error("Ya existe este requisito de empresa (o un equivalente con distinta puntuación). Revisa el documento existente.");
+      }
     }
     await prisma.contratistaRequisito.create({
       data: { empresaId, solicitudId: solicitud.id, recursoId: input.recursoId || null, nombre, categoria: input.categoria, alcance: input.categoria === "empresa" && input.alcance === "empresa" ? "empresa" : "faena", obligatorio: input.obligatorio !== false },
@@ -388,8 +407,8 @@ async function recalcularEstado(solicitudId: string, empresaId: string) {
   let estado: string;
   if (!solicitud.invitadoAt) estado = "borrador";
   else if (requeridos.some((r) => ["observado", "rechazado"].includes(r.estado))) estado = "observada";
-  else if (requeridos.length > 0 && requeridos.every((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado")) estado = "aprobada";
-  else if (solicitud.requisitos.some((r) => r.estado === "en_revision" || r.estado === "aprobado")) estado = "en_revision";
+  else if (requeridos.length > 0 && requeridos.every((r) => documentoAprobadoConRevision(r))) estado = "aprobada";
+  else if (solicitud.requisitos.some((r) => documentoPendienteRevisionMandante(r) || documentoAprobadoConRevision(r))) estado = "en_revision";
   else estado = "enviada";
   await prisma.contratistaSolicitud.update({ where: { id: solicitudId }, data: { estado } });
 }
@@ -405,7 +424,7 @@ export async function revisarRequisitoContratista(input: {
     include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true, contratistaId: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
-  if (!documentoContratistaPendienteValidacion(requisito.estado, requisito.archivoNombre)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
+  if (!documentoPendienteRevisionMandante(requisito)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, vigenciaMesesRequisito(requisito)) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
@@ -452,36 +471,8 @@ export async function revisarRequisitoContratista(input: {
     });
   });
   await recalcularEstado(requisito.solicitudId, empresaId);
-  if (input.estado === "aprobado" && requisito.solicitud.estado !== "aprobada") {
-    const final = await prisma.contratistaSolicitud.findFirst({
-      where: { id: requisito.solicitudId, empresaId },
-      select: { estado: true },
-    });
-    if (final?.estado === "aprobada") {
-      try {
-        await sendEmail({
-          to: requisito.solicitud.contactoEmail,
-          subject: `NextPrev · Carpeta documental aprobada: ${requisito.solicitud.nombre}`,
-          html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden"><header style="padding:22px;background:#0f172a;color:#fff"><strong style="font-size:22px">NextPrev</strong></header><main style="padding:24px"><h2 style="color:#065f46">Carpeta documental aprobada</h2><p>La empresa mandante ha aprobado los requisitos documentales obligatorios de <b>${escapar(requisito.solicitud.nombre)}</b>.</p><p>La aprobación documental no reemplaza la autorización de ingreso a faena.</p></main><footer style="padding:16px;background:#f8fafc;color:#64748b;font-size:12px">Generado por NextPrev</footer></div>`,
-          text: `Carpeta documental aprobada: ${requisito.solicitud.nombre}. La autorización de ingreso a faena es independiente.`,
-        });
-      } catch (error) {
-        console.error("[contratistas] aprobación guardada, error de correo", error instanceof Error ? error.message : "Error");
-      }
-    }
-  }
-  if (input.estado !== "aprobado") {
-    try {
-      await sendEmail({
-        to: requisito.solicitud.contactoEmail,
-        subject: `NextPrev · Documento requiere corrección: ${requisito.nombre}`,
-        html: `<div style="font-family:Arial,sans-serif;padding:28px;max-width:600px"><h2 style="color:#0f172a">Revisión de documento</h2><p>En el expediente <b>${escapar(requisito.solicitud.nombre)}</b>, el documento <b>${escapar(requisito.nombre)}</b> fue marcado como ${input.estado === "observado" ? "observado" : "rechazado"}.</p><p><b>Motivo:</b> ${escapar(input.observacion?.trim() || "")}</p><p>Ingresa nuevamente mediante el enlace de la invitación para cargar la corrección.</p><small>Generado por NextPrev</small></div>`,
-        text: `Documento: ${requisito.nombre}. Motivo: ${input.observacion?.trim()}. Ingresa con tu invitación original.`,
-      });
-    } catch (error) {
-      console.error("[contratistas] revisión guardada, error de correo", error instanceof Error ? error.message : "Error");
-    }
-  }
+  // No enviar avisos por cada revisión. El responsable de la mandante puede
+  // generar y enviar un único informe consolidado cuando lo estime oportuno.
   return { ok: true };
 }
 
@@ -490,4 +481,44 @@ export async function cerrarExpedienteContratista(solicitudId: string) {
   const r = await prisma.contratistaSolicitud.updateMany({ where: { id: solicitudId, empresaId }, data: { estado: "cerrada", tokenHash: null, tokenExpiraAt: null } });
   if (!r.count) throw new Error("Expediente no encontrado");
   return { ok: true };
+}
+
+
+/**
+ * Envío manual de UN informe consolidado por obra, no un correo por documento.
+ * Incluye la situación documental de empresa y cada trabajador al momento del envío.
+ */
+export async function enviarInformeAcreditacionContratista(solicitudId: string) {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+  const { data, pdf } = await generarInformeContratista(empresaId, solicitudId);
+  const correo = data.contactoEmail?.trim().toLowerCase();
+  if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) throw new Error("La empresa contratista no tiene un correo de contacto válido.");
+  const resumen = data.resumen;
+  const result = await sendEmail({
+    to: correo,
+    subject: "NextPrev · Informe de acreditación documental · " + data.empresa + " · " + data.faena,
+    html: '<div style="font-family:Arial,sans-serif;max-width:640px;padding:25px;color:#0f172a">' +
+      '<h2>Informe de acreditación documental</h2>' +
+      '<p>Empresa: <strong>' + escapar(data.empresa) + '</strong></p>' +
+      '<p>Obra: <strong>' + escapar(data.faena) + '</strong></p>' +
+      '<p>Se adjunta el informe consolidado del estado de la documentación de empresa y trabajadores.</p>' +
+      '<p><strong>Subidos:</strong> ' + resumen.cargados + '/' + resumen.total +
+      ' · <strong>Aprobados:</strong> ' + resumen.aprobados +
+      ' · <strong>Por validar:</strong> ' + resumen.porValidar +
+      ' · <strong>Sin cargar:</strong> ' + resumen.sinArchivo +
+      ' · <strong>Observados:</strong> ' + resumen.observados + '</p>' +
+      '<p>Revisa las observaciones y completa los documentos pendientes en tu portal de contratistas.</p>' +
+      '<p style="font-size:12px;color:#64748b">Este mensaje se envía por decisión del responsable de la mandante, no por cada aprobación individual. La conformidad documental no autoriza el ingreso a faena.</p>' +
+      '<p style="font-size:12px;color:#64748b">Generado por NextPrev</p></div>',
+    text: "Informe de acreditación documental de " + data.empresa + " para " + data.faena +
+      ". Subidos " + resumen.cargados + "/" + resumen.total + ", aprobados " + resumen.aprobados +
+      ", por validar " + resumen.porValidar + ", sin cargar " + resumen.sinArchivo +
+      ". Se adjunta informe PDF con pendientes por trabajador. Generado por NextPrev.",
+    attachments: [{
+      filename: "NextPrev_Informe_Acreditacion_Contratista.pdf",
+      content: pdf.toString("base64"),
+      contentType: "application/pdf",
+    }],
+  });
+  return { ok: true, correo, messageId: result.messageId || null };
 }
