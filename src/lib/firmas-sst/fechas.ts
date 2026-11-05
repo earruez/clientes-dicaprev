@@ -17,3 +17,7 @@ export function finDiaChile(value: string): Date {
   const offset = (match[1] === "+" ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3] || 0));
   return new Date(Date.parse(value + "T23:59:59Z") - offset * 60_000);
 }
+
+export function hoyChile(): string {
+  return new Date().toLocaleDateString("sv-SE", { timeZone: "America/Santiago" });
+}
