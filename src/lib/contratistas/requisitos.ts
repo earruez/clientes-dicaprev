@@ -39,6 +39,23 @@ export const REQUISITOS_RECURSO: Record<Exclude<CategoriaContratista, "empresa">
   ],
 };
 
+/**
+ * Un contrato laboral indefinido no tiene vencimiento por antigüedad documental.
+ * El requisito del contrato no debe imponer un plazo fijo de meses; si se
+ * informa una fecha de término real en contratos a plazo, se respeta.
+ */
+export function esRequisitoContratoLaboral(requisito: { categoria?: string | null; nombre: string }): boolean {
+  if (requisito.categoria !== "trabajador") return false;
+  const normalizado = requisito.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /\bcontrato\s+(de\s+)?trabajo\b|\bcontrato\s+laboral\b/.test(normalizado);
+}
+
+export function vigenciaMesesRequisito(requisito: {
+  categoria?: string | null; nombre: string; vigenciaMeses?: number | null;
+}): number | null {
+  return esRequisitoContratoLaboral(requisito) ? null : requisito.vigenciaMeses ?? null;
+}
+
 /** Vencimiento máximo según la pauta de cada mandante (no como plazo legal general). */
 export function vencimientoMaximoPorMeses(
   emision: Date | string | null | undefined, vigenciaMeses: number | null | undefined,
