@@ -47,6 +47,17 @@ describe("Acreditación contratistas · estado documental", () => {
     expect(estadoInformeDocumento(legado)).toBe("en_revision");
     expect(estadoAcreditacionDocumental([legado])).toBe("Pendiente de validación");
   });
+  it("no cuenta como revisión de esta obra una aprobación heredada anterior al requisito", () => {
+    const heredada = doc({
+      estado: "aprobado", archivoNombre: "corporativo.pdf",
+      createdAt: new Date("2026-11-05T12:00:00Z"),
+      revisadoAt: new Date("2026-10-25T12:00:00Z"),
+      revisadoPorId: "otro-mandante",
+    });
+    expect(resumenDocumentosInforme([heredada])).toMatchObject({ aprobados: 0, porValidar: 1 });
+    expect(estadoAcreditacionDocumental([heredada])).toBe("Pendiente de validación");
+  });
+
   it("permite distinguir cargado pendiente de validación de un archivo no presentado", () => {
     expect(estadoInformeDocumento(doc({ archivoNombre: "a.pdf", estado: "pendiente" }))).toBe("en_revision");
     expect(etiquetaInformeDocumento(doc({ archivoNombre: "a.pdf", estado: "pendiente" }))).toBe("Por validar");
