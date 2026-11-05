@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return NextResponse.json(resultado, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const mensaje = error instanceof Error ? error.message : "No fue posible crear la solicitud.";
-    const esValidacion = /PDF|Completa|vigencia|Adjunta|RUT válido|trabajador|RUT debe|contrato|documento SST|período/.test(mensaje);
+    const esValidacion = /PDF|Completa|vigencia|Adjunta|RUT válido|trabajador|RUT debe|contrato|documento SST|período|Selecciona|Indica/.test(mensaje);
     const esSesion = /sesion|autorizado|autentic|permiso|No autorizado/.test(mensaje);
     return NextResponse.json(
       { error: esValidacion ? mensaje : esSesion ? "Acceso no autorizado." : "No se pudo guardar la solicitud. Verifica el almacenamiento y vuelve a intentar." },
