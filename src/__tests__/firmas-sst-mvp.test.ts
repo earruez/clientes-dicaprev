@@ -4,6 +4,7 @@ import {
   validarFormatoCodigo, OTP_INTENTOS_MAX, OTP_VIGENCIA_MS,
 } from "@/lib/firmas-sst/otp";
 import { crearConstanciaFirmaSst } from "@/lib/firmas-sst/constancia";
+import { fechaIsoValida, finDiaChile } from "@/lib/firmas-sst/fechas";
 
 describe("Firma SST temporal: código OTP", () => {
   it("genera un código impredecible de seis dígitos y compara su hash", () => {
@@ -49,5 +50,17 @@ describe("Firma SST temporal: constancia documental", () => {
     expect(pdf.length).toBeGreaterThan(1000);
     expect(pdf.subarray(0, 5).toString("ascii")).toBe("%PDF-");
     expect(pdf.toString("latin1")).toContain("NextPrev");
+  });
+});
+
+describe("Vigencia contrato de corta duración Chile", () => {
+  it("valida la fecha ISO con días reales del calendario", () => {
+    expect(fechaIsoValida("2026-11-05")).toBe(true);
+    expect(fechaIsoValida("2026-02-31")).toBe(false);
+    expect(fechaIsoValida("2026-13-05")).toBe(false);
+  });
+  it("respeta el horario de verano e invierno de Santiago", () => {
+    expect(finDiaChile("2026-11-05").toISOString()).toBe("2026-11-06T02:59:59.000Z");
+    expect(finDiaChile("2026-07-05").toISOString()).toBe("2026-07-06T03:59:59.000Z");
   });
 });
