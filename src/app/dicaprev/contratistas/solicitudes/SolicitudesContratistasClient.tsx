@@ -526,61 +526,78 @@ export default function SolicitudesContratistasClient() {
                     }}><Trash2 className="mr-1.5 h-3.5 w-3.5"/>Eliminar regla</Button>}
                   </div>)}
                 </div>}
+
                 {Object.entries(CATEGORIAS).map(([key, label]) => {
-                  const docs = actual.requisitos.filter((r) => r.categoria === key);
-                  if (!docs.length) return null;
-                  return <div key={key} className="mt-5 space-y-3">
-                    <h4 className="border-b border-slate-100 pb-2 text-sm font-bold text-slate-700">{label} ({docs.length})</h4>
-                    {key === "trabajador" && <div className="mb-3 rounded-xl bg-sky-50 p-3">
-                      <label htmlFor="mandante-trabajador" className="text-xs font-bold text-sky-900">Revisar carpeta por trabajador</label>
-                      <select id="mandante-trabajador" className={CAMPO + " mt-2"} value={filtroTrabajador}
-                        onChange={(e) => setFiltroTrabajador(e.target.value)}>
-                        <option value="">Todos los trabajadores</option>
-                        {actual.recursos.filter((r) => r.tipo === "trabajador").map((r) =>
-                          <option key={r.id} value={r.id}>{r.nombre} · {r.identificador || "Sin RUT"}</option>)}
-                      </select>
-                    </div>}
-                    {docs.filter((d) => key !== "trabajador" || !filtroTrabajador || d.recursoId === filtroTrabajador).map((d) => {
-                      const estado = estadoVisibleRequisitoContratista(d.estado, d.archivoNombre, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d));
-                      return <div key={d.id} className="min-w-0 rounded-xl border border-slate-200 p-3 sm:p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="break-words text-sm font-medium text-slate-900">{d.nombre}</p>
-                            {d.recurso && <p className="text-xs text-slate-500">{d.recurso.nombre} · {d.recurso.patente || d.recurso.identificador || "Sin identificador"}</p>}
-                            <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(vencimientoEfectivoRequisito(d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)))} · Versión {d.version}{vigenciaMesesRequisito(d) ? ` · Vigencia máxima ${vigenciaMesesRequisito(d)} meses` : ""}{d.condicional ? " · Si aplica" : ""}</p>
-                          </div>
-                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${CLASES[estado] || CLASES.pendiente}`}>{ESTADOS_DOC[estado] || estado}</span>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-3">
-                          {d.archivoNombre && <a href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 underline"><FileText className="h-3.5 w-3.5"/>Ver documento</a>}
-                          {puedeEditar && <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" disabled={procesando} checked={d.obligatorio} onChange={(e) => void ejecutar(() => cambiarObligatoriedadContratista(d.id, e.target.checked), "Obligatoriedad actualizada.")}/>{d.condicional ? "Aplica / obligatorio" : "Obligatorio"}</label>}
-                          {puedeEditar && <button type="button" disabled={procesando || !!(d.reglaTrabajadorId || d.archivoNombre || d.documentoBaseId || d.version > 0 || d.revisadoAt || d.observacionRevision || d.estado !== "pendiente" || d.versiones.length)} title={d.reglaTrabajadorId ? "Gestiona este requisito desde la regla de todos los trabajadores" : d.archivoNombre || d.version > 0 || d.revisadoAt || d.versiones.length ? "No se puede eliminar: contiene documentos o historial de revisión" : "Eliminar requisito sin documentos"} className="inline-flex items-center gap-1 text-xs font-medium text-red-700 disabled:cursor-not-allowed disabled:text-slate-400" onClick={() => {
-                            if (window.confirm(`¿Eliminar el requisito "${d.nombre}"? Esta acción no se puede deshacer.`))
-                              void ejecutar(() => eliminarRequisitoContratista(d.id), "Requisito eliminado.");
-                          }}><Trash2 className="h-3.5 w-3.5"/>Eliminar requisito</button>}
-                        </div>
-                        {d.categoria === "empresa" && <p className="mt-2 text-[11px] font-semibold text-slate-500">{d.alcance === "empresa" ? "Documento corporativo sujeto a revisión de esta faena" : "Documento específico de contrato / faena"}{d.documentoBase && <span className="ml-2 text-emerald-700">· Reutilizado de carpeta corporativa</span>}</p>}
-                        {d.categoria === "empresa" && puedeEditar && !d.archivoNombre && docsBase.length > 0 && <div className="mt-2 flex flex-col gap-2 rounded-xl bg-emerald-50/60 p-3 sm:flex-row sm:items-center">
-                          <div className="flex-1"><label className="text-xs font-semibold text-slate-700">Reutilizar un documento corporativo aprobado</label>
-                            <select className={CAMPO + " mt-1"} value={seleccionReuso[d.id] || ""} onChange={(e) => setSeleccionReuso((old) => ({ ...old, [d.id]: e.target.value }))}>
-                              <option value="">Seleccionar documento...</option>
-                              {docsBase.map((doc) => <option key={doc.id} value={doc.id}>{doc.nombre}</option>)}
-                            </select>
-                          </div>
-                          <Button disabled={procesando || !seleccionReuso[d.id]} size="sm" className="rounded-xl bg-emerald-700 text-white" onClick={() => void ejecutar(() => reutilizarDocumentoContratista({ requisitoId: d.id, documentoBaseId: seleccionReuso[d.id] }), "Archivo reutilizado y enviado a validación para esta faena.")}>Reutilizar</Button>
-                        </div>}
-                        {d.observacionRevision && <p className={`mt-2 rounded-lg p-2 text-xs ${d.estado === "aprobado" ? "bg-emerald-50 text-emerald-800" : "bg-orange-50 text-orange-800"}`}>{d.estado === "aprobado" ? "Comentario de aprobación" : "Observación"}: {d.observacionRevision}</p>}
-                        {d.versiones.length > 1 && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer">Historial ({d.versiones.length} versiones)</summary><div className="mt-2 flex flex-col gap-1">{d.versiones.map((v) => <a key={v.id} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline" href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}&versionId=${v.id}`}>Versión {v.version} · {fechaCorta(v.subidoAt)} · {v.archivoOriginal}</a>)}</div></details>}
-                        {puedeEditar && documentoContratistaPendienteValidacion(d.estado, d.archivoNombre) && <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-100 pt-3">
-                          <p className="w-full text-xs font-semibold text-amber-800">Revisión de la mandante: abre el documento y aprueba con o sin comentario, observa o rechaza. Observar y rechazar exigen motivo.</p>
-                          <Button disabled={procesando || estado === "vencido"} size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "aprobado", observacion: motivos[d.id] || undefined }), "Documento aprobado.")}>Aprobar</Button>
-                          <input aria-label={`Motivo para ${d.nombre}`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" placeholder="Comentario opcional al aprobar; obligatorio al observar o rechazar" value={motivos[d.id] || ""} onChange={(e) => setMotivos((prev) => ({ ...prev, [d.id]: e.target.value }))}/>
-                          <Button disabled={procesando || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "observado", observacion: motivos[d.id] }), "Observación enviada al contratista.")}>Observar</Button>
-                          <Button disabled={procesando || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "rechazado", observacion: motivos[d.id] }), "Documento rechazado.")}>Rechazar</Button>
-                        </div>}
-                      </div>;
-                    })}
-                  </div>;
+                  const docs = actual.requisitos.filter((d) => d.categoria === key);
+                  const recursos = actual.recursos.filter((r) => r.tipo === key);
+                  if (!docs.length && !recursos.length) return null;
+                  const aprobadosGrupo = docs.filter((d) => d.archivoNombre && estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)) === "aprobado").length;
+                  const pendientesGrupo = docs.filter((d) => documentoContratistaPendienteValidacion(d.estado, d.archivoNombre)).length;
+                  const trabajadores = key === "trabajador";
+                  return (
+                    <details key={actual.id + "-" + key} className="group/carpeta mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 bg-slate-50/80 px-4 py-4 [&::-webkit-details-marker]:hidden">
+                        <span className="flex items-center gap-3 text-sm font-semibold text-slate-900">
+                          {trabajadores ? <Users2 className="h-5 w-5 text-sky-700"/> : <FolderOpen className="h-5 w-5 text-sky-700"/>}
+                          {trabajadores ? "Trabajadores" : key === "empresa" ? "Documentos de empresa" : label} ({trabajadores ? recursos.length : docs.length})
+                        </span>
+                        <span className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-800">{aprobadosGrupo} aprobados</span>
+                          {pendientesGrupo > 0 && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-900">{pendientesGrupo} por validar</span>}
+                          <ChevronDown className="h-4 w-4 transition-transform group-open/carpeta:rotate-180"/>
+                        </span>
+                      </summary>
+                      <div className="space-y-3 border-t border-slate-100 p-3 sm:p-4">
+                        {trabajadores ? (
+                          <>
+                            <label className="block space-y-1 text-xs font-medium text-slate-600">
+                              Ir a la carpeta de un trabajador
+                              <select className={CAMPO} value={filtroTrabajador} onChange={(e) => setFiltroTrabajador(e.target.value)}>
+                                <option value="">Mostrar todos ({recursos.length})</option>
+                                {recursos.map((r) => <option key={r.id} value={r.id}>{r.nombre} · {r.identificador || "Sin RUT"}</option>)}
+                              </select>
+                            </label>
+                            {recursos.filter((r) => !filtroTrabajador || r.id === filtroTrabajador).map((recurso) => {
+                              const documentos = docs.filter((d) => d.recursoId === recurso.id);
+                              const aprobados = documentos.filter((d) => d.archivoNombre && estadoEfectivo(d.estado, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)) === "aprobado").length;
+                              const pendientes = documentos.filter((d) => documentoContratistaPendienteValidacion(d.estado, d.archivoNombre)).length;
+                              return (
+                                <details key={recurso.id} className="group/trabajador overflow-hidden rounded-xl border border-slate-200 bg-white">
+                                  <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-3 [&::-webkit-details-marker]:hidden sm:p-4">
+                                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                                      <FolderOpen className="h-4 w-4 shrink-0 text-sky-700"/>
+                                      <strong className="break-words text-sm text-slate-900">{recurso.nombre}</strong>
+                                      <span className="text-xs text-slate-500">{recurso.identificador || "Sin RUT"}</span>
+                                    </span>
+                                    <span className="flex shrink-0 items-center gap-2 text-xs text-slate-600">
+                                      {aprobados}/{documentos.length} aprobados
+                                      {pendientes > 0 && <span className="rounded-full bg-amber-100 px-2 py-1 text-amber-900">{pendientes} por validar</span>}
+                                      <ChevronDown className="h-4 w-4 transition-transform group-open/trabajador:rotate-180"/>
+                                    </span>
+                                  </summary>
+                                  <div className="space-y-3 border-t border-slate-100 bg-slate-50/40 p-3 sm:p-4">
+                                    {documentos.length ? renderDocumentosAgrupados(documentos) : <p className="text-sm text-slate-500">Este trabajador todavía no tiene requisitos asignados.</p>}
+                                  </div>
+                                </details>
+                              );
+                            })}
+                            {docs.some((d) => !d.recursoId || !recursos.some((r) => r.id === d.recursoId)) && (
+                              <details className="group/trabajador overflow-hidden rounded-xl border border-amber-200">
+                                <summary className="flex cursor-pointer items-center gap-2 p-3 text-sm font-semibold text-amber-900">
+                                  <FolderOpen className="h-4 w-4"/>Documentos sin trabajador asignado
+                                </summary>
+                                <div className="space-y-3 border-t border-amber-100 p-3">
+                                  {renderDocumentosAgrupados(docs.filter((d) => !d.recursoId || !recursos.some((r) => r.id === d.recursoId)))}
+                                </div>
+                              </details>
+                            )}
+                          </>
+                        ) : (
+                          docs.length ? renderDocumentosAgrupados(docs) : <p className="text-sm text-slate-500">Sin documentos registrados.</p>
+                        )}
+                      </div>
+                    </details>
+                  );
                 })}
                 {actual.requisitos.length === 0 && actual.reglasTrabajadores.length === 0 && <p className="mt-4 text-sm text-slate-500">No se han configurado documentos todavía.</p>}
               </div>
