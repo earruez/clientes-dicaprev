@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { agregarRecursoPortal, importarNominaContratistaPortal, incorporarRecursoBasePortal, eliminarRecursoPortal, guardarDatosEmpresaPortal, obtenerPortalContratista } from "@/actions/contratistas/portal";
-import { DOCUMENTO_ACCEPT } from "@/lib/documentacion/archivo-documento";
+import { DOCUMENTO_ACCEPT, formatDocumentoPeso } from "@/lib/documentacion/archivo-documento";
+import { ARCHIVOS_PORTAL_FORMATOS, MAX_ARCHIVO_PORTAL_BYTES, validarArchivoPortal, validarFechasPortal } from "@/lib/contratistas/validacion-carga";
+import { esRequisitoContratoLaboral } from "@/lib/contratistas/requisitos";
 import { formatRutChile } from "@/lib/rut";
 import { CARGOS_SUGERIDOS_CONTRATISTAS, normalizarCargoContratista } from "@/lib/contratistas/cargos";
 
@@ -49,6 +51,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   const [fechas, setFechas] = useState<Record<string, { emision: string; vencimiento: string }>>({});
   const [enProceso, setEnProceso] = useState("");
   const [error, setError] = useState("");
+  const [errorDocumento, setErrorDocumento] = useState<Record<string, string>>({});
   const [exito, setExito] = useState("");
   const [formVisible, setFormVisible] = useState(false);
   const [recursoExistenteId, setRecursoExistenteId] = useState("");
@@ -108,19 +111,41 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
 
   function subir(r: RequisitoPortal) {
     const file = archivo[r.id];
-    if (!file) { setError("Selecciona un archivo antes de guardarlo"); return; }
-    if (file.size > 4 * 1024 * 1024) { setError("El archivo no puede superar 4 MB"); return; }
+    const mostrarError = (mensaje: string) => {
+      setError(mensaje);
+      setErrorDocumento((prev) => ({ ...prev, [r.id]: mensaje }));
+    };
+    if (!file) { mostrarError("Selecciona un archivo para adjuntar."); return; }
+    const errorArchivo = validarArchivoPortal(file);
+    if (errorArchivo) { mostrarError(errorArchivo); return; }
+    const emision = fechas[r.id]?.emision ?? isoFecha(r.fechaEmision);
+    const vencimiento = fechas[r.id]?.vencimiento ?? (r.vigenciaMeses ? "" : isoFecha(r.fechaVencimiento));
+    const errorFecha = validarFechasPortal({ emision, vencimiento, vigenciaMeses: r.vigenciaMeses });
+    if (errorFecha) { mostrarError(errorFecha); return; }
+    setErrorDocumento((prev) => ({ ...prev, [r.id]: "" }));
     void ejecutar(r.id, async () => {
-      const form = new FormData();
-      form.set("requisitoId", r.id);
-      form.set("file", file);
-      form.set("fechaEmision", fechas[r.id]?.emision ?? isoFecha(r.fechaEmision));
-      form.set("fechaVencimiento", fechas[r.id]?.vencimiento ?? (r.vigenciaMeses ? "" : isoFecha(r.fechaVencimiento)));
-      const response = await fetch(`/api/contratistas/portal/${token}/archivo`, { method: "POST", body: form });
-      const json = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(json.error || "Error al cargar documento");
-      setArchivo((prev) => ({ ...prev, [r.id]: null }));
-      setExpandido(null);
+      try {
+        const form = new FormData();
+        form.set("requisitoId", r.id);
+        form.set("file", file);
+        form.set("fechaEmision", emision);
+        form.set("fechaVencimiento", vencimiento);
+        const response = await fetch(`/api/contratistas/portal/${token}/archivo`, { method: "POST", body: form });
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        if (!response.ok) {
+          const mensaje = payload?.error || (response.status === 413
+            ? "El servidor rechazó el archivo por su tamaño. Reduce el PDF e intenta nuevamente."
+            : `No fue posible guardar el documento (error HTTP ${response.status}).`);
+          throw new Error(mensaje);
+        }
+        setArchivo((prev) => ({ ...prev, [r.id]: null }));
+        setErrorDocumento((prev) => ({ ...prev, [r.id]: "" }));
+        setExpandido(null);
+      } catch (e) {
+        const mensaje = e instanceof Error ? e.message : "Falló la carga del documento.";
+        setErrorDocumento((prev) => ({ ...prev, [r.id]: mensaje }));
+        throw e;
+      }
     }, "Documento recibido. Quedó pendiente de validación por la empresa mandante.");
   }
 
@@ -203,6 +228,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   }
 
   function bloqueRequisito(r: RequisitoPortal) {
+    const esContrato = esRequisitoContratoLaboral(r);
     const actual = fechas[r.id] || { emision: isoFecha(r.fechaEmision), vencimiento: r.vigenciaMeses ? "" : isoFecha(r.fechaVencimiento) };
     const abierto = expandido === r.id;
     const requiereCorreccion = ["observado", "rechazado", "vencido"].includes(r.estadoEfectivo);
@@ -235,18 +261,37 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
       </div>
       {r.observacionRevision && <div className={"mx-4 mb-4 flex gap-2 rounded-xl border p-3 sm:mx-5 " + (r.estado === "aprobado" ? "border-emerald-200 bg-emerald-50" : "border-orange-200 bg-orange-50")}><AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-orange-600"/><p className="text-xs leading-relaxed text-orange-900"><strong>{r.estado === "aprobado" ? "Comentario de aprobación:" : "Observación de la mandante:"}</strong> {r.observacionRevision}</p></div>}
       {abierto && <div className="space-y-4 border-t border-slate-100 bg-gradient-to-b from-emerald-50/40 to-white p-4 sm:p-5">
-        <div><h5 className="text-sm font-bold text-slate-900">{r.archivoNombre ? "Cargar una nueva versión" : "Adjuntar documento"}</h5><p className="mt-1 text-xs text-slate-500">PDF, Word, Excel o imagen. Tamaño máximo: 4 MB.</p></div>
+        <div>
+          <h5 className="text-sm font-bold text-slate-900">{r.archivoNombre ? "Cargar una nueva versión" : "Adjuntar documento"}</h5>
+          <p className="mt-1 text-xs font-medium text-slate-700"><strong>Formatos permitidos:</strong> {ARCHIVOS_PORTAL_FORMATOS}.</p>
+          <p className="mt-1 text-xs font-medium text-slate-700"><strong>Tamaño máximo:</strong> {(MAX_ARCHIVO_PORTAL_BYTES / 1_000_000).toLocaleString("es-CL", { maximumFractionDigits: 1 })} MB por archivo. No se aceptan archivos vacíos.</p>
+        </div>
         <label className={"relative group flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition " + (archivo[r.id] ? "border-emerald-400 bg-emerald-50" : "border-slate-200 bg-white hover:border-emerald-400 hover:bg-emerald-50/30")}>
           <span className={"flex h-10 w-10 items-center justify-center rounded-xl " + (archivo[r.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-600")}>{archivo[r.id] ? <Check className="h-5 w-5"/> : <CloudUpload className="h-5 w-5"/>}</span>
           <span className="max-w-full break-all text-sm font-bold text-slate-800">{archivo[r.id]?.name || "Elegir archivo"}</span>
-          <span className="text-xs text-slate-500">{archivo[r.id] ? "Toca para cambiar el archivo" : "Toca aquí para seleccionar desde tu dispositivo"}</span>
-          <input type="file" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" accept={DOCUMENTO_ACCEPT} aria-label={"Archivo para " + r.nombre} onChange={(e) => setArchivo((prev) => ({ ...prev, [r.id]: e.target.files?.[0] || null }))}/>
+          <span className="text-xs text-slate-500">{archivo[r.id] ? `Tamaño: ${formatDocumentoPeso(archivo[r.id]!.size)} · Toca para cambiarlo` : "Toca aquí para seleccionar desde tu dispositivo"}</span>
+          <input type="file" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" accept={DOCUMENTO_ACCEPT} aria-label={"Archivo para " + r.nombre} onChange={(e) => {
+            const seleccionado = e.target.files?.[0] || null;
+            setArchivo((prev) => ({ ...prev, [r.id]: seleccionado }));
+            setErrorDocumento((prev) => ({ ...prev, [r.id]: seleccionado ? validarArchivoPortal(seleccionado) || "" : "" }));
+            setError("");
+          }}/>
         </label>
+        {archivo[r.id] && !validarArchivoPortal(archivo[r.id]) ? (
+          <p role="status" className="flex items-center gap-2 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-4 w-4" /> Archivo válido: {formatDocumentoPeso(archivo[r.id]!.size)} de {(MAX_ARCHIVO_PORTAL_BYTES / 1_000_000).toLocaleString("es-CL", { maximumFractionDigits: 1 })} MB permitidos.</p>
+        ) : null}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de emisión o entrega <span className="font-normal text-slate-400">{r.vigenciaMeses ? "(obligatoria para validar vigencia)" : "(si aplica)"}</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.emision} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, emision: e.target.value } }))}/></label>
           <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de vencimiento <span className="font-normal text-slate-400">(si aplica)</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.vencimiento} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, vencimiento: e.target.value } }))}/></label>
         </div>
-        {r.vigenciaMeses && <p className="text-xs text-sky-800">NextPrev calculará automáticamente la fecha máxima de vigencia desde la emisión o entrega y respetará una fecha de vencimiento anterior si corresponde.</p>}
+        {r.vigenciaMeses && !actual.emision && archivo[r.id] && !errorDocumento[r.id] ? (
+          <p role="status" className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-900"><AlertCircle className="h-4 w-4 shrink-0"/>Falta la fecha de emisión o entrega. Es necesaria para calcular la vigencia de este documento.</p>
+        ) : null}
+        {esContrato && <p className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-xs leading-relaxed text-sky-900">
+          Si el contrato de trabajo es <strong>indefinido</strong>, deja en blanco la fecha de vencimiento. No es obligatoria y no se asignará una fecha de término automática. En contratos a plazo fijo u obra/faena, informa la fecha de término únicamente si corresponde al documento.
+        </p>}
+        {r.vigenciaMeses && !esContrato && <p className="text-xs text-sky-800">NextPrev calculará automáticamente la fecha máxima de vigencia desde la emisión o entrega y respetará una fecha de vencimiento anterior si corresponde.</p>}
+        {errorDocumento[r.id] && <div role="alert" className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0"/>{errorDocumento[r.id]}</div>}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" className="min-h-11 rounded-xl" disabled={!!enProceso} onClick={() => setExpandido(null)}>Cancelar</Button>
           <Button type="button" disabled={!!enProceso || !archivo[r.id]} onClick={() => subir(r)} className="min-h-11 rounded-xl bg-gradient-to-r from-emerald-600 to-sky-600 px-5 font-semibold text-white hover:from-emerald-700 hover:to-sky-700">

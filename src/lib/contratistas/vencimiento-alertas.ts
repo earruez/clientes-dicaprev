@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { origenNextPrev } from "@/lib/contratistas/portal";
-import { faltaMigracionContratistas, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
+import { faltaMigracionContratistas, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
 
 const MS_DIA = 86_400_000;
 
@@ -42,7 +42,7 @@ export async function procesarAvisosContratistas() {
   let enviados = 0;
   let errores = 0;
   for (const r of requisitos) {
-    const vence = vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses);
+    const vence = vencimientoEfectivoRequisito(r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r));
     if (!vence) continue;
     vence.setUTCHours(0, 0, 0, 0);
     const dias = Math.round((vence.getTime() - hoy.getTime()) / MS_DIA);

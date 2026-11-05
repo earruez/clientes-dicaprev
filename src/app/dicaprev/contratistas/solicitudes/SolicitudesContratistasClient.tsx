@@ -13,7 +13,7 @@ import {
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
   invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista,
 } from "@/actions/contratistas/solicitudes";
-import { documentoContratistaPendienteValidacion, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito } from "@/lib/contratistas/requisitos";
+import { documentoContratistaPendienteValidacion, estadoEfectivo, estadoVisibleRequisitoContratista, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
@@ -342,7 +342,7 @@ export default function SolicitudesContratistasClient() {
                     const docsRecurso = actual.requisitos.filter((r) => r.recursoId === recurso.id && r.obligatorio);
                     const docsEmpresa = actual.requisitos.filter((r) => r.categoria === "empresa" && r.obligatorio);
                     const todos = [...docsEmpresa, ...docsRecurso];
-                    const correctos = todos.filter((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, r.vigenciaMeses) === "aprobado").length;
+                    const correctos = todos.filter((r) => estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado").length;
                     const listo = todos.length > 0 && correctos === todos.length;
                     return <div key={recurso.id} className="flex min-w-0 items-start justify-between gap-2 rounded-xl border border-slate-200 p-3">
                       <div className="min-w-0">
@@ -462,13 +462,13 @@ export default function SolicitudesContratistasClient() {
                       </select>
                     </div>}
                     {docs.filter((d) => key !== "trabajador" || !filtroTrabajador || d.recursoId === filtroTrabajador).map((d) => {
-                      const estado = estadoVisibleRequisitoContratista(d.estado, d.archivoNombre, d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses);
+                      const estado = estadoVisibleRequisitoContratista(d.estado, d.archivoNombre, d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d));
                       return <div key={d.id} className="min-w-0 rounded-xl border border-slate-200 p-3 sm:p-4">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <p className="break-words text-sm font-medium text-slate-900">{d.nombre}</p>
                             {d.recurso && <p className="text-xs text-slate-500">{d.recurso.nombre} · {d.recurso.patente || d.recurso.identificador || "Sin identificador"}</p>}
-                            <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(vencimientoEfectivoRequisito(d.fechaVencimiento, d.fechaEmision, d.vigenciaMeses))} · Versión {d.version}{d.vigenciaMeses ? ` · Vigencia máxima ${d.vigenciaMeses} meses` : ""}{d.condicional ? " · Si aplica" : ""}</p>
+                            <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(vencimientoEfectivoRequisito(d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)))} · Versión {d.version}{vigenciaMesesRequisito(d) ? ` · Vigencia máxima ${vigenciaMesesRequisito(d)} meses` : ""}{d.condicional ? " · Si aplica" : ""}</p>
                           </div>
                           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${CLASES[estado] || CLASES.pendiente}`}>{ESTADOS_DOC[estado] || estado}</span>
                         </div>
