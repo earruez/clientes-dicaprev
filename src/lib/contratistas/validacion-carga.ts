@@ -24,7 +24,7 @@ export function validarFechasPortal(input: {
     return "Falta completar la fecha de emisión o entrega: este requisito tiene una vigencia máxima.";
   }
   const fechaValida = (f: string) => {
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(f)) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) return false;
     const d = new Date(f + "T12:00:00.000Z");
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === f;
   };
