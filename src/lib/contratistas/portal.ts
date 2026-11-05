@@ -28,6 +28,7 @@ export async function resolverPortalContratista(token: string) {
           vigenciaMeses: true, condicional: true,
           estado: true, fechaEmision: true, fechaVencimiento: true,
           archivoNombre: true, archivoOriginal: true, observacionRevision: true,
+          revisadoAt: true, revisadoPorId: true,
           version: true,
         },
       },
