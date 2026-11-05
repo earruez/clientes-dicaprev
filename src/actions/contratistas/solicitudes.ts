@@ -40,9 +40,19 @@ export async function listarSolicitudesContratistas() {
     },
   });
   return solicitudes.map((s) => {
+    const estadoDocumento = (r: typeof s.requisitos[number]) =>
+      estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r));
     const total = s.requisitos.filter((r) => r.obligatorio).length;
-    const aprobados = s.requisitos.filter((r) => r.obligatorio && estadoEfectivo(r.estado, r.fechaVencimiento, r.fechaEmision, vigenciaMesesRequisito(r)) === "aprobado").length;
-    return { ...s, totalObligatorios: total, aprobados, porcentaje: total ? Math.round((aprobados / total) * 100) : 0 };
+    const aprobados = s.requisitos.filter((r) => r.obligatorio && estadoDocumento(r) === "aprobado").length;
+    const documentosAprobados = s.requisitos.filter((r) => r.archivoNombre && estadoDocumento(r) === "aprobado").length;
+    const pendientesValidacion = s.requisitos.filter((r) => documentoContratistaPendienteValidacion(r.estado, r.archivoNombre)).length;
+    const documentosObservados = s.requisitos.filter((r) => r.estado === "observado" || r.estado === "rechazado").length;
+    const pendientesCarga = s.requisitos.filter((r) => r.obligatorio && !r.archivoNombre).length;
+    return {
+      ...s, totalObligatorios: total, aprobados,
+      porcentaje: total ? Math.round((aprobados / total) * 100) : 0,
+      documentosAprobados, pendientesValidacion, documentosObservados, pendientesCarga,
+    };
   });
 }
 
@@ -168,6 +178,16 @@ export async function agregarRequisitoContratista(input: {
       if (!recurso || recurso.tipo !== input.categoria) throw new Error("Recurso no válido para este requisito");
     } else if (input.categoria !== "empresa") {
       throw new Error("Selecciona un trabajador, vehículo o equipo para este requisito");
+    }
+    if (input.categoria === "empresa") {
+      const existente = await prisma.contratistaRequisito.findFirst({
+        where: {
+          empresaId, solicitudId: solicitud.id, categoria: "empresa",
+          nombre: { equals: nombre, mode: "insensitive" },
+        },
+        select: { id: true },
+      });
+      if (existente) throw new Error("Este documento de empresa ya existe en la faena. Revisa el requisito existente antes de agregar otro.");
     }
     await prisma.contratistaRequisito.create({
       data: { empresaId, solicitudId: solicitud.id, recursoId: input.recursoId || null, nombre, categoria: input.categoria, alcance: input.categoria === "empresa" && input.alcance === "empresa" ? "empresa" : "faena", obligatorio: input.obligatorio !== false },
