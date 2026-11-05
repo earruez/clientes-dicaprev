@@ -52,6 +52,7 @@ export type FirmaPublicaView = {
   contenidoMarkdown: string | null;
   documentoExternoUrl?: string | null;
   documentoHash?: string | null;
+  emailPersonal?: string | null;
 };
 
 export type FirmaPrevencionistaPerfilInput = {
