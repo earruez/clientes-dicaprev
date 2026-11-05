@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { completarFirmaDocumento, type FirmaPublicaView } from "@/actions/firmas";
-import { completarFirmaExterna, rechazarFirmaExterna } from "@/actions/firmas-externas";
+import { completarFirmaExterna, rechazarFirmaExterna, solicitarCodigoFirmaExterna } from "@/actions/firmas-externas";
 
 type Props = {
   firma: FirmaPublicaView;
@@ -48,6 +48,9 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   const [firmaTrazo, setFirmaTrazo] = useState<string | null>(null);
   const [aceptoLectura, setAceptoLectura] = useState(false);
   const [aceptoEnvioElectronico, setAceptoEnvioElectronico] = useState(false);
+  const [codigoVerificacion, setCodigoVerificacion] = useState("");
+  const [otpEnviado, setOtpEnviado] = useState(false);
+  const [otpSolicitando, setOtpSolicitando] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isRead, setIsRead] = useState(firma.estado !== "pendiente");
@@ -70,7 +73,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
   }, [firma.estado, firma.firmadoAt, mounted, success]);
 
   const formDisabled = firma.estado !== "pendiente" || isPending || finalizado;
-  const submitDisabled = formDisabled || !isRead || !aceptoLectura || (!!firma.documentoExternoUrl && !aceptoEnvioElectronico);
+  const submitDisabled = formDisabled || !isRead || !aceptoLectura || (!!firma.documentoExternoUrl && (!aceptoEnvioElectronico || !otpEnviado || !/^[0-9]{6}$/.test(codigoVerificacion)));
 
   const contenidoMarkdown = firma.contenidoMarkdown?.trim() ?? "";
   const contenidoLineas = contenidoMarkdown.length > 0 ? contenidoMarkdown.split("\n") : [];
@@ -143,6 +146,21 @@ export default function FirmaDocumentoClient({ firma }: Props) {
     setFirmaTrazo(null);
   }
 
+  async function solicitarOtp() {
+    if (!firma.documentoExternoUrl || otpSolicitando || isPending) return;
+    setOtpSolicitando(true);
+    setError(null);
+    try {
+      await solicitarCodigoFirmaExterna(firma.token);
+      setOtpEnviado(true);
+      setCodigoVerificacion("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No fue posible enviar el código.");
+    } finally {
+      setOtpSolicitando(false);
+    }
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -153,7 +171,7 @@ export default function FirmaDocumentoClient({ firma }: Props) {
         const result = firma.documentoExternoUrl
           ? await completarFirmaExterna({
               token: firma.token, nombreFirmante, rutFirmante, aceptoLectura,
-              aceptoEnvioElectronico, firmaSvg: firmaTrazo, firmaTexto,
+              aceptoEnvioElectronico, codigoVerificacion, firmaSvg: firmaTrazo, firmaTexto,
             })
           : await completarFirmaDocumento({
               token: firma.token, nombreFirmante, rutFirmante, aceptoLectura,
@@ -350,6 +368,24 @@ export default function FirmaDocumentoClient({ firma }: Props) {
               />
               <span>Declaro haber leído el documento completo y acepto su contenido.</span>
             </label>
+
+            {firma.documentoExternoUrl ? (
+              <div className="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Verificación del correo particular</p>
+                <p className="text-xs text-slate-600">Para firmar necesitas un código de seis dígitos que se enviará a {firma.emailPersonal || "tu correo particular"}. Vence en diez minutos y admite cinco intentos.</p>
+                <Button type="button" variant="outline" disabled={formDisabled || otpSolicitando} onClick={() => void solicitarOtp()}>
+                  {otpSolicitando ? "Enviando código..." : otpEnviado ? "Solicitar nuevo código" : "Enviar código de verificación"}
+                </Button>
+                {otpEnviado ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="codigo-firma-temporal">Código recibido por correo</Label>
+                    <Input id="codigo-firma-temporal" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6}
+                      value={codigoVerificacion} onChange={(e) => setCodigoVerificacion(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                      placeholder="000000" disabled={formDisabled} />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {firma.documentoExternoUrl ? (
               <label className="flex items-start gap-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-700">
