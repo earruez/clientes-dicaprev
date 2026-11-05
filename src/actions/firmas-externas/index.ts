@@ -10,6 +10,7 @@ import {
   rechazarSolicitudFirmaExterna,
   reenviarCopiaFirmadaTrabajadorTemporal,
   solicitarCodigoFirmaTemporal,
+  aceptarModalidadElectronicaSst,
 } from "@/lib/firmas-externas";
 
 export async function listarFirmasExternas() {
@@ -64,4 +65,8 @@ export async function reenviarCopiaFirmadaTemporal(documentoId: string) {
 
 export async function solicitarCodigoFirmaExterna(token: string) {
   return solicitarCodigoFirmaTemporal(token);
+}
+
+export async function registrarConsentimientoFirmaSst(token: string, acepta: boolean) {
+  return aceptarModalidadElectronicaSst(token, acepta);
 }
