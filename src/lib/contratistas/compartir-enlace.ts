@@ -5,9 +5,13 @@ export function mensajeAccesoContratista(input: {
   url: string;
   vencimiento: string;
 }) {
-  const fecha = new Intl.DateTimeFormat("es-CL", {
+  const parts = new Intl.DateTimeFormat("es-CL", {
     timeZone: "America/Santiago", day: "2-digit", month: "2-digit", year: "numeric",
-  }).format(new Date(input.vencimiento));
+  }).formatToParts(new Date(input.vencimiento));
+  const dia = parts.find((p) => p.type === "day")?.value;
+  const mes = parts.find((p) => p.type === "month")?.value;
+  const anio = parts.find((p) => p.type === "year")?.value;
+  const fecha = `${dia}/${mes}/${anio}`;
   return `Hola, ${input.nombreEmpresa}. Te compartimos el acceso a la carpeta de acreditación documental de la obra "${input.obra}" en NextPrev.
 
 Desde este enlace puedes subir la documentación de tu empresa y trabajadores:
