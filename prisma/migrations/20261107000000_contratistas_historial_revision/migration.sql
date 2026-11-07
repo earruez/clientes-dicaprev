@@ -16,3 +16,5 @@ CREATE TABLE "ContratistaRequisitoEvento" (
 );
 CREATE INDEX "ContratistaRequisitoEvento_empresaId_solicitudId_creadoAt_idx" ON "ContratistaRequisitoEvento"("empresaId","solicitudId","creadoAt");
 CREATE INDEX "ContratistaRequisitoEvento_requisitoId_creadoAt_idx" ON "ContratistaRequisitoEvento"("requisitoId","creadoAt");
+
+ALTER TABLE "ContratistaRequisito" ADD COLUMN "tipoContrato" TEXT;
