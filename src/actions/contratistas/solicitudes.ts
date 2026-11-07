@@ -115,7 +115,7 @@ export async function crearSolicitudContratista(input: {
         empresaId, nombre: r.nombre, obligatorio: r.obligatorio,
         // La plantilla general no inventa una vigencia legal uniforme:
         // períodos específicos se configuran por faena/mandante cuando correspondan.
-        condicional: r.condicional, vigenciaMeses: null,
+        condicional: r.condicional, vigenciaMeses: r.vigenciaMeses,
       })) },
     },
     select: { id: true },
@@ -411,7 +411,7 @@ export async function invitarContratista(solicitudId: string) {
   const expira = new Date(Date.now() + DIAS_ENLACE * 86400000);
   await prisma.contratistaSolicitud.update({
     where: { id: solicitud.id },
-    data: { tokenHash: hashTokenPortal(token), tokenExpiraAt: expira, invitadoAt: new Date(), estado: "enviada" },
+    data: { tokenHash: hashTokenPortal(token), tokenExpiraAt: expira, invitadoAt: new Date(), ...(solicitud.estado === "borrador" ? { estado: "enviada" } : {}) },
   });
   try {
     await sendEmail({
