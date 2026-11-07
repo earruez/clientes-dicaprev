@@ -11,6 +11,7 @@ import { ARCHIVOS_PORTAL_FORMATOS, MAX_ARCHIVO_PORTAL_BYTES, validarArchivoPorta
 import { esRequisitoContratoLaboral } from "@/lib/contratistas/requisitos";
 import { formatRutChile } from "@/lib/rut";
 import { CARGOS_SUGERIDOS_CONTRATISTAS, normalizarCargoContratista } from "@/lib/contratistas/cargos";
+import CapacitacionesContratistaClient from "./CapacitacionesContratistaClient";
 
 type DatosPortal = NonNullable<Awaited<ReturnType<typeof obtenerPortalContratista>>>;
 type RequisitoPortal = DatosPortal["requisitos"][number];
@@ -601,6 +602,12 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
                   })}
                 </select>
               </div>}
+              {categoria === "trabajador" && trabajadorActivoId && (() => {
+                const trabajador = trabajadores.find((r) => r.id === trabajadorActivoId);
+                if (!trabajador) return null;
+                return <CapacitacionesContratistaClient key={trabajador.id} token={token} trabajador={trabajador}
+                  actividades={portal.actividadesFormativas} onSaved={recargar}/>;
+              })()}
               {categoria === "empresa" && <p className="rounded-xl bg-sky-50 px-4 py-3 text-xs text-sky-900">Documentos corporativos, de faena y SST. Se pueden enviar a revisión aunque todavía no exista la nómina de trabajadores.</p>}
               {documentosCategoria.length === 0 && <div className="flex flex-col items-center rounded-2xl border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"><FolderOpen className="h-10 w-10 text-slate-300"/><p className="mt-3 text-sm font-semibold text-slate-700">No hay documentos en esta categoría.</p>{categoria !== "empresa" && <button type="button" onClick={() => irA("recursos")} className="mt-2 text-xs font-semibold text-emerald-700">Agregar un recurso <ArrowRight className="inline h-3.5 w-3.5"/></button>}</div>}
               {categoria === "empresa"
