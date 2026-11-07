@@ -2699,6 +2699,7 @@ model ContratistaSolicitud {
   recursos           ContratistaRecurso[]
   requisitos         ContratistaRequisito[]
   reglasTrabajadores ContratistaRequisitoRegla[]
+  actividadesFormativas ContratistaActividadFormativa[]
 
   @@index([empresaId, estado])
   @@index([contratistaId])
@@ -2741,10 +2742,44 @@ model ContratistaRecurso {
   solicitud     ContratistaSolicitud  @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
   recursoBase   ContratistaRecursoBase? @relation(fields: [recursoBaseId], references: [id], onDelete: SetNull)
   requisitos    ContratistaRequisito[]
+  actividadesFormativas ContratistaActividadFormativa[]
 
   @@index([solicitudId, tipo])
   @@index([empresaId])
   @@index([recursoBaseId])
+}
+
+/** Evidencia individual declarada por contratista; no acredita automáticamente el DS 44. */
+model ContratistaActividadFormativa {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  solicitudId         String
+  recursoId           String
+  tipo                String
+  temaCodigo          String
+  titulo              String
+  fecha               DateTime
+  duracionMinutos     Int
+  relator             String
+  contenidosDs44      String?
+  vinculadaCursoDs44  Boolean  @default(false)
+  evaluacion          String   @default("no_informada")
+  archivoNombre       String
+  archivoOriginal     String
+  archivoTipo         String?
+  archivoPeso         Int
+  estado              String   @default("pendiente_validacion")
+  observacionRevision String?
+  revisadoAt          DateTime?
+  revisadoPorId       String?
+  createdAt           DateTime @default(now())
+
+  solicitud           ContratistaSolicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
+  recurso             ContratistaRecurso @relation(fields: [recursoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, solicitudId, createdAt])
+  @@index([recursoId, fecha])
+  @@index([solicitudId, estado])
 }
 
 /** Regla por expediente que se aplica a trabajadores actuales y futuros. */
