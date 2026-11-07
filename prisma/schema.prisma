@@ -2809,6 +2809,26 @@ model ContratistaRequisito {
   @@index([fechaVencimiento])
 }
 
+/** Historial inmutable de decisiones de revisión y cambios de obligatoriedad. */
+model ContratistaRequisitoEvento {
+  id                  String   @id @default(cuid())
+  empresaId           String
+  solicitudId         String
+  requisitoId         String
+  nombreRequisito     String
+  tipo                String
+  estadoAnterior      String?
+  estadoNuevo         String?
+  obligatorioAnterior Boolean?
+  obligatorioNuevo    Boolean?
+  motivo              String?
+  usuarioId           String
+  creadoAt            DateTime @default(now())
+
+  @@index([empresaId, solicitudId, creadoAt])
+  @@index([requisitoId, creadoAt])
+}
+
 /** Requisitos personalizados por empresa mandante, reutilizables entre contratos. */
 model ContratistaCatalogoRequisito {
   id                    String   @id @default(cuid())
