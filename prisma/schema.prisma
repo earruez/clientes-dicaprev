@@ -2776,10 +2776,29 @@ model ContratistaActividadFormativa {
 
   solicitud           ContratistaSolicitud @relation(fields: [solicitudId], references: [id], onDelete: Cascade)
   recurso             ContratistaRecurso @relation(fields: [recursoId], references: [id], onDelete: Cascade)
+  historial           ContratistaActividadFormativaRevision[]
 
   @@index([empresaId, solicitudId, createdAt])
   @@index([recursoId, fecha])
   @@index([solicitudId, estado])
+}
+
+/** Auditoría de decisiones sobre registros formativos. */
+model ContratistaActividadFormativaRevision {
+  id               String  @id @default(cuid())
+  empresaId        String
+  solicitudId      String
+  actividadId      String
+  estadoAnterior   String
+  estadoNuevo      String
+  motivo           String?
+  usuarioId        String
+  createdAt        DateTime @default(now())
+
+  actividad        ContratistaActividadFormativa @relation(fields: [actividadId], references: [id], onDelete: Cascade)
+
+  @@index([actividadId, createdAt])
+  @@index([empresaId, solicitudId, createdAt])
 }
 
 /** Regla por expediente que se aplica a trabajadores actuales y futuros. */
