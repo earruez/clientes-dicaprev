@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { requirePermission } from "@/server/auth/permissions";
+import { formatRutChile, validarRutChile } from "@/lib/rut";
 
 export type EstadoContratistaDocumentoInput =
   | "pendiente"
@@ -104,12 +105,13 @@ export async function crearContratista(input: CrearContratistaInput) {
 
   const nombre = input.nombre.trim();
   if (!nombre) throw new Error("El nombre del contratista es obligatorio");
+  if (input.rut?.trim() && !validarRutChile(input.rut)) throw new Error("RUT de la empresa inválido: verifica el dígito verificador.");
 
   const contratista = await prisma.contratista.create({
     data: {
       empresaId,
       nombre,
-      rut: input.rut?.trim() || null,
+      rut: input.rut?.trim() ? formatRutChile(input.rut) : null,
       razonSocial: input.razonSocial?.trim() || null,
       email: input.email?.trim().toLowerCase() || null,
       telefono: input.telefono?.trim() || null,
@@ -127,13 +129,14 @@ export async function actualizarContratista(input: CrearContratistaInput & { con
   const { empresaId } = await requirePermission("canManageDocumentacion");
   const nombre = input.nombre?.trim();
   if (!nombre) throw new Error("El nombre comercial del contratista es obligatorio");
+  if (input.rut?.trim() && !validarRutChile(input.rut)) throw new Error("RUT de la empresa inválido: verifica el dígito verificador.");
   const email = input.email?.trim().toLowerCase() || null;
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Correo de contacto inválido");
   const result = await prisma.contratista.updateMany({
     where: { id: input.contratistaId, empresaId, activo: true },
     data: {
       nombre: nombre.slice(0, 180),
-      rut: input.rut?.trim().slice(0, 18) || null,
+      rut: input.rut?.trim() ? formatRutChile(input.rut) : null,
       razonSocial: input.razonSocial?.trim().slice(0, 180) || null,
       email,
       telefono: input.telefono?.trim().slice(0, 50) || null,
