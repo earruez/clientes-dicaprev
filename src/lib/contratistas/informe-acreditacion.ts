@@ -19,7 +19,7 @@ export async function obtenerDatosInformeContratista(empresaId: string, solicitu
         select: {
           nombre: true, categoria: true, recursoId: true, obligatorio: true, estado: true,
           archivoNombre: true, archivoOriginal: true, fechaEmision: true,
-          fechaVencimiento: true, vigenciaMeses: true, observacionRevision: true,
+          fechaVencimiento: true, vigenciaMeses: true, tipoContrato: true, observacionRevision: true,
           revisadoAt: true, revisadoPorId: true, createdAt: true,
         },
       },
