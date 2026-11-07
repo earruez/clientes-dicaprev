@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
-import { documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
+import { documentoPendienteRevisionMandante, documentoAprobadoConRevision, faltaVerificarVigencia, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
 import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
@@ -58,10 +58,11 @@ export async function listarSolicitudesContratistas() {
     const pendientesValidacion = s.requisitos.filter((r) => documentoPendienteRevisionMandante(r)).length;
     const documentosObservados = s.requisitos.filter((r) => r.estado === "observado" || r.estado === "rechazado").length;
     const pendientesCarga = s.requisitos.filter((r) => r.obligatorio && !r.archivoNombre).length;
+    const vigenciasSinVerificar = s.requisitos.filter(faltaVerificarVigencia).length;
     return {
       ...s, requisitos: s.requisitos.map((r) => ({ ...r, historialRevision: eventosPorRequisito.get(r.id) || [] })), totalObligatorios: total, aprobados,
       porcentaje: total ? Math.round((aprobados / total) * 100) : 0,
-      documentosAprobados, pendientesValidacion, documentosObservados, pendientesCarga,
+      documentosAprobados, pendientesValidacion, documentosObservados, pendientesCarga, vigenciasSinVerificar,
     };
   });
 }
