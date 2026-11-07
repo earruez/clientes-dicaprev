@@ -77,7 +77,7 @@ export async function crearSolicitudContratista(input: {
   if (!contratista) throw new Error("Contratista no encontrado");
   if (!input.nombre?.trim()) throw new Error("Indica el nombre del contrato o servicio");
   const email = input.contactoEmail?.trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Correo de contacto inválido");
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Correo de contacto inválido");
   const personalizados = await prisma.contratistaCatalogoRequisito.findMany({ where: { empresaId, activo: true, categoria: "empresa" } });
   const catalogo = [
     ...CATALOGO_CONTRATISTAS.filter((r) => r.categoria === "empresa"),
@@ -366,6 +366,36 @@ export async function cambiarObligatoriedadContratista(requisitoId: string, obli
   await prisma.contratistaRequisito.update({ where: { id: r.id }, data: { obligatorio } });
   await recalcularEstado(r.solicitudId, empresaId);
   return { ok: true };
+}
+
+/**
+ * Genera un acceso temporal para enviar por WhatsApp o copiar.
+ * Solo la mandante puede emitirlo. El enlace se devuelve una sola vez:
+ * en la base únicamente se conserva su hash, nunca el token en claro.
+ * Crear otro acceso invalida el anterior, incluidos los enviados por email.
+ */
+export async function generarEnlaceCargaContratista(solicitudId: string) {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+  const solicitud = await prisma.contratistaSolicitud.findFirst({
+    where: { id: solicitudId, empresaId, estado: { not: "cerrada" }, contratista: { activo: true } },
+    select: { id: true, estado: true, nombre: true, faena: true },
+  });
+  if (!solicitud) throw new Error("Expediente no disponible o cerrado");
+  if (!solicitud.contactoEmail?.trim()) throw new Error("No hay correo electrónico registrado. Utiliza 'Generar enlace' y compártelo por WhatsApp.");
+  const token = generarTokenPortal();
+  const url = `${origenNextPrev()}/contratistas/portal/${token}`;
+  const expira = new Date(Date.now() + DIAS_ENLACE * 86400000);
+  const actualizacion = await prisma.contratistaSolicitud.updateMany({
+    where: { id: solicitud.id, empresaId, estado: { not: "cerrada" } },
+    data: {
+      tokenHash: hashTokenPortal(token),
+      tokenExpiraAt: expira,
+      invitadoAt: new Date(),
+      ...(solicitud.estado === "borrador" ? { estado: "enviada" } : {}),
+    },
+  });
+  if (!actualizacion.count) throw new Error("El expediente fue cerrado; no se generó el acceso.");
+  return { url, expira: expira.toISOString(), diasVigencia: DIAS_ENLACE };
 }
 
 export async function invitarContratista(solicitudId: string) {
