@@ -76,10 +76,21 @@ export async function obtenerPortalContratista(token: string) {
   if (!s) return null;
   const empresa = await prisma.empresa.findUnique({ where: { id: s.empresaId }, select: { nombre: true } });
   const recursosBase = await prisma.contratistaRecursoBase.findMany({ where: { empresaId: s.empresaId, contratistaId: s.contratistaId }, orderBy: { nombre: "asc" }, select: { id: true, tipo: true, nombre: true, identificador: true, patente: true, cargo: true } });
+  const actividadesFormativas = await prisma.contratistaActividadFormativa.findMany({
+    where: { empresaId: s.empresaId, solicitudId: s.id },
+    orderBy: { fecha: "desc" },
+    select: {
+      id: true, recursoId: true, tipo: true, temaCodigo: true, titulo: true, fecha: true,
+      duracionMinutos: true, relator: true, vinculadaCursoDs44: true, contenidosDs44: true,
+      evaluacion: true, estado: true, observacionRevision: true, archivoOriginal: true,
+      revisadoAt: true, createdAt: true,
+    },
+  });
+
   return {
     nombre: s.nombre, faena: s.faena, servicio: s.servicio,
     estado: s.estado, contactoEmail: s.contactoEmail, empresaMandante: empresa?.nombre || "Empresa mandante",
-    contratista: s.contratista, recursos: s.recursos, recursosBase,
+    contratista: s.contratista, recursos: s.recursos, recursosBase, actividadesFormativas,
     requisitos: s.requisitos.map((r) => {
       const vigenciaMeses = vigenciaMesesRequisito(r);
       return {

@@ -34,6 +34,10 @@ export async function listarSolicitudesContratistas() {
       contratista: { select: { nombre: true, rut: true, razonSocial: true } },
       centroTrabajo: { select: { id: true, nombre: true } },
       recursos: { orderBy: { createdAt: "asc" } },
+      actividadesFormativas: {
+        orderBy: { fecha: "desc" },
+        include: { historial: { orderBy: { createdAt: "desc" }, take: 10 } },
+      },
       reglasTrabajadores: { orderBy: { createdAt: "asc" }, include: { _count: { select: { requisitos: true } } } },
       requisitos: {
         orderBy: [{ categoria: "asc" }, { createdAt: "asc" }],
@@ -587,4 +591,56 @@ export async function enviarInformeAcreditacionContratista(solicitudId: string) 
     }],
   });
   return { ok: true, correo, messageId: result.messageId || null };
+}
+
+
+/**
+ * Revisión manual de evidencia formativa. No modifica automáticamente el estado
+ * del requisito documental de capacitaciones, ni certifica cumplimiento legal.
+ */
+export async function revisarActividadFormativaContratista(input: {
+  actividadId: string;
+  estado: "validada" | "observada";
+  observacion?: string;
+}) {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  if (!["validada", "observada"].includes(input.estado)) throw new Error("Estado inválido");
+  if (input.estado === "observada" && (!input.observacion || input.observacion.trim().length < 4)) {
+    throw new Error("Indica el motivo de la observación (mínimo 4 caracteres).");
+  }
+  const actividad = await prisma.contratistaActividadFormativa.findFirst({
+    where: { id: input.actividadId, empresaId, solicitud: { estado: { not: "cerrada" } } },
+    select: {
+      id: true, solicitudId: true, estado: true, archivoNombre: true, vinculadaCursoDs44: true,
+      contenidosDs44: true, evaluacion: true,
+    },
+  });
+  if (!actividad?.archivoNombre) throw new Error("Registro o respaldo no disponible.");
+  if (actividad.estado === input.estado) throw new Error("Este registro ya tiene el estado seleccionado.");
+  if (input.estado === "validada" && actividad.vinculadaCursoDs44) {
+    if (actividad.evaluacion !== "aprobada") throw new Error("No se puede validar como evidencia del artículo 16 sin evaluación aprobada.");
+    let temas: unknown;
+    try { temas = JSON.parse(actividad.contenidosDs44 || "[]"); } catch { temas = []; }
+    if (!Array.isArray(temas) || temas.length === 0) throw new Error("Falta identificar los contenidos del artículo 16.");
+  }
+  await prisma.$transaction(async (tx) => {
+    const actualizado = await tx.contratistaActividadFormativa.updateMany({
+      where: { id: actividad.id, empresaId, estado: actividad.estado },
+      data: {
+        estado: input.estado,
+        observacionRevision: input.estado === "observada" ? input.observacion?.trim().slice(0,1200) : null,
+        revisadoAt: new Date(),
+        revisadoPorId: usuarioId,
+      },
+    });
+    if (!actualizado.count) throw new Error("El estado de la actividad cambió; recarga para continuar.");
+    await tx.contratistaActividadFormativaRevision.create({
+      data: {
+        empresaId, solicitudId: actividad.solicitudId, actividadId: actividad.id,
+        estadoAnterior: actividad.estado, estadoNuevo: input.estado,
+        motivo: input.observacion?.trim().slice(0,1200) || null, usuarioId,
+      },
+    });
+  });
+  return { ok: true };
 }
