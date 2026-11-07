@@ -11,6 +11,7 @@ export type RequisitoInforme = {
   fechaEmision: Date | string | null;
   fechaVencimiento: Date | string | null;
   vigenciaMeses: number | null;
+  tipoContrato?: string | null;
   observacionRevision?: string | null;
   revisadoAt?: Date | string | null;
   revisadoPorId?: string | null;
