@@ -61,7 +61,7 @@ export function requiereFechaVencimientoDeclarada(requisito: {
   nombre: string; categoria?: string | null; tipoContrato?: string | null;
 }): boolean {
   if (esRequisitoContratoLaboral(requisito)) return requisito.tipoContrato === "plazo_fijo";
-  const nombre = requisito.nombre.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+  const nombre = requisito.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (requisito.categoria === "trabajador") {
     return /cedula.*identidad|examen.*ocupacional|examen.*pre.?ocupacional|licencia.*conduc|certificacion.*vigente/.test(nombre);
   }
