@@ -104,6 +104,8 @@ export async function guardarDatosEmpresaPortal(token: string, input: {
   const s = await resolverPortalContratista(token);
   if (!s) throw new Error("Invitación inválida o vencida");
   if (!input.razonSocial?.trim() || !input.rut?.trim()) throw new Error("Completa razón social y RUT");
+  if (!validarRutChile(input.rut)) throw new Error("RUT de la empresa inválido: revisa el número y dígito verificador.");
+  if (input.rutRepresentante?.trim() && !validarRutChile(input.rutRepresentante)) throw new Error("RUT del representante legal inválido.");
   await prisma.contratista.update({
     where: { id: s.contratistaId },
     data: {
