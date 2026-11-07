@@ -5,6 +5,7 @@ import { resolverPortalContratista } from "@/lib/contratistas/portal";
 import { REQUISITOS_RECURSO, estadoEfectivo, estadoAuditableRequisito, vencimientoEfectivoRequisito, vigenciaMesesRequisito, type CategoriaContratista } from "@/lib/contratistas/requisitos";
 import { formatRutChile, validarRutChile } from "@/lib/rut";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
+import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 
 function valido(input: string) {
   return input.trim().slice(0, 160);
@@ -14,13 +15,21 @@ function requisitosParaNuevoRecurso(
   tipo: Exclude<CategoriaContratista, "empresa">,
   reglas: { id: string; nombre: string; obligatorio: boolean; vigenciaMeses: number | null; condicional: boolean }[],
 ) {
-  const nombreNormal = (nombre: string) => nombre.trim().toLocaleLowerCase("es");
-  const basicos = REQUISITOS_RECURSO[tipo].map((d) => {
+  const nombreNormal = (nombre: string) => nombre.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("es");
+  const definidos = tipo === "trabajador"
+    ? PLANTILLA_ACREDITACION_TRABAJADORES
+    : REQUISITOS_RECURSO[tipo];
+  const basicos = definidos.map((d) => {
     const regla = tipo === "trabajador" ? reglas.find((r) => nombreNormal(r.nombre) === nombreNormal(d.nombre)) : undefined;
+    const mesesPlantilla = "vigenciaMeses" in d ? d.vigenciaMeses : null;
+    const condicionalPlantilla = "condicional" in d ? d.condicional : false;
     return {
-      nombre: d.nombre, categoria: d.categoria, obligatorio: regla?.obligatorio ?? d.obligatorio,
-      reglaTrabajadorId: regla?.id || null, vigenciaMeses: vigenciaMesesRequisito({ ...d, vigenciaMeses: regla?.vigenciaMeses }),
-      condicional: regla?.condicional || false,
+      nombre: d.nombre,
+      categoria: tipo,
+      obligatorio: regla?.obligatorio ?? d.obligatorio,
+      reglaTrabajadorId: regla?.id || null,
+      vigenciaMeses: vigenciaMesesRequisito({ nombre: d.nombre, categoria: tipo, vigenciaMeses: regla?.vigenciaMeses ?? mesesPlantilla }),
+      condicional: regla?.condicional ?? condicionalPlantilla,
     };
   });
   if (tipo !== "trabajador") return basicos;
@@ -31,8 +40,10 @@ function requisitosParaNuevoRecurso(
     nombres.add(clave);
     return true;
   }).map((r) => ({
-    nombre: r.nombre, categoria: "trabajador", obligatorio: r.obligatorio, reglaTrabajadorId: r.id,
-    vigenciaMeses: vigenciaMesesRequisito({ ...r, categoria: "trabajador" }), condicional: r.condicional,
+    nombre: r.nombre, categoria: "trabajador", obligatorio: r.obligatorio,
+    reglaTrabajadorId: r.id,
+    vigenciaMeses: vigenciaMesesRequisito({ ...r, categoria: "trabajador" }),
+    condicional: r.condicional,
   }));
   return [...basicos, ...adicionales];
 }
