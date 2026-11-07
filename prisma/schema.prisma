@@ -2778,6 +2778,7 @@ model ContratistaRequisito {
   obligatorio        Boolean   @default(true)
   vigenciaMeses      Int?
   condicional        Boolean   @default(false)
+  tipoContrato       String? // indefinido | plazo_fijo | obra_faena (solo contratos laborales)
   estado             String    @default("pendiente")
   archivoNombre      String?
   archivoOriginal    String?
