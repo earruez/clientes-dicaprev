@@ -18,6 +18,7 @@ import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 import { agruparDocumentosRevision } from "@/lib/contratistas/organizacion-revision";
+import CapacitacionesRevisionMandante from "./CapacitacionesRevisionMandante";
 import { enlaceWhatsAppContratista, mensajeAccesoContratista } from "@/lib/contratistas/compartir-enlace";
 import { resumenDocumentosInforme, estadoAcreditacionDocumental } from "@/lib/contratistas/resumen-informe";
 import JSZip from "jszip";
@@ -746,6 +747,9 @@ export default function SolicitudesContratistasClient() {
                                       Subidos {resumen.cargados}/{resumen.total} · Faltan subir {resumen.sinArchivo} ·
                                       Por validar {resumen.porValidar} · Observados {resumen.observados}
                                     </p>
+                                    <CapacitacionesRevisionMandante actividades={actual.actividadesFormativas}
+                                      recursoId={recurso.id} puedeEditar={puedeEditar}
+                                      onUpdated={async () => { await cargar(); }} />
                                     {documentos.length ? renderDocumentosAgrupados(documentos) : <p className="text-sm text-slate-500">Este trabajador todavía no tiene requisitos asignados.</p>}
                                   </div>
                                 </details>
