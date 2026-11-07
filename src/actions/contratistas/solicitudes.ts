@@ -41,6 +41,16 @@ export async function listarSolicitudesContratistas() {
       },
     },
   });
+  const eventos = solicitudes.length ? await prisma.contratistaRequisitoEvento.findMany({
+    where: { empresaId, solicitudId: { in: solicitudes.map((s) => s.id) } },
+    orderBy: { creadoAt: "desc" },
+    take: 2500,
+  }) : [];
+  const eventosPorRequisito = new Map<string, typeof eventos>();
+  for (const evento of eventos) {
+    const previo = eventosPorRequisito.get(evento.requisitoId) || [];
+    if (previo.length < 10) eventosPorRequisito.set(evento.requisitoId, [...previo, evento]);
+  }
   return solicitudes.map((s) => {
     const total = s.requisitos.filter((r) => r.obligatorio).length;
     const aprobados = s.requisitos.filter((r) => r.obligatorio && documentoAprobadoConRevision(r)).length;
@@ -49,7 +59,7 @@ export async function listarSolicitudesContratistas() {
     const documentosObservados = s.requisitos.filter((r) => r.estado === "observado" || r.estado === "rechazado").length;
     const pendientesCarga = s.requisitos.filter((r) => r.obligatorio && !r.archivoNombre).length;
     return {
-      ...s, totalObligatorios: total, aprobados,
+      ...s, requisitos: s.requisitos.map((r) => ({ ...r, historialRevision: eventosPorRequisito.get(r.id) || [] })), totalObligatorios: total, aprobados,
       porcentaje: total ? Math.round((aprobados / total) * 100) : 0,
       documentosAprobados, pendientesValidacion, documentosObservados, pendientesCarga,
     };
@@ -359,11 +369,28 @@ export async function configurarRequisitoPorCargoContratista(input: {
   });
 }
 
-export async function cambiarObligatoriedadContratista(requisitoId: string, obligatorio: boolean) {
-  const { empresaId } = await requirePermission("canManageDocumentacion");
-  const r = await prisma.contratistaRequisito.findFirst({ where: { id: requisitoId, empresaId, solicitud: { estado: { not: "cerrada" } } }, select: { id: true, solicitudId: true } });
+export async function cambiarObligatoriedadContratista(
+  requisitoId: string, obligatorio: boolean, motivo: string,
+) {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  if (!motivo?.trim() || motivo.trim().length < 4) throw new Error("Indica un motivo de al menos 4 caracteres para modificar la obligatoriedad.");
+  const r = await prisma.contratistaRequisito.findFirst({
+    where: { id: requisitoId, empresaId, solicitud: { estado: { not: "cerrada" } } },
+    select: { id: true, solicitudId: true, nombre: true, obligatorio: true },
+  });
   if (!r) throw new Error("Requisito no encontrado");
-  await prisma.contratistaRequisito.update({ where: { id: r.id }, data: { obligatorio } });
+  if (r.obligatorio === obligatorio) return { ok: true, sinCambios: true };
+  await prisma.$transaction(async (tx) => {
+    await tx.contratistaRequisito.update({ where: { id: r.id }, data: { obligatorio } });
+    await tx.contratistaRequisitoEvento.create({
+      data: {
+        empresaId, solicitudId: r.solicitudId, requisitoId: r.id,
+        nombreRequisito: r.nombre, tipo: "obligatoriedad",
+        obligatorioAnterior: r.obligatorio, obligatorioNuevo: obligatorio,
+        motivo: motivo.trim().slice(0, 1200), usuarioId,
+      },
+    });
+  });
   await recalcularEstado(r.solicitudId, empresaId);
   return { ok: true };
 }
@@ -454,7 +481,7 @@ export async function revisarRequisitoContratista(input: {
     include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true, contratistaId: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
-  if (!documentoPendienteRevisionMandante(requisito)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
+  if (requisito.estado === input.estado) throw new Error("El documento ya tiene ese estado. Selecciona uno distinto si deseas corregir la revisión.");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, vigenciaMesesRequisito(requisito)) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
@@ -497,6 +524,14 @@ export async function revisarRequisitoContratista(input: {
         ...(documentoBaseId ? { documentoBaseId } : {}),
         observacionRevision: input.observacion?.trim().slice(0, 1200) || null,
         revisadoPorId: usuarioId, revisadoAt: new Date(),
+      },
+    });
+    await tx.contratistaRequisitoEvento.create({
+      data: {
+        empresaId, solicitudId: requisito.solicitudId, requisitoId: requisito.id,
+        nombreRequisito: requisito.nombre, tipo: "revision",
+        estadoAnterior: requisito.estado, estadoNuevo: input.estado,
+        motivo: input.observacion?.trim().slice(0, 1200) || null, usuarioId,
       },
     });
   });
