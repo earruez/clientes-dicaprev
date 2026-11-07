@@ -49,6 +49,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
   });
   const [archivo, setArchivo] = useState<Record<string, File | null>>({});
   const [fechas, setFechas] = useState<Record<string, { emision: string; vencimiento: string }>>({});
+  const [tiposContrato, setTiposContrato] = useState<Record<string, string>>({});
   const [enProceso, setEnProceso] = useState("");
   const [error, setError] = useState("");
   const [errorDocumento, setErrorDocumento] = useState<Record<string, string>>({});
@@ -120,7 +121,11 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
     if (errorArchivo) { mostrarError(errorArchivo); return; }
     const emision = fechas[r.id]?.emision ?? isoFecha(r.fechaEmision);
     const vencimiento = fechas[r.id]?.vencimiento ?? (r.vigenciaMeses ? "" : isoFecha(r.fechaVencimiento));
-    const errorFecha = validarFechasPortal({ emision, vencimiento, vigenciaMeses: r.vigenciaMeses });
+    const tipoContrato = tiposContrato[r.id] ?? r.tipoContrato ?? "";
+    const errorFecha = validarFechasPortal({
+      emision, vencimiento, vigenciaMeses: r.vigenciaMeses,
+      nombreRequisito: r.nombre, categoria: r.categoria, tipoContrato,
+    });
     if (errorFecha) { mostrarError(errorFecha); return; }
     setErrorDocumento((prev) => ({ ...prev, [r.id]: "" }));
     void ejecutar(r.id, async () => {
@@ -130,6 +135,7 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
         form.set("file", file);
         form.set("fechaEmision", emision);
         form.set("fechaVencimiento", vencimiento);
+        form.set("tipoContrato", tipoContrato);
         const response = await fetch(`/api/contratistas/portal/${token}/archivo`, { method: "POST", body: form });
         const payload = await response.json().catch(() => null) as { error?: string } | null;
         if (!response.ok) {
@@ -280,6 +286,17 @@ export default function PortalContratistaClient({ token, inicial }: { token: str
         {archivo[r.id] && !validarArchivoPortal(archivo[r.id]) ? (
           <p role="status" className="flex items-center gap-2 text-xs font-medium text-emerald-800"><CheckCircle2 className="h-4 w-4" /> Archivo válido: {formatDocumentoPeso(archivo[r.id]!.size)} de {(MAX_ARCHIVO_PORTAL_BYTES / 1_000_000).toLocaleString("es-CL", { maximumFractionDigits: 1 })} MB permitidos.</p>
         ) : null}
+        {esContrato && <label className="block space-y-1.5">
+          <span className="text-xs font-bold text-slate-700">Modalidad del contrato *</span>
+          <select className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"
+            value={tiposContrato[r.id] ?? r.tipoContrato ?? ""}
+            onChange={(e) => setTiposContrato((prev) => ({ ...prev, [r.id]: e.target.value }))}>
+            <option value="">Selecciona modalidad</option>
+            <option value="indefinido">Indefinido (sin fecha de término)</option>
+            <option value="plazo_fijo">Plazo fijo (fecha de vencimiento obligatoria)</option>
+            <option value="obra_faena">Por obra o faena (término si está definido)</option>
+          </select>
+        </label>}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de emisión o entrega <span className="font-normal text-slate-400">{r.vigenciaMeses ? "(obligatoria para validar vigencia)" : "(si aplica)"}</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.emision} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, emision: e.target.value } }))}/></label>
           <label className="space-y-1.5"><span className="text-xs font-bold text-slate-600">Fecha de vencimiento <span className="font-normal text-slate-400">(si aplica)</span></span><Input type="date" className="h-11 rounded-xl border-slate-200" value={actual.vencimiento} onChange={(e) => setFechas((prev) => ({ ...prev, [r.id]: { ...actual, vencimiento: e.target.value } }))}/></label>

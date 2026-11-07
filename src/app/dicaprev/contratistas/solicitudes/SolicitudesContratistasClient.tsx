@@ -11,13 +11,14 @@ import { getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import {
   agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, configurarRequisitoPorCargoContratista, cerrarExpedienteContratista,
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
-  invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista, enviarInformeAcreditacionContratista,
+  invitarContratista, generarEnlaceCargaContratista, listarSolicitudesContratistas, revisarRequisitoContratista, enviarInformeAcreditacionContratista,
 } from "@/actions/contratistas/solicitudes";
 import { documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoAuditableRequisito, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 import { agruparDocumentosRevision } from "@/lib/contratistas/organizacion-revision";
+import { enlaceWhatsAppContratista, mensajeAccesoContratista } from "@/lib/contratistas/compartir-enlace";
 import { resumenDocumentosInforme, estadoAcreditacionDocumental } from "@/lib/contratistas/resumen-informe";
 import JSZip from "jszip";
 import { crearCatalogoContratista, listarCentrosMandante, listarDocumentosBaseContratista, obtenerCatalogoContratistas, reutilizarDocumentoContratista } from "@/actions/contratistas/catalogo";
@@ -51,6 +52,13 @@ function fechaCorta(value: Date | string | null | undefined) {
   if (!value) return "—";
   return new Date(value).toLocaleDateString("es-CL", { timeZone: "UTC" });
 }
+function fechaHoraChile(value: Date | string | null | undefined) {
+  if (!value) return "—";
+  return new Date(value).toLocaleString("es-CL", {
+    timeZone: "America/Santiago", day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+}
 function estadoExpediente(s: Expediente) {
   if (s.estado === "aprobada" && s.totalObligatorios !== s.aprobados) return "Requiere actualización";
   if (s.requisitos.some(documentoPendienteRevisionMandante)) return "Pendiente de validación";
@@ -80,6 +88,7 @@ export default function SolicitudesContratistasClient() {
   const [seleccionados, setSeleccionados] = useState<string[]>([...CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS]);
   const [descargandoZip, setDescargandoZip] = useState(false);
   const [enviandoInforme, setEnviandoInforme] = useState(false);
+  const [enlaceTemporal, setEnlaceTemporal] = useState<{ solicitudId: string; url: string; expira: string } | null>(null);
   const [filtroTrabajador, setFiltroTrabajador] = useState("");
   const [cargoMasivo, setCargoMasivo] = useState("");
   const [reglaMasiva, setReglaMasiva] = useState("");
@@ -89,6 +98,7 @@ export default function SolicitudesContratistasClient() {
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const actual = useMemo(() => expedientes.find((s) => s.id === actualId) || null, [expedientes, actualId]);
   const puedeEditar = !!actual && actual.estado !== "cerrada";
+  const enlaceVisible = enlaceTemporal?.solicitudId === actual?.id ? enlaceTemporal : null;
 
   async function cargar(primera = false) {
     if (primera) setCargando(true);
@@ -130,6 +140,32 @@ export default function SolicitudesContratistasClient() {
       setError(e instanceof Error ? e.message : "No se pudo completar la operación");
     } finally {
       setProcesando(false);
+    }
+  }
+
+  async function generarEnlace() {
+    if (!actual || procesando) return;
+    if (actual.invitadoAt && !window.confirm(
+      "Generar un enlace nuevo invalida el enlace anterior, incluso si se envió por correo o WhatsApp. ¿Continuar?",
+    )) return;
+    setProcesando(true); setError(""); setAviso("");
+    try {
+      const datos = await generarEnlaceCargaContratista(actual.id);
+      setEnlaceTemporal({ solicitudId: actual.id, url: datos.url, expira: datos.expira });
+      await cargar();
+      setAviso("Enlace de carga generado. Puedes copiarlo o compartirlo por WhatsApp. El anterior quedó invalidado.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo crear el enlace.");
+    } finally { setProcesando(false); }
+  }
+
+  async function copiarEnlace() {
+    if (!enlaceVisible) return;
+    try {
+      await navigator.clipboard.writeText(enlaceVisible.url);
+      setAviso("Enlace copiado. Puedes enviarlo directamente al contratista.");
+    } catch {
+      setError("Tu navegador no permitió copiar automáticamente. Selecciona el enlace del campo y cópialo manualmente.");
     }
   }
 
@@ -232,7 +268,7 @@ export default function SolicitudesContratistasClient() {
                             <p className="mt-1 text-xs text-slate-500">{d.archivoOriginal || "Aún no entregado"} · Vence: {fechaCorta(vencimientoEfectivoRequisito(d.fechaVencimiento, d.fechaEmision, vigenciaMesesRequisito(d)))} · Versión {d.version}{vigenciaMesesRequisito(d) ? ` · Vigencia máxima ${vigenciaMesesRequisito(d)} meses` : ""}{d.condicional ? " · Si aplica" : ""}</p>
                             {documentoAprobadoConRevision(d) && (
                               <p className="mt-1 text-xs font-medium text-emerald-800">
-                                Aprobado por la mandante el {fechaCorta(d.revisadoAt)}.
+                                Aprobado por la mandante el {fechaHoraChile(d.revisadoAt)}.
                               </p>
                             )}
                             {d.estado === "aprobado" && !documentoAprobadoConRevision(d) && d.archivoNombre && (
@@ -245,12 +281,34 @@ export default function SolicitudesContratistasClient() {
                         </div>
                         <div className="mt-2 flex flex-wrap items-center gap-3">
                           {d.archivoNombre && <a href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-sky-700 underline"><FileText className="h-3.5 w-3.5"/>Ver documento</a>}
-                          {puedeEditar && <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" disabled={procesando} checked={d.obligatorio} onChange={(e) => void ejecutar(() => cambiarObligatoriedadContratista(d.id, e.target.checked), "Obligatoriedad actualizada.")}/>{d.condicional ? "Aplica / obligatorio" : "Obligatorio"}</label>}
-                          {puedeEditar && <button type="button" disabled={procesando || !!(d.reglaTrabajadorId || d.archivoNombre || d.documentoBaseId || d.version > 0 || d.revisadoAt || d.observacionRevision || d.estado !== "pendiente" || d.versiones.length)} title={d.reglaTrabajadorId ? "Gestiona este requisito desde la regla de todos los trabajadores" : d.archivoNombre || d.version > 0 || d.revisadoAt || d.versiones.length ? "No se puede eliminar: contiene documentos o historial de revisión" : "Eliminar requisito sin documentos"} className="inline-flex items-center gap-1 text-xs font-medium text-red-700 disabled:cursor-not-allowed disabled:text-slate-400" onClick={() => {
-                            if (window.confirm(`¿Eliminar el requisito "${d.nombre}"? Esta acción no se puede deshacer.`))
-                              void ejecutar(() => eliminarRequisitoContratista(d.id), "Requisito eliminado.");
-                          }}><Trash2 className="h-3.5 w-3.5"/>Eliminar requisito</button>}
                         </div>
+                        {puedeEditar && (
+                          <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3 text-xs text-slate-700">
+                            <summary className="cursor-pointer font-semibold text-slate-700">Configurar requisito · obligatoriedad y eliminación</summary>
+                            <div className="mt-3 flex flex-wrap items-center gap-4">
+                              <label className="flex items-center gap-2 font-medium text-slate-700">
+                                <input type="checkbox" disabled={procesando} checked={d.obligatorio} onChange={(e) => {
+                                  const nuevo = e.target.checked;
+                                  const descripcion = nuevo ? "marcar como obligatorio" : "quitar la obligatoriedad";
+                                  if (!window.confirm(`¿${descripcion} el requisito "${d.nombre}"? El cambio afecta el cumplimiento y quedará registrado.`)) return;
+                                  const motivo = window.prompt("Motivo del cambio (obligatorio, mínimo 4 caracteres):");
+                                  if (!motivo?.trim() || motivo.trim().length < 4) { setError("Cambio cancelado: indica un motivo de al menos 4 caracteres."); return; }
+                                  void ejecutar(() => cambiarObligatoriedadContratista(d.id, nuevo, motivo), "Obligatoriedad actualizada con historial.");
+                                }}/>
+                                {d.condicional ? "Aplica / obligatorio" : "Obligatorio"}
+                              </label>
+                              <button type="button" disabled={procesando || !!(d.reglaTrabajadorId || d.archivoNombre || d.documentoBaseId || d.version > 0 || d.revisadoAt || d.observacionRevision || d.estado !== "pendiente" || d.versiones.length)}
+                                className="inline-flex items-center gap-1 font-medium text-red-700 disabled:cursor-not-allowed disabled:text-slate-400"
+                                title={d.archivoNombre || d.version > 0 || d.revisadoAt || d.versiones.length ? "No se permite borrar requisitos con documentos o historial; se conserva su trazabilidad." : d.reglaTrabajadorId ? "Gestiona este requisito en la pauta general de trabajadores." : "Eliminar requisito sin documentos"}
+                                onClick={() => {
+                                  if (window.confirm(`¿Eliminar el requisito "${d.nombre}"? Solo se puede eliminar si no tiene evidencia. Esta acción no se puede deshacer.`))
+                                    void ejecutar(() => eliminarRequisitoContratista(d.id), "Requisito eliminado.");
+                                }}><Trash2 className="h-3.5 w-3.5"/>Eliminar requisito sin historial
+                              </button>
+                            </div>
+                            <p className="mt-2 text-xs text-slate-500">Los requisitos con documentos o revisiones se conservan para no perder evidencia. Para modificar una aprobación utiliza la revisión de abajo.</p>
+                          </details>
+                        )}
                         {d.categoria === "empresa" && <p className="mt-2 text-[11px] font-semibold text-slate-500">{d.alcance === "empresa" ? "Documento corporativo sujeto a revisión de esta faena" : "Documento específico de contrato / faena"}{d.documentoBase && <span className="ml-2 text-emerald-700">· Reutilizado de carpeta corporativa</span>}</p>}
                         {d.categoria === "empresa" && puedeEditar && !d.archivoNombre && docsBase.length > 0 && <div className="mt-2 flex flex-col gap-2 rounded-xl bg-emerald-50/60 p-3 sm:flex-row sm:items-center">
                           <div className="flex-1"><label className="text-xs font-semibold text-slate-700">Reutilizar un documento corporativo aprobado</label>
@@ -261,14 +319,36 @@ export default function SolicitudesContratistasClient() {
                           </div>
                           <Button disabled={procesando || !seleccionReuso[d.id]} size="sm" className="rounded-xl bg-emerald-700 text-white" onClick={() => void ejecutar(() => reutilizarDocumentoContratista({ requisitoId: d.id, documentoBaseId: seleccionReuso[d.id] }), "Archivo reutilizado y enviado a validación para esta faena.")}>Reutilizar</Button>
                         </div>}
-                        {d.observacionRevision && <p className={`mt-2 rounded-lg p-2 text-xs ${d.estado === "aprobado" ? "bg-emerald-50 text-emerald-800" : "bg-orange-50 text-orange-800"}`}>{d.estado === "aprobado" ? "Comentario de aprobación" : "Observación"}: {d.observacionRevision}</p>}
-                        {d.versiones.length > 1 && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer">Historial ({d.versiones.length} versiones)</summary><div className="mt-2 flex flex-col gap-1">{d.versiones.map((v) => <a key={v.id} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline" href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}&versionId=${v.id}`}>Versión {v.version} · {fechaCorta(v.subidoAt)} · {v.archivoOriginal}</a>)}</div></details>}
-                        {puedeEditar && documentoPendienteRevisionMandante(d) && <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-100 pt-3">
-                          <p className="w-full text-xs font-semibold text-amber-800">Revisión de la mandante: abre el documento y aprueba con o sin comentario, observa o rechaza. Observar y rechazar exigen motivo.</p>
-                          <Button disabled={procesando || estado === "vencido"} size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "aprobado", observacion: motivos[d.id] || undefined }), "Documento aprobado.")}>Aprobar</Button>
+                        {d.observacionRevision && <p className={`mt-2 rounded-lg p-2 text-xs ${d.estado === "aprobado" ? "bg-emerald-50 text-emerald-800" : "bg-orange-50 text-orange-800"}`}>{d.estado === "aprobado" ? "Comentario de aprobación" : d.estado === "rechazado" ? "Motivo del rechazo" : "Observación"}: {d.observacionRevision}</p>}
+                        {d.historialRevision.length > 0 && (
+                          <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                            <summary className="cursor-pointer font-medium">Historial de decisiones y cambios ({d.historialRevision.length})</summary>
+                            <div className="mt-2 space-y-2">
+                              {d.historialRevision.map((evento) => (
+                                <div key={evento.id} className="border-b border-slate-200 pb-2 last:border-0">
+                                  <p><strong>{evento.tipo === "obligatoriedad" ? "Cambio de obligatoriedad" : "Revisión documental"}</strong> · {fechaHoraChile(evento.creadoAt)}</p>
+                                  <p>{evento.tipo === "obligatoriedad"
+                                    ? `${evento.obligatorioAnterior ? "Obligatorio" : "Opcional"} → ${evento.obligatorioNuevo ? "Obligatorio" : "Opcional"}`
+                                    : `${evento.estadoAnterior || "pendiente"} → ${evento.estadoNuevo}`}</p>
+                                  <p className="text-slate-500">Usuario: {evento.usuarioId}{evento.motivo ? " · Motivo: " + evento.motivo : ""}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                        {d.versiones.length > 1 && <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer">Historial ({d.versiones.length} versiones)</summary><div className="mt-2 flex flex-col gap-1">{d.versiones.map((v) => <a key={v.id} target="_blank" rel="noopener noreferrer" className="text-sky-700 underline" href={`/api/dicaprev/contratistas/archivo?requisitoId=${d.id}&versionId=${v.id}`}>Versión {v.version} · {fechaHoraChile(v.subidoAt)} · {v.archivoOriginal}</a>)}</div></details>}
+                        {puedeEditar && d.archivoNombre && <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-100 pt-3">
+                          <p className="w-full text-xs font-semibold text-amber-800">Revisión de la mandante: puedes corregir una aprobación anterior. Aprobar no requiere motivo; observar o rechazar sí. Las decisiones quedan registradas y no generan correos individuales.</p>
+                          <Button disabled={procesando || estado === "vencido" || d.estado === "aprobado"} size="sm" className="bg-emerald-700 text-white hover:bg-emerald-800" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "aprobado", observacion: motivos[d.id] || undefined }), "Documento aprobado.")}>Aprobar</Button>
                           <input aria-label={`Motivo para ${d.nombre}`} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs" placeholder="Comentario opcional al aprobar; obligatorio al observar o rechazar" value={motivos[d.id] || ""} onChange={(e) => setMotivos((prev) => ({ ...prev, [d.id]: e.target.value }))}/>
-                          <Button disabled={procesando || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "observado", observacion: motivos[d.id] }), "Observación enviada al contratista.")}>Observar</Button>
-                          <Button disabled={procesando || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "rechazado", observacion: motivos[d.id] }), "Documento rechazado.")}>Rechazar</Button>
+                          <Button disabled={procesando || d.estado === "observado" || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => {
+                            if (d.estado === "aprobado" && !window.confirm("¿Revertir la aprobación y marcar este documento como observado? Se guardará el historial de la revisión.")) return;
+                            void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "observado", observacion: motivos[d.id] }), "Documento observado. El contratista recibirá el cambio cuando le envíes el informe.");
+                          }}>Observar</Button>
+                          <Button disabled={procesando || d.estado === "rechazado" || !motivos[d.id]?.trim()} variant="outline" size="sm" onClick={() => {
+                            if (d.estado === "aprobado" && !window.confirm("¿Revertir la aprobación y rechazar este documento? Quedará registrada la revisión anterior.")) return;
+                            void ejecutar(() => revisarRequisitoContratista({ requisitoId: d.id, estado: "rechazado", observacion: motivos[d.id] }), "Documento rechazado. El contratista recibirá el cambio cuando le envíes el informe.");
+                          }}>Rechazar</Button>
                         </div>}
                       </div>;
   }
@@ -361,7 +441,7 @@ export default function SolicitudesContratistasClient() {
                 setForm((prev) => ({ ...prev, faena, nombre: nombrePersonalizado ? prev.nombre : nombreExpediente(faena) }));
               }} placeholder="Ej. BCI - VITACURA"/></label>
               <label className="space-y-1.5"><Label>Servicio contratado</Label><Input value={form.servicio} onChange={(e) => setForm({ ...form, servicio: e.target.value })} placeholder="Ej. Electricidad, climatización, cristales" /></label>
-              <label className="space-y-1.5"><Label>Correo del contratista *</Label><Input type="email" required value={form.contactoEmail} onChange={(e) => setForm({ ...form, contactoEmail: e.target.value })} /></label>
+              <label className="space-y-1.5"><Label>Correo del contratista (opcional)</Label><Input type="email" value={form.contactoEmail} onChange={(e) => setForm({ ...form, contactoEmail: e.target.value })} /><span className="text-xs text-slate-500">Puedes crear el expediente sin correo y compartir el acceso por WhatsApp.</span></label>
               <label className="space-y-1.5"><Label>Responsable en faena</Label><Input value={form.responsable} onChange={(e) => setForm({ ...form, responsable: e.target.value })} /></label>
               <label className="space-y-1.5"><Label>Dotación estimada</Label><Input type="number" min="0" value={form.dotacionEstimada} onChange={(e) => setForm({ ...form, dotacionEstimada: e.target.value })} /></label>
               <div className="grid grid-cols-2 gap-3">
@@ -417,13 +497,40 @@ export default function SolicitudesContratistasClient() {
                     <p className="mt-1 text-xs text-slate-500">{actual.servicio || "Servicio no especificado"} · {fechaCorta(actual.fechaInicio)} a {fechaCorta(actual.fechaTermino)}</p>
                     <p className="mt-2 text-sm font-medium text-slate-700">{estadoExpediente(actual)} · {actual.documentosAprobados} documentos aprobados · {actual.pendientesValidacion} por validar</p>
                     <p className="mt-1 text-xs text-slate-500">Cumplimiento obligatorio: {actual.aprobados}/{actual.totalObligatorios} · Faltan cargar: {actual.pendientesCarga}</p>
-                    <p className="mt-1 text-xs text-slate-500">Contacto: {actual.contactoEmail} · Recursos registrados: {actual.recursos.length}</p>
+                    <p className="mt-1 text-xs text-slate-500">Correo: {actual.contactoEmail || "Sin correo; usar enlace/WhatsApp"} · Recursos registrados: {actual.recursos.length}</p>
                   </div>
                   {puedeEditar && <div className="flex flex-wrap gap-2">
-                    <Button disabled={procesando} className="bg-sky-700 text-white" onClick={() => void ejecutar(() => invitarContratista(actual.id), "Correo de invitación enviado al contratista.")}><Mail className="mr-2 h-4 w-4"/>{actual.invitadoAt ? "Reenviar invitación" : "Invitar contratista"}</Button>
+                    <Button disabled={procesando || !actual.contactoEmail?.trim()} className="bg-sky-700 text-white" title={!actual.contactoEmail ? "No hay correo registrado; utiliza el enlace para WhatsApp" : "Invitar por correo (invalida enlaces anteriores)"} onClick={() => {
+                      if (actual.invitadoAt && !window.confirm("Reenviar la invitación por email invalidará el enlace anterior. ¿Continuar?")) return;
+                      void ejecutar(async () => { await invitarContratista(actual.id); setEnlaceTemporal(null); }, "Correo de invitación enviado al contratista.");
+                    }}><Mail className="mr-2 h-4 w-4"/>{actual.invitadoAt ? "Reenviar invitación" : "Invitar por correo"}</Button>
+                    <Button variant="outline" disabled={procesando} onClick={() => void generarEnlace()}>Generar enlace de carga</Button>
                     <Button variant="outline" disabled={procesando} onClick={() => { if (window.confirm("¿Cerrar el expediente e invalidar el acceso externo?")) void ejecutar(() => cerrarExpedienteContratista(actual.id), "Expediente cerrado."); }}><XCircle className="mr-2 h-4 w-4"/>Cerrar</Button>
                   </div>}
                 </div>
+                {puedeEditar && enlaceVisible && (
+                  <div className="mt-4 space-y-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                    <p className="text-sm font-semibold text-sky-900">Acceso para subir documentos</p>
+                    <input className={CAMPO} aria-label="Enlace temporal de carga de documentos" readOnly value={enlaceVisible.url} onFocus={(e) => e.target.select()}/>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => void copiarEnlace()}>Copiar enlace</Button>
+                      <a className="inline-flex items-center rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800"
+                         href={enlaceWhatsAppContratista(
+                           mensajeAccesoContratista({
+                             nombreEmpresa: actual.contratista.nombre,
+                             obra: actual.centroTrabajo?.nombre || actual.faena || actual.nombre,
+                             url: enlaceVisible.url,
+                             vencimiento: enlaceVisible.expira,
+                           }),
+                           contratistas.find((c) => c.id === actual.contratistaId)?.telefono,
+                         )}
+                         target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a>
+                    </div>
+                    <p className="text-xs text-sky-900">Acceso temporal hasta el {new Date(enlaceVisible.expira).toLocaleDateString("es-CL", { timeZone: "America/Santiago" })}.
+                    Se entrega solo al generar el enlace; si generas otro o reenvías un correo, el anterior deja de funcionar.
+                    Quien tenga este enlace puede acceder a la documentación de la carpeta: compártelo únicamente con el responsable autorizado.</p>
+                  </div>
+                )}
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <h3 className="text-base font-semibold text-slate-800">Control documental por recurso</h3>
@@ -490,6 +597,11 @@ export default function SolicitudesContratistasClient() {
                     <p className="text-xs text-sky-800">Obligatorios conformes</p><p className="mt-1 text-xl font-bold text-sky-900">{actual.aprobados}/{actual.totalObligatorios}</p>
                   </div>
                 </div>
+                {actual.vigenciasSinVerificar > 0 && (
+                  <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+                    {actual.vigenciasSinVerificar} documento(s) con vigencia sin verificar. No se consideran vigentes ni vencidos hasta registrar su fecha o modalidad de contrato.
+                  </p>
+                )}
                 <p className="mt-2 text-xs text-slate-500">Los documentos opcionales aprobados cuentan en “Documentos aprobados”, pero no en el total de requisitos obligatorios.</p>
                 <p className="mt-1 text-xs text-slate-600">Estado de acreditación documental: <strong>{estadoAcreditacionDocumental(actual.requisitos)}</strong>. El informe se envía únicamente al presionar el botón y confirmarlo; ninguna aprobación u observación individual genera correo automático.</p>
                 {puedeEditar && <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 text-xs text-slate-600">

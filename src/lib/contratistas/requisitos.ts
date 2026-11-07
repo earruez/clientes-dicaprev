@@ -56,6 +56,33 @@ export function vigenciaMesesRequisito(requisito: {
   return esRequisitoContratoLaboral(requisito) ? null : requisito.vigenciaMeses ?? null;
 }
 
+/** Estos documentos requieren una fecha final explícita; nunca se infiere su vigencia. */
+export function requiereFechaVencimientoDeclarada(requisito: {
+  nombre: string; categoria?: string | null; tipoContrato?: string | null;
+}): boolean {
+  if (esRequisitoContratoLaboral(requisito)) return requisito.tipoContrato === "plazo_fijo";
+  const nombre = requisito.nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (requisito.categoria === "trabajador") {
+    return /cedula.*identidad|examen.*ocupacional|examen.*pre.?ocupacional|licencia.*conduc|certificacion.*vigente/.test(nombre);
+  }
+  if (requisito.categoria === "vehiculo") return /soap|permiso.*circulacion|revision tecnica|certificado.*emision/.test(nombre);
+  return false;
+}
+
+/** Un faltante de vigencia no equivale a documento vigente o vencido. */
+export function faltaVerificarVigencia(requisito: {
+  nombre: string; categoria?: string | null; tipoContrato?: string | null;
+  archivoNombre?: string | null;
+  fechaEmision?: Date | string | null;
+  fechaVencimiento?: Date | string | null;
+  vigenciaMeses?: number | null;
+}): boolean {
+  if (!requisito.archivoNombre) return false;
+  if (esRequisitoContratoLaboral(requisito) && !requisito.tipoContrato) return true;
+  if (requiereFechaVencimientoDeclarada(requisito) && !requisito.fechaVencimiento) return true;
+  return !!vigenciaMesesRequisito(requisito) && !requisito.fechaEmision && !requisito.fechaVencimiento;
+}
+
 /** Vencimiento máximo según la pauta de cada mandante (no como plazo legal general). */
 export function vencimientoMaximoPorMeses(
   emision: Date | string | null | undefined, vigenciaMeses: number | null | undefined,
@@ -104,6 +131,7 @@ export type RequisitoRevisionMandante = {
   revisadoAt?: Date | string | null;
   revisadoPorId?: string | null;
   createdAt?: Date | string | null;
+  tipoContrato?: string | null;
   fechaVencimiento: Date | string | null;
   fechaEmision?: Date | string | null;
   vigenciaMeses?: number | null;
@@ -112,7 +140,7 @@ export type RequisitoRevisionMandante = {
 };
 
 export function documentoAprobadoConRevision(r: RequisitoRevisionMandante): boolean {
-  if (!r.archivoNombre || !r.revisadoAt || !r.revisadoPorId) return false;
+  if (!r.archivoNombre || !r.revisadoAt || !r.revisadoPorId || faltaVerificarVigencia(r)) return false;
   const fechaRevision = new Date(r.revisadoAt).getTime();
   if (!Number.isFinite(fechaRevision)) return false;
   // Una aprobación histórica de otra obra no acredita automáticamente esta solicitud.

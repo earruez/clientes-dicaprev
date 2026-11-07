@@ -13,8 +13,8 @@ describe("Pauta de acreditación de trabajadores", () => {
     expect(porClave["induccion-ingreso"].obligatorio).toBe(true);
     expect(porClave["difusion-pts"].obligatorio).toBe(true);
     expect(porClave["licencias-especificas"].condicional).toBe(true);
-    expect(porClave["reglamento-interno"].vigenciaMeses).toBe(24);
-    expect(porClave.epp.vigenciaMeses).toBe(12);
+    expect(porClave["reglamento-interno"].vigenciaMeses).toBe(12);
+    expect(porClave.epp.vigenciaMeses).toBe(24);
     expect(porClave.epp.condicional).toBe(true);
     expect(porClave["examen-oal"].obligatorio).toBe(false);
     expect(porClave["certificacion-cargo"].condicional).toBe(true);

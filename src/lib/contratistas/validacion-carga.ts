@@ -1,4 +1,5 @@
 import { validarArchivoDocumento, DOCUMENTO_TIPOS_LABEL } from "@/lib/documentacion/archivo-documento";
+import { esRequisitoContratoLaboral, requiereFechaVencimientoDeclarada } from "@/lib/contratistas/requisitos";
 
 export const MAX_ARCHIVO_PORTAL_BYTES = 4_500_000;
 export const ARCHIVOS_PORTAL_FORMATOS = DOCUMENTO_TIPOS_LABEL;
@@ -19,7 +20,19 @@ export function validarFechasPortal(input: {
   emision: string;
   vencimiento: string;
   vigenciaMeses: number | null;
+  nombreRequisito?: string;
+  categoria?: string;
+  tipoContrato?: string | null;
 }): string | null {
+  if (input.nombreRequisito && esRequisitoContratoLaboral({ nombre: input.nombreRequisito, categoria: input.categoria }) &&
+    !["indefinido", "plazo_fijo", "obra_faena"].includes(input.tipoContrato || "")) {
+    return "Falta seleccionar la modalidad del contrato: indefinido, plazo fijo u obra/faena.";
+  }
+  if (input.nombreRequisito && requiereFechaVencimientoDeclarada({
+    nombre: input.nombreRequisito, categoria: input.categoria, tipoContrato: input.tipoContrato,
+  }) && !input.vencimiento) {
+    return "Falta completar la fecha de vencimiento de este documento. No se puede verificar su vigencia sin esa fecha.";
+  }
   if (input.vigenciaMeses && !input.emision) {
     return "Falta completar la fecha de emisión o entrega: este requisito tiene una vigencia máxima.";
   }

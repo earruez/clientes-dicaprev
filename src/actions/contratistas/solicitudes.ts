@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail } from "@/lib/email/send-email";
 import { generarTokenPortal, hashTokenPortal, origenNextPrev } from "@/lib/contratistas/portal";
-import { documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
+import { documentoPendienteRevisionMandante, documentoAprobadoConRevision, faltaVerificarVigencia, estadoEfectivo, vigenciaMesesRequisito, REQUISITOS_RECURSO } from "@/lib/contratistas/requisitos";
 import { CATALOGO_CONTRATISTAS, CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { PLANTILLA_ACREDITACION_TRABAJADORES } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { requirePermission } from "@/server/auth/permissions";
@@ -41,6 +41,16 @@ export async function listarSolicitudesContratistas() {
       },
     },
   });
+  const eventos = solicitudes.length ? await prisma.contratistaRequisitoEvento.findMany({
+    where: { empresaId, solicitudId: { in: solicitudes.map((s) => s.id) } },
+    orderBy: { creadoAt: "desc" },
+    take: 2500,
+  }) : [];
+  const eventosPorRequisito = new Map<string, typeof eventos>();
+  for (const evento of eventos) {
+    const previo = eventosPorRequisito.get(evento.requisitoId) || [];
+    if (previo.length < 10) eventosPorRequisito.set(evento.requisitoId, [...previo, evento]);
+  }
   return solicitudes.map((s) => {
     const total = s.requisitos.filter((r) => r.obligatorio).length;
     const aprobados = s.requisitos.filter((r) => r.obligatorio && documentoAprobadoConRevision(r)).length;
@@ -48,10 +58,11 @@ export async function listarSolicitudesContratistas() {
     const pendientesValidacion = s.requisitos.filter((r) => documentoPendienteRevisionMandante(r)).length;
     const documentosObservados = s.requisitos.filter((r) => r.estado === "observado" || r.estado === "rechazado").length;
     const pendientesCarga = s.requisitos.filter((r) => r.obligatorio && !r.archivoNombre).length;
+    const vigenciasSinVerificar = s.requisitos.filter(faltaVerificarVigencia).length;
     return {
-      ...s, totalObligatorios: total, aprobados,
+      ...s, requisitos: s.requisitos.map((r) => ({ ...r, historialRevision: eventosPorRequisito.get(r.id) || [] })), totalObligatorios: total, aprobados,
       porcentaje: total ? Math.round((aprobados / total) * 100) : 0,
-      documentosAprobados, pendientesValidacion, documentosObservados, pendientesCarga,
+      documentosAprobados, pendientesValidacion, documentosObservados, pendientesCarga, vigenciasSinVerificar,
     };
   });
 }
@@ -77,7 +88,7 @@ export async function crearSolicitudContratista(input: {
   if (!contratista) throw new Error("Contratista no encontrado");
   if (!input.nombre?.trim()) throw new Error("Indica el nombre del contrato o servicio");
   const email = input.contactoEmail?.trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Correo de contacto inválido");
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Correo de contacto inválido");
   const personalizados = await prisma.contratistaCatalogoRequisito.findMany({ where: { empresaId, activo: true, categoria: "empresa" } });
   const catalogo = [
     ...CATALOGO_CONTRATISTAS.filter((r) => r.categoria === "empresa"),
@@ -115,7 +126,7 @@ export async function crearSolicitudContratista(input: {
         empresaId, nombre: r.nombre, obligatorio: r.obligatorio,
         // La plantilla general no inventa una vigencia legal uniforme:
         // períodos específicos se configuran por faena/mandante cuando correspondan.
-        condicional: r.condicional, vigenciaMeses: null,
+        condicional: r.condicional, vigenciaMeses: r.vigenciaMeses,
       })) },
     },
     select: { id: true },
@@ -359,13 +370,59 @@ export async function configurarRequisitoPorCargoContratista(input: {
   });
 }
 
-export async function cambiarObligatoriedadContratista(requisitoId: string, obligatorio: boolean) {
-  const { empresaId } = await requirePermission("canManageDocumentacion");
-  const r = await prisma.contratistaRequisito.findFirst({ where: { id: requisitoId, empresaId, solicitud: { estado: { not: "cerrada" } } }, select: { id: true, solicitudId: true } });
+export async function cambiarObligatoriedadContratista(
+  requisitoId: string, obligatorio: boolean, motivo: string,
+) {
+  const { empresaId, usuarioId } = await requirePermission("canManageDocumentacion");
+  if (!motivo?.trim() || motivo.trim().length < 4) throw new Error("Indica un motivo de al menos 4 caracteres para modificar la obligatoriedad.");
+  const r = await prisma.contratistaRequisito.findFirst({
+    where: { id: requisitoId, empresaId, solicitud: { estado: { not: "cerrada" } } },
+    select: { id: true, solicitudId: true, nombre: true, obligatorio: true },
+  });
   if (!r) throw new Error("Requisito no encontrado");
-  await prisma.contratistaRequisito.update({ where: { id: r.id }, data: { obligatorio } });
+  if (r.obligatorio === obligatorio) return { ok: true, sinCambios: true };
+  await prisma.$transaction(async (tx) => {
+    await tx.contratistaRequisito.update({ where: { id: r.id }, data: { obligatorio } });
+    await tx.contratistaRequisitoEvento.create({
+      data: {
+        empresaId, solicitudId: r.solicitudId, requisitoId: r.id,
+        nombreRequisito: r.nombre, tipo: "obligatoriedad",
+        obligatorioAnterior: r.obligatorio, obligatorioNuevo: obligatorio,
+        motivo: motivo.trim().slice(0, 1200), usuarioId,
+      },
+    });
+  });
   await recalcularEstado(r.solicitudId, empresaId);
   return { ok: true };
+}
+
+/**
+ * Genera un acceso temporal para enviar por WhatsApp o copiar.
+ * Solo la mandante puede emitirlo. El enlace se devuelve una sola vez:
+ * en la base únicamente se conserva su hash, nunca el token en claro.
+ * Crear otro acceso invalida el anterior, incluidos los enviados por email.
+ */
+export async function generarEnlaceCargaContratista(solicitudId: string) {
+  const { empresaId } = await requirePermission("canManageDocumentacion");
+  const solicitud = await prisma.contratistaSolicitud.findFirst({
+    where: { id: solicitudId, empresaId, estado: { not: "cerrada" }, contratista: { activo: true } },
+    select: { id: true, estado: true, nombre: true, faena: true },
+  });
+  if (!solicitud) throw new Error("Expediente no disponible o cerrado");
+  const token = generarTokenPortal();
+  const url = `${origenNextPrev()}/contratistas/portal/${token}`;
+  const expira = new Date(Date.now() + DIAS_ENLACE * 86400000);
+  const actualizacion = await prisma.contratistaSolicitud.updateMany({
+    where: { id: solicitud.id, empresaId, estado: { not: "cerrada" } },
+    data: {
+      tokenHash: hashTokenPortal(token),
+      tokenExpiraAt: expira,
+      invitadoAt: new Date(),
+      ...(solicitud.estado === "borrador" ? { estado: "enviada" } : {}),
+    },
+  });
+  if (!actualizacion.count) throw new Error("El expediente fue cerrado; no se generó el acceso.");
+  return { url, expira: expira.toISOString(), diasVigencia: DIAS_ENLACE };
 }
 
 export async function invitarContratista(solicitudId: string) {
@@ -375,13 +432,14 @@ export async function invitarContratista(solicitudId: string) {
     include: { contratista: { select: { nombre: true } } },
   });
   if (!solicitud) throw new Error("Expediente no encontrado o cerrado");
+  if (!solicitud.contactoEmail?.trim()) throw new Error("No hay correo electrónico registrado. Utiliza 'Generar enlace' y compártelo por WhatsApp.");
   const empresa = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { nombre: true } });
   const token = generarTokenPortal();
   const url = `${origenNextPrev()}/contratistas/portal/${token}`;
   const expira = new Date(Date.now() + DIAS_ENLACE * 86400000);
   await prisma.contratistaSolicitud.update({
     where: { id: solicitud.id },
-    data: { tokenHash: hashTokenPortal(token), tokenExpiraAt: expira, invitadoAt: new Date(), estado: "enviada" },
+    data: { tokenHash: hashTokenPortal(token), tokenExpiraAt: expira, invitadoAt: new Date(), ...(solicitud.estado === "borrador" ? { estado: "enviada" } : {}) },
   });
   try {
     await sendEmail({
@@ -424,7 +482,7 @@ export async function revisarRequisitoContratista(input: {
     include: { solicitud: { select: { contactoEmail: true, nombre: true, estado: true, contratistaId: true } } },
   });
   if (!requisito || !requisito.archivoNombre) throw new Error("Documento no cargado");
-  if (!documentoPendienteRevisionMandante(requisito)) throw new Error("Este documento ya fue revisado. Carga una nueva versión para volver a validarlo.");
+  if (requisito.estado === input.estado) throw new Error("El documento ya tiene ese estado. Selecciona uno distinto si deseas corregir la revisión.");
   if (input.estado === "aprobado" && estadoEfectivo("aprobado", requisito.fechaVencimiento, requisito.fechaEmision, vigenciaMesesRequisito(requisito)) === "vencido") throw new Error("No se puede aprobar un documento vencido");
   if (input.estado !== "aprobado" && !input.observacion?.trim()) throw new Error("Indica el motivo de la observación o rechazo");
   // Documentos de ámbito empresa aprobados desde una faena pasan a la carpeta
@@ -467,6 +525,14 @@ export async function revisarRequisitoContratista(input: {
         ...(documentoBaseId ? { documentoBaseId } : {}),
         observacionRevision: input.observacion?.trim().slice(0, 1200) || null,
         revisadoPorId: usuarioId, revisadoAt: new Date(),
+      },
+    });
+    await tx.contratistaRequisitoEvento.create({
+      data: {
+        empresaId, solicitudId: requisito.solicitudId, requisitoId: requisito.id,
+        nombreRequisito: requisito.nombre, tipo: "revision",
+        estadoAnterior: requisito.estado, estadoNuevo: input.estado,
+        motivo: input.observacion?.trim().slice(0, 1200) || null, usuarioId,
       },
     });
   });

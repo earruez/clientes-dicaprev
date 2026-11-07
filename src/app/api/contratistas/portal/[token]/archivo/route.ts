@@ -35,7 +35,11 @@ export async function POST(request: Request, { params }: Context) {
     const vigenciaMeses = vigenciaMesesRequisito(requisito);
     const fechaEmision = typeof data.get("fechaEmision") === "string" ? String(data.get("fechaEmision")) : "";
     const fechaVencimiento = typeof data.get("fechaVencimiento") === "string" ? String(data.get("fechaVencimiento")) : "";
-    const errorFechas = validarFechasPortal({ emision: fechaEmision, vencimiento: fechaVencimiento, vigenciaMeses });
+    const tipoContrato = typeof data.get("tipoContrato") === "string" ? String(data.get("tipoContrato")) : "";
+    const errorFechas = validarFechasPortal({
+      emision: fechaEmision, vencimiento: fechaVencimiento, vigenciaMeses,
+      nombreRequisito: requisito.nombre, categoria: requisito.categoria, tipoContrato,
+    });
     if (errorFechas) return NextResponse.json({ error: errorFechas }, { status: 400 });
     const emision = fecha(fechaEmision);
     let vencimiento = fecha(fechaVencimiento);
@@ -52,6 +56,7 @@ export async function POST(request: Request, { params }: Context) {
           ...file, documentoBaseId: null, version: { increment: 1 }, estado: "en_revision",
           observacionRevision: null, revisadoAt: null, revisadoPorId: null,
           fechaEmision: emision, fechaVencimiento: vencimiento,
+          tipoContrato: tipoContrato || null,
           aviso30At: null, aviso15At: null, aviso5At: null,
         },
       });

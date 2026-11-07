@@ -190,7 +190,8 @@ export default function ContratistasPageClient() {
                 <p className="break-words text-sm font-bold text-slate-900">{r.nombre}</p><p className="mt-1 text-xs text-slate-500">{r.rut || r.razonSocial || "Sin RUT ingresado"}</p>
                 <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500"><span>{r.totalDocumentos} documentos</span><span>·</span><span>{r.faenasActivas} faenas</span></div>
               </button>)}
-              {visibles.length === 0 && <p className="py-7 text-center text-xs text-slate-500">No encontramos empresas con esa búsqueda.</p>}
+              {!cargando && visibles.length === 0 && <p className="py-7 text-center text-xs text-slate-500">{busqueda.trim() ? "No encontramos empresas con esa búsqueda." : "No hay contratistas registrados."}</p>}
+              {cargando && <p role="status" className="py-7 text-center text-xs text-slate-500">Cargando directorio de contratistas…</p>}
             </div>
           </section>
         </aside>
