@@ -597,6 +597,11 @@ export default function SolicitudesContratistasClient() {
                     <p className="text-xs text-sky-800">Obligatorios conformes</p><p className="mt-1 text-xl font-bold text-sky-900">{actual.aprobados}/{actual.totalObligatorios}</p>
                   </div>
                 </div>
+                {actual.vigenciasSinVerificar > 0 && (
+                  <p role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900">
+                    {actual.vigenciasSinVerificar} documento(s) con vigencia sin verificar. No se consideran vigentes ni vencidos hasta registrar su fecha o modalidad de contrato.
+                  </p>
+                )}
                 <p className="mt-2 text-xs text-slate-500">Los documentos opcionales aprobados cuentan en “Documentos aprobados”, pero no en el total de requisitos obligatorios.</p>
                 <p className="mt-1 text-xs text-slate-600">Estado de acreditación documental: <strong>{estadoAcreditacionDocumental(actual.requisitos)}</strong>. El informe se envía únicamente al presionar el botón y confirmarlo; ninguna aprobación u observación individual genera correo automático.</p>
                 {puedeEditar && <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 text-xs text-slate-600">
