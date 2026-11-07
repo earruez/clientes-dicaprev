@@ -15,7 +15,7 @@ function requisitosParaNuevoRecurso(
   tipo: Exclude<CategoriaContratista, "empresa">,
   reglas: { id: string; nombre: string; obligatorio: boolean; vigenciaMeses: number | null; condicional: boolean }[],
 ) {
-  const nombreNormal = (nombre: string) => nombre.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").trim().toLocaleLowerCase("es");
+  const nombreNormal = (nombre: string) => nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("es");
   const definidos = tipo === "trabajador"
     ? PLANTILLA_ACREDITACION_TRABAJADORES
     : REQUISITOS_RECURSO[tipo];
