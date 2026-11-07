@@ -381,7 +381,6 @@ export async function generarEnlaceCargaContratista(solicitudId: string) {
     select: { id: true, estado: true, nombre: true, faena: true },
   });
   if (!solicitud) throw new Error("Expediente no disponible o cerrado");
-  if (!solicitud.contactoEmail?.trim()) throw new Error("No hay correo electrónico registrado. Utiliza 'Generar enlace' y compártelo por WhatsApp.");
   const token = generarTokenPortal();
   const url = `${origenNextPrev()}/contratistas/portal/${token}`;
   const expira = new Date(Date.now() + DIAS_ENLACE * 86400000);
@@ -405,6 +404,7 @@ export async function invitarContratista(solicitudId: string) {
     include: { contratista: { select: { nombre: true } } },
   });
   if (!solicitud) throw new Error("Expediente no encontrado o cerrado");
+  if (!solicitud.contactoEmail?.trim()) throw new Error("No hay correo electrónico registrado. Utiliza 'Generar enlace' y compártelo por WhatsApp.");
   const empresa = await prisma.empresa.findUnique({ where: { id: empresaId }, select: { nombre: true } });
   const token = generarTokenPortal();
   const url = `${origenNextPrev()}/contratistas/portal/${token}`;
