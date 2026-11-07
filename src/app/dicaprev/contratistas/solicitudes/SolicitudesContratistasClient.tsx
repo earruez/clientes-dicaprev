@@ -11,13 +11,14 @@ import { getContratistas, type ContratistaRow } from "@/actions/contratistas";
 import {
   agregarRequisitoContratista, aplicarPlantillaAcreditacionTrabajadores, cambiarObligatoriedadContratista, configurarRequisitoPorCargoContratista, cerrarExpedienteContratista,
   crearSolicitudContratista, eliminarReglaRequisitosTrabajadores, eliminarRequisitoContratista,
-  invitarContratista, listarSolicitudesContratistas, revisarRequisitoContratista, enviarInformeAcreditacionContratista,
+  invitarContratista, generarEnlaceCargaContratista, listarSolicitudesContratistas, revisarRequisitoContratista, enviarInformeAcreditacionContratista,
 } from "@/actions/contratistas/solicitudes";
 import { documentoPendienteRevisionMandante, documentoAprobadoConRevision, estadoAuditableRequisito, vencimientoEfectivoRequisito, vigenciaMesesRequisito } from "@/lib/contratistas/requisitos";
 import { PLANTILLA_ACREDITACION_TRABAJADORES, describeRequisitoTrabajador } from "@/lib/contratistas/plantilla-acreditacion-trabajadores";
 import { CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS } from "@/lib/contratistas/catalogo";
 import { normalizarCargoContratista, claveAgrupacionCargoContratista } from "@/lib/contratistas/cargos";
 import { agruparDocumentosRevision } from "@/lib/contratistas/organizacion-revision";
+import { enlaceWhatsAppContratista, mensajeAccesoContratista } from "@/lib/contratistas/compartir-enlace";
 import { resumenDocumentosInforme, estadoAcreditacionDocumental } from "@/lib/contratistas/resumen-informe";
 import JSZip from "jszip";
 import { crearCatalogoContratista, listarCentrosMandante, listarDocumentosBaseContratista, obtenerCatalogoContratistas, reutilizarDocumentoContratista } from "@/actions/contratistas/catalogo";
@@ -80,6 +81,7 @@ export default function SolicitudesContratistasClient() {
   const [seleccionados, setSeleccionados] = useState<string[]>([...CLAVES_PLANTILLA_INTEGRAL_CONTRATISTAS]);
   const [descargandoZip, setDescargandoZip] = useState(false);
   const [enviandoInforme, setEnviandoInforme] = useState(false);
+  const [enlaceTemporal, setEnlaceTemporal] = useState<{ solicitudId: string; url: string; expira: string } | null>(null);
   const [filtroTrabajador, setFiltroTrabajador] = useState("");
   const [cargoMasivo, setCargoMasivo] = useState("");
   const [reglaMasiva, setReglaMasiva] = useState("");
@@ -89,6 +91,7 @@ export default function SolicitudesContratistasClient() {
   const [motivos, setMotivos] = useState<Record<string, string>>({});
   const actual = useMemo(() => expedientes.find((s) => s.id === actualId) || null, [expedientes, actualId]);
   const puedeEditar = !!actual && actual.estado !== "cerrada";
+  const enlaceVisible = enlaceTemporal?.solicitudId === actual?.id ? enlaceTemporal : null;
 
   async function cargar(primera = false) {
     if (primera) setCargando(true);
@@ -130,6 +133,32 @@ export default function SolicitudesContratistasClient() {
       setError(e instanceof Error ? e.message : "No se pudo completar la operación");
     } finally {
       setProcesando(false);
+    }
+  }
+
+  async function generarEnlace() {
+    if (!actual || procesando) return;
+    if (actual.invitadoAt && !window.confirm(
+      "Generar un enlace nuevo invalida el enlace anterior, incluso si se envió por correo o WhatsApp. ¿Continuar?",
+    )) return;
+    setProcesando(true); setError(""); setAviso("");
+    try {
+      const datos = await generarEnlaceCargaContratista(actual.id);
+      setEnlaceTemporal({ solicitudId: actual.id, url: datos.url, expira: datos.expira });
+      await cargar();
+      setAviso("Enlace de carga generado. Puedes copiarlo o compartirlo por WhatsApp. El anterior quedó invalidado.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo crear el enlace.");
+    } finally { setProcesando(false); }
+  }
+
+  async function copiarEnlace() {
+    if (!enlaceVisible) return;
+    try {
+      await navigator.clipboard.writeText(enlaceVisible.url);
+      setAviso("Enlace copiado. Puedes enviarlo directamente al contratista.");
+    } catch {
+      setError("Tu navegador no permitió copiar automáticamente. Selecciona el enlace del campo y cópialo manualmente.");
     }
   }
 
@@ -361,7 +390,7 @@ export default function SolicitudesContratistasClient() {
                 setForm((prev) => ({ ...prev, faena, nombre: nombrePersonalizado ? prev.nombre : nombreExpediente(faena) }));
               }} placeholder="Ej. BCI - VITACURA"/></label>
               <label className="space-y-1.5"><Label>Servicio contratado</Label><Input value={form.servicio} onChange={(e) => setForm({ ...form, servicio: e.target.value })} placeholder="Ej. Electricidad, climatización, cristales" /></label>
-              <label className="space-y-1.5"><Label>Correo del contratista *</Label><Input type="email" required value={form.contactoEmail} onChange={(e) => setForm({ ...form, contactoEmail: e.target.value })} /></label>
+              <label className="space-y-1.5"><Label>Correo del contratista (opcional)</Label><Input type="email" value={form.contactoEmail} onChange={(e) => setForm({ ...form, contactoEmail: e.target.value })} /><span className="text-xs text-slate-500">Puedes crear el expediente sin correo y compartir el acceso por WhatsApp.</span></label>
               <label className="space-y-1.5"><Label>Responsable en faena</Label><Input value={form.responsable} onChange={(e) => setForm({ ...form, responsable: e.target.value })} /></label>
               <label className="space-y-1.5"><Label>Dotación estimada</Label><Input type="number" min="0" value={form.dotacionEstimada} onChange={(e) => setForm({ ...form, dotacionEstimada: e.target.value })} /></label>
               <div className="grid grid-cols-2 gap-3">
@@ -417,13 +446,40 @@ export default function SolicitudesContratistasClient() {
                     <p className="mt-1 text-xs text-slate-500">{actual.servicio || "Servicio no especificado"} · {fechaCorta(actual.fechaInicio)} a {fechaCorta(actual.fechaTermino)}</p>
                     <p className="mt-2 text-sm font-medium text-slate-700">{estadoExpediente(actual)} · {actual.documentosAprobados} documentos aprobados · {actual.pendientesValidacion} por validar</p>
                     <p className="mt-1 text-xs text-slate-500">Cumplimiento obligatorio: {actual.aprobados}/{actual.totalObligatorios} · Faltan cargar: {actual.pendientesCarga}</p>
-                    <p className="mt-1 text-xs text-slate-500">Contacto: {actual.contactoEmail} · Recursos registrados: {actual.recursos.length}</p>
+                    <p className="mt-1 text-xs text-slate-500">Correo: {actual.contactoEmail || "Sin correo; usar enlace/WhatsApp"} · Recursos registrados: {actual.recursos.length}</p>
                   </div>
                   {puedeEditar && <div className="flex flex-wrap gap-2">
-                    <Button disabled={procesando} className="bg-sky-700 text-white" onClick={() => void ejecutar(() => invitarContratista(actual.id), "Correo de invitación enviado al contratista.")}><Mail className="mr-2 h-4 w-4"/>{actual.invitadoAt ? "Reenviar invitación" : "Invitar contratista"}</Button>
+                    <Button disabled={procesando || !actual.contactoEmail?.trim()} className="bg-sky-700 text-white" title={!actual.contactoEmail ? "No hay correo registrado; utiliza el enlace para WhatsApp" : "Invitar por correo (invalida enlaces anteriores)"} onClick={() => {
+                      if (actual.invitadoAt && !window.confirm("Reenviar la invitación por email invalidará el enlace anterior. ¿Continuar?")) return;
+                      void ejecutar(async () => { await invitarContratista(actual.id); setEnlaceTemporal(null); }, "Correo de invitación enviado al contratista.");
+                    }}><Mail className="mr-2 h-4 w-4"/>{actual.invitadoAt ? "Reenviar invitación" : "Invitar por correo"}</Button>
+                    <Button variant="outline" disabled={procesando} onClick={() => void generarEnlace()}>Generar enlace de carga</Button>
                     <Button variant="outline" disabled={procesando} onClick={() => { if (window.confirm("¿Cerrar el expediente e invalidar el acceso externo?")) void ejecutar(() => cerrarExpedienteContratista(actual.id), "Expediente cerrado."); }}><XCircle className="mr-2 h-4 w-4"/>Cerrar</Button>
                   </div>}
                 </div>
+                {puedeEditar && enlaceVisible && (
+                  <div className="mt-4 space-y-3 rounded-xl border border-sky-200 bg-sky-50 p-3">
+                    <p className="text-sm font-semibold text-sky-900">Acceso para subir documentos</p>
+                    <input className={CAMPO} aria-label="Enlace temporal de carga de documentos" readOnly value={enlaceVisible.url} onFocus={(e) => e.target.select()}/>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => void copiarEnlace()}>Copiar enlace</Button>
+                      <a className="inline-flex items-center rounded-xl bg-emerald-700 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-800"
+                         href={enlaceWhatsAppContratista(
+                           mensajeAccesoContratista({
+                             nombreEmpresa: actual.contratista.nombre,
+                             obra: actual.centroTrabajo?.nombre || actual.faena || actual.nombre,
+                             url: enlaceVisible.url,
+                             vencimiento: enlaceVisible.expira,
+                           }),
+                           contratistas.find((c) => c.id === actual.contratistaId)?.telefono,
+                         )}
+                         target="_blank" rel="noopener noreferrer">Compartir por WhatsApp</a>
+                    </div>
+                    <p className="text-xs text-sky-900">Acceso temporal hasta el {new Date(enlaceVisible.expira).toLocaleDateString("es-CL", { timeZone: "America/Santiago" })}.
+                    Se entrega solo al generar el enlace; si generas otro o reenvías un correo, el anterior deja de funcionar.
+                    Quien tenga este enlace puede acceder a la documentación de la carpeta: compártelo únicamente con el responsable autorizado.</p>
+                  </div>
+                )}
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
                 <h3 className="text-base font-semibold text-slate-800">Control documental por recurso</h3>
