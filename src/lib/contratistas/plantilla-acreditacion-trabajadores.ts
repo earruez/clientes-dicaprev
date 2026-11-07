@@ -17,13 +17,13 @@ export const PLANTILLA_ACREDITACION_TRABAJADORES = [
   },
   {
     clave: "reglamento-interno", nombre: "Entrega de Reglamento Interno de la empresa",
-    detalle: "Constancia de recepción de Reglamento Interno, máximo 2 años según pauta del proyecto.",
-    obligatorio: true, condicional: false, vigenciaMeses: 24,
+    detalle: "Constancia de recepción del RIOHS, máximo 1 año según pauta de acreditación.",
+    obligatorio: true, condicional: false, vigenciaMeses: 12,
   },
   {
     clave: "epp", nombre: "Registro de entrega de elementos de protección personal",
-    detalle: "Registro de entrega de EPP, si corresponde a la actividad, máximo 1 año.",
-    obligatorio: false, condicional: true, vigenciaMeses: 12,
+    detalle: "Registro de entrega de EPP, si corresponde a la actividad, máximo 2 años según pauta de acreditación.",
+    obligatorio: false, condicional: true, vigenciaMeses: 24,
   },
   {
     clave: "extintores", nombre: "Capacitación de manejo y uso de extintores (DS 594, art. 48)",
