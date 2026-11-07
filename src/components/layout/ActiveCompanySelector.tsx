@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Building2 } from "lucide-react";
 
 type EmpresaOption = {
@@ -57,6 +57,7 @@ type ActiveCompanySelectorProps = {
 
 export default function ActiveCompanySelector({ variant = "desktop" }: ActiveCompanySelectorProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +131,8 @@ export default function ActiveCompanySelector({ variant = "desktop" }: ActiveCom
           window.dispatchEvent(
             new CustomEvent("nextprev:empresa-activa", { detail: { empresaId: nextEmpresaId } }),
           );
-          router.push("/dicaprev/dashboard");
+          // Conservar la sección actual al cambiar empresa. Los datos se recargan con el nuevo contexto.
+          router.replace(pathname?.startsWith("/dicaprev/") ? pathname : "/dicaprev/dashboard");
           router.refresh();
         })
         .catch((err) => {
